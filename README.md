@@ -144,9 +144,11 @@ az webapp list --subscription $subscriptionId --resource-group $resourceGroup --
 
 ## Cost and lifecycle
 
-The default Stages A-E deployment with light Control Center use is roughly **EUR 7-12 / USD 8-13 per day** when left running 24/7. This adjusts the indicative list-price estimate in [REFERENCE.md](docs/REFERENCE.md#cost-notes-north-europe-list-pricing-may-2026) to allow for Basic ACR and light Container Apps job use.
+There is no single accurate daily price for this lab. It combines provisioned resources (including App Service Basic, Managed Grafana Standard, Event Hubs Basic, ACR Basic, VMs, AKS, disks, and IPs) with usage-based telemetry, tests, network monitoring, automation, and optional AI agents. The default 1 GB/day cap on each Log Analytics workspace is an ingestion guardrail, not a total-spend cap.
 
-This range excludes optional Foundry model traffic, Azure SRE Agent charges, Observability Agent Azure Agent Credit usage, and the dedicated Observability Agent workspace's ingestion, retention, and query charges. Those costs depend on usage, allocation, region, and trial or preview terms. As checked September 26, 2026, Observability Agent correlation is unbilled during preview, while chat and deep investigations consume AAC and each deep investigation is capped at 500 AAC; use the current [billing guidance](https://learn.microsoft.com/azure/azure-monitor/aiops/observability-agent-billing) and [Azure Monitor pricing](https://azure.microsoft.com/pricing/details/monitor/) rather than treating this baseline as a quote. Microsoft Fabric is not deployed by this repository and is not included. Actual costs also vary by region, retention, exchange rates, and current Azure pricing. Stop or deallocate compute between sessions, keep automatic investigation disabled unless explicitly accepted, or run `./scripts/teardown.ps1 -Yes` when the lab is not needed.
+Use the dated, resource-by-resource [cost guide](docs/COST-GUIDE.md) to build an estimate from current public rates, then use [Azure Cost Management](https://learn.microsoft.com/azure/cost-management-billing/costs/quick-acm-cost-analysis) for actual charges. Optional Foundry, SRE Agent, Observability Agent, Sentinel, retention, archive/search/restore, export, and replication costs are additive. Public prices and preview/trial terms are not customer quotes.
+
+Stopping a web app does not stop its App Service Plan charge, and stopping VM or AKS compute leaves disks, IPs, telemetry, and other provisioned services. Deallocate compute between sessions and run `./scripts/teardown.ps1 -Yes` when the lab is no longer needed. Because deletion is asynchronous, verify the resource group and separately managed resources are gone before assuming billing has stopped.
 
 When the lab is no longer needed, set `$rg` to the resource group where you deployed the lab, then run the command below. If you used the default configuration, use `rg-azure-monitor-lab`.
 
@@ -162,6 +164,7 @@ Teardown also removes Entra app registrations and service principals that the cu
 | Doc | What's in it |
 |---|---|
 | [REFERENCE.md](docs/REFERENCE.md) | Full capability matrix · every deployed resource · demo walkthrough · cost breakdown · folder layout · optional add-ons · troubleshooting |
+| [COST-GUIDE.md](docs/COST-GUIDE.md) | Dated resource inventory · public-rate examples · usage formulas · optional agents · stop-versus-delete guidance |
 | [Lab Control Center](docs/LAB-CONTROL-CENTER.md) | Application guide, screenshot, traffic and agent capabilities, safety boundaries, and links to the guided scenarios |
 | [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | All 68 demo scenarios, each with a story, a click-path, and a "killer line", plus audience-pivoted shortlists |
 | [POST-DEPLOYMENT.md](docs/POST-DEPLOYMENT.md) | Manual and optional preparation required by specific demo scenarios after deployment is complete |

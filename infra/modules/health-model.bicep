@@ -905,16 +905,16 @@ resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-previ
             }
           }
           {
-            name: 'cost-cents'
+            name: 'token-volume'
             signalKind: 'LogAnalyticsQuery'
-            displayName: 'Estimated cost (US cents/hour)'
+            displayName: 'Total tokens/hour'
             dataUnit: 'Count'
             refreshInterval: 'PT5M'
-            valueColumnName: 'CostCents'
-            queryText: 'AppDependencies | where TimeGenerated > ago(1h) | where tostring(Properties[\'gen_ai.agent.name\']) == \'${a.display}\' | extend inTok=toint(Properties[\'gen_ai.usage.input_tokens\']), outTok=toint(Properties[\'gen_ai.usage.output_tokens\']), cachedTok=toint(Properties[\'gen_ai.usage.cached_input_tokens\']) | extend freshIn=inTok-coalesce(cachedTok, 0) | summarize c=round((sum(freshIn)*0.25 + sum(coalesce(cachedTok, 0))*0.025 + sum(outTok)*2.0)/1000000.0*100, 2) | project CostCents=coalesce(c, 0.0)'
+            valueColumnName: 'TotalTokens'
+            queryText: 'AppDependencies | where TimeGenerated > ago(1h) | where tostring(Properties[\'gen_ai.agent.name\']) == \'${a.display}\' | extend inTok=toint(Properties[\'gen_ai.usage.input_tokens\']), outTok=toint(Properties[\'gen_ai.usage.output_tokens\']) | summarize TotalTokens=coalesce(sum(inTok), 0)+coalesce(sum(outTok), 0)'
             evaluationRules: {
-              degradedRule: { operator: 'GreaterThan', threshold: 10 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 30 }
+              degradedRule: { operator: 'GreaterThan', threshold: 100000 }
+              unhealthyRule: { operator: 'GreaterThan', threshold: 200000 }
             }
           }
         ]

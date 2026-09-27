@@ -1,24 +1,21 @@
 // PTU vs consumption break-even (last window)
 // -------------------------------------------------------------------
-// Purpose:  The core PTU FinOps decision. Takes the ACTUAL token volume
+// Purpose:  An illustrative PTU decision. Takes the ACTUAL token volume
 //           the agents are producing, projects it to a full day, and
 //           compares consumption (pay-go) cost/day against the fixed cost
 //           of a Provisioned Throughput (PTU) reservation — and reports the
 //           token/day break-even where PTU becomes the cheaper option.
 // Source:   Application Insights `dependencies` (GenAI spans).
-// Tune:     Edit the four `let` values below. ptuHourlyUsd/ptuCount drive
-//           the fixed side; inPrice/outPrice the consumption side.
-// Reality:  At the current demo volume (~$0.27/day) you are FAR below PTU
-//           break-even — small/bursty workloads belong on consumption;
-//           steady high-volume belongs on PTU. That contrast IS the lesson.
-// Caveat:   Estimate only. Real PTU pricing has minimums (often 15-50 PTU/
-//           deployment) and monthly/annual reservations are cheaper than
-//           hourly. Reconcile with Azure pricing + Cost Management.
+// Tune:     Enter current rates for ONE comparable model/deployment type.
+//           Do not use this blended calculation for Model Router or a mix
+//           of chat and embedding models.
+// Caveat:   Zero defaults deliberately report unavailable. PTU minimums,
+//           reservations, regions, agreements, and model rates vary.
 
-let ptuCount      = 15;     // PTU reserved (typical per-deployment minimum)
-let ptuHourlyUsd  = 1.0;    // ~list hourly $/PTU; use your reservation rate
-let inPrice       = 0.25;   // consumption price: USD / 1M input tokens
-let outPrice      = 2.00;   // consumption price: USD / 1M output tokens
+let ptuCount      = 0.0; // Set current PTU count
+let ptuHourlyUsd  = 0.0; // Set current USD/PTU-hour
+let inPrice       = 0.0; // Set current USD/1M input tokens
+let outPrice      = 0.0; // Set current USD/1M output tokens
 dependencies
 | where isnotempty(tostring(customDimensions["gen_ai.agent.name"]))
 | extend inTok  = toint(customDimensions["gen_ai.usage.input_tokens"]),
@@ -33,7 +30,9 @@ dependencies
          ptu_usd_day           = round(ptuCount * ptuHourlyUsd * 24, 2),
          price_per_token       = consumption_usd / iff(total_tokens > 0, total_tokens, 1)
 | extend breakeven_tokens_day  = round(ptu_usd_day / iff(price_per_token > 0, price_per_token, 1.0), 0),
-         verdict               = iff(consumption_usd_day >= ptu_usd_day,
+         verdict               = iff(ptuCount <= 0 or ptuHourlyUsd <= 0 or inPrice <= 0 or outPrice <= 0,
+                                     'Set current model-specific rates before comparing',
+                                     iff(consumption_usd_day >= ptu_usd_day,
                                      'PTU cheaper at current volume',
-                                     'Consumption cheaper — stay pay-go')
+                                     'Consumption cheaper at current volume'))
 | project tokens_per_day, breakeven_tokens_day, consumption_usd_day, ptu_usd_day, verdict

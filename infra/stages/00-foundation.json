@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "12193874041464348171"
+      "templateHash": "14095150590494807791"
     }
   },
   "parameters": {
@@ -1786,7 +1786,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "13441797547168921085"
+              "templateHash": "2374855197336449984"
             }
           },
           "parameters": {
@@ -1816,7 +1816,7 @@
                 "displayName": "Function: vmHealth() — traffic-light status for all VMs",
                 "functionAlias": "vmHealth",
                 "functionParameters": "",
-                "query": "let heartbeats = Heartbeat\r\n  | summarize LastHB = max(TimeGenerated) by Computer, OSType\r\n  | extend MinutesSinceHB = datetime_diff(\"minute\", now(), LastHB);\r\nlet cpu = InsightsMetrics\r\n  | where TimeGenerated > ago(15m)\r\n  | where Namespace == \"Processor\" and Name == \"UtilizationPercentage\"\r\n  | summarize AvgCpu = avg(Val) by Computer;\r\nheartbeats\r\n| join kind=leftouter cpu on Computer\r\n| extend AvgCpu = coalesce(AvgCpu, 0.0)\r\n| extend Status = case(\r\n    MinutesSinceHB > 5 or AvgCpu > 90, \"Red\",\r\n    MinutesSinceHB > 2 or AvgCpu > 70, \"Orange\",\r\n    \"Green\")\r\n| project Computer, OSType, LastHB, MinutesSinceHB, AvgCpu, Status",
+                "query": "let heartbeats = Heartbeat\n  | summarize LastHB = max(TimeGenerated) by Computer, OSType\n  | extend MinutesSinceHB = datetime_diff(\"minute\", now(), LastHB);\nlet cpu = InsightsMetrics\n  | where TimeGenerated > ago(15m)\n  | where Namespace == \"Processor\" and Name == \"UtilizationPercentage\"\n  | summarize AvgCpu = avg(Val) by Computer;\nheartbeats\n| join kind=leftouter cpu on Computer\n| extend AvgCpu = coalesce(AvgCpu, 0.0)\n| extend Status = case(\n    MinutesSinceHB > 5 or AvgCpu > 90, \"Red\",\n    MinutesSinceHB > 2 or AvgCpu > 70, \"Orange\",\n    \"Green\")\n| project Computer, OSType, LastHB, MinutesSinceHB, AvgCpu, Status",
                 "version": 2
               }
             },
@@ -1829,7 +1829,7 @@
                 "displayName": "Function: aksHealth() — traffic-light status for AKS pods",
                 "functionAlias": "aksHealth",
                 "functionParameters": "",
-                "query": "KubePodInventory\r\n| where TimeGenerated > ago(15m)\r\n| summarize Restarts = sum(toint(ContainerRestartCount)),\r\n            arg_max(TimeGenerated, PodStatus) by Namespace, Name, ControllerName\r\n| extend Status = case(\r\n    PodStatus !in (\"Running\",\"Succeeded\") or Restarts > 10, \"Red\",\r\n    Restarts > 3, \"Orange\",\r\n    \"Green\")\r\n| project Namespace, Pod = Name, Controller = ControllerName, PodStatus, Restarts, Status",
+                "query": "KubePodInventory\n| where TimeGenerated > ago(15m)\n| summarize Restarts = sum(toint(ContainerRestartCount)),\n            arg_max(TimeGenerated, PodStatus) by Namespace, Name, ControllerName\n| extend Status = case(\n    PodStatus !in (\"Running\",\"Succeeded\") or Restarts > 10, \"Red\",\n    Restarts > 3, \"Orange\",\n    \"Green\")\n| project Namespace, Pod = Name, Controller = ControllerName, PodStatus, Restarts, Status",
                 "version": 2
               }
             },
@@ -1842,7 +1842,7 @@
                 "displayName": "Function: envHealth() — combined environment health",
                 "functionAlias": "envHealth",
                 "functionParameters": "",
-                "query": "[replace('__APPI_LAW__', parameters('appInsightsLawName'), 'let vms = vmHealth()\r\n  | project ResourceType = \"VM\", ResourceName = Computer, Status, Detail = strcat(\"CPU=\", round(AvgCpu,1), \"% HB=\", MinutesSinceHB, \"m ago\");\r\nlet pods = aksHealth()\r\n  | project ResourceType = \"AKS Pod\", ResourceName = Pod, Status, Detail = strcat(\"Restarts=\", Restarts, \" Status=\", PodStatus);\r\nlet appi = workspace(\"__APPI_LAW__\").AppRequests\r\n  | where TimeGenerated > ago(15m)\r\n  | summarize Total = count(), Failed = countif(Success == false)\r\n  | extend FailPct = round(100.0 * Failed / Total, 1)\r\n  | extend Status = case(FailPct > 10, \"Red\", FailPct > 5, \"Orange\", \"Green\")\r\n  | project ResourceType = \"App Insights\", ResourceName = \"App Service\", Status, Detail = strcat(\"FailRate=\", FailPct, \"% (\", Failed, \"/\", Total, \")\");\r\nunion vms, pods, appi\r\n| order by case(Status == \"Red\", 0, Status == \"Orange\", 1, 2) asc, ResourceType asc')]",
+                "query": "[replace('__APPI_LAW__', parameters('appInsightsLawName'), 'let vms = vmHealth()\n  | project ResourceType = \"VM\", ResourceName = Computer, Status, Detail = strcat(\"CPU=\", round(AvgCpu,1), \"% HB=\", MinutesSinceHB, \"m ago\");\nlet pods = aksHealth()\n  | project ResourceType = \"AKS Pod\", ResourceName = Pod, Status, Detail = strcat(\"Restarts=\", Restarts, \" Status=\", PodStatus);\nlet appi = workspace(\"__APPI_LAW__\").AppRequests\n  | where TimeGenerated > ago(15m)\n  | summarize Total = count(), Failed = countif(Success == false)\n  | extend FailPct = round(100.0 * Failed / Total, 1)\n  | extend Status = case(FailPct > 10, \"Red\", FailPct > 5, \"Orange\", \"Green\")\n  | project ResourceType = \"App Insights\", ResourceName = \"App Service\", Status, Detail = strcat(\"FailRate=\", FailPct, \"% (\", Failed, \"/\", Total, \")\");\nunion vms, pods, appi\n| order by case(Status == \"Red\", 0, Status == \"Orange\", 1, 2) asc, ResourceType asc')]",
                 "version": 2
               }
             }
@@ -2301,6 +2301,9 @@
           "centralLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
           },
+          "dailyCapGb": {
+            "value": "[parameters('dailyCapGb')]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -2312,7 +2315,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "12350401167135505188"
+              "templateHash": "4309548182300101190"
             }
           },
           "parameters": {
@@ -2334,6 +2337,13 @@
                 "description": "Central LAW resource ID (workbook scope)."
               }
             },
+            "dailyCapGb": {
+              "type": "int",
+              "defaultValue": 1,
+              "metadata": {
+                "description": "Configured daily ingestion cap (GB) for the central LAW. Set to -1 when disabled."
+              }
+            },
             "tags": {
               "type": "object",
               "defaultValue": {},
@@ -2343,18 +2353,18 @@
             }
           },
           "variables": {
-            "ingestByTableQuery": "Usage\r\n| where TimeGenerated > ago(7d)\r\n| where IsBillable == true\r\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by DataType, bin(TimeGenerated, 1d)\r\n| order by TimeGenerated desc, GB desc\r\n| render columnchart kind=stacked\r\n",
-            "topTablesQuery": "Usage\r\n| where TimeGenerated > ago(24h)\r\n| where IsBillable == true\r\n| summarize GB_24h = round(sum(Quantity) / 1024.0, 3) by DataType\r\n| top 15 by GB_24h desc\r\n| render barchart\r\n",
-            "dailyTotalQuery": "Usage\r\n| where IsBillable == true\r\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc\r\n| render timechart\r\n",
-            "perSolutionQuery": "Usage\r\n| where TimeGenerated > ago(7d)\r\n| where IsBillable == true\r\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by Solution\r\n| top 10 by GB desc\r\n| render piechart\r\n",
-            "capBurnQuery": "Usage\r\n| where IsBillable == true\r\n| where TimeGenerated >= startofday(now())\r\n| summarize TodayGB = round(sum(Quantity) / 1024.0, 3)\r\n| extend CapGB = toreal(1.0)\r\n| extend PercentOfCap = round(100.0 * TodayGB / CapGB, 1)\r\n| project Metric = pack_array(\"Today (GB)\", \"Daily cap (GB)\", \"% of cap used\"),\r\n          Value  = pack_array(TodayGB, CapGB, PercentOfCap)\r\n| mv-expand Metric to typeof(string), Value to typeof(real)\r\n",
+            "ingestByTableQuery": "Usage\n| where TimeGenerated > ago(7d)\n| where IsBillable == true\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by DataType, bin(TimeGenerated, 1d)\n| order by TimeGenerated desc, GB desc\n| render columnchart kind=stacked\n",
+            "topTablesQuery": "Usage\n| where TimeGenerated > ago(24h)\n| where IsBillable == true\n| summarize GB_24h = round(sum(Quantity) / 1024.0, 3) by DataType\n| top 15 by GB_24h desc\n| render barchart\n",
+            "dailyTotalQuery": "Usage\n| where IsBillable == true\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by bin(TimeGenerated, 1d)\n| order by TimeGenerated asc\n| render timechart\n",
+            "perSolutionQuery": "Usage\n| where TimeGenerated > ago(7d)\n| where IsBillable == true\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by Solution\n| top 10 by GB desc\n| render piechart\n",
+            "capBurnQuery": "[replace('Usage\n| where IsBillable == true\n| where TimeGenerated >= startofday(now())\n| summarize TodayGB = round(sum(Quantity) / 1024.0, 3)\n| extend CapGB = toreal(__DAILY_CAP_GB__)\n| extend PercentOfCap = iff(CapGB > 0, round(100.0 * TodayGB / CapGB, 1), real(null))\n| project Metric = pack_array(\"Today (GB)\", \"Daily cap (GB)\", \"% of cap used\"),\n          Value  = pack_array(TodayGB, CapGB, PercentOfCap)\n| mv-expand Metric to typeof(string), Value to typeof(real)\n', '__DAILY_CAP_GB__', string(parameters('dailyCapGb')))]",
             "workbookContent": {
               "version": "Notebook/1.0",
               "items": [
                 {
                   "type": 1,
                   "content": {
-                    "json": "## 💰 Cost of Monitoring — LAW Ingestion Overview\n\nEverything here reads from the built-in `Usage` table. Use this to pick candidates for **DCR transformations** (see [14 — Cost · Workspace Transformation effect]) and **Basic Logs** (see `toggle-table-plan.ps1`)."
+                    "json": "## 💰 Central LAW ingestion volume\n\nThis workbook reads only the central Log Analytics workspace `Usage` table. It does **not** include compute, App Service, Grafana, Event Hubs, ACR, disks/IPs, network monitoring, alerts, tests, other workspaces, or optional agents, and it does not reconcile the Azure bill. Use it to find candidates for **DCR transformations** and **Basic Logs**, then use [Azure Cost Management](https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/costanalysis) for actual and forecast charges."
                   },
                   "name": "header"
                 },
@@ -2434,7 +2444,7 @@
               "tags": "[parameters('tags')]",
               "kind": "shared",
               "properties": {
-                "displayName": "💰 Azure Monitor Lab — Cost of Monitoring",
+                "displayName": "💰 Azure Monitor Lab — Central LAW ingestion volume",
                 "serializedData": "[string(variables('workbookContent'))]",
                 "category": "workbook",
                 "sourceId": "[parameters('centralLawId')]",
