@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('start', 'break', 'restore', 'ramp', 'cpu', 'logs', 'annotation')] [string] $Operation = $env:OP_OPERATION,
+  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'cpu', 'logs', 'annotation')] [string] $Operation = $env:OP_OPERATION,
   [ValidatePattern('^[a-f0-9]{32}$')] [string] $RequestId = $env:OP_REQUEST_ID,
   [guid] $SubscriptionId = $env:LAB_SUBSCRIPTION_ID,
   [guid] $TenantId = $env:LAB_TENANT_ID,
@@ -23,7 +23,7 @@ if ($Operation -eq 'annotation') {
   if ($Name -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9 ._()-]{0,79}$' -or $Category -cnotin @('Deployment', 'Incident')) { throw 'Invalid release marker parameters.' }
 } elseif ($Name -or $Category) { throw 'Marker parameters are only allowed for annotations.' }
 $scripts = @{
-  start = 'start-the-lab.ps1'; break = 'break-the-lab.ps1'; restore = 'restore-the-lab.ps1'
+  start = 'start-the-lab.ps1'; stop = 'stop-the-lab.ps1'; break = 'break-the-lab.ps1'; restore = 'restore-the-lab.ps1'
   ramp = 'start-ramp.ps1'; logs = 'send-custom-logs.ps1'; annotation = 'send-release-annotation.ps1'
   cpu = 'simulate-high-cpu.ps1'
 }
@@ -137,7 +137,7 @@ try {
     }
   }
   if ($CheckAccessOnly) {
-    if ($Operation -in @('start', 'cpu')) {
+    if ($Operation -in @('start', 'stop', 'cpu')) {
       $runnerPhase = "$Operation resource discovery"
       $null = & (Join-Path $PSScriptRoot $scripts[$Operation]) -ResourceGroup $ResourceGroup -WhatIf *>&1
     }

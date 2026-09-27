@@ -10,6 +10,7 @@ public static class LabOperationCatalog
     public static IReadOnlyList<LabOperationDefinition> Actions { get; } = Array.AsReadOnly(new[]
     {
         new LabOperationDefinition("start", "Start Lab", "scripts/start-the-lab.ps1", "Starts stopped VMs, VMSS instances, AKS, and web apps. Running resources incur charges.", false),
+        new LabOperationDefinition("stop", "Stop Lab", "scripts/stop-the-lab.ps1", "Deallocates VMs and VMSS instances, stops AKS, then stops the Web App hosting this Control Center. Fixed services and retained resources continue billing; use teardown when finished.", false),
         new LabOperationDefinition("break", "Break Lab", "scripts/break-the-lab.ps1", "Deallocates lab VMs, disrupts the AKS frontend, and increases application failures.", true),
         new LabOperationDefinition("restore", "Restore Lab", "scripts/restore-the-lab.ps1", "Starts lab VMs and restores the demo AKS frontend and load generator. This is not a rollback of arbitrary changes.", true),
         new LabOperationDefinition("ramp", "Start Load Ramp", "scripts/start-ramp.ps1", "Replaces the previous ramp job and starts approximately 60 minutes of AKS traffic. Compute and telemetry charges apply.", true),

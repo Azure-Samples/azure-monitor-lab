@@ -93,6 +93,7 @@ These tools are not part of the Azure lab infrastructure estimate:
 | Stop the web app | App Service plan still bills | Plan, storage, logs, networking |
 | Deallocate VMs / scale VMSS to zero | VM compute stops | Disks, public IPs, backup/monitoring, data |
 | Stop AKS | Node compute stops | Disks, public IP/load balancer, registry, logs and metrics |
+| Control Center **Stop Lab** | Deallocates VMs/VMSS and stops AKS and the Web App | App Service Plan, Grafana, Event Hubs, ACR, disks/IPs, retained data, telemetry, and optional agents |
 | Stop SRE Agent activity | Active usage can stop | Post-trial always-on AAU allocation |
 | Leave optional agents idle | Usage may fall | Provisioned workspaces, retained data, and any fixed allocations |
 | Delete the resource group with `scripts/teardown.ps1 -Yes` | Resources are requested for deletion | Charges can continue until asynchronous deletion completes; tenant-scoped/shared resources require the documented cleanup path |

@@ -38,6 +38,19 @@ foreach ($templatePath in @('infra/main.json', 'infra/stages/10-workloads.json')
   if ($platformModule.Count -ne 1 -or $cpuExpression -notmatch "and\(parameters\('deployLinuxVm'\), parameters\('deployWindowsVm'\)\)") { throw "$templatePath must grant CPU guest access only when both demo VMs are deployed." }
 }
 $platformTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/modules/lab-console-platform.json') -Raw | ConvertFrom-Json
+$runnerRole = @($platformTemplate.resources | Where-Object {
+    $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and
+    $_.properties.permissions.actions -contains 'Microsoft.Compute/virtualMachines/deallocate/action'
+  })
+$requiredStopActions = @(
+  'Microsoft.Compute/virtualMachines/deallocate/action',
+  'Microsoft.Compute/virtualMachineScaleSets/deallocate/action',
+  'Microsoft.ContainerService/managedClusters/stop/action',
+  'Microsoft.Web/sites/stop/action'
+)
+if ($runnerRole.Count -ne 1 -or @($requiredStopActions | Where-Object { $_ -notin $runnerRole[0].properties.permissions.actions }).Count) {
+  throw 'The Lab Operations runner role must include every Stop Lab action.'
+}
 $cpuRole = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and $_.properties.permissions.actions -contains 'Microsoft.Compute/virtualMachines/runCommand/action' })
 if ($cpuRole.Count -ne 1 -or @($cpuRole[0].properties.permissions.actions).Count -ne 1) { throw 'CPU guest execution requires a separate, narrowly scoped role.' }
 $cpuAssignments = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -like '*lab-console-cpu-run-command-role*' })
@@ -67,7 +80,7 @@ $scriptDirectory = Join-Path $root 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 Copy-Item -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Destination $scriptDirectory
 foreach ($directory in @('workloads/k8s', 'workloads/operations', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
-foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
+foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
 }
 $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Raw

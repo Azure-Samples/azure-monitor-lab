@@ -4,7 +4,7 @@ $repo = Join-Path $root 'repo'
 $scriptDirectory = Join-Path $repo 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 $source = Split-Path $PSScriptRoot -Parent
-foreach ($name in @('invoke-lab-operation.ps1', 'start-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1')) {
+foreach ($name in @('invoke-lab-operation.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source $name) -Destination $scriptDirectory
 }
 $workloads = Join-Path $repo 'workloads/k8s'
@@ -74,7 +74,8 @@ function Invoke-FakeAzure {
         return ConvertTo-Json -InputObject $cpuVms -Depth 6
       }
       if ($args -contains '[].name') { return 'test-vm' }
-      return '[{"name":"test-vm","power":"VM deallocated"}]'
+      if ($fixture.AllResourcesStopped) { return '[{"name":"test-vm","power":"VM deallocated"}]' }
+      return '[{"name":"test-vm","power":"VM running"}]'
     }
     'vm start' {
       if ($fixture.FailVmStart) { $global:LASTEXITCODE = 7; return 'private diagnostic output' }
@@ -110,12 +111,14 @@ function Invoke-FakeAzure {
       $fixture.VmssStopped = $false
       return
     }
+    'vmss deallocate' { return }
     'aks list' {
       if ($args -contains '[0].name') { return 'test-aks' }
       if ($fixture.AllResourcesStopped) { return '[{"name":"test-aks","power":"Stopped"}]' }
       return '[{"name":"test-aks","power":"Running","powerState":{"code":"Running"},"currentKubernetesVersion":"1.33.5"}]'
     }
     'aks install-cli' { return }
+    'aks stop' { return }
     'aks get-credentials' {
       if ($args -notcontains '--file' -or $args -notcontains '--context') { throw 'AKS credentials are not isolated.' }
       $fixture.Credentials++
@@ -128,6 +131,7 @@ function Invoke-FakeAzure {
       return '[{"name":"app-test","state":"Running"}]'
     }
     'webapp show' { return 'app-test.azurewebsites.net' }
+    'webapp stop' { return }
     'resource list' {
       if ($args -contains 'Microsoft.Insights/components') {
         if ($args -contains '[0].name') { return 'appi-test' }
@@ -184,6 +188,12 @@ try {
   foreach ($expectedRead in @('vm list', 'vmss list-instances', 'aks list', 'webapp list')) {
     if (-not @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq $expectedRead }).Count) { throw 'Access-only mode missed part of Start Lab resource discovery.' }
   }
+  $stopReadStart = $fixture.Calls.Count
+  $stopAccessOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation stop -CheckAccessOnly | Out-String
+  if ($stopAccessOutput -notmatch 'Runner prerequisites verified' -or
+      @($fixture.Calls | Select-Object -Skip $stopReadStart | Where-Object { $_.Tool -ne 'az' -or ($_.Arguments[0..1] -join ' ') -notin $allowedReads }).Count) {
+    throw 'Stop Lab access-only mode executed a write operation.'
+  }
   $fixture.AllResourcesStopped = $false
   $fixture.FailVmInventory = $true
   $discoveryRejected = $false
@@ -223,7 +233,7 @@ try {
   if (@($fixture.CpuCommands | Where-Object { Test-Path -LiteralPath $_.Path }).Count) { throw 'Failed guest submission leaked temporary files.' }
   $fixture.CpuSecondSubmissionFails = $false
   $fixture.CpuMode = $false
-  foreach ($operation in @('start', 'break', 'restore', 'ramp', 'logs', 'annotation')) {
+  foreach ($operation in @('start', 'stop', 'break', 'restore', 'ramp', 'logs', 'annotation')) {
     $arguments = $parameters.Clone()
     $arguments.Operation = $operation
     if ($operation -eq 'logs') { $arguments.Count = 12 }
@@ -246,6 +256,7 @@ try {
   }
   foreach ($failure in @('BadTenant', 'DenyKubernetes', 'FailVmStart', 'FailKubernetes', 'FailLogin')) {
     $fixture[$failure] = $true
+    if ($failure -eq 'FailVmStart') { $fixture.AllResourcesStopped = $true }
     $operation = if ($failure -in @('DenyKubernetes', 'FailKubernetes')) { 'break' } else { 'start' }
     $rejected = $false
     try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation $operation | Out-Null }
@@ -257,8 +268,14 @@ try {
     }
     if (-not $rejected) { throw "Runner did not stop for $failure." }
     $fixture[$failure] = $false
+    $fixture.AllResourcesStopped = $false
   }
-  Write-Output 'PASS: all seven scripts execute only through fake scoped commands; bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls or CPU load executed.'
+  foreach ($expectedStop in @('vm deallocate', 'vmss deallocate', 'aks stop', 'webapp stop')) {
+    if (-not @($fixture.Calls | Where-Object { $_.Tool -eq 'az' -and ($_.Arguments[0..1] -join ' ') -eq $expectedStop }).Count) {
+      throw "Stop Lab did not issue '$expectedStop'."
+    }
+  }
+  Write-Output 'PASS: all eight scripts execute only through fake scoped commands; Stop Lab cost controls, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls or CPU load executed.'
 } finally {
   foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name]) }
   if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force }

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "9556683742930615605"
+      "templateHash": "8449151518160909124"
     }
   },
   "parameters": {
@@ -1684,7 +1684,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "5513852199695061519"
+              "templateHash": "11234850322725984323"
             }
           },
           "parameters": {
@@ -1776,11 +1776,14 @@
                       "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
                       "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read",
                       "Microsoft.Compute/virtualMachineScaleSets/start/action",
+                      "Microsoft.Compute/virtualMachineScaleSets/deallocate/action",
                       "Microsoft.ContainerService/managedClusters/read",
                       "Microsoft.ContainerService/managedClusters/start/action",
+                      "Microsoft.ContainerService/managedClusters/stop/action",
                       "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
                       "Microsoft.Web/sites/read",
                       "Microsoft.Web/sites/start/action",
+                      "Microsoft.Web/sites/stop/action",
                       "Microsoft.Insights/components/read",
                       "Microsoft.Insights/components/Annotations/read",
                       "Microsoft.Insights/components/Annotations/write",
