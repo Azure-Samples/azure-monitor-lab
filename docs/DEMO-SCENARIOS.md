@@ -27,6 +27,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | **GenAI observability (optional AI stage)** | <ul><li>[53](#s53) AI FinOps — token / trace / cost</li></ul> |
 | **Azure SRE Agent (optional trial)** | <ul><li>[54](#s54) Trial readiness</li><li>[55](#s55) Alert-driven App Service investigation</li><li>[56](#s56) AKS crash-loop diagnosis</li><li>[57](#s57) Change correlation</li><li>[58](#s58) Alert merging and verified recovery</li><li>[59](#s59) Automatic incident command brief</li></ul> |
 | **Azure Copilot Observability Agent (optional preview)** | <ul><li>[61](#s61) Slow tool</li><li>[62](#s62) Wrong tool</li><li>[63](#s63) Partial failure</li><li>[64](#s64) Alert storm correlation</li><li>[65](#s65) Token-cost spike</li><li>[66](#s66) Deployment regression</li><li>[67](#s67) Platform versus application failure</li></ul> |
+| **GitHub Copilot CLI + Azure MCP** | <ul><li>[68](#s68) Evidence-first terminal investigation</li></ul> |
 | **Platform foundations** | <ul><li>[5](#s5) Policy auto-onboard</li><li>[6](#s6) Cross-workspace KQL</li><li>[24](#s24) Custom Logs Ingestion API</li><li>[26](#s26) KQL Functions</li><li>[51](#s51) Platform logs at scale (DCR)</li></ul> |
 
 > **Suggested 25-min "by-workload" demos:** App Service → 3, 22, 28, 29, 33 · AKS → 4, 14, 30, 31 · Cost → 9, 11, 20, 39, 42 · Security → 27, 47, 48 · Workload health → 1 + 45 + 46.
@@ -2925,6 +2926,203 @@ An agent request fails while Azure platform signals and application dependencies
 
 ---
 
+<a id="s68"></a>
+## 68 · GitHub Copilot CLI + Azure MCP - evidence-first terminal investigation
+
+**Audience:** developers, SREs, cloud operators, incident responders.
+**Time:** 10-15 min after the lab and Scenario 61 are ready.
+
+### Story
+An engineer receives a slow agent trace ID and wants to investigate without switching repeatedly between source code, Azure resource inventory, and telemetry. GitHub Copilot CLI can coordinate a read-only terminal investigation through Azure MCP, while the engineer retains the queries and verifies every conclusion against Azure Monitor.
+
+This is a complementary workflow. GitHub Copilot CLI does **not** connect directly to Azure Copilot Observability Agent. The two experiences can investigate the same incident evidence independently.
+
+### Prerequisites
+
+- The lab is deployed, including Stage B and the Control Center.
+- Scenario 61 has produced a **Broken** slow-tool trace. Copy its 32-character trace ID and note the UTC run time.
+- [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) is installed and authenticated.
+- Azure CLI, Node.js, and `npx` are available.
+- Your signed-in Azure identity has read access to the lab resource group and its monitoring data.
+
+### Step 1 - authenticate to the correct Azure scope
+
+Replace the placeholders with the lab values:
+
+```powershell
+$tenantId = '<tenant-id>'
+$subscriptionId = '<subscription-id>'
+$resourceGroup = 'rg-azure-monitor-lab'
+
+az login --tenant $tenantId
+az account set --subscription $subscriptionId
+az account show --query '{subscription:name,id:id,tenantId:tenantId}' --output table
+$applicationInsightsName = az resource list `
+  --subscription $subscriptionId `
+  --resource-group $resourceGroup `
+  --resource-type Microsoft.Insights/components `
+  --query '[0].name' `
+  --output tsv
+$applicationInsightsName
+```
+
+Stop if the subscription or tenant is not the intended lab scope, or if the Application Insights lookup returns no name.
+
+### Step 2 - configure MCP servers
+
+First inspect what is already configured:
+
+```powershell
+copilot mcp list
+```
+
+If a full `azure-mcp` server is already enabled, reuse it and do not register a duplicate. Otherwise, add a read-only Monitor server:
+
+```powershell
+copilot mcp add azure-monitor-readonly -- `
+  npx -y '@azure/mcp@latest' server start `
+  --namespace monitor `
+  --read-only
+```
+
+Add bounded resource inventory tools:
+
+```powershell
+copilot mcp add azure-inventory-readonly -- `
+  npx -y '@azure/mcp@latest' server start `
+  --read-only `
+  --tool subscription_list `
+  --tool group_list `
+  --tool group_resource_list
+```
+
+Optionally add Microsoft Learn so Copilot can verify current product semantics against official documentation:
+
+```powershell
+copilot mcp add `
+  --transport http `
+  microsoft-learn `
+  https://learn.microsoft.com/api/mcp
+```
+
+Verify the registrations:
+
+```powershell
+copilot mcp list
+copilot mcp get azure-monitor-readonly
+copilot mcp get azure-inventory-readonly
+```
+
+If you reused `azure-mcp`, replace the first `get` command with `copilot mcp get azure-mcp`. Run `copilot mcp get microsoft-learn` only when you added the optional Learn server.
+
+### Step 3 - start Copilot CLI in the repository
+
+From any PowerShell window:
+
+```powershell
+copilot -C '<path-to-your-azure-monitor-lab-clone>'
+```
+
+Inside Copilot CLI, confirm that the intended tools are available:
+
+```text
+/mcp show
+```
+
+Do not continue if the Azure Monitor server is unavailable or the active Azure subscription is wrong.
+
+### Step 4 - run the investigation prompt
+
+Replace every angle-bracket placeholder before pasting this prompt:
+
+```text
+Act as an evidence-first incident investigator. Use only read-only Azure MCP and
+repository inspection tools. Do not change Azure resources, configuration, code,
+files, alerts, or deployments. Do not submit Foundry model calls.
+
+Scope:
+- Subscription ID: <subscription-id>
+- Resource group: <resource-group>
+- Application Insights resource: <application-insights-name>
+- Trace/operation ID: <32-character-trace-id>
+- Run time: <UTC-time>
+- Search window: 30 minutes before through 30 minutes after the run time
+- Expected scenario: slow-tool, demo.mode=broken
+
+Tasks:
+1. Confirm the active subscription and discover the named resource group,
+   Application Insights component, and its backing Log Analytics workspace.
+   Stop and report the mismatch if any scoped resource is absent.
+2. Query the operation ID across requests, dependencies, traces, exceptions, and
+   customEvents. Show the exact KQL used and the row count returned by each query.
+   Zero trace-log rows are allowed and must not be described as a missing
+   distributed trace when request and dependency spans exist.
+3. Reconstruct the measured hierarchy. Verify whether it is:
+   request -> customer_support_agent -> customer_lookup.
+   Report operation_Id, parent IDs, span IDs, names, types, targets, duration,
+   success, and result codes. Do not invent missing relationships.
+4. Quantify the request duration and each major dependency duration. Read
+   gen_ai.operation.name, gen_ai.tool.name, tool.latency_budget_ms,
+   tool.latency_budget_exceeded, tool.simulation_profile, and dependency.role.
+5. Separate output into:
+   - Telemetry facts
+   - Bounded hypothesis
+   - Missing evidence and confidence
+   - Three concrete next checks
+   - Smallest targeted remediation
+   - Broken-versus-fixed verification criteria
+6. Inspect recent Azure Activity changes for the scoped resources during the same
+   window. Treat temporal proximity as evidence, not proof of causation.
+7. End with a compact evidence table and a list of every Azure MCP tool and KQL
+   query used. If a required tool or table is unavailable, stop and say exactly
+   what could not be verified instead of substituting a generic answer.
+```
+
+### Step 5 - challenge and verify the answer
+
+1. Confirm the response used the supplied trace ID rather than only aggregate telemetry.
+2. Check the returned KQL in Application Insights **Logs**. Row counts and durations must agree.
+3. Confirm that `customer_lookup` exceeded its 500 ms budget and that the request spent most of its time in that path.
+4. Reject any claim that zero `traces` rows means no distributed trace exists; request and dependency telemetry carry this scenario.
+5. Confirm facts and hypotheses are separate, and that recent changes are not presented as proven causation.
+6. Compare the terminal findings with the independent Observability Agent chat from Scenario 61. Differences should be resolved against telemetry, not by choosing one assistant.
+
+### Step 6 - prove recovery with a fixed run
+
+Run Scenario 61 in **Fixed** mode, copy the new trace ID, and submit:
+
+```text
+Repeat the same read-only investigation for fixed trace <fixed-trace-id>.
+Use the same resources and time-window discipline. Compare broken and fixed in one
+table. Prove whether customer_lookup is now within tool.latency_budget_ms, whether
+the total request duration fell by a comparable amount, and whether success/result
+codes remained healthy. Do not call the remediation successful without measured
+before-and-after evidence.
+```
+
+### Optional cleanup
+
+Keep shared servers that you use elsewhere. Remove only the scoped registrations created for this demo:
+
+```powershell
+copilot mcp remove azure-monitor-readonly
+copilot mcp remove azure-inventory-readonly
+copilot mcp remove microsoft-learn
+```
+
+### Expected outcome
+
+- Copilot CLI identifies the tool/backend path as the measured latency contributor.
+- The response preserves trace hierarchy and distinguishes telemetry facts from inference.
+- Every conclusion is traceable to listed Azure resources, MCP calls, or copyable KQL.
+- The fixed trace demonstrates lower tool and request duration without a success regression.
+- No resource, code, alert, or deployment is modified during the investigation.
+
+### Killer line
+> *"Copilot accelerates the investigation, but the evidence remains portable: every claim ends in a resource, a query, or a trace you can verify yourself."*
+
+---
+
 ## Updated demo flow (≈50 min)
 
 | Min | Scenario |
@@ -2968,6 +3166,7 @@ An agent request fails while Azure platform signals and application dependencies
 | **Workload owners / SRE leads** | 60 → 1 → 45 → 12 → 7 → 8 (Root entity flips Unhealthy) |
 | **SRE Agent evaluation** | 54 → 55 → 56 → 57 → 58 → 59 |
 | **Agentic application troubleshooting** | 61 → 62 → 63 → 64 → 66 → 67 |
+| **Terminal incident investigation** | 61 → 68 → 61 Fixed |
 
 ## Reset between demos
 
