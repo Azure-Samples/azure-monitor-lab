@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/azure-monitor-lab-logo.svg" alt="Azure Monitor Lab" width="680">
+</p>
+
 # Azure Monitor Lab
 
 A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability Agent, and Azure SRE Agent, with optional Microsoft Sentinel scenarios. Everything runs from a single config file that stays out of git, so you can stand the whole thing up in your own subscription and tear it back down when you're finished.
