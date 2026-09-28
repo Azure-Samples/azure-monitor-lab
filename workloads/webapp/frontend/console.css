@@ -15,8 +15,8 @@ h1 { font-size: 32px; line-height: 1.25; font-weight: 750; max-width: 700px; }
 h2 { font-size: 16px; font-weight: 750; }
 svg { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.8; }
 .topbar { min-height: 68px; border-bottom: 1px solid var(--border); display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 12px 20px; padding: 16px 40px; background: #fff; }
-.brand { display: inline-flex; align-items: center; gap: 12px; color: var(--ink); font-size: 17px; }
-.brand strong { font-weight: 800; }
+.brand { display: inline-flex; align-items: center; }
+.brand img { display: block; width: 210px; height: auto; }
 .documentation-nav { display: flex; gap: 20px; flex-wrap: wrap; }
 .documentation-nav a { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: 12px; font-weight: 650; }
 .environment-strip { display: grid; grid-template-columns: minmax(0,1.7fr) minmax(0,1.1fr) repeat(3,minmax(0,1fr)); gap: 16px; margin: 0; padding: 16px 0; border-top: 1px solid var(--border); }
@@ -287,6 +287,7 @@ a[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); opacity: .65
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 760px) {
 	.topbar { height: auto; padding-top: 12px; padding-bottom: 12px; }
+	.brand img { width: 170px; }
 	.documentation-nav { gap: 8px; }
 	.documentation-nav a { width: 32px; height: 32px; justify-content: center; }
 	.documentation-nav a span { display: none; }

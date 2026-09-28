@@ -1,7 +1,7 @@
 import '@fontsource-variable/manrope';
 import './console.css';
 import { initializeAgentViews } from './agents.js';
-import monitorMark from '../../../docs/icons/azure/Monitor.svg';
+import labLogo from '../../../docs/azure-monitor-lab-logo.svg';
 import { createIcons, Activity, ArrowRight, ArrowUpRight, BookOpen, ChartNoAxesCombined, Check, ChevronDown, ChevronUp, CircleHelp, Copy, Cpu, Download, ExternalLink, FlaskConical, HeartPulse, Inbox, Logs, MessagesSquare, Network, PanelsTopLeft, Play, RefreshCw, ScanLine, Send, ShoppingCart, Square, Timer, Trash2, TriangleAlert, X } from 'lucide';
 import { Chart, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip } from 'chart.js';
 
@@ -26,7 +26,7 @@ let toastTimer;
 let healthCheckVersion = 0;
 let configuration = { links: {}, performanceCooldownSeconds: 30 };
 
-byId('brand-mark').src = monitorMark;
+byId('brand-mark').src = labLogo;
 refreshIcons();
 Chart.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip);
 const chart = new Chart(byId('latency-chart'), {
