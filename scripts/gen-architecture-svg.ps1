@@ -42,6 +42,7 @@ $iconPaths = @{
   sre      = 'https://sre.azure.com/SreAgent.svg'
   # Azure Portal resource icon, pinned to the portal-icon catalog revision.
   obs      = 'https://raw.githubusercontent.com/maskati/azure-icons/9ced4c629a4edfd2a31946e320ed0c309381787e/svg/Microsoft_Azure_Monitoring_Alerts/ObservabilityAgent.svg'
+  copilot  = 'local:github/GitHubCopilotCLI.png'
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -51,14 +52,20 @@ New-Item -ItemType Directory -Force -Path $iconDir | Out-Null
 # --- download + base64-embed ----------------------------------------------------------
 $dataUri = @{}
 foreach ($k in $iconPaths.Keys) {
-  $name = Split-Path $iconPaths[$k] -Leaf
-  $dest = Join-Path $iconDir $name
-  if (-not (Test-Path $dest)) {
-    $source = if ($iconPaths[$k] -match '^https://') { $iconPaths[$k] } else { "$base/$($iconPaths[$k])" }
-    Invoke-WebRequest $source -UseBasicParsing -OutFile $dest
+  if ($iconPaths[$k] -match '^local:(.+)$') {
+    $dest = Join-Path $repoRoot "docs/icons/$($Matches[1])"
+    if (-not (Test-Path $dest)) { throw "Required local architecture icon not found: $dest" }
+  } else {
+    $name = Split-Path $iconPaths[$k] -Leaf
+    $dest = Join-Path $iconDir $name
+    if (-not (Test-Path $dest)) {
+      $source = if ($iconPaths[$k] -match '^https://') { $iconPaths[$k] } else { "$base/$($iconPaths[$k])" }
+      Invoke-WebRequest $source -UseBasicParsing -OutFile $dest
+    }
   }
   $bytes = [IO.File]::ReadAllBytes($dest)
-  $dataUri[$k] = 'data:image/svg+xml;base64,' + [Convert]::ToBase64String($bytes)
+  $mediaType = if ([IO.Path]::GetExtension($dest) -ieq '.png') { 'image/png' } else { 'image/svg+xml' }
+  $dataUri[$k] = "data:$mediaType;base64," + [Convert]::ToBase64String($bytes)
 }
 
 # --- tiers (columns) ------------------------------------------------------------------
@@ -100,19 +107,20 @@ $nodes = [ordered]@{
   LOGIC = @{ col = 'USE';  i = 5; lines = @('Logic App','auto-mitigation');      icons = @('logic') }
   SENT  = @{ col = 'USE';  i = 6; lines = @('Microsoft Sentinel');               icons = @('sent') }
   HEALTH = @{ col = 'USE'; i = 7; lines = @('Health Models','workload health');  icons = @('health') }
+  COPILOT = @{ col = 'USE'; i = 8; lines = @('GitHub Copilot CLI','guided investigation'); icons = @('copilot') }
 }
 
 # --- edges (source -> target) ---------------------------------------------------------
 $edges = @(
   @('VM','AMA'), @('VMSS','AMA'), @('AKS','AMA'), @('NET','FLOW'),
   @('AMA','LAW'), @('AMA','AMW'), @('FLOW','PLAT'), @('POL','LAW'), @('LAW','QUERY'), @('AI','LAWAI'), @('PLAT','LAW'),
-  @('LAW','WB'), @('LAWAI','WB'), @('AMW','GRAF'), @('LAW','AG'), @('AI','AG'), @('AI','OBS'), @('AG','OBS'), @('OAMW','OBS'), @('AG','SRE'), @('AG','LOGIC'), @('LAW','SENT'), @('LAW','HEALTH'),
+  @('LAW','WB'), @('LAWAI','WB'), @('AMW','GRAF'), @('LAW','AG'), @('AI','AG'), @('AI','OBS'), @('AG','OBS'), @('OAMW','OBS'), @('AG','SRE'), @('AG','LOGIC'), @('LAW','SENT'), @('LAW','HEALTH'), @('LAW','COPILOT'),
   @('ACR','JOB')
 )
 
 # --- geometry -------------------------------------------------------------------------
-$W = 1320; $H = 804
-$grpY = 60; $grpH = 728
+$W = 1320; $H = 888
+$grpY = 60; $grpH = 812
 $cellH = 66; $cellStep = 84; $firstTop = 108
 function NodeTop($n) { $firstTop + ($n.i * $cellStep) }
 function ColOf($n)   { $cols[$n.col] }
@@ -121,7 +129,7 @@ function Esc($s)     { $s -replace '&','&amp;' -replace '<','&lt;' -replace '>',
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 $W $H' font-family='Segoe UI, Helvetica, Arial, sans-serif' role='img' aria-labelledby='architecture-title architecture-description'>")
 [void]$sb.AppendLine("<title id='architecture-title'>Azure Monitor Lab architecture</title>")
-[void]$sb.AppendLine("<desc id='architecture-description'>Workloads, telemetry collection, dashboards, and response. Application Insights and alerts feed Azure Copilot Observability Agent, which stores correlated issues in a dedicated Azure Monitor workspace. Azure Container Registry supplies a digest-pinned image to the Container Apps Job used for approved lab operations.</desc>")
+[void]$sb.AppendLine("<desc id='architecture-description'>Workloads, telemetry collection, dashboards, and response. Application Insights and alerts feed Azure Copilot Observability Agent, which stores correlated issues in a dedicated Azure Monitor workspace. GitHub Copilot CLI consumes central monitoring context for guided investigations. Azure Container Registry supplies a digest-pinned image to the Container Apps Job used for approved lab operations.</desc>")
 [void]$sb.AppendLine("<rect x='0' y='0' width='$W' height='$H' rx='10' fill='#0D1117'/>")
 [void]$sb.AppendLine("<text x='$($W/2)' y='34' fill='#E6EDF3' font-size='20' font-weight='700' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
 [void]$sb.AppendLine("<text x='$($W/2)' y='52' fill='#9DA7B3' font-size='11' text-anchor='middle'>optional Foundry and agent stages use their documented supported regions</text>")

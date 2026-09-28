@@ -178,6 +178,9 @@
         <mxCell id="k13" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/ObservabilityAgent.svg" value="Observability Agent" vertex="1">
           <mxGeometry height="52" width="100" x="1230" y="510" as="geometry" />
         </mxCell>
+        <mxCell id="k14" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/github/GitHubCopilotCLI.png" value="GitHub Copilot CLI" vertex="1">
+          <mxGeometry height="52" width="100" x="1360" y="510" as="geometry" />
+        </mxCell>
         <mxCell id="g1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Policy.svg" value="Policy DINE" vertex="1">
           <mxGeometry height="52" width="80" x="80" y="670" as="geometry" />
         </mxCell>
