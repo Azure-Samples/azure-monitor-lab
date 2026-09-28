@@ -13,7 +13,7 @@
 | Workload alerts (`alerts.bicep`) | Metric/log alerts on AKS, App Service, App Insights, Linux VM, Windows VM | Demonstrate the alert taxonomies: metric vs. log, static vs. dynamic threshold, single-resource vs. resource-graph scoped. |
 | AMBA baseline | Azure Monitor Baseline Alerts rule set | The Microsoft-published "minimum viable monitoring" rule pack applied to VMs, web app, AKS, and App Service plan. |
 | Health alerts | `health-alerts.bicep` | Service Health + Resource Health subscription-scope alerts. Demonstrates platform-impact alerting (planned maintenance, outages). |
-| Alert processing rules | `apr-amlab-*` | Routing/suppression rules at the RG scope (e.g., suppress alerts at night, force-add the action group on all alerts in the RG). |
+| Alert processing rules | `apr-amlab-maintenance-window`, `apr-amlab-suppress-low-sev`, and conditional `apr-amlab-vm-auto-shutdown` | Remove alert actions during weekly maintenance, optionally for Sev3/Sev4, and for enabled lab VMs during their 23:00-07:00 CET/CEST shutdown window. The current rules do not add or group action groups. |
 | VMSS | `vmss-amlab` (Standard_B1s, with predictive autoscale) | Tied into the alerting story — autoscale events surface in `AzureActivity` and become demo material in Stage D. |
 
 > Cross-stage references: `law-amlab-central`, `appi-amlab`, `aks-amlab`, web app, app plan, both VMs are all `existing` references.
@@ -23,8 +23,8 @@
 1. **"One action group, many receivers."**
    Show the Action Group page: email + Logic App webhook + (optional) SIEM webhook. Customers usually have all three. Emphasise that an Action Group is the *receiver fan-out*, not the *router*.
 
-2. **"Routing happens in *alert processing rules*."**
-   Open an APR. Demonstrate add-action-group, suppression schedules. This is the right place to filter, not in 100 individual alerts.
+2. **"Action suppression happens in *alert processing rules*."**
+   Open an APR and demonstrate the maintenance, severity, or nightly VM suppression schedule. All three current rules remove action groups; none adds or groups one.
 
 3. **"AMBA is the floor, not the ceiling."**
    AMBA baseline gives a customer's `MTTD` story in 5 minutes. Show the rule list in `Monitor → Alerts → Alert rules`. Frame as: *"This is what you should always have on; everything else is workload-specific."*

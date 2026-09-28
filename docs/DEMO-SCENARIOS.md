@@ -982,18 +982,19 @@ Real users are spread across the world. **Availability Tests** ping your app fro
 **Time:** 3–4 min.
 
 ### Story
-Alert rules define *what* to detect. **Alert Processing Rules** define *what happens next* — without touching the rules themselves. Suppress all alerts during a maintenance window. Route Sev0 to PagerDuty and Sev4 to a Teams channel. Override any Action Group, any time, any scope. It's the enterprise control plane for alert routing.
+Alert rules define *what* to detect. **Alert Processing Rules** alter notification behavior without editing the alert rules themselves. This lab deploys action suppression for the weekly maintenance window, an optional Sev3/Sev4 filter, and the nightly VM auto-shutdown window. The current rules remove action groups; they do not add, replace, or group them.
 
 ### What's deployed
 
 | Resource | Value |
 |---|---|
-| `apr-amlab-maintenance-window` | Suppresses ALL alerts every Sunday 02:00–06:00 UTC (recurring) |
-| `apr-amlab-suppress-low-sev` | Suppresses Sev3+Sev4 alerts (disabled by default — enable during demo) |
+| `apr-amlab-maintenance-window` | Suppresses all alert actions every Sunday 02:00–06:00 UTC (recurring) |
+| `apr-amlab-suppress-low-sev` | Suppresses Sev3+Sev4 alert actions (disabled by default — enable during demo) |
+| `apr-amlab-vm-auto-shutdown` | When lab VMs are enabled, suppresses their alert actions daily from 23:00–07:00 CET/CEST |
 
 ### Click-path
 
-1. **Monitor → Alerts → Alert processing rules** → show the two rules.
+1. **Monitor → Alerts → Alert processing rules** → show three rules when lab VMs are enabled; otherwise show the two RG-scoped rules.
 2. Open **`apr-amlab-maintenance-window`** → walk the schedule:
    - **Scope:** entire resource group.
    - **Schedule:** recurring, every Sunday 02:00–06:00 UTC.
