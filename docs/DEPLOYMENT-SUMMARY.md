@@ -10,6 +10,8 @@
 
 ## What's running
 
+This is the primary-resource inventory. Child resources, deployment records, policy-generated diagnostics, role assignments, and provider-managed resources can increase the portal count.
+
 | Resource | Name / URL |
 |---|---|
 | Resource group | `rg-azure-monitor-lab` |
@@ -23,15 +25,22 @@
 | VNet / NSG | `vnet-amlab` / `nsg-amlab` |
 | Linux VM (Ubuntu 22.04) | `vm-amlab-lin` |
 | Windows VM (Win 2022) | `vmwin<suffix>` |
-| AKS cluster | `aks-amlab` (2 × Standard_B2s, K8s 1.34) |
+| AKS cluster | `aks-amlab` (1 × Standard_B2s system node by default) |
+| Linux VM auto-shutdown | `shutdown-computevm-vm-amlab-lin` (23:00 CET/CEST) |
+| Windows VM auto-shutdown | `shutdown-computevm-vmwin<suffix>` (23:00 CET/CEST) |
+| VM scale set | `vmss-amlab` (1 × Standard_B1s by default) |
 | Azure Managed Grafana | https://amg-amlab-<suffix>.cse.grafana.azure.com |
 | App Service (Linux B1, **West Europe**) | https://app-amlab-<suffix>.azurewebsites.net |
 | App Service diag sinks (**West Europe**) | `stapp-amlab<suffix>` (archive) · `evhns-amlab-<suffix>` (stream) |
 | AKS frontend (LoadBalancer) | http://<public-ip> |
 | Action Group | `ag-amlab-email` → `<your-alert-email>` |
+| Alert processing rules | Maintenance, disabled low-severity, and conditional VM auto-shutdown suppression |
+| Control Center runner | Basic ACR, Container Apps environment/job, managed identity, diagnostics, custom roles, and scoped assignments |
 | Workbook | **Azure Monitor Lab — Traffic Lights** |
 
 > **Optional AI stage** (off by default) adds, in **Sweden Central**: a Microsoft Foundry account `ai<amlab><suffix>` + project `amlab-ai-proj`, `gpt-5-mini` / `text-embedding-3-small` / `gpt-5.4` / `model-router` deployments, `gen_ai.*` App Insights tracing, token anomaly + spike alerts, an AI FinOps query pack + workbook, and an AI tier in the workload health model.
+
+The one-shot deployment also includes custom-log ingestion resources, workspace transforms, storage/Event Hubs/Key Vault telemetry sinks, Heartbeat export, a Prometheus rule group, the workload health model, and the SLI identity. Sentinel is enabled by the one-shot default but belongs to optional Stage E in staged deployments. Platform/metrics export DCRs, LAW replication, SRE Agent, and Observability Agent are conditional.
 
 ### Endpoints on the App Service (.NET 8 minimal API)
 
@@ -72,7 +81,7 @@
 |---|---|---|
 | Linux Dependency Agent | **skipped** | Not supported on Ubuntu 22.04.5+ kernels. VM Insights still gets perf, heartbeat, processes via AMA + DCR. Service Map demo runs on the Windows VM. |
 | App Service GitHub deployment | **replaced** | Tenant has no GitHub source-control token. `post-deploy.ps1` now builds the bundled `workloads/webapp/AmlabHello` project locally and zip-deploys it instead. |
-| AKS node count | **2** (was 1) | One B2s node was insufficient with Container Insights + Managed Prometheus add-ons running. Default is now 2 in `main.parameters.json`. |
+| AKS node count | **1 by default** | Both one-shot and staged IaC default to one `Standard_B2s` system node. Increase `aksNodeCount` when the selected subscription, add-ons, or workshop workloads require more capacity. |
 | Daily ingestion cap | 1 GB/day on each LAW | Prevents runaway ingest costs. |
 
 ---

@@ -257,6 +257,7 @@ module costWorkbook '../modules/cost-workbook.bicep' = {
     name: guid(resourceGroup().id, costWorkbookName)
     location: location
     centralLawId: lawCentral.outputs.id
+    dailyCapGb: dailyCapGb
     tags: commonTags
   }
 }

@@ -28,7 +28,7 @@ For a fresh deployment, use `deploy.ps1` rather than calling `post-deploy.ps1` d
 
 ## Lab lifecycle and demo control
 
-The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes seven scripts through the [approved job wrapper](invoke-lab-operation.ps1). Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
+The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes eight scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
 
 | Script | Purpose | Typical command |
 |---|---|---|

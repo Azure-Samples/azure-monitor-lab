@@ -32,7 +32,7 @@
    Stage B brought `amw-amlab` and Grafana in. Stage E adds the *alerting* and *recording* layer. Show one PromQL recording rule and one alert rule.
 
 5. **"Availability tests are the cheapest insurance you'll ever buy."**
-   €0.001 per test. Multi-region probes. Show the *Availability* blade in App Insights — green/red world map.
+   Standard web tests are billed per execution; the public retail row checked September 27, 2026 was EUR 0.0005/execution. Price the configured frequency and probe locations using the current [Azure Monitor pricing](https://azure.microsoft.com/pricing/details/monitor/). Show the *Availability* blade in App Insights — green/red world map.
 
 6. **"Health model is a preview — frame it correctly."**
    Pitch as "executive dashboarding for your service graph." Don't oversell — the entity types and API are still moving. Show the visual graph and the health states; that's the demoable surface area.

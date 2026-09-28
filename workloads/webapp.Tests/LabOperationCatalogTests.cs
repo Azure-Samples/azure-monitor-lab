@@ -7,7 +7,7 @@ public sealed class LabOperationCatalogTests
     [Fact]
     public void OnlyTheApprovedScriptsAreAvailable()
     {
-        Assert.Equal(new[] { "start", "break", "restore", "ramp", "cpu", "logs", "annotation" }, LabOperationCatalog.Actions.Select(action => action.Id));
+        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "cpu", "logs", "annotation" }, LabOperationCatalog.Actions.Select(action => action.Id));
         Assert.All(LabOperationCatalog.Actions, action => Assert.StartsWith("scripts/", action.Script));
         Assert.All(LabOperationCatalog.Actions, action => Assert.NotEmpty(action.Impact));
         foreach (var operation in new[] { "teardown", "deploy", "setup-rbac-demo", "../script.ps1", "start;whoami" })
@@ -16,6 +16,7 @@ public sealed class LabOperationCatalogTests
 
     [Theory]
     [InlineData("start")]
+    [InlineData("stop")]
     [InlineData("break")]
     [InlineData("restore")]
     [InlineData("ramp")]

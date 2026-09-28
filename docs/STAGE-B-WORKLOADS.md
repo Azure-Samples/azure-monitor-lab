@@ -8,12 +8,12 @@
 
 | Group | Resource(s) | Purpose |
 |---|---|---|
-| Linux VM | `vm-amlab-lin` (Standard_B2s) + NIC, public IP, OS disk | AMA-equipped, attached to `dcr-amlab-vminsights`. Source of `Heartbeat`, `InsightsMetrics`, `VMConnection`, perf counters. |
-| Windows VM | `vmwin<suffix>` (Standard_B2s) + NIC, public IP, OS disk | Same telemetry pattern as Linux VM. |
+| Linux VM | `vm-amlab-lin` (Standard_B2s) + NIC, public IP, OS disk + `shutdown-computevm-vm-amlab-lin` schedule | AMA-equipped and attached to `dcr-amlab-vminsights`. Automatically shuts down at 23:00 CET/CEST. The Linux Dependency Agent is not deployed, so Service Map is unavailable on this VM. |
+| Windows VM | `vmwin<suffix>` (Standard_B2s) + NIC, public IP, OS disk + `shutdown-computevm-vmwin<suffix>` schedule | AMA and Dependency Agent equipped, attached to `dcr-amlab-vminsights`, and automatically shut down at 23:00 CET/CEST. |
 | AKS cluster | `aks-amlab` (1× Standard_B2s system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
 | Managed Grafana | `amg-amlab-<suffix>` | Connected to `amw-amlab`. Default Azure dashboards (Node Exporter, Kubelet, K8s/Compute resources, etc.) appear automatically. |
 | App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
-| Control Center runner | Basic `acrlabops<suffix>` registry, `cae-labops-<suffix>` Consumption environment, `id-labops-<suffix>` identity, and `job-labops-<suffix>` manual job | The workload template provisions the platform; completion builds the image, creates the digest-pinned job, and configures operator sign-in and scoped roles. Runner logs use the central workspace. Resources follow the Web App region. |
+| Control Center runner | Basic `acrlabops<suffix>` registry, `cae-labops-<suffix>` Consumption environment, `id-labops-<suffix>` identity, `job-labops-<suffix>` manual job, `console-runner-logs` diagnostic setting, three custom roles, and scoped role assignments | The workload template provisions the platform; completion builds the image, deploys the digest-pinned job and launcher role, and configures operator sign-in and scoped access. Runner logs use the central workspace. |
 | Connection Monitor | `cm-amlab-*` (in `NetworkWatcherRG`) | Probes between the two VMs and the web app's default hostname. Populates `NetworkMonitoring` table. |
 | Flow Logs + Traffic Analytics | `fl-amlab` against `vnet-amlab`; flow logs storage = `st<amlab><suffix>`; analytics workspace = `law-amlab-central` | Network-layer telemetry for security/exfil scenarios in Stage D and reliability scenarios in Stage E. |
 

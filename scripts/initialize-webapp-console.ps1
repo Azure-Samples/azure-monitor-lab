@@ -22,7 +22,13 @@ function Invoke-ConsoleApi([string] $Method, [string] $Uri, [object] $Body = $nu
   $arguments = @{ Method = $Method; Uri = $Uri; Headers = @{ Authorization = "Bearer $($tokens[$address.Host])" }; TimeoutSec = 60; Verbose = $false; Debug = $false }
   if ($null -ne $Body) { $arguments.Body = $Body | ConvertTo-Json -Depth 25 -Compress; $arguments.ContentType = 'application/json' }
   try { Invoke-RestMethod @arguments }
-  catch { throw "Console setup API failed (HTTP $([int]$_.Exception.Response.StatusCode)). Protected response details were suppressed." }
+  catch {
+    $statusCode = [int]$_.Exception.Response.StatusCode
+    if ($address.Host -eq 'graph.microsoft.com' -and $statusCode -eq 401) {
+      throw "Microsoft Graph rejected the cached Azure CLI session. Run 'az logout', then 'az login --tenant $TenantId', select subscription $SubscriptionId, and retry the deployment."
+    }
+    throw "Console setup API failed (HTTP $statusCode). Protected response details were suppressed."
+  }
 }
 
 function Grant-ConsoleRole([string] $PrincipalId, [string] $Scope, [string] $Name) {
@@ -56,6 +62,7 @@ try {
     $tokens[$hostName] = az account get-access-token --subscription $SubscriptionId --resource "https://$hostName/" --query accessToken --output tsv --only-show-errors
     if ($LASTEXITCODE -ne 0 -or -not $tokens[$hostName]) { throw 'Required setup authentication is unavailable.' }
   }
+  $null = Invoke-ConsoleApi GET 'https://graph.microsoft.com/v1.0/me?$select=id'
   $config = Get-Content -LiteralPath $ConsoleConfigPath -Raw | ConvertFrom-Json -AsHashtable
   if (-not $config.LabConsole -or $config.LabConsole.ResourceGroup -ne $ResourceGroup) { throw 'Generated console configuration does not match this deployment.' }
   $resourceBase = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
@@ -133,7 +140,7 @@ try {
   $build = Join-Path $temporary 'build'
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'scripts') -Force
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/k8s') -Force
-  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
+  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
     'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml')
   foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $build $file) }
   Copy-Item -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Destination (Join-Path $build 'Dockerfile')

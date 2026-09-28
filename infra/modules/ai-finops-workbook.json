@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# AI FinOps — Foundry Agents\nToken usage, estimated cost, chargeback and health for the demo agents.\n\n_Estimated cost uses gpt-5-mini GlobalStandard list price ($0.25/1M input, $2.00/1M output) — a token-derived estimate; reconcile with Azure Cost Management._"
+        "json": "# AI FinOps — Foundry Agents\nToken usage, model routing and health for the demo agents.\n\n_This workbook does not assign one price to all deployments. The lab uses chat, embedding, optimization, and Model Router deployments with different rates. Reconcile model-specific usage with current Azure pricing and Azure Cost Management._"
       },
       "name": "title"
     },
@@ -71,18 +71,18 @@
     },
     {
       "type": 1,
-      "content": { "json": "## Cost & chargeback" },
+      "content": { "json": "## Usage & chargeback inputs" },
       "name": "hdr-cost"
     },
     {
       "type": 1,
-      "content": { "json": "**Estimated cost by agent:** prompt and completion tokens, call count and estimated USD per agent; your chargeback breakdown." },
+      "content": { "json": "**Usage by agent:** prompt and completion tokens plus call count. Apply the current rate for each actual request/response model outside this workbook." },
       "customWidth": "50",
       "name": "desc-cost-by-agent"
     },
     {
       "type": 1,
-      "content": { "json": "**Cost share by agent:** each agent's slice of estimated spend, so the biggest driver stands out." },
+      "content": { "json": "**Token share by agent:** each agent's share of total measured tokens. Token share is not cost share when models or token classes have different rates." },
       "customWidth": "50",
       "name": "desc-cost-share"
     },
@@ -90,9 +90,9 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize prompt=sum(inTok), completion=sum(outTok), calls=count() by agent | extend est_usd=round(prompt/1000000.0*0.25 + completion/1000000.0*2.00,4) | order by est_usd desc",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize prompt=sum(inTok), completion=sum(outTok), calls=count() by agent | extend total_tokens=prompt+completion | order by total_tokens desc",
         "size": 0,
-        "title": "Estimated cost by agent",
+        "title": "Measured token usage by agent",
         "timeContext": { "durationMs": 86400000 },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -109,9 +109,9 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize prompt=sum(inTok), completion=sum(outTok) by agent | extend est_usd=round(prompt/1000000.0*0.25 + completion/1000000.0*2.00,4) | project agent, est_usd | order by est_usd desc",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize total_tokens=sum(inTok)+sum(outTok) by agent | order by total_tokens desc",
         "size": 0,
-        "title": "Cost share by agent",
+        "title": "Token share by agent",
         "timeContext": { "durationMs": 86400000 },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -126,16 +126,16 @@
     },
     {
       "type": 1,
-      "content": { "json": "**Cost per successful request:** estimated USD divided by successful calls; the real unit cost of a useful answer." },
+      "content": { "json": "**Tokens per successful request:** measured tokens divided by successful calls; combine this with the actual model-specific rate for a cost calculation." },
       "name": "desc-cost-per-success"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize prompt=sum(inTok), completion=sum(outTok), total=count(), ok=countif(success==true) by agent | extend est_usd=round(prompt/1000000.0*0.25 + completion/1000000.0*2.00,4), success_rate=round(100.0*ok/total,1) | extend usd_per_success=round(iff(ok>0, est_usd/ok, real(null)),6) | project agent, total, ok, success_rate, est_usd, usd_per_success | order by usd_per_success desc",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize prompt=sum(inTok), completion=sum(outTok), total=count(), ok=countif(success==true) by agent | extend success_rate=round(100.0*ok/total,1), tokens_per_success=round(iff(ok>0,todouble(prompt+completion)/ok,real(null)),1) | project agent, total, ok, success_rate, prompt, completion, tokens_per_success | order by tokens_per_success desc",
         "size": 0,
-        "title": "Cost per successful request",
+        "title": "Tokens per successful request",
         "timeContext": { "durationMs": 86400000 },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -149,16 +149,16 @@
     },
     {
       "type": 1,
-      "content": { "json": "**Daily estimated cost trend:** estimated spend per day; watch for spikes or a creeping climb." },
+      "content": { "json": "**Daily token trend:** measured prompt and completion volume per day; use model-specific pricing for cost." },
       "name": "desc-cost-trend"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize completion=sum(outTok), calls=count() by bin(timestamp, 1d) | extend est_usd=round(0 + completion/1000000.0*2.00,4) | order by timestamp asc",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize prompt=sum(inTok), completion=sum(outTok), calls=count() by bin(timestamp, 1d) | order by timestamp asc",
         "size": 0,
-        "title": "Daily estimated cost trend",
+        "title": "Daily token usage trend",
         "timeContext": { "durationMs": 604800000 },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -177,7 +177,7 @@
     },
     {
       "type": 1,
-      "content": { "json": "**Tokens by agent:** prompt vs completion tokens; completion is 8x pricier here, so it drives cost." },
+      "content": { "json": "**Tokens by agent:** measured prompt vs completion tokens. Their relative prices depend on the actual model and deployment type." },
       "customWidth": "50",
       "name": "desc-tokens-by-agent"
     },
@@ -283,13 +283,13 @@
     },
     {
       "type": 1,
-      "content": { "json": "**Cached-input token ratio:** percent of input served from prompt cache and the estimated saving; higher is cheaper." },
+      "content": { "json": "**Cached-input token ratio:** percent of measured input served from prompt cache. Apply the actual model's cached-input rate to calculate savings." },
       "customWidth": "50",
       "name": "desc-cached"
     },
     {
       "type": 1,
-      "content": { "json": "**Routed model distribution:** which model the router picked and its cost share; cheap models should handle easy prompts." },
+      "content": { "json": "**Routed model distribution:** which model the router picked and its measured token volume. Price each routed model separately." },
       "customWidth": "50",
       "name": "desc-router"
     },
@@ -297,7 +297,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), cached=toint(customDimensions['gen_ai.usage.cached_input_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize input=sum(inTok), cached=sum(coalesce(cached,0)) by agent | extend cached_pct=round(100.0*todouble(cached)/iff(input>0,input,1),1) | extend est_savings_usd=round(todouble(cached)*(0.25-0.03)/1000000.0,4) | project agent, input, cached, cached_pct, est_savings_usd | order by cached_pct asc",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), cached=toint(customDimensions['gen_ai.usage.cached_input_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize input=sum(inTok), cached=sum(coalesce(cached,0)) by agent | extend cached_pct=round(100.0*todouble(cached)/iff(input>0,input,1),1) | project agent, input, cached, cached_pct | order by cached_pct asc",
         "size": 0,
         "title": "Cached-input token ratio by agent",
         "timeContext": { "durationMs": 86400000 },
@@ -316,7 +316,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where tostring(customDimensions['gen_ai.request.model'])=='model-router' | extend routed=tostring(customDimensions['gen_ai.response.model']), inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize calls=count(), input=sum(inTok), output=sum(outTok) by routed | as T | extend pct_calls=round(100.0*calls/toscalar(T|summarize sum(calls)),1), est_cost_usd=round((input*0.25+output*2.0)/1000000.0,4) | project routed, calls, pct_calls, input, output, est_cost_usd | order by calls desc",
+        "query": "dependencies | where tostring(customDimensions['gen_ai.request.model'])=='model-router' | extend routed=tostring(customDimensions['gen_ai.response.model']), inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize calls=count(), input=sum(inTok), output=sum(outTok) by routed | as T | extend pct_calls=round(100.0*calls/toscalar(T|summarize sum(calls)),1) | project routed, calls, pct_calls, input, output | order by calls desc",
         "size": 0,
         "title": "Model router - routed model distribution",
         "timeContext": { "durationMs": 86400000 },
@@ -358,7 +358,7 @@
     },
     {
       "type": 1,
-      "content": { "json": "## Provisioned Throughput (PTU) break-even\n**PTU = reserved capacity billed at a fixed hourly rate no matter how many tokens you send; consumption (pay-go) is billed per token.** This tile takes the agents' *measured* token volume in the selected time range, projects it to a full day, and asks: *at this volume, would a PTU reservation be cheaper than pay-go?*\n\nSet **PTU reserved** and **USD per PTU-hour** below, then read the row:\n- **tokens_per_day** — current volume projected to 24h.\n- **breakeven_tokens_day** — the volume where PTU and pay-go cost the same. Below it → consumption wins; above it → PTU wins.\n- **consumption_usd_day** — projected pay-go cost/day at current volume.\n- **ptu_usd_day** — fixed PTU cost/day = PTU × hourly rate × 24 (paid even at zero traffic).\n- **verdict** — which option is cheaper right now.\n\n_Estimate only: PTU has per-deployment minimums (often 15–50 PTU) and monthly/annual reservations are cheaper than hourly. Short sampling windows extrapolate aggressively — widen the time range for a stable number._\n\n**Setting the _USD per PTU-hour_ value** (enter a plain number, no $): it's what you pay to reserve one PTU for one hour, which depends on the billing model — reservations are far cheaper than hourly:\n- **Hourly (no commitment):** ~1.0\n- **Monthly reservation:** ~0.35 (= $ per PTU-month ÷ 730)\n- **Annual reservation:** ~0.30 (= $ per PTU-year ÷ 8760)\n\nRates vary by model and deployment type (Global / Data Zone / Regional Provisioned) and change over time — confirm on the Azure OpenAI pricing page or your EA/CSP price sheet. The default **1.0** is the worst-case (hourly); if consumption still wins at 1.0 it wins even harder at reservation rates._" },
+      "content": { "json": "## Illustrative Provisioned Throughput (PTU) comparison\nThis calculation is disabled until you enter current prices for **one comparable model and deployment type**. Do not use a blended rate for Model Router or across this lab's chat and embedding deployments.\n\nEnter PTU count, USD per PTU-hour, and USD per one million input/output tokens below. Zero means unavailable. Rates, PTU minimums, reservations, regions, and customer agreements vary; reconcile the result with Azure pricing and Cost Management. Short sampling windows extrapolate aggressively." },
       "name": "hdr-ptu"
     },
     {
@@ -366,8 +366,10 @@
       "content": {
         "version": "KqlParameterItem/1.0",
         "parameters": [
-          { "id": "p-ptu-count", "version": "KqlParameterItem/1.0", "name": "PTU_Count", "label": "PTU reserved", "type": 1, "isRequired": true, "value": "15" },
-          { "id": "p-ptu-price", "version": "KqlParameterItem/1.0", "name": "PTU_HourlyUSD", "label": "USD per PTU-hour (hourly ~1.0, monthly-reservation ~0.35)", "type": 1, "isRequired": true, "value": "1.0" }
+          { "id": "p-ptu-count", "version": "KqlParameterItem/1.0", "name": "PTU_Count", "label": "PTU reserved", "type": 1, "isRequired": true, "value": "0" },
+          { "id": "p-ptu-price", "version": "KqlParameterItem/1.0", "name": "PTU_HourlyUSD", "label": "Current USD per PTU-hour", "type": 1, "isRequired": true, "value": "0" },
+          { "id": "p-input-price", "version": "KqlParameterItem/1.0", "name": "InputPerMillionUSD", "label": "Current USD per 1M input tokens", "type": 1, "isRequired": true, "value": "0" },
+          { "id": "p-output-price", "version": "KqlParameterItem/1.0", "name": "OutputPerMillionUSD", "label": "Current USD per 1M output tokens", "type": 1, "isRequired": true, "value": "0" }
         ],
         "style": "pills",
         "queryType": 0,
@@ -377,14 +379,14 @@
     },
     {
       "type": 1,
-      "content": { "json": "**PTU vs consumption break-even:** at the measured volume, compares pay-go against a PTU reservation and flags the cheaper option." },
+      "content": { "json": "**PTU vs consumption:** available only after all four current, model-specific inputs are set above." },
       "name": "desc-ptu"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize prompt=sum(inTok), completion=sum(outTok), firstT=min(timestamp), lastT=max(timestamp) | extend windowHours=max_of(todouble(datetime_diff('second', lastT, firstT))/3600.0, 1.0), total_tokens=prompt+completion, consumption_usd=prompt/1000000.0*0.25 + completion/1000000.0*2.00 | extend tokens_per_day=round(total_tokens/windowHours*24,0), consumption_usd_day=round(consumption_usd/windowHours*24,2), ptu_usd_day=round(toreal({PTU_Count})*toreal({PTU_HourlyUSD})*24,2), price_per_token=consumption_usd/iff(total_tokens>0,total_tokens,1) | extend breakeven_tokens_day=round(ptu_usd_day/iff(price_per_token>0,price_per_token,1.0),0), verdict=iff(consumption_usd_day>=ptu_usd_day,'PTU cheaper at current volume','Consumption cheaper — stay pay-go') | project tokens_per_day, breakeven_tokens_day, consumption_usd_day, ptu_usd_day, verdict",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize prompt=sum(inTok), completion=sum(outTok), firstT=min(timestamp), lastT=max(timestamp) | extend windowHours=max_of(todouble(datetime_diff('second',lastT,firstT))/3600.0,1.0), total_tokens=prompt+completion, input_rate=toreal({InputPerMillionUSD}), output_rate=toreal({OutputPerMillionUSD}), ptu_count=toreal({PTU_Count}), ptu_rate=toreal({PTU_HourlyUSD}) | extend consumption_usd=prompt/1000000.0*input_rate+completion/1000000.0*output_rate, ptu_usd_day=ptu_count*ptu_rate*24 | extend tokens_per_day=round(total_tokens/windowHours*24,0), consumption_usd_day=round(consumption_usd/windowHours*24,2), configured=input_rate>0 and output_rate>0 and ptu_count>0 and ptu_rate>0 | extend price_per_token=consumption_usd/iff(total_tokens>0,total_tokens,1), breakeven_tokens_day=iff(configured,round(ptu_usd_day/iff(price_per_token>0,price_per_token,1.0),0),real(null)), verdict=iff(not(configured),'Set current model-specific rates before comparing',iff(consumption_usd_day>=ptu_usd_day,'PTU cheaper at current volume','Consumption cheaper at current volume')) | project tokens_per_day, breakeven_tokens_day, consumption_usd_day=iff(configured,consumption_usd_day,real(null)), ptu_usd_day=iff(configured,round(ptu_usd_day,2),real(null)), verdict",
         "size": 0,
         "title": "PTU vs consumption break-even",
         "timeContext": { "durationMs": 86400000 },

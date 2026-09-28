@@ -1,7 +1,7 @@
 export function initializeLabOperations({ refreshIcons }) {
   const byId = id => document.getElementById(id);
   const dialog = byId('operation-dialog');
-  const ids = new Set(['start', 'break', 'restore', 'ramp', 'cpu', 'logs', 'annotation']);
+  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'cpu', 'logs', 'annotation']);
   const labels = { queued: 'Queued', waiting: 'Awaiting runner', running: 'Running', succeeded: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled', dispatch_unknown: 'Dispatch outcome unknown', skipped: 'Skipped' };
   const terminal = run => ['succeeded', 'failed', 'cancelled'].includes(run.state);
   let actions = [];

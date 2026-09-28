@@ -59,7 +59,9 @@ The tab does not start investigations, use a model, probe arbitrary endpoints, r
 
 The screenshot uses example configuration and a simulated run. No real operation was executed to produce it.
 
-The seven actions reuse repository scripts through an independent Azure Container Apps Job. Every action requires a five-minute proposal, review of the script, exact lab target and image digest, resource-group confirmation, and approval of changes and charges. The UI shows Azure execution status and links to the job's execution history. Switching away stops automatic status checks, not the job.
+The eight actions reuse repository scripts through an independent Azure Container Apps Job. Every action requires a five-minute proposal, review of the script, exact lab target and image digest, resource-group confirmation, and approval of changes and charges. The UI shows Azure execution status and links to the job's execution history. Switching away stops automatic status checks, not the job.
+
+Use **Stop Lab** when the environment is idle. It deallocates VMs and VMSS instances, stops AKS, and stops the Web App last. It reduces compute usage but is not teardown: fixed services, retained resources, telemetry, and optional agents can continue billing.
 
 **Simulate High CPU** submits fixed 10-minute loads to the Linux and Windows demo VMs without restarting them or using AKS. It validates both tagged targets and their VM Agents first, uses guest overlap locks and expiry, and reports submission rather than confirmed CPU or alert success. Watch **Percentage CPU** for each VM in Azure Monitor; VM health rows here assess heartbeats, not CPU. B-series CPU credits and alert evaluation windows can affect the observed result. Cancellation or Restore Lab does not stop an accepted CPU command. See [CPU simulation details](../workloads/webapp/LAB-OPERATIONS.md#simulate-high-cpu).
 

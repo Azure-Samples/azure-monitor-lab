@@ -686,6 +686,10 @@ module alertProcessingRules 'modules/alert-processing-rules.bicep' = {
   params: {
     namePrefix: namePrefix
     primaryActionGroupId: actionGroup.outputs.id
+    vmIds: filter([
+      deployLinuxVm ? vmLinux!.outputs.vmId : ''
+      deployWindowsVm ? vmWindows!.outputs.vmId : ''
+    ], id => !empty(id))
     tags: commonTags
   }
 }
@@ -884,6 +888,7 @@ module costWorkbook 'modules/cost-workbook.bicep' = {
     name: guid(resourceGroup().id, costWorkbookName)
     location: location
     centralLawId: lawCentral.outputs.id
+    dailyCapGb: dailyCapGb
     tags: commonTags
   }
 }

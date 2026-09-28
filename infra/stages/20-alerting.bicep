@@ -146,6 +146,7 @@ module alertProcessingRules '../modules/alert-processing-rules.bicep' = {
     namePrefix: namePrefix
     resourceGroupId: resourceGroup().id
     primaryActionGroupId: actionGroup.outputs.id
+    vmIds: concat(deployLinuxVm ? [ vmLinux.id ] : [], deployWindowsVm ? [ vmWindows.id ] : [])
     tags: commonTags
   }
 }

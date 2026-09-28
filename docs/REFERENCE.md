@@ -8,9 +8,9 @@ A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel*
 
 | Capability | What this lab shows | Pillar docs |
 |---|---|---|
-| **VM Insights** | Ubuntu + Windows VMs with **AMA** + Dependency Agent + DCR → Performance + Map data into the central LAW. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/monitor-vm) |
+| **VM Insights** | Ubuntu + Windows VMs with **AMA** + DCR → Performance data into the central LAW; the Windows VM also has the Dependency Agent for Service Map. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/monitor-vm) |
 | **Application Insights** | Workspace-based App Insights, **codeless auto-instrumentation** of a .NET 8 sample on Linux App Service, **Live Metrics**, **Smart Detection**, **Code Optimizations**, **Profiler / Snapshot**, **Availability Tests**, **Release annotations**, custom `TrackMetric`. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview?tabs=webapps) |
-| **Kubernetes monitoring** | AKS cluster with **Container Insights** (logs → LAW), **Managed Prometheus** (metrics → AMW) with custom Prometheus rule group, **Azure Managed Grafana** (Essential SKU) with alert rule, **OpenTelemetry** node.js + .NET caller pods tracing back to App Insights. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-monitoring-overview) |
+| **Kubernetes monitoring** | AKS cluster with **Container Insights** (logs → LAW), **Managed Prometheus** (metrics → AMW) with custom Prometheus rule group, **Azure Managed Grafana** (Standard SKU) with alert rule, **OpenTelemetry** node.js + .NET caller pods tracing back to App Insights. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-monitoring-overview) |
 | **VMSS + Predictive autoscale** | Linux VMSS with autoscale settings demonstrating predictive scaling on CPU. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/autoscale/autoscale-predictive) |
 | **Networking observability** | **Connection Monitor**, **NSG Flow Logs** + **Traffic Analytics**, **Network Insights**. | [docs](https://learn.microsoft.com/en-us/azure/network-watcher/network-watcher-monitoring-overview) |
 | **Platform telemetry** | **Key Vault** + **Storage** + **Event Hub** with diag settings, Insights workbooks. | — |
@@ -20,9 +20,9 @@ A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel*
 | **Custom Logs (Logs Ingestion API)** | Custom-table DCR + sample sender script (`send-custom-logs.ps1`). | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/logs-ingestion-api-overview) |
 | **Cost & data routing** | Daily ingestion caps, **Basic vs Analytics** table-plan toggle (`toggle-table-plan.ps1`), **Summary Rules**, **Data Export** to Storage/Event Hub, optional **LAW cross-region replication**, dedicated **Cost workbook**. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/cost-logs) |
 | **Search Jobs + Restore from archive** | `run-search-job.ps1` + `restore-archived-logs.ps1` demonstrate long-term retention recovery. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/search-jobs?tabs=portal) |
-| **Workbooks** | *Traffic Lights* (Green/Orange/Red single pane), *Cost of monitoring*, *Security posture*. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview) |
+| **Workbooks** | *Traffic Lights* (Green/Orange/Red single pane), *Central LAW ingestion volume*, *Security posture*. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview) |
 | **Action Group + Alerts** | Email + optional SIEM webhook + 7+ alerts: VM CPU, App 5xx, AKS node CPU, AppI failed requests (KQL), AKS pod restart spike (KQL), Service Health (sub-scope), Resource Health (RG-scope), plus **AMBA**-generated best-practice alerts. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups) |
-| **Auto-mitigation** | Logic App triggered by an alert that runs a remediation action. **Alert Processing Rules** for suppression/grouping. | — |
+| **Auto-mitigation** | Logic App triggered by an alert that runs a remediation action. **Alert Processing Rules** provide scheduled and severity-based action suppression. | — |
 | **Dynamic Thresholds** | Metric alert that learns its own baseline (vs static threshold). | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-dynamic-thresholds) |
 | **Microsoft Sentinel** | Sentinel onboarded on the central LAW with security-posture alert rules + dedicated *Security* workbook. Demo queries for control-plane drift, privilege escalation, exfil early warning. | [docs](https://learn.microsoft.com/en-us/azure/sentinel/overview) |
 | **Granular RBAC** | 3 service principals scoped at workspace / table / row level (`setup-rbac-demo.ps1` + `demo-granular-rbac.ps1`). | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/manage-access) |
@@ -54,12 +54,14 @@ rg-azure-monitor-lab/
 │   ├─ Perf_Hourly_CL             ← Summary-rule destination table in the central LAW
 │   ├─ summary rule               ← Hourly Perf aggregation into Perf_Hourly_CL
 │   ├─ export-amlab-heartbeat      ← LAW Heartbeat data export to Storage
-│   └─ amg-amlab-XXXX             ← Azure Managed Grafana (Essential) bound to AMW
+│   └─ amg-amlab-XXXX             ← Azure Managed Grafana (Standard) bound to AMW
 ├─ Compute workloads
-│   ├─ vm-amlab-lin               ← Ubuntu + AMA + Dependency Agent + DCR assoc.
-│   ├─ vmwinXXXX                  ← Windows Server 2022 + AMA + Dep. Agent + DCR
+│   ├─ vm-amlab-lin               ← Optional Ubuntu VM + AMA + DCR association
+│   │  └─ shutdown-computevm-*    ← Daily 23:00 CET/CEST auto-shutdown schedule
+│   ├─ vmwinXXXX                  ← Optional Windows VM + AMA + Dependency Agent + DCR
+│   │  └─ shutdown-computevm-*    ← Daily 23:00 CET/CEST auto-shutdown schedule
 │   ├─ vmss-amlab                 ← Linux VMSS + Predictive autoscale
-│   ├─ aks-amlab                  ← AKS (Free tier, 2 × B2s) + Container Insights + Managed Prom
+│   ├─ aks-amlab                  ← AKS (Free tier, 1 × B2s by default) + Container Insights + Managed Prom
 │   ├─ amlab-aks-prom-rules        ← Managed Prometheus recording + alerting rule group
 │   ├─ plan-amlab + app-amlab-XX  ← Linux App Service B1 + .NET 8 sample (auto-instrumented), pinned to westeurope
 │   └─ availability test + alert   ← Standard URL test from 5 global locations
@@ -79,7 +81,9 @@ rg-azure-monitor-lab/
 │   ├─ ag-amlab-email             ← Action Group → email (+ optional SIEM webhook)
 │   ├─ alert-* (×7+)              ← Metric + KQL + activity-log + dynamic-threshold alerts
 │   ├─ AMBA-* (×N)                ← Azure Monitor Baseline Alerts
-│   ├─ apr-amlab-*                ← Alert Processing Rules (suppress/group)
+│   ├─ apr-amlab-maintenance-window ← Enabled weekly RG-wide action suppression
+│   ├─ apr-amlab-suppress-low-sev   ← Disabled-by-default Sev3/Sev4 action suppression
+│   ├─ apr-amlab-vm-auto-shutdown   ← Nightly suppression scoped to enabled lab VMs
 │   └─ logic-amlab-automitigate   ← Logic App auto-mitigation runbook
 ├─ Security
 │   ├─ Sentinel onboarded         ← on law-amlab-central + security-posture alert rules
@@ -90,7 +94,7 @@ rg-azure-monitor-lab/
 │   └─ amlab-workload             ← tenant-scoped Service Group + RG membership, created by deploy.ps1
 └─ Workbooks
     ├─ wb-amlab-trafficlights     ← 🚦 Traffic Lights — single pane of glass
-    ├─ wb-amlab-cost              ← Cost of monitoring
+    ├─ wb-amlab-cost              ← Central LAW ingestion volume
     └─ wb-amlab-security          ← Security posture
 ```
 
@@ -106,7 +110,7 @@ rg-azure-monitor-lab/
 
 > **Region pinning:** the **App Service** (plan + site) and its diagnostic sinks (dedicated storage + Event Hub) are pinned to **`westeurope`**; the **Health Model** preview and the **AI stage** are pinned to **`swedencentral`**. Everything else follows the lab region (default `northeurope`).
 
-The Control Center also provisions four runner resources in the Web App's region: a Basic `acrlabops<suffix>` registry, a `cae-labops-<suffix>` Consumption environment, an `id-labops-<suffix>` managed identity, and a manual `job-labops-<suffix>` job. Custom runner/launcher roles, scoped assignments, and environment diagnostics support them. The job and image are completed by workload publication, not by the raw portal template alone. The Entra sign-in registration is tenant-level and is not removed by resource-group deletion. Resource counts vary with selected stages and whether child resources, deployments, and role assignments are counted.
+The Control Center provisions four primary runner resources in the Web App's region: a Basic `acrlabops<suffix>` registry, a `cae-labops-<suffix>` Consumption environment, an `id-labops-<suffix>` managed identity, and a manual `job-labops-<suffix>` job. Supporting resources include the `console-runner-logs` diagnostic setting, three custom roles, scoped role assignments, and the Web App's system-assigned identity. Workload publication builds the image and deploys the digest-pinned job and launcher role. The Entra sign-in registration is tenant-level and is not removed by resource-group deletion. Counts vary with selected stages and whether child resources, deployments, RBAC, diagnostics, and tenant objects are included.
 
 Inside the central LAW you also get **12+ saved KQL searches** and **KQL functions** under category `AzureMonitorDemoLab` (Logs > Saved searches / Functions). The one-shot deployment wrapper runs `post-deploy.ps1`, creates the Service Group and RG membership with `setup-health-model.ps1`, and verifies SLI prerequisites with `setup-slis.ps1`. Optional operational helpers layer demos and telemetry on top. See [Operational and optional helpers](#operational-and-optional-helpers) below.
 
@@ -118,7 +122,7 @@ Inside the central LAW you also get **12+ saved KQL searches** and **KQL functio
 - `kubectl` (any recent version)
 - Bicep CLI (bundled with `az` ≥ 2.20) — **OR** Terraform ≥ 1.6 if you prefer the Terraform path
 - PowerShell 7+ (the deploy scripts and helpers are `.ps1`)
-- A subscription with quota for: 1 AKS cluster (2 × `Standard_B2s`), 2 VMs (2 × `Standard_B2s`), 1 Linux VMSS (1 × `Standard_B2s`), 1 App Service B1 (in `westeurope`), 1 Managed Grafana Essential, 2 Storage accounts, 1 Event Hub namespace, 1 Key Vault.
+- A subscription with quota for: 1 AKS cluster (1 × `Standard_B2s` node), 2 VMs (1 Linux and 1 Windows, both `Standard_B2s`), 1 Linux VMSS (1 × `Standard_B1s`), 1 App Service B1 (in `westeurope`), 1 Managed Grafana Standard instance, 2 Storage accounts, 1 Event Hubs Basic namespace, 1 Key Vault, and the other resources listed in the [cost guide](COST-GUIDE.md).
 - *(Optional AI stage only)* Python 3.10+ for `scripts/setup-ai.ps1` (creates the demo agents + traffic simulator in `workloads/ai/`); the Foundry models it deploys are **billable**.
 - Console completion additionally requires the .NET 8 SDK, ACR Tasks availability, Container Apps Consumption capacity, and rights to manage the sign-in registration and scoped roles. See [Lab Operations prerequisites](../workloads/webapp/LAB-OPERATIONS.md#prerequisites).
 
@@ -179,15 +183,17 @@ End-to-end deployment can take tens of minutes, including AKS/Grafana provisioni
 
 Same lab, broken into 5 progressive stages so you can pause for discussion after each one. Each stage is its own Bicep/Terraform deployment with a dedicated speaker-notes doc. Skip stages you don't need (toggles in `lab.config.json` → `stageToggles`).
 
-| Stage | Theme | Adds | Scenarios | Time | Incremental monthly cost |
+| Stage | Theme | Adds | Scenarios | Time | Incremental cost basis |
 |---|---|---|---|---|---|
-| **A — Foundation** | Telemetry backbone | LAWs · AppI · AMW · DCE · network · storage · Event Hub · Key Vault · diag policies · saved queries · KQL functions · cost + traffic-lights workbooks | 1, 5, 6, 9 | 8–15 min | EUR 5–25 / USD 6–28 |
-| **B — Workloads & dashboards** | Compute + app telemetry | Linux/Windows VMs · AKS + Container Insights + Managed Prom · Grafana · App Service + auto-instrumented .NET · OTel pods · Connection Monitor · NSG Flow Logs · availability test | 2, 3, 4, 22, 28–32, 34–36, 42 | 20–35 min | EUR 95–145 / USD 105–160 |
-| **C — Alerts & response** | Detection + routing | Action Group · 7+ metric/KQL/activity alerts · AMBA · dynamic thresholds · alert processing rules · auto-mitigation Logic App · VMSS predictive autoscale | 7, 8, 12, 15, 17, 19, 23, 37 | 5–12 min | EUR 0–10 / USD 0–11 |
-| **D — Security posture** | Monitor-native detections | Granular RBAC roles · control-plane drift / privilege escalation / exfil scheduled-query alerts | 27, 47, 48, 49 | 5–12 min | EUR 0–15 / USD 0–17 |
-| **E — Optional advanced** | SOC + reliability previews | Microsoft Sentinel onboarding · search jobs + restore · Service Group + Health Model (preview) · SLIs/SLOs · data export · Prometheus rule group | 43, 44, 45, 46 | 10–20 min | EUR 0–40 / USD 0–44 |
-| **AI — GenAI observability** *(optional, off)* | AI FinOps on Foundry | Microsoft Foundry account + project (swedencentral) · chat/embedding/optimization/model-router deployments · App Insights tracing · token anomaly + spike alerts · AI FinOps query pack + workbook · AI health tier · agents + traffic (`setup-ai.ps1`) | 53 | 10–15 min | billable models |
-| **SRE Agent (optional, off)** | AI-assisted incident response | Bicep-deployed agent (swedencentral) · managed identity + RBAC · Azure Monitor, App Insights, and LAW connectors · two Review-mode investigators with automatic incident briefs · deployment validation (`setup-sre-agent.ps1`) | 54-59 | 20-25 min | active AAUs; fixed charge waived during eligible trial |
+| **A — Foundation** | Telemetry backbone | LAWs · AppI · AMW · DCE · network · storage · Event Hub · Key Vault · diag policies · saved queries · KQL functions · cost + traffic-lights workbooks | 1, 5, 6, 9 | 8–15 min | Provisioned Event Hubs/ACR/storage plus telemetry and operations |
+| **B — Workloads & dashboards** | Compute + app telemetry | Optional Linux/Windows VMs · per-VM auto-shutdown schedules · AKS + Container Insights + Managed Prom · Grafana · App Service + auto-instrumented .NET · Control Center runner platform · custom logs · OTel pods · Connection Monitor · NSG Flow Logs | 2, 3, 4, 22, 28–32, 34–36, 42 | 20–35 min | Compute hours, disks/IPs, App Service, Grafana Standard/users, ACR, runner executions, Prometheus, network monitoring and telemetry |
+| **C — Alerts & response** | Detection + suppression | Action Group · 7+ metric/KQL/activity alerts · AMBA · dynamic thresholds · three suppression-oriented Alert Processing Rules when VMs are enabled · auto-mitigation Logic App · VMSS predictive autoscale | 7, 8, 12, 15, 17, 19, 23, 37 | 5–12 min | Rule/series evaluations, notifications, action executions and VMSS compute |
+| **D — Security posture** | Monitor-native detections | Granular RBAC roles · control-plane drift / privilege escalation / exfil scheduled-query alerts | 27, 47, 48, 49 | 5–12 min | Scheduled-query evaluations plus diagnostic ingestion/retention |
+| **E — Optional advanced** | SOC + reliability previews | Conditional Sentinel onboarding · data export · Prometheus rule group · availability test · Health Model (preview) · SLI identity · optional platform/metrics DCRs | 43, 44, 45, 46 | 10–20 min | Sentinel analysis, export, web tests, preview resources and extra telemetry |
+| **AI — GenAI observability** *(optional, off)* | AI FinOps on Foundry | Microsoft Foundry account + project (swedencentral) · chat/embedding/optimization/model-router deployments · App Insights tracing · token anomaly + spike alerts · AI FinOps query pack + workbook · AI health tier · agents + traffic (`setup-ai.ps1`) | 53 | 10–15 min | Model-specific tokens or provisioned throughput plus telemetry |
+| **SRE Agent (optional, off)** | AI-assisted incident response | Bicep-deployed agent (swedencentral) · managed identity + RBAC · Azure Monitor, App Insights, and LAW connectors · two Review-mode investigators with automatic incident briefs · deployment validation (`setup-sre-agent.ps1`) | 54-59 | 20-25 min | Always-on AAUs plus active AAUs, subject to current trial terms |
+
+Stage E completion can also create the tenant-scoped Service Group and RG membership and verify SLI prerequisites. Search jobs, archive restores, and sample SLIs/SLOs are operational or portal-driven actions, not resources created by `40-optional-advanced.bicep`.
 
 Walk-through docs:
 
@@ -226,40 +232,27 @@ The lab supports **68 numbered demo scenarios** (`0` through `67`), each with a 
 
 ---
 
-## Cost notes (North Europe, list pricing, May 2026)
+## Cost notes
 
-Rough monthly burn if left running 24/7. USD estimates use a planning rate of EUR 1 = USD 1.10 and are rounded:
+The former flat monthly estimate was removed because it did not match the deployed bill of materials and omitted usage-based meters. Current defaults include **1 x AKS B2s node**, **1 x Linux B2s VM**, **1 x Windows B2s VM**, **1 x Linux B1s VMSS instance**, **App Service Basic B1**, **Managed Grafana Standard**, **Event Hubs Basic with 1 TU**, **ACR Basic**, managed disks and public IPs, plus usage-based Monitor, networking, storage, alerting, web-test, and Control Center job charges.
 
-| Component | ~EUR/month | ~USD/month |
-|---|---:|---:|
-| AKS Free tier control plane | 0 | 0 |
-| AKS nodes — 2 × Standard_B2s | 60 | 66 |
-| Linux + Windows VMs — 2 × Standard_B2s | 60 | 66 |
-| Linux VMSS — 1 × Standard_B2s (predictive autoscale demo) | 30 | 33 |
-| App Service B1 | 13 | 14 |
-| Storage accounts × 2 (LRS, near-empty) | <1 | <1.10 |
-| Event Hub namespace (Standard, 1 TU, near-idle) | ~20 | ~22 |
-| Key Vault (Standard, light use) | <1 | <1.10 |
-| Azure Managed Grafana Essential | 0 | 0 |
-| Managed Prometheus (very low for 2 nodes) | ~1 | ~1.10 |
-| LAW ingestion — capped at 1 GB/day × 2 (EUR 2.30/GB / USD 2.53/GB) | 5–140 | 6–154 |
-| Workbooks · Action Groups · Policy · Sentinel onboarding | 0 | 0 |
-| **Total (idle demo use)** | **~190 + ingestion** | **~209 + ingestion** |
+See the dated [cost guide](COST-GUIDE.md) for:
 
-This historical baseline excludes the Control Center runner added later. Include Basic Container Registry service/storage, ACR Tasks builds, Container Apps job CPU/memory usage, and runner log ingestion when estimating the current lab. The runner has no always-running application replica; model traffic and started workloads remain separately billable. Use the selected regions' current prices and actual usage rather than treating the baseline or stage-table amounts as all-inclusive quotes.
+- a complete service/meter inventory and public-rate examples;
+- formulas for ingestion, retention, archive, search, restore, export, replication, metrics, alerts, web tests, network monitoring, and runner executions;
+- correct Sentinel, Foundry, SRE Agent, and Observability Agent billing boundaries;
+- external GitHub Copilot CLI and MCP cost boundaries;
+- a stop/deallocate/delete matrix.
 
-> **Optional AI stage** adds pay-per-token Foundry model spend (gpt-5-mini / text-embedding-3-small / gpt-5.4 / model-router) — near EUR 0 / USD 0 at idle, driven entirely by `setup-ai.ps1` traffic. Delete the Foundry account (or skip the stage) to zero it out.
+Both Log Analytics workspaces default to a **1 GB/day ingestion cap**, but each cap applies only to that workspace's ingestion. It does not cap Grafana, compute, App Service, Event Hubs, ACR, disks, IPs, Prometheus, network monitoring, alerts, tests, agents, or other meters. The in-lab cost workbook reports central-workspace ingestion volume only; Azure Cost Management remains the billing source of truth.
 
-> **Optional Observability Agent stage:** excluded from the baseline above. Pricing guidance was checked September 26, 2026. Correlation is unbilled during preview; chat and deep investigations consume Azure Agent Credits, with each deep investigation capped at 500 AAC. Estimate variable spend from actual AAC consumption at the current regional AAC rate, then add ingestion, retention, and query charges for the dedicated Azure Monitor workspace. See the [billing guidance](https://learn.microsoft.com/azure/azure-monitor/aiops/observability-agent-billing) and [Azure Monitor pricing](https://azure.microsoft.com/pricing/details/monitor/).
+To reduce compute charges between sessions, deallocate VMs and stop AKS:
 
-**Cost guardrails baked in:**
-- Both LAWs capped at **1 GB/day** out of the box.
-- Sentinel cost = LAW ingestion + retention (no extra Sentinel charge with the included 31-day retention).
-- `break-the-lab.ps1` deallocates the VMs. To drop further, also stop AKS:
-  ```powershell
-  az aks stop -g rg-azure-monitor-lab -n aks-amlab
-  ```
-    → drops to roughly EUR 25 / USD 28 per month idle.
+```powershell
+az aks stop -g rg-azure-monitor-lab -n aks-amlab
+```
+
+App Service Plan, Grafana Standard, Event Hubs, ACR, retained disks/IPs/data, telemetry, and enabled optional agents can continue billing. Delete the lab when it is no longer needed and verify asynchronous deletion completes.
 
 ---
 
@@ -387,7 +380,7 @@ These scripts operate or extend an already deployed lab. Most are manual demo he
 - **AKS LB IP stuck `<pending>`** → wait 1-2 min, or `kubectl describe svc hello-frontend -n demo`.
 - **Workbook says "No data" the first time** → wait 5-10 minutes for AMA + Container Insights to land their first batches, then refresh.
 - **`Assert-AllowedSubscription` aborts the deploy** → `lab.config.json` doesn't exist yet, or `az` is logged into a different tenant. Run `Copy-Item lab.config.json.example lab.config.json`, edit it, then `az login --tenant <your-tenant-id>`.
-- **Sentinel costs unexpectedly high** → Sentinel itself is free here, but data ingestion still counts. The 1 GB/day cap protects you; verify it's still set on `law-amlab-central` → Usage and estimated costs.
+- **Sentinel costs unexpectedly high** → review Sentinel analysis, Log Analytics ingestion/retention, automation, Logic Apps, notebooks, and other enabled features in Cost Analysis. A qualifying new workspace can receive a conditional 31-day, 10 GB/day trial, but there is no unconditional permanent-free state. The LAW cap limits only that workspace's ingestion.
 
 ---
 

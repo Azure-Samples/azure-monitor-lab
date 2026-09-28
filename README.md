@@ -106,7 +106,7 @@ notepad lab.config.json
 ./scripts/deploy.ps1 -ResourceGroup rg-my-lab -Location westeurope
 ```
 
-Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`. Override them with `-ResourceGroup` / `-Location` (explicit args win over `lab.config.json`, then defaults). The group is created or reused. Infrastructure provisioning, native packaging, and the cloud runner build can take tens of minutes. A successful run includes console sign-in, health, the seven-operation Azure runner, and access to selected optional agents. See [deployment reference](docs/REFERENCE.md#deploy) for config and guardrails.
+Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`. Override them with `-ResourceGroup` / `-Location` (explicit args win over `lab.config.json`, then defaults). The group is created or reused. Infrastructure provisioning, native packaging, and the cloud runner build can take tens of minutes. A successful run includes console sign-in, health, the eight-operation Azure runner, and access to selected optional agents. See [deployment reference](docs/REFERENCE.md#deploy) for config and guardrails.
 
 <details>
 <summary><b>Pre-flight check</b> (region SKU / quota validation before deploy)</summary>
@@ -144,9 +144,11 @@ az webapp list --subscription $subscriptionId --resource-group $resourceGroup --
 
 ## Cost and lifecycle
 
-The default Stages A-E deployment with light Control Center use is roughly **EUR 7-12 / USD 8-13 per day** when left running 24/7. This adjusts the indicative list-price estimate in [REFERENCE.md](docs/REFERENCE.md#cost-notes-north-europe-list-pricing-may-2026) to allow for Basic ACR and light Container Apps job use.
+> [!WARNING]
+> **Ballpark:** default Stages A-E lab: **EUR 6-10/day** (EUR 180-300/month). Everything enabled with light Foundry and agent use: **EUR 10-25/day** (EUR 300-750/month), assuming an eligible SRE Agent trial and automatic Observability Agent investigations remain off. These September 2026 public-retail estimates are not quotes; heavier token/AAC use, post-trial SRE Agent charges, region, agreement, telemetry, and traffic can exceed the range. See the [cost guide](docs/COST-GUIDE.md).
 
-This range excludes optional Foundry model traffic, Azure SRE Agent charges, Observability Agent Azure Agent Credit usage, and the dedicated Observability Agent workspace's ingestion, retention, and query charges. Those costs depend on usage, allocation, region, and trial or preview terms. As checked September 26, 2026, Observability Agent correlation is unbilled during preview, while chat and deep investigations consume AAC and each deep investigation is capped at 500 AAC; use the current [billing guidance](https://learn.microsoft.com/azure/azure-monitor/aiops/observability-agent-billing) and [Azure Monitor pricing](https://azure.microsoft.com/pricing/details/monitor/) rather than treating this baseline as a quote. Microsoft Fabric is not deployed by this repository and is not included. Actual costs also vary by region, retention, exchange rates, and current Azure pricing. Stop or deallocate compute between sessions, keep automatic investigation disabled unless explicitly accepted, or run `./scripts/teardown.ps1 -Yes` when the lab is not needed.
+> [!IMPORTANT]
+> **Control costs:** VMs auto-shutdown at **23:00 CET/CEST**; VM notifications are suppressed until **07:00**. When idle, use **Control Center → Lab Operations → Stop Lab**. Fixed services and retained data still bill. When finished, tear down the lab and verify deletion.
 
 When the lab is no longer needed, set `$rg` to the resource group where you deployed the lab, then run the command below. If you used the default configuration, use `rg-azure-monitor-lab`.
 
@@ -155,13 +157,12 @@ $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 ./scripts/teardown.ps1 -ResourceGroup $rg -Yes   # deletes the whole resource group
 ```
 
-Teardown also removes Entra app registrations and service principals that the current setup scripts explicitly mark as owned by this lab. It preserves shared or untagged registrations from older setup versions; it never deletes directory objects by name alone. Add `-KeepEntraApplications` to preserve all Entra registrations, or `-KeepServiceGroup` when other labs share the tenant-level Service Group and SLIs. See [cleanup ownership and permissions](scripts/README.md#cleanup) before removing a multi-lab environment.
-
 ## Documentation
 
 | Doc | What's in it |
 |---|---|
 | [REFERENCE.md](docs/REFERENCE.md) | Full capability matrix · every deployed resource · demo walkthrough · cost breakdown · folder layout · optional add-ons · troubleshooting |
+| [COST-GUIDE.md](docs/COST-GUIDE.md) | Dated resource inventory · public-rate examples · usage formulas · optional agents · stop-versus-delete guidance |
 | [Lab Control Center](docs/LAB-CONTROL-CENTER.md) | Application guide, screenshot, traffic and agent capabilities, safety boundaries, and links to the guided scenarios |
 | [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | All 69 demo scenarios, each with a story, a click-path, and a "killer line", plus audience-pivoted shortlists |
 | [POST-DEPLOYMENT.md](docs/POST-DEPLOYMENT.md) | Manual and optional preparation required by specific demo scenarios after deployment is complete |

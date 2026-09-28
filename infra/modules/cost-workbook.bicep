@@ -14,6 +14,9 @@ param location string
 @description('Central LAW resource ID (workbook scope).')
 param centralLawId string
 
+@description('Configured daily ingestion cap (GB) for the central LAW. Set to -1 when disabled.')
+param dailyCapGb int = 1
+
 @description('Resource tags.')
 param tags object = {}
 
@@ -48,16 +51,16 @@ var perSolutionQuery = '''Usage
 | render piechart
 '''
 
-var capBurnQuery = '''Usage
+var capBurnQuery = replace('''Usage
 | where IsBillable == true
 | where TimeGenerated >= startofday(now())
 | summarize TodayGB = round(sum(Quantity) / 1024.0, 3)
-| extend CapGB = toreal(1.0)
-| extend PercentOfCap = round(100.0 * TodayGB / CapGB, 1)
+| extend CapGB = toreal(__DAILY_CAP_GB__)
+| extend PercentOfCap = iff(CapGB > 0, round(100.0 * TodayGB / CapGB, 1), real(null))
 | project Metric = pack_array("Today (GB)", "Daily cap (GB)", "% of cap used"),
           Value  = pack_array(TodayGB, CapGB, PercentOfCap)
 | mv-expand Metric to typeof(string), Value to typeof(real)
-'''
+''', '__DAILY_CAP_GB__', string(dailyCapGb))
 
 var workbookContent = {
   version: 'Notebook/1.0'
@@ -65,7 +68,7 @@ var workbookContent = {
     {
       type: 1
       content: {
-        json: '## 💰 Cost of Monitoring — LAW Ingestion Overview\n\nEverything here reads from the built-in `Usage` table. Use this to pick candidates for **DCR transformations** (see [14 — Cost · Workspace Transformation effect]) and **Basic Logs** (see `toggle-table-plan.ps1`).'
+        json: '## 💰 Central LAW ingestion volume\n\nThis workbook reads only the central Log Analytics workspace `Usage` table. It does **not** include compute, App Service, Grafana, Event Hubs, ACR, disks/IPs, network monitoring, alerts, tests, other workspaces, or optional agents, and it does not reconcile the Azure bill. Use it to find candidates for **DCR transformations** and **Basic Logs**, then use [Azure Cost Management](https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/costanalysis) for actual and forecast charges.'
       }
       name: 'header'
     }
@@ -140,7 +143,7 @@ resource workbook 'Microsoft.Insights/workbooks@2023-06-01' = {
   tags: tags
   kind: 'shared'
   properties: {
-    displayName: '💰 Azure Monitor Lab — Cost of Monitoring'
+    displayName: '💰 Azure Monitor Lab — Central LAW ingestion volume'
     serializedData: string(workbookContent)
     category: 'workbook'
     sourceId: centralLawId
