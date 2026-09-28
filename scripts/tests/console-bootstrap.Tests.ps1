@@ -186,7 +186,11 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 11 -or -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1'))) { throw 'Unexpected runner build context or missing CPU simulation script.' }
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 12 -or
+          -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1'))) {
+        throw 'Unexpected runner build context or missing operation script.'
+      }
       if ($fixture.FailBuild) { $global:LASTEXITCODE = 1 }
       return
     }

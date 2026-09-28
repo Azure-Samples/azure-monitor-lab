@@ -133,7 +133,7 @@ try {
   $build = Join-Path $temporary 'build'
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'scripts') -Force
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/k8s') -Force
-  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
+  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
     'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml')
   foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $build $file) }
   Copy-Item -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Destination (Join-Path $build 'Dockerfile')
