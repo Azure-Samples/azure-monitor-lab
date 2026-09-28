@@ -1611,25 +1611,25 @@ Both `keyvault-amlab-*` and `st<prefix>...` ship `allLogs` to the central LAW vi
 **Time:** 2 min.
 
 ### Story
-Lab nights (02:00–04:00 UTC) are when synthetic load-gen pauses, summary rules run, and AKS image updates roll. Alerts during that window are noise. An **Alert Processing Rule** with a daily recurrence silences the whole RG without disabling a single rule.
+Both lab VMs automatically shut down at 23:00 CET/CEST to control compute cost. Alerts caused by that expected downtime are noise. An **Alert Processing Rule** with a daily recurrence suppresses actions only for the lab VMs until 07:00 without disabling the alert rules.
 
 ### What's deployed
 
 | Resource | Value |
 |---|---|
-| APR | `apr-amlab-nightly-maintenance` |
-| Scope | `rg-azure-monitor-lab` |
-| Schedule | Recurring every day 02:00–04:00 UTC |
+| APR | `apr-amlab-vm-auto-shutdown` |
+| Scope | The deployed Linux and Windows demo VMs |
+| Schedule | Recurring every day 23:00–07:00, Romance Standard Time (CET/CEST) |
 | Action | Remove all action groups (= no notifications, no Logic App webhook) |
 
 ### Click-path
 
-1. **Monitor → Alert processing rules → `apr-amlab-nightly-maintenance`** → show schedule, scope, action.
+1. **Monitor → Alert processing rules → `apr-amlab-vm-auto-shutdown`** → show schedule, VM scopes, and action.
 2. Trigger a quick test by editing the schedule to "now + 1 minute → now + 5 minutes" (don't forget to revert).
 3. Fire any alert in that window → confirm no email arrives. Wait past the window → next firing emails as normal.
 
 ### Killer line
-> *"Maintenance windows are operational metadata, not alert configuration. One processing rule mutes the whole RG on a recurring schedule — and reactivates itself the moment the window closes."*
+> *"Expected VM downtime is operational metadata, not alert configuration. One processing rule mutes only the lab VMs on a recurring schedule — and reactivates notifications at 07:00."*
 
 ---
 

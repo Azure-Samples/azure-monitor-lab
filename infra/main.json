@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "5221471414817458778"
+      "templateHash": "1744264374651573679"
     }
   },
   "parameters": {
@@ -2534,7 +2534,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "12131549831957383843"
+              "templateHash": "4543397936947810126"
             }
           },
           "parameters": {
@@ -2684,6 +2684,28 @@
               ]
             },
             {
+              "type": "Microsoft.DevTestLab/schedules",
+              "apiVersion": "2018-09-15",
+              "name": "[format('shutdown-computevm-{0}', parameters('vmName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "status": "Enabled",
+                "taskType": "ComputeVmShutdownTask",
+                "dailyRecurrence": {
+                  "time": "2300"
+                },
+                "timeZoneId": "Romance Standard Time",
+                "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
+                "notificationSettings": {
+                  "status": "Disabled"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
+              ]
+            },
+            {
               "type": "Microsoft.Compute/virtualMachines/extensions",
               "apiVersion": "2024-03-01",
               "name": "[format('{0}/{1}', parameters('vmName'), 'AzureMonitorLinuxAgent')]",
@@ -2794,7 +2816,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "2277149854853002146"
+              "templateHash": "375882843770355197"
             }
           },
           "parameters": {
@@ -2945,6 +2967,28 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DevTestLab/schedules",
+              "apiVersion": "2018-09-15",
+              "name": "[format('shutdown-computevm-{0}', parameters('vmName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "status": "Enabled",
+                "taskType": "ComputeVmShutdownTask",
+                "dailyRecurrence": {
+                  "time": "2300"
+                },
+                "timeZoneId": "Romance Standard Time",
+                "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
+                "notificationSettings": {
+                  "status": "Disabled"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
               ]
             },
             {
@@ -13356,6 +13400,9 @@
           "primaryActionGroupId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
           },
+          "vmIds": {
+            "value": "[filter(createArray(if(parameters('deployLinuxVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value, ''), if(parameters('deployWindowsVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value, '')), lambda('id', not(empty(lambdaVariables('id')))))]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -13367,7 +13414,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "13121049081722469721"
+              "templateHash": "1152571597193598490"
             }
           },
           "parameters": {
@@ -13388,6 +13435,13 @@
               "type": "string",
               "metadata": {
                 "description": "Primary Action Group ID (on-call / high severity)."
+              }
+            },
+            "vmIds": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Lab VM resource IDs whose alert notifications are suppressed during automatic shutdown hours."
               }
             },
             "tags": {
@@ -13463,31 +13517,39 @@
               }
             },
             {
+              "condition": "[not(empty(parameters('vmIds')))]",
               "type": "Microsoft.AlertsManagement/actionRules",
               "apiVersion": "2021-08-08",
-              "name": "[format('apr-{0}-nightly-patch-window', parameters('namePrefix'))]",
+              "name": "[format('apr-{0}-vm-auto-shutdown', parameters('namePrefix'))]",
               "location": "global",
               "tags": "[parameters('tags')]",
               "properties": {
-                "description": "Suppress all alerts during the nightly patch window (02:00–04:00 UTC, daily).",
+                "description": "Suppress alert actions for lab VMs during automatic shutdown hours (23:00–07:00 CET/CEST, daily).",
                 "enabled": true,
-                "scopes": [
-                  "[parameters('resourceGroupId')]"
-                ],
+                "scopes": "[parameters('vmIds')]",
                 "actions": [
                   {
                     "actionType": "RemoveAllActionGroups"
                   }
                 ],
+                "conditions": [
+                  {
+                    "field": "TargetResourceType",
+                    "operator": "Equals",
+                    "values": [
+                      "Microsoft.Compute/virtualMachines"
+                    ]
+                  }
+                ],
                 "schedule": {
-                  "effectiveFrom": "2025-01-01T02:00:00",
-                  "effectiveUntil": "2030-12-31T04:00:00",
-                  "timeZone": "UTC",
+                  "effectiveFrom": "2025-01-01T23:00:00",
+                  "effectiveUntil": "2035-12-31T07:00:00",
+                  "timeZone": "Romance Standard Time",
                   "recurrences": [
                     {
                       "recurrenceType": "Daily",
-                      "startTime": "02:00:00",
-                      "endTime": "04:00:00"
+                      "startTime": "23:00:00",
+                      "endTime": "07:00:00"
                     }
                   ]
                 }
@@ -13505,13 +13567,15 @@
             },
             "nightlyMaintenanceRuleName": {
               "type": "string",
-              "value": "[format('apr-{0}-nightly-patch-window', parameters('namePrefix'))]"
+              "value": "[if(not(empty(parameters('vmIds'))), format('apr-{0}-vm-auto-shutdown', parameters('namePrefix')), '')]"
             }
           }
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'actiongroup')]"
+        "[resourceId('Microsoft.Resources/deployments', 'actiongroup')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-linux')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-windows')]"
       ]
     },
     {

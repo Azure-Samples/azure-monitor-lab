@@ -89,6 +89,24 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
   }
 }
 
+resource autoShutdown 'Microsoft.DevTestLab/schedules@2018-09-15' = {
+  name: 'shutdown-computevm-${vm.name}'
+  location: location
+  tags: tags
+  properties: {
+    status: 'Enabled'
+    taskType: 'ComputeVmShutdownTask'
+    dailyRecurrence: {
+      time: '2300'
+    }
+    timeZoneId: 'Romance Standard Time'
+    targetResourceId: vm.id
+    notificationSettings: {
+      status: 'Disabled'
+    }
+  }
+}
+
 // Azure Monitor Agent
 resource ama 'Microsoft.Compute/virtualMachines/extensions@2024-03-01' = {
   parent: vm

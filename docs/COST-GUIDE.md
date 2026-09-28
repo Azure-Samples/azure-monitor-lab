@@ -105,7 +105,7 @@ After teardown, verify the resource group and separately managed agent, replicat
 1. Set a subscription or resource-group budget and alerts in Cost Management.
 2. Use the lab workbook only for **central LAW ingestion volume**. It reads the `Usage` table and does not reconcile the Azure invoice.
 3. Review both LAW daily caps, table plans, retention, archive, export, and replication independently.
-4. Deallocate VMs, stop AKS, and scale the VMSS down between sessions.
+4. Both demo VMs automatically shut down at 23:00 CET/CEST. Their alert actions are suppressed from 23:00–07:00; start them manually when needed, and stop AKS and scale the VMSS down between sessions.
 5. Keep automatic agent investigations disabled unless their usage is explicitly approved.
 6. Review Cost Analysis by service name, meter, resource, and tag after each workshop.
 7. Delete the lab when it is no longer required and confirm deletion completes.
