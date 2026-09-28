@@ -142,6 +142,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await openTraffic(page);
     await page.evaluate(() => document.fonts.ready);
     await expect(page.locator('#brand-mark')).toBeVisible();
+    await expect(page.locator('#brand-mark')).toHaveAttribute('alt', 'Azure Monitor Lab');
     expect(await page.locator('#brand-mark').evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
     await page.getByRole('button', { name: /Check Health/ }).click();
     await expect(page.locator('#total')).toHaveText('1');
