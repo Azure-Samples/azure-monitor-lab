@@ -42,7 +42,13 @@ function Invoke-SetupRequest([string] $Method, [string] $Uri, [object] $Body = $
   $request = @{ Method = $Method; Uri = $Uri; Headers = @{ Authorization = "Bearer $($tokens[$parsed.Host])" }; TimeoutSec = 90; ErrorAction = 'Stop'; Verbose = $false; Debug = $false }
   if ($null -ne $Body) { $request.Body = $Body | ConvertTo-Json -Depth 25 -Compress; $request.ContentType = 'application/json' }
   try { return Invoke-RestMethod @request }
-  catch { throw "Setup API request failed: $Method $($parsed.Host)$($parsed.AbsolutePath) (HTTP $([int]$_.Exception.Response.StatusCode)). Response details suppressed to protect credentials." }
+  catch {
+    $statusCode = [int]$_.Exception.Response.StatusCode
+    if ($parsed.Host -eq 'graph.microsoft.com' -and $statusCode -eq 401) {
+      throw "Microsoft Graph rejected the cached Azure CLI session. Run 'az logout', then 'az login --tenant $TenantId', select subscription $SubscriptionId, and retry the deployment."
+    }
+    throw "Setup API request failed: $Method $($parsed.Host)$($parsed.AbsolutePath) (HTTP $statusCode). Response details suppressed to protect credentials."
+  }
 }
 
 $resourceBase = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"

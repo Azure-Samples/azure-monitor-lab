@@ -104,7 +104,7 @@ if ($fixture.FailAi) { throw 'Agent creation failed.' }
 $fixture = @{
   Subscription = [guid]::NewGuid().ToString(); Tenant = [guid]::NewGuid().ToString(); Operator = [guid]::NewGuid().ToString()
   AppIdentity = [guid]::NewGuid().ToString(); RunnerIdentity = [guid]::NewGuid().ToString(); Client = [guid]::NewGuid().ToString()
-  Settings = @{ Existing = 'preserve-me' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
+  Settings = @{ Existing = 'preserve-me' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailGraphAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
   WithAi = $false; FailAi = $false; AiCalls = 0
   DeletePreview = $false; LastPreview = ''; Deployments = 0
   ExistingTags = $true; FailTagRead = $false
@@ -214,7 +214,14 @@ function az {
 function Invoke-RestMethod {
   [CmdletBinding()]
   param($Method, $Uri, $Headers, $Body, $ContentType, $TimeoutSec)
-  if ($Uri -like 'https://graph.microsoft.com/v1.0/me*') { return @{ id = $fixture.Operator } }
+  if ($Uri -like 'https://graph.microsoft.com/v1.0/me*') {
+    if ($fixture.FailGraphAuth) {
+      $exception = [Exception]::new('TokenCreatedWithOutdatedPolicies')
+      $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 401 })
+      throw $exception
+    }
+    return @{ id = $fixture.Operator }
+  }
   if ($Uri -like "https://management.azure.com$workspace*") { return @{ name = 'law-amlab-central-test'; location = 'northeurope' } }
   if ($Uri -like "https://management.azure.com$scope/providers/Microsoft.Insights/components/*") { return @{ properties = @{ ConnectionString = 'test-connection' } } }
   if ($Uri -notlike "https://management.azure.com$scope/providers/Microsoft.Web/sites/test-app*") { throw 'Unexpected setup target.' }
@@ -252,15 +259,20 @@ try {
   $fixture.WithAi = $true
   & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
   if ($fixture.AiCalls -ne 1 -or $fixture.Settings['LabConsole__Foundry__Enabled'] -ne 'True') { throw 'Optional Foundry setup was not automatic.' }
-  foreach ($failure in @('FailAuth', 'FailBuild', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
+  foreach ($failure in @('FailAuth', 'FailGraphAuth', 'FailBuild', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
     Reset-Configuration
     $fixture[$failure] = $true
     $before = $fixture.Writes.Count
     $beforeDeployments = $fixture.Deployments
     $caught = $false
-    try { & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null } catch { $caught = $true }
+    try { & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null } catch {
+      $caught = $true
+      if ($failure -eq 'FailGraphAuth' -and $_.Exception.Message -notmatch 'az logout.+az login --tenant') {
+        throw 'Stale Graph authentication did not return actionable reauthentication guidance.'
+      }
+    }
     if (-not $caught) { throw "Deployment failure was hidden: $failure" }
-    if ($failure -eq 'BadTenant') { if ($fixture.Writes.Count -ne $before) { throw 'Tenant mismatch caused writes.' } }
+    if ($failure -in @('BadTenant', 'FailGraphAuth')) { if ($fixture.Writes.Count -ne $before) { throw "$failure caused writes." } }
     elseif ($fixture.Settings['LabConsole__Operations__Enabled'] -ne 'false') { throw 'Setup failure left operations enabled.' }
     if ($failure -eq 'DeletePreview' -and $fixture.Deployments -ne $beforeDeployments) { throw 'A destructive preview did not block deployment.' }
     if ($failure -eq 'FailTagRead' -and $fixture.Deployments -ne $beforeDeployments) { throw 'Failed tag discovery must stop before redeploying runner resources.' }
