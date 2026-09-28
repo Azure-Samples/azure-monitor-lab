@@ -116,6 +116,8 @@ For Scenario 64, the same tab includes a bounded alert-storm generator with requ
 
 Use the additional customer scenarios in [DEMO-SCENARIOS.md](DEMO-SCENARIOS.md) for alert storms, token-cost spikes, deployment regressions, and platform-versus-application failures.
 
+For an independent terminal workflow against the same Azure Monitor evidence, use [Scenario 68](DEMO-SCENARIOS.md#s68). It configures GitHub Copilot CLI with read-only Azure MCP access, provides a copyable trace-investigation prompt, and verifies the result against KQL. It is complementary to Observability Agent and is not a direct integration with it.
+
 ## Teardown
 
 Use the lab teardown so the Observability Agent is deleted explicitly before asynchronous resource-group removal:
