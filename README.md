@@ -5,7 +5,7 @@ A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability
 - One resource group: the whole lab lands in `rg-azure-monitor-lab`.
 - Two ways to deploy it: Bicep or Terraform.
 - Three ways to run it: a single-click [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) button for the Azure portal, a scripted one-shot deployment using PowerShell, or a 5-stage workshop you can walk through piece by piece.
-- 69 demo scenarios that cover Azure Monitor, agentic-application observability, GitHub Copilot CLI, and Azure SRE Agent from end to end.
+- 68 demo scenarios that cover Azure Monitor, agentic-application observability, and Azure SRE Agent from end to end.
 
 It's built for demos, microhacks, and hackathons. Deploy it, poke around, break it, restore it, and tear it down.
 
@@ -52,7 +52,7 @@ The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can a
 
 <div align="center">
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2FcreateUiDefinition.json)
 
 </div>
 
@@ -70,7 +70,7 @@ This integration-branch button deploys the current `integration` templates. The 
 After the portal deployment succeeds, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in the Azure portal, select **PowerShell**, and run the commands below. The Cloud Shell wrapper discovers the deployed resources, publishes the App Service sample, installs the AKS and Health Model demo components, and prepares the identity and RBAC prerequisites for the SLI demo without requiring optional Azure CLI extensions. It attempts to verify the Managed Prometheus source metrics and continues with a warning if Cloud Shell cannot request that token audience:
 
 ```powershell
-git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
 $tenantId = Read-Host 'Tenant ID'
 $subscriptionId = Read-Host 'Subscription ID'
@@ -164,7 +164,7 @@ $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 | [REFERENCE.md](docs/REFERENCE.md) | Full capability matrix · every deployed resource · demo walkthrough · cost breakdown · folder layout · optional add-ons · troubleshooting |
 | [COST-GUIDE.md](docs/COST-GUIDE.md) | Dated resource inventory · public-rate examples · usage formulas · optional agents · stop-versus-delete guidance |
 | [Lab Control Center](docs/LAB-CONTROL-CENTER.md) | Application guide, screenshot, traffic and agent capabilities, safety boundaries, and links to the guided scenarios |
-| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | All 69 demo scenarios, each with a story, a click-path, and a "killer line", plus audience-pivoted shortlists |
+| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | All 68 demo scenarios, each with a story, a click-path, and a "killer line", plus audience-pivoted shortlists |
 | [POST-DEPLOYMENT.md](docs/POST-DEPLOYMENT.md) | Manual and optional preparation required by specific demo scenarios after deployment is complete |
 | [PM feature integration guide](docs/PM-FEATURE-INTEGRATION-GUIDE.md) | End-to-end workflow and validation checklist for product managers adding new Azure features to every deployment path |
 | [docs/DEPLOY-BICEP-STEP-BY-STEP.md](docs/DEPLOY-BICEP-STEP-BY-STEP.md) · [docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md](docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md) | Staged deployment tutorials |
