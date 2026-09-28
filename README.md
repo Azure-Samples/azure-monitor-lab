@@ -148,7 +148,7 @@ az webapp list --subscription $subscriptionId --resource-group $resourceGroup --
 > **Ballpark:** default Stages A-E lab: **EUR 6-10/day** (EUR 180-300/month). Everything enabled with light Foundry and agent use: **EUR 10-25/day** (EUR 300-750/month), assuming an eligible SRE Agent trial and automatic Observability Agent investigations remain off. These September 2026 public-retail estimates are not quotes; heavier token/AAC use, post-trial SRE Agent charges, region, agreement, telemetry, and traffic can exceed the range. See the [cost guide](docs/COST-GUIDE.md).
 
 > [!IMPORTANT]
-> **Control costs:** both demo VMs automatically shut down daily at **23:00 CET/CEST**; VM alert actions are suppressed until **07:00**. When idle, use **Control Center → Lab Operations → Stop Lab** to stop the remaining compute. Fixed services and retained data can still bill. When finished, run the teardown below and verify deletion completes.
+> **Control costs:** VMs auto-shutdown at **23:00 CET/CEST**; VM notifications are suppressed until **07:00**. When idle, use **Control Center → Lab Operations → Stop Lab**. Fixed services and retained data still bill. When finished, tear down the lab and verify deletion.
 
 When the lab is no longer needed, set `$rg` to the resource group where you deployed the lab, then run the command below. If you used the default configuration, use `rg-azure-monitor-lab`.
 
