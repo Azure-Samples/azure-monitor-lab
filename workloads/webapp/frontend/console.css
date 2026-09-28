@@ -201,6 +201,12 @@ dialog p { font-size: 13px; color: #53636e; line-height: 1.7; margin-bottom: 14p
 .agent-layout { display: grid; grid-template-columns: 320px minmax(0,1fr); gap: 36px; padding-bottom: 36px; min-height: 510px; }
 .agent-settings { min-width: 0; border-right: 1px solid var(--border); padding-right: 28px; }
 .agent-workspace { min-width: 0; }
+.agent-scenario-panel { border: 1px solid var(--border); background: #f7fafb; padding: 18px; margin-bottom: 28px; }
+.agent-scenario-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.scenario-investigation { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.scenario-investigation h3 { margin: 0 0 6px; font-size: 14px; }
+.scenario-investigation textarea { margin-top: 10px; background: #fff; font-size: 11px; }
+.agent-scenario-panel progress { margin-top: 14px; }
 .sre-messages { min-height: 180px; max-height: 660px; overflow-y: auto; overflow-wrap: anywhere; }
 .sre-message { padding: 14px 12px 20px; }
 .sre-user-message { border-left: 3px solid var(--border); background: #f4f7f8; }
@@ -268,6 +274,7 @@ a[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); opacity: .65
 	.agent-heading h2 { font-size: 21px; }
 	.agent-layout { grid-template-columns: minmax(0,1fr); gap: 24px; }
 	.agent-settings { border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 16px; }
+	.agent-scenario-fields { grid-template-columns: minmax(0,1fr); }
 	.evidence-brief { min-height: 360px; font-size: 11px; }
 	.agent-metadata { grid-template-columns: 85px minmax(0,1fr); }
 }

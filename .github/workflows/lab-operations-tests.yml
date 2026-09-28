@@ -27,11 +27,13 @@ on:
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
+      - 'scripts/tests/observability-agent-config.Tests.ps1'
       - 'scripts/tests/amba.Tests.ps1'
       - 'scripts/tests/webapp-publication.Tests.ps1'
       - 'scripts/setup-ai.ps1'
       - 'scripts/setup-ai-cloud-shell.ps1'
       - 'scripts/setup-sre-agent.ps1'
+      - 'scripts/setup-observability-agent.ps1'
       - 'scripts/setup-slis.ps1'
       - 'scripts/setup-health-model.ps1'
       - 'scripts/remove-arm-resource.ps1'
@@ -40,15 +42,18 @@ on:
       - 'workloads/operations/**'
       - 'infra/modules/lab-console*'
       - 'infra/modules/appservice*'
+      - 'infra/modules/observability-agent*'
       - 'infra/main.*'
       - 'infra/stages/*'
       - 'docs/DEPLOY-*-STEP-BY-STEP.md'
       - 'docs/POST-DEPLOYMENT.md'
       - 'docs/STAGE-AI.md'
+      - 'docs/STAGE-OBSERVABILITY-AGENT.md'
       - 'scripts/README.md'
       - 'terraform/**'
       - 'scripts/tests/lab-operations*.Tests.ps1'
       - 'scripts/start-the-lab.ps1'
+      - 'scripts/stop-the-lab.ps1'
       - 'scripts/break-the-lab.ps1'
       - 'scripts/restore-the-lab.ps1'
       - 'scripts/start-ramp.ps1'
@@ -85,6 +90,7 @@ jobs:
           ./scripts/tests/staged-guide.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
+          ./scripts/tests/observability-agent-config.Tests.ps1
           ./scripts/tests/entra-cleanup.Tests.ps1
           ./workloads/webapp/tests/webapp-access.Tests.ps1
       - name: Agent provisioning and background traffic without Azure

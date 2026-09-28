@@ -1,0 +1,353 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "7130874890888095787"
+    }
+  },
+  "parameters": {
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "amlab",
+      "minLength": 3,
+      "maxLength": 8,
+      "metadata": {
+        "description": "Short prefix used to build resource names."
+      }
+    },
+    "ownerTag": {
+      "type": "string",
+      "defaultValue": "demo-lab",
+      "metadata": {
+        "description": "Tag every resource with this owner."
+      }
+    },
+    "observabilityAgentLocation": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "allowedValues": [
+        "australiaeast",
+        "canadacentral",
+        "centralus",
+        "eastasia",
+        "eastus",
+        "southcentralus",
+        "uksouth",
+        "westcentralus",
+        "westeurope"
+      ],
+      "metadata": {
+        "description": "Supported region for the Observability Agent and its Azure Monitor workspace."
+      }
+    },
+    "enableObservabilityAgentAutomaticInvestigation": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Run billable deep investigations automatically for agent-created issues."
+      }
+    },
+    "observabilityAgentInstructions": {
+      "type": "string",
+      "defaultValue": "Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.",
+      "maxLength": 8192,
+      "metadata": {
+        "description": "Natural-language guidance for alert correlation and issue creation."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[uniqueString(resourceGroup().id)]",
+    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "agentName": "[format('obs-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
+    "monitoringAccountName": "[format('amw-{0}-obs', parameters('namePrefix'))]",
+    "commonTags": {
+      "owner": "[parameters('ownerTag')]",
+      "purpose": "azure-monitor-lab",
+      "costCenter": "demo",
+      "feature": "observability-agent"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "observability-agent",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('agentName')]"
+          },
+          "monitoringAccountName": {
+            "value": "[variables('monitoringAccountName')]"
+          },
+          "location": {
+            "value": "[parameters('observabilityAgentLocation')]"
+          },
+          "appInsightsId": {
+            "value": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+          },
+          "issueCreationInstructions": {
+            "value": "[parameters('observabilityAgentInstructions')]"
+          },
+          "enableAutomaticInvestigation": {
+            "value": "[parameters('enableObservabilityAgentAutomaticInvestigation')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "9707001849426355645"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Copilot Observability Agent resource name."
+              }
+            },
+            "monitoringAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Monitor workspace name used to store issues."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "westeurope",
+              "allowedValues": [
+                "australiaeast",
+                "canadacentral",
+                "centralus",
+                "eastasia",
+                "eastus",
+                "southcentralus",
+                "uksouth",
+                "westcentralus",
+                "westeurope"
+              ],
+              "metadata": {
+                "description": "Supported Observability Agent region. Must match the Azure Monitor workspace region."
+              }
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights resource ID monitored by the agent."
+              }
+            },
+            "issueCreationInstructions": {
+              "type": "string",
+              "maxLength": 8192,
+              "metadata": {
+                "description": "Natural-language guidance for alert correlation and issue creation."
+              }
+            },
+            "enableAutomaticInvestigation": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Run billable deep investigations automatically for agent-created issues."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "variables": {
+            "issueContributorRoleId": "8d7ecc5c-f27b-43cf-883f-46409d445502"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Monitor/accounts",
+              "apiVersion": "2023-04-03",
+              "name": "[parameters('monitoringAccountName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {}
+            },
+            {
+              "type": "Microsoft.Monitor/observabilityAgents",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "monitoringAccountId": "[resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName'))]",
+                "enabled": true,
+                "operations": [
+                  {
+                    "type": "IssueCreation",
+                    "mode": "Auto",
+                    "instructions": "[parameters('issueCreationInstructions')]"
+                  },
+                  {
+                    "type": "Investigation",
+                    "mode": "[if(parameters('enableAutomaticInvestigation'), 'Auto', 'Manual')]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Monitor/accounts/{0}', parameters('monitoringAccountName'))]",
+              "name": "[guid(resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName')), resourceId('Microsoft.Monitor/observabilityAgents', parameters('name')), variables('issueContributorRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('issueContributorRoleId'))]",
+                "principalId": "[reference(resourceId('Microsoft.Monitor/observabilityAgents', parameters('name')), '2026-05-01-preview', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Monitor/observabilityAgents', parameters('name'))]",
+                "[resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Monitor/observabilityAgents/monitoredResources",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('name'), 'application-insights')]",
+              "properties": {
+                "resourceId": "[parameters('appInsightsId')]",
+                "enabled": true,
+                "isAutonomous": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Monitor/observabilityAgents', parameters('name'))]",
+                "[extensionResourceId(resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName')), resourceId('Microsoft.Monitor/observabilityAgents', parameters('name')), variables('issueContributorRoleId')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Monitor/observabilityAgents', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Monitor/observabilityAgents', parameters('name')), '2026-05-01-preview', 'full').identity.principalId]"
+            },
+            "monitoringAccountId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName'))]"
+            },
+            "monitoringAccountName": {
+              "type": "string",
+              "value": "[parameters('monitoringAccountName')]"
+            },
+            "portalUrl": {
+              "type": "string",
+              "value": "[format('https://portal.azure.com/#resource{0}', resourceId('Microsoft.Monitor/observabilityAgents', parameters('name')))]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "observability-agent-subscription-rbac",
+      "subscriptionId": "[subscription().subscriptionId]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.principalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "436818000402649827"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "System-assigned principal ID of the Azure Copilot Observability Agent."
+              }
+            }
+          },
+          "variables": {
+            "monitoringReaderRoleId": "43d0d8ad-25c7-4714-9337-8ba259a9fe05"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(subscription().id, parameters('principalId'), variables('monitoringReaderRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReaderRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'observability-agent')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "observabilityAgentName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.name.value]"
+    },
+    "observabilityAgentId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.id.value]"
+    },
+    "observabilityAgentPortalUrl": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.portalUrl.value]"
+    },
+    "observabilityAgentMonitoringAccountName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.monitoringAccountName.value]"
+    },
+    "automaticInvestigationEnabled": {
+      "type": "bool",
+      "value": "[parameters('enableObservabilityAgentAutomaticInvestigation')]"
+    }
+  }
+}

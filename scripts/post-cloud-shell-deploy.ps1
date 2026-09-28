@@ -5,11 +5,15 @@
 .DESCRIPTION
   Signs in to the selected tenant, pins and verifies the selected subscription, discovers the portal-deployed lab
   resources, resolves Application Insights through the core ARM CLI surface, and
-  runs the same workload, Health Model, SLI, and SRE validation helpers used by deploy.ps1.
+  runs the same workload, Health Model, SLI, SRE, and Observability Agent validation helpers used by deploy.ps1.
 
 .PARAMETER EnableStageSreAgent
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
+
+.PARAMETER EnableStageObservabilityAgent
+  Validate Azure Copilot Observability Agent when true. When omitted, detect the
+  deployed resource. Explicit false skips validation without changing it.
 
 .EXAMPLE
   ./scripts/post-cloud-shell-deploy.ps1 -TenantId <tenant-id> -SubscriptionId <subscription-id> -ResourceGroup rg-azure-monitor-lab
@@ -21,7 +25,8 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [string] $NamePrefix = 'amlab',
   [guid[]] $ConsoleOperatorObjectIds,
-  [bool] $EnableStageSreAgent = $false
+  [bool] $EnableStageSreAgent = $false,
+  [bool] $EnableStageObservabilityAgent = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,6 +56,9 @@ $resources = @(az resource list --subscription $active.id -g $ResourceGroup -o j
 if ($LASTEXITCODE -ne 0) { throw 'Portal resource discovery failed.' }
 if (-not $PSBoundParameters.ContainsKey('EnableStageSreAgent')) {
   $EnableStageSreAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.App/agents' }).Count -gt 0
+}
+if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
+  $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
 }
 $webApp = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*"
@@ -121,6 +129,11 @@ try {
 if ($EnableStageSreAgent) {
   Write-Step 'Validating the deployed SRE Agent and monitoring connectors'
   & (Join-Path $PSScriptRoot 'setup-sre-agent.ps1') -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup
+}
+
+if ($EnableStageObservabilityAgent) {
+  Write-Step 'Validating the deployed Observability Agent, monitored Application Insights resource, and RBAC'
+  & (Join-Path $PSScriptRoot 'setup-observability-agent.ps1') -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup
 }
 
 Write-Host @"

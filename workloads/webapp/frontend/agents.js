@@ -10,6 +10,8 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
   let context = {};
   let availableAgents = [];
   let activeRequest = null;
+  let alertStorm = null;
+  let tokenAnomaly = null;
   let catalogLoaded = false;
   let refreshing = false;
   const tabs = [...document.querySelectorAll('[role="tab"]')];
@@ -69,6 +71,7 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
       byId('sre-app').textContent = context.appService || 'Not configured';
       byId('sre-destination-status').textContent = setDestination('sre-open', context.sreUrl) ? 'SRE Agent destination configured' : 'SRE Agent destination not configured';
       setDestination('foundry-open', context.foundryUrl);
+      setDestination('observability-open', context.observabilityAgentUrl);
     } catch {
       byId('lab-resource').textContent = 'Unavailable';
       byId('lab-app').textContent = 'Unavailable';
@@ -77,9 +80,9 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
   }
 
   function updateAgentControls() {
-    const running = Boolean(activeRequest);
+    const running = Boolean(activeRequest || alertStorm || tokenAnomaly);
     byId('agent-send').disabled = running || refreshing || !availableAgents.length || !byId('agent-prompt').value.trim() || !byId('agent-consent').checked;
-    byId('agent-cancel').disabled = !running;
+    byId('agent-cancel').disabled = !activeRequest;
     byId('agent-choice').disabled = running || refreshing || !availableAgents.length;
     byId('agent-refresh').disabled = running || refreshing;
     byId('agent-prompt').disabled = running;
@@ -87,6 +90,9 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
     byId('agent-clear').disabled = running;
     byId('agent-model').textContent = availableAgents.find(item => item.key === byId('agent-choice').value)?.model || 'Model unavailable';
     byId('prompt-length').textContent = `${byId('agent-prompt').value.length.toLocaleString()} / 4,000`;
+    updateScenarioControls();
+    updateAlertStormControls();
+    updateTokenAnomalyControls();
   }
   async function loadCatalog() {
     if (refreshing || activeRequest) return;
@@ -105,17 +111,299 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
         ? `${availableAgents.length} agent${availableAgents.length === 1 ? '' : 's'} available` : 'Unavailable';
       byId('agent-availability').textContent = data.message || 'Agent discovery failed';
       byId('agent-choice').replaceChildren(...availableAgents.map(item => new Option(item.name, item.key)));
+      byId('token-anomaly-agent').replaceChildren(...availableAgents.map(item => new Option(item.name, item.key)));
       if (!availableAgents.length) byId('agent-choice').append(new Option('No agents available', ''));
+      if (!availableAgents.length) byId('token-anomaly-agent').append(new Option('No agents available', ''));
       if (availableAgents.some(item => item.key === previous)) byId('agent-choice').value = previous;
     } catch {
       availableAgents = [];
       byId('foundry-connection').textContent = 'Unavailable';
       byId('agent-choice').replaceChildren(new Option('No agents available', ''));
+      byId('token-anomaly-agent').replaceChildren(new Option('No agents available', ''));
       byId('agent-availability').textContent = 'Agent discovery unavailable. Retry shortly.';
     } finally { refreshing = false; updateAgentControls(); }
   }
   byId('agent-refresh').addEventListener('click', loadCatalog);
   for (const id of ['agent-choice', 'agent-prompt', 'agent-consent']) byId(id).addEventListener('input', updateAgentControls);
+
+  function updateScenarioControls() {
+    byId('agent-scenario-run').disabled = Boolean(activeRequest || alertStorm || tokenAnomaly)
+      || !byId('agent-scenario-consent').checked || !byId('agent-scenario').value;
+  }
+  function updateAlertStormControls() {
+    const running = Boolean(alertStorm);
+    const count = Number(byId('alert-storm-count').value);
+    const durationMinutes = Number(byId('alert-storm-duration').value);
+    const safeRate = count / durationMinutes <= 5;
+    byId('alert-storm-start').disabled = Boolean(activeRequest || alertStorm || tokenAnomaly)
+      || !byId('alert-storm-consent').checked || !safeRate;
+    byId('alert-storm-stop').disabled = !running;
+    byId('alert-storm-count').disabled = running;
+    byId('alert-storm-duration').disabled = running;
+    byId('alert-storm-consent').disabled = running;
+  }
+  function updateTokenAnomalyControls() {
+    const running = Boolean(tokenAnomaly);
+    byId('token-anomaly-start').disabled = Boolean(activeRequest || alertStorm || tokenAnomaly)
+      || !availableAgents.length || !byId('token-anomaly-agent').value || !byId('token-anomaly-consent').checked;
+    byId('token-anomaly-stop').disabled = !running;
+    byId('token-anomaly-agent').disabled = running || refreshing || !availableAgents.length;
+    byId('token-anomaly-count').disabled = running;
+    byId('token-anomaly-consent').disabled = running;
+  }
+  async function loadScenarioCatalog() {
+    try {
+      const response = await fetch('/api/agents/scenarios', { cache: 'no-store', referrerPolicy: 'same-origin' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const select = byId('agent-scenario');
+      select.replaceChildren();
+      const scenarios = Array.isArray(data) ? data : data.scenarios || [];
+      for (const scenario of scenarios) {
+        const option = document.createElement('option');
+        option.value = scenario.key;
+        option.textContent = scenario.name;
+        select.append(option);
+      }
+      if (!select.value) throw new Error('No scenarios are available');
+      updateScenarioControls();
+    } catch (error) {
+      byId('agent-scenario').replaceChildren();
+      byId('agent-scenario-status').textContent = `Scenario catalog unavailable: ${error.message || 'request failed'}`;
+      updateScenarioControls();
+    }
+  }
+  byId('agent-scenario-consent').addEventListener('input', updateScenarioControls);
+  byId('agent-scenario-copy').addEventListener('click', async () => {
+    const prompt = byId('agent-scenario-prompt').value;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      toast('Observability Agent prompt copied');
+    } catch {
+      toast('Clipboard unavailable. Select the prompt to copy it.');
+    }
+  });
+  byId('agent-scenario-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = byId('agent-scenario-run');
+    button.disabled = true;
+    byId('agent-scenario-status').textContent = 'Generating deterministic agent telemetry...';
+    const payload = {
+      scenario: byId('agent-scenario').value,
+      mode: byId('agent-scenario-mode').value,
+      consent: byId('agent-scenario-consent').checked
+    };
+    try {
+      const response = await fetch('/api/agents/scenarios/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Amlab-Agent-Request': 'true' },
+        referrerPolicy: 'same-origin',
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000)
+      });
+      const data = await response.json();
+      if (!response.ok && !data.status) throw new Error(data.error || `HTTP ${response.status}`);
+      const trace = data.traceId || 'unavailable';
+      byId('agent-scenario-status').textContent = `${data.scenario} / ${data.mode}: ${data.status}; ${Math.round(data.durationMs).toLocaleString()} ms; selected ${data.selectedTool}; trace ${trace}`;
+      if (typeof data.investigationPrompt === 'string' && data.investigationPrompt.trim()) {
+        byId('agent-scenario-prompt').value = data.investigationPrompt;
+        byId('agent-scenario-investigation').hidden = false;
+      } else {
+        byId('agent-scenario-prompt').value = '';
+        byId('agent-scenario-investigation').hidden = true;
+      }
+    } catch (error) {
+      byId('agent-scenario-status').textContent = `Scenario failed: ${error.message || 'request unavailable'}`;
+      byId('agent-scenario-prompt').value = '';
+      byId('agent-scenario-investigation').hidden = true;
+    } finally {
+      byId('agent-scenario-consent').checked = false;
+      updateScenarioControls();
+    }
+  });
+
+  function waitForBatch(delayMs, batch) {
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, delayMs);
+      batch.wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }
+
+  for (const id of ['alert-storm-count', 'alert-storm-duration', 'alert-storm-consent']) {
+    byId(id).addEventListener('input', () => {
+      const count = Number(byId('alert-storm-count').value);
+      byId('alert-storm-progress').max = count;
+      byId('alert-storm-progress').value = 0;
+      byId('alert-storm-counter').textContent = `0 / ${count}`;
+      byId('alert-storm-status').textContent = count / Number(byId('alert-storm-duration').value) <= 5
+        ? 'Ready' : 'Choose a longer duration to stay within the request safety limit.';
+      updateAlertStormControls();
+    });
+  }
+  byId('alert-storm-start').addEventListener('click', async () => {
+    if (activeRequest || alertStorm || tokenAnomaly) return;
+    const count = Math.min(24, Math.max(1, Number(byId('alert-storm-count').value) || 18));
+    const durationMs = Math.max(180000, Number(byId('alert-storm-duration').value) * 60000);
+    if (count / (durationMs / 60000) > 5) {
+      byId('alert-storm-status').textContent = 'Choose a longer duration to stay within the request safety limit.';
+      return;
+    }
+    alertStorm = { stopped: false, completed: 0, failed: 0, slow: 0, wake: null, controller: new AbortController() };
+    const batch = alertStorm;
+    const intervalMs = count > 1 ? durationMs / (count - 1) : 0;
+    const pattern = ['slow-tool', 'partial-failure', 'partial-failure'];
+    byId('alert-storm-progress').max = count;
+    byId('alert-storm-progress').value = 0;
+    byId('alert-storm-status').textContent = 'Generating mixed broken traces...';
+    byId('alert-storm-counter').textContent = `0 / ${count}`;
+    updateAgentControls();
+    try {
+      for (let index = 0; index < count && !batch.stopped; index++) {
+        const started = performance.now();
+        const scenario = pattern[index % pattern.length];
+        const response = await fetch('/api/agents/scenarios/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Amlab-Agent-Request': 'true' },
+          referrerPolicy: 'same-origin',
+          body: JSON.stringify({ scenario, mode: 'broken', consent: true }),
+          signal: AbortSignal.any([batch.controller.signal, AbortSignal.timeout(10000)])
+        });
+        const data = await response.json().catch(() => null);
+        if (!data?.status || (!response.ok && response.status !== 502)) {
+          const retry = response.headers.get('Retry-After');
+          throw new Error(retry ? `HTTP ${response.status}; retry after ${retry} seconds` : `HTTP ${response.status}`);
+        }
+        batch.completed++;
+        if (response.status === 502) batch.failed++;
+        if (scenario === 'slow-tool') batch.slow++;
+        byId('alert-storm-progress').value = batch.completed;
+        byId('alert-storm-counter').textContent = `${batch.completed} / ${count}`;
+        byId('alert-storm-status').textContent = `Running: ${batch.slow} slow, ${batch.failed} failed`;
+        if (batch.stopped || batch.completed === count) break;
+        await waitForBatch(Math.max(0, intervalMs - (performance.now() - started)), batch);
+        batch.wake = null;
+      }
+      byId('alert-storm-status').textContent = batch.stopped
+        ? `Stopped after ${batch.completed}: ${batch.slow} slow, ${batch.failed} failed`
+        : `Completed ${batch.completed}: ${batch.slow} slow, ${batch.failed} failed`;
+    } catch (error) {
+      byId('alert-storm-status').textContent = batch.stopped || error.name === 'AbortError'
+        ? `Stopped after ${batch.completed}: ${batch.slow} slow, ${batch.failed} failed`
+        : `Stopped after ${batch.completed}; ${error.message || 'request failed'}. No request was replayed.`;
+    } finally {
+      byId('alert-storm-consent').checked = false;
+      alertStorm = null;
+      updateAgentControls();
+    }
+  });
+  byId('alert-storm-stop').addEventListener('click', () => {
+    if (!alertStorm) return;
+    alertStorm.stopped = true;
+    alertStorm.controller.abort();
+    alertStorm.wake?.();
+    byId('alert-storm-status').textContent = 'Stopping...';
+  });
+
+  function tokenAnomalyPrompt(batchId, callNumber) {
+    const context = [
+      'Synthetic retail support policy: orders can be returned within 30 days when unused.',
+      'Synthetic operations policy: escalate suspected fraud and never request secrets.',
+      'Synthetic FinOps policy: state assumptions, quantify token use, and recommend bounded guardrails.',
+      'Synthetic service context: customer, inventory, order, payment, shipping, and notification systems are independent.',
+      'Synthetic reliability context: retries require idempotency and latency budgets apply to every dependency.'
+    ].join(' ');
+    const uniquePrefix = `Token anomaly demonstration ${batchId}, call ${callNumber}. `;
+    const body = `${uniquePrefix}${context}\n`.repeat(18);
+    return `${body.slice(0, 3650)}\nUsing only this synthetic context, return exactly three concise bullets: the likely cost risk, one monitoring check, and one guardrail.`;
+  }
+
+  function tokenAnomalyCostSummary(batch) {
+    if (batch.unpricedCalls > 0) {
+      return batch.pricedCalls > 0
+        ? `partial estimate $${batch.cost.toFixed(6)}; pricing unavailable for ${batch.unpricedCalls} call${batch.unpricedCalls === 1 ? '' : 's'}`
+        : 'cost unavailable; model pricing is not configured';
+    }
+    return `estimated $${batch.cost.toFixed(6)}`;
+  }
+
+  for (const id of ['token-anomaly-agent', 'token-anomaly-count', 'token-anomaly-consent']) {
+    byId(id).addEventListener('input', () => {
+      const count = Number(byId('token-anomaly-count').value);
+      byId('token-anomaly-progress').max = count;
+      byId('token-anomaly-progress').value = 0;
+      byId('token-anomaly-counter').textContent = `0 / ${count}`;
+      updateTokenAnomalyControls();
+    });
+  }
+  byId('token-anomaly-start').addEventListener('click', async () => {
+    if (activeRequest || alertStorm || tokenAnomaly || !availableAgents.length) return;
+    const count = Math.min(10, Math.max(1, Number(byId('token-anomaly-count').value) || 5));
+    const batchId = crypto.randomUUID();
+    tokenAnomaly = {
+      stopped: false, completed: 0, inputTokens: 0, outputTokens: 0, cost: 0,
+      pricedCalls: 0, unpricedCalls: 0, batchId, controller: new AbortController()
+    };
+    const batch = tokenAnomaly;
+    byId('token-anomaly-progress').max = count;
+    byId('token-anomaly-progress').value = 0;
+    byId('token-anomaly-counter').textContent = `0 / ${count}`;
+    byId('token-anomaly-status').textContent = 'Submitting billable Foundry calls...';
+    updateAgentControls();
+    try {
+      for (let index = 0; index < count && !batch.stopped; index++) {
+        const response = await fetch('/api/agents/run', {
+          method: 'POST',
+          cache: 'no-store',
+          referrerPolicy: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-Amlab-Agent-Request': 'true' },
+          body: JSON.stringify({
+            agent: byId('token-anomaly-agent').value,
+            prompt: tokenAnomalyPrompt(batchId, index + 1),
+            consent: true,
+            scenario: 'token-anomaly',
+            batchId
+          }),
+          signal: AbortSignal.any([batch.controller.signal, AbortSignal.timeout(115000)])
+        });
+        const data = await response.json().catch(() => null);
+        batch.inputTokens += Number(data?.inputTokens) || 0;
+        batch.outputTokens += Number(data?.outputTokens) || 0;
+        if (typeof data?.estimatedCostUsd === 'number' && Number.isFinite(data.estimatedCostUsd)) {
+          batch.cost += data.estimatedCostUsd;
+          batch.pricedCalls++;
+        } else {
+          batch.unpricedCalls++;
+        }
+        if (!response.ok || typeof data?.agent !== 'string') {
+          const retry = response.headers.get('Retry-After');
+          const message = typeof data?.error === 'string' ? data.error : `HTTP ${response.status}`;
+          throw new Error(`${message}${retry ? ` Retry after ${retry} seconds.` : ''}`);
+        }
+        batch.completed++;
+        byId('token-anomaly-progress').value = batch.completed;
+        byId('token-anomaly-counter').textContent = `${batch.completed} / ${count}`;
+        byId('token-anomaly-status').textContent = `Running: ${(batch.inputTokens + batch.outputTokens).toLocaleString()} tokens; ${tokenAnomalyCostSummary(batch)}`;
+      }
+      byId('token-anomaly-status').textContent = `${batch.stopped ? 'Stopped' : 'Completed'} ${batch.completed} calls; ${batch.inputTokens.toLocaleString()} input + ${batch.outputTokens.toLocaleString()} output tokens; ${tokenAnomalyCostSummary(batch)}; batch ${batch.batchId}`;
+    } catch (error) {
+      byId('token-anomaly-status').textContent = batch.stopped || error.name === 'AbortError'
+        ? `Stopped after ${batch.completed} completed calls; ${(batch.inputTokens + batch.outputTokens).toLocaleString()} reported tokens may still be billed.`
+        : `Stopped after ${batch.completed} completed calls; ${(batch.inputTokens + batch.outputTokens).toLocaleString()} reported tokens; ${error.message || 'request failed'}. No billable call was replayed.`;
+    } finally {
+      byId('token-anomaly-consent').checked = false;
+      tokenAnomaly = null;
+      updateAgentControls();
+    }
+  });
+  byId('token-anomaly-stop').addEventListener('click', () => {
+    if (!tokenAnomaly) return;
+    tokenAnomaly.stopped = true;
+    tokenAnomaly.controller.abort();
+    byId('token-anomaly-status').textContent = 'Stopping after the current Foundry cancellation request...';
+  });
 
   function element(tag, text, className) {
     const item = document.createElement(tag);
@@ -209,5 +497,6 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
     updateAgentControls();
   });
   activate(tabs[0]);
+  loadScenarioCatalog();
   loadContext();
 }

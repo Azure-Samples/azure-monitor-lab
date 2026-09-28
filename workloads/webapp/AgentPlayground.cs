@@ -6,7 +6,7 @@ using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
 using System.Diagnostics;
 
-public sealed record AgentTask(string? Agent, string? Prompt, bool Consent);
+public sealed record AgentTask(string? Agent, string? Prompt, bool Consent, string? Scenario = null, string? BatchId = null);
 public sealed record AgentEntry(string Key, string Name, string Model);
 public sealed record AgentCatalog(bool Available, string State, string Message, IReadOnlyList<AgentEntry> Agents);
 public sealed record AgentAnswer(string Agent, string Model, string Text, string Status, long? InputTokens,
@@ -103,6 +103,10 @@ public sealed class AgentPlayground(IConfiguration configuration, ILogger<AgentP
             return Results.BadRequest(new { error = "Choose one of the supported lab agents." });
         if (string.IsNullOrWhiteSpace(task.Prompt) || task.Prompt.Length > 4000)
             return Results.BadRequest(new { error = "Enter a task between 1 and 4000 characters." });
+        if (task.Scenario is not null && task.Scenario != "token-anomaly")
+            return Results.BadRequest(new { error = "Choose a supported agent telemetry scenario." });
+        if (task.BatchId is not null && (!Guid.TryParse(task.BatchId, out _) || task.Scenario != "token-anomaly"))
+            return Results.BadRequest(new { error = "The telemetry batch identifier is invalid." });
         if (!task.Consent) return Results.BadRequest(new { error = "Confirm billable model usage before submitting." });
         if (!await runLock.WaitAsync(0, cancellationToken))
             return Results.Json(new { error = "Another agent task is running. Try again shortly." }, statusCode: 429);
@@ -115,6 +119,8 @@ public sealed class AgentPlayground(IConfiguration configuration, ILogger<AgentP
         };
         dependency.Properties["gen_ai.agent.name"] = AllowedAgents[task.Agent];
         dependency.Properties["source"] = "web-console";
+        if (task.Scenario is not null) dependency.Properties["scenario"] = task.Scenario;
+        if (task.BatchId is not null) dependency.Properties["batch.id"] = task.BatchId;
         var started = Stopwatch.StartNew();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(90));
@@ -135,23 +141,13 @@ public sealed class AgentPlayground(IConfiguration configuration, ILogger<AgentP
             await agentClient.Messages.CreateMessageAsync(thread.Id, MessageRole.User, task.Prompt.Trim(), cancellationToken: deadline.Token);
             run = await agentClient.Runs.CreateRunAsync(thread.Id, verified.Id,
                 overrideTools: Array.Empty<ToolDefinition>(),
-                maxPromptTokens: 8192, maxCompletionTokens: 2048,
+                maxPromptTokens: 8192, maxCompletionTokens: task.Scenario == "token-anomaly" ? 4096 : 2048,
                 cancellationToken: deadline.Token);
             while (run.Status == RunStatus.Queued || run.Status == RunStatus.InProgress)
             {
                 await Task.Delay(750, deadline.Token);
                 run = await agentClient.Runs.GetRunAsync(thread.Id, run.Id, deadline.Token);
             }
-            if (run.Status != RunStatus.Completed)
-                return Results.Json(new { error = $"Agent run ended with status {run.Status}. No tool actions were executed by the console.", runId = run.Id }, statusCode: 502);
-            var texts = new List<string>();
-            await foreach (var message in agentClient.Messages.GetMessagesAsync(thread.Id, order: ListSortOrder.Ascending, cancellationToken: deadline.Token))
-            {
-                if (message.Role == MessageRole.Agent)
-                    texts.AddRange(message.ContentItems.OfType<MessageTextContent>().Select(item => item.Text));
-            }
-            var text = string.Join("\n\n", texts);
-            if (text.Length > 24000) text = text[..24000];
             var inputTokens = run.Usage?.PromptTokens;
             var outputTokens = run.Usage?.CompletionTokens;
             decimal? cost = null;
@@ -160,11 +156,34 @@ public sealed class AgentPlayground(IConfiguration configuration, ILogger<AgentP
                 && decimal.TryParse(pricing["OutputUsdPerMillion"], System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var outputRate)
                 && inputRate >= 0 && outputRate >= 0 && inputTokens.HasValue && outputTokens.HasValue)
                 cost = (inputTokens.Value * inputRate + outputTokens.Value * outputRate) / 1_000_000m;
+            if (run.Status != RunStatus.Completed)
+            {
+                var incompleteReason = run.IncompleteDetails?.Reason.ToString();
+                return Results.Json(new
+                {
+                    error = $"Agent run ended with status {run.Status}{(incompleteReason is null ? "" : $" ({incompleteReason})")}. No tool actions were executed by the console.",
+                    runId = run.Id,
+                    incompleteReason,
+                    inputTokens,
+                    outputTokens,
+                    estimatedCostUsd = cost
+                }, statusCode: 502);
+            }
+            var texts = new List<string>();
+            await foreach (var message in agentClient.Messages.GetMessagesAsync(thread.Id, order: ListSortOrder.Ascending, cancellationToken: deadline.Token))
+            {
+                if (message.Role == MessageRole.Agent)
+                    texts.AddRange(message.ContentItems.OfType<MessageTextContent>().Select(item => item.Text));
+            }
+            var text = string.Join("\n\n", texts);
+            if (text.Length > 24000) text = text[..24000];
             var dimensions = new Dictionary<string, string>
             {
                 ["gen_ai.agent.name"] = verified.Name, ["gen_ai.response.model"] = run.Model,
                 ["gen_ai.operation.name"] = "invoke_agent", ["run.id"] = run.Id, ["source"] = "web-console"
             };
+            if (task.Scenario is not null) dimensions["scenario"] = task.Scenario;
+            if (task.BatchId is not null) dimensions["batch.id"] = task.BatchId;
             var metrics = new Dictionary<string, double> { ["duration_ms"] = started.Elapsed.TotalMilliseconds };
             if (inputTokens.HasValue) metrics["gen_ai.usage.input_tokens"] = inputTokens.Value;
             if (outputTokens.HasValue) metrics["gen_ai.usage.output_tokens"] = outputTokens.Value;
@@ -196,6 +215,8 @@ public sealed class AgentPlayground(IConfiguration configuration, ILogger<AgentP
                 dependency.ResultCode = run.Status.ToString();
                 dependency.Properties["gen_ai.response.model"] = run.Model;
                 dependency.Properties["run.id"] = run.Id;
+                if (run.IncompleteDetails is not null)
+                    dependency.Properties["run.incomplete_reason"] = run.IncompleteDetails.Reason.ToString();
                 if (run.Usage is not null)
                 {
                     dependency.Properties["gen_ai.usage.input_tokens"] = run.Usage.PromptTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);

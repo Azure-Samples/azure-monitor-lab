@@ -133,6 +133,7 @@
         <section aria-labelledby="operations-actions-heading"><div class="section-heading"><h2 id="operations-actions-heading">Lab actions</h2><span class="session-tag">APPROVAL REQUIRED</span></div>
           <div class="operation-actions">
             <button class="action" data-operation="start" aria-haspopup="dialog" disabled><i data-lucide="play"></i><span>Start Lab</span><i data-lucide="arrow-right"></i></button>
+            <button class="action danger-accent" data-operation="stop" aria-haspopup="dialog" disabled><i data-lucide="square"></i><span>Stop Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action danger-accent" data-operation="break" aria-haspopup="dialog" disabled><i data-lucide="triangle-alert"></i><span>Break Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="restore" aria-haspopup="dialog" disabled><i data-lucide="refresh-cw"></i><span>Restore Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="ramp" aria-haspopup="dialog" disabled><i data-lucide="chart-no-axes-combined"></i><span>Start Load Ramp</span><i data-lucide="arrow-right"></i></button>
@@ -182,7 +183,7 @@
       </div>
     </section>
     <section id="panel-foundry" role="tabpanel" aria-labelledby="tab-foundry" tabindex="0" hidden>
-      <div class="agent-heading"><div><p class="eyebrow">FOUNDRY / EXISTING LAB AGENTS</p><h2>Foundry Playground</h2></div><a id="foundry-open" class="button secondary" aria-disabled="true"><i data-lucide="external-link"></i>Open Foundry</a></div>
+      <div class="agent-heading"><div><p class="eyebrow">FOUNDRY / AGENT OBSERVABILITY</p><h2>Foundry Playground</h2></div><div class="run-buttons"><a id="observability-open" class="button secondary" aria-disabled="true"><i data-lucide="external-link"></i>Open Observability Agent</a><a id="foundry-open" class="button secondary" aria-disabled="true"><i data-lucide="external-link"></i>Open Foundry</a></div></div>
       <div class="agent-layout">
         <form id="agent-form" class="agent-settings">
           <div class="section-heading"><h2>New task</h2><button id="agent-refresh" type="button" class="icon-button" title="Refresh agent availability" aria-label="Refresh agent availability"><i data-lucide="refresh-cw"></i></button></div>
@@ -198,6 +199,49 @@
           <nav class="scenario-links" aria-label="Related scenarios for Foundry"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s53" target="_blank" rel="noopener noreferrer">53: AI FinOps</a></nav>
         </form>
         <div class="agent-workspace">
+          <section class="agent-scenario-panel" aria-labelledby="agent-scenario-heading">
+            <div class="section-heading"><div><p class="eyebrow">DETERMINISTIC TELEMETRY</p><h2 id="agent-scenario-heading">Troubleshooting scenarios</h2></div></div>
+            <form id="agent-scenario-form">
+              <div class="agent-scenario-fields">
+                <label>Failure<select id="agent-scenario" aria-label="Observability scenario"></select></label>
+                <label>Profile<select id="agent-scenario-mode" aria-label="Scenario profile"><option value="broken">Broken</option><option value="fixed">Fixed</option></select></label>
+              </div>
+              <label class="consent"><input id="agent-scenario-consent" type="checkbox">I approve generation of synthetic, metadata-only demo telemetry.</label>
+              <div class="run-buttons"><button id="agent-scenario-run" class="button primary" type="submit" disabled><i data-lucide="activity"></i>Generate Trace</button></div>
+            </form>
+            <div id="agent-scenario-status" class="status-band" role="status">No observability scenario run</div>
+            <section id="agent-scenario-investigation" class="scenario-investigation" aria-labelledby="agent-scenario-prompt-heading" hidden>
+              <h3 id="agent-scenario-prompt-heading">Observability Agent chat prompt</h3>
+              <p class="history-note">Open Observability Agent, start a chat, and paste this trace-specific prompt.</p>
+              <textarea id="agent-scenario-prompt" rows="9" readonly aria-label="Observability Agent investigation prompt"></textarea>
+              <div class="run-buttons"><button id="agent-scenario-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy Prompt</button></div>
+            </section>
+            <p class="history-note">Run the broken profile, open Observability Agent chat with the generated prompt, then run the fixed profile and compare latency, tool selection, and task outcome.</p>
+          </section>
+          <section class="agent-scenario-panel" aria-labelledby="alert-storm-heading">
+            <div class="section-heading"><div><p class="eyebrow">SCENARIO 64</p><h2 id="alert-storm-heading">Alert storm generator</h2></div></div>
+            <div class="agent-scenario-fields">
+              <label>Requests<select id="alert-storm-count" aria-label="Alert storm requests"><option value="12">12 requests</option><option value="18" selected>18 requests</option><option value="24">24 requests</option></select></label>
+              <label>Duration<select id="alert-storm-duration" aria-label="Alert storm duration"><option value="3">3 minutes</option><option value="5" selected>5 minutes</option><option value="10">10 minutes</option></select></label>
+            </div>
+            <label class="consent"><input id="alert-storm-consent" type="checkbox">I approve repeated synthetic slow and failed agent requests.</label>
+            <div class="run-buttons"><button id="alert-storm-start" class="button primary" type="button" disabled><i data-lucide="play"></i>Start Alert Storm</button><button id="alert-storm-stop" class="button secondary" type="button" disabled><i data-lucide="square"></i>Stop</button></div>
+            <progress id="alert-storm-progress" value="0" max="18" aria-label="Alert storm progress"></progress>
+            <div class="run-caption"><span id="alert-storm-status" role="status">Ready</span><span id="alert-storm-counter">0 / 18</span></div>
+            <p class="history-note">Generates one slow-tool run followed by two partial failures per cycle. Requests are spread across the selected duration and never replayed automatically.</p>
+          </section>
+          <section class="agent-scenario-panel" aria-labelledby="token-anomaly-heading">
+            <div class="section-heading"><div><p class="eyebrow">SCENARIO 65</p><h2 id="token-anomaly-heading">Token anomaly generator</h2></div></div>
+            <div class="agent-scenario-fields">
+              <label>Agent<select id="token-anomaly-agent" aria-label="Token anomaly agent" disabled><option value="">No agents available</option></select></label>
+              <label>Calls<select id="token-anomaly-count" aria-label="Token anomaly calls"><option value="3">3 calls</option><option value="5" selected>5 calls</option><option value="10">10 calls</option></select></label>
+            </div>
+            <label class="consent"><input id="token-anomaly-consent" type="checkbox">I approve this bounded batch of billable Foundry model calls.</label>
+            <div class="run-buttons"><button id="token-anomaly-start" class="button primary" type="button" disabled><i data-lucide="play"></i>Generate Token Anomaly</button><button id="token-anomaly-stop" class="button secondary" type="button" disabled><i data-lucide="square"></i>Stop</button></div>
+            <progress id="token-anomaly-progress" value="0" max="5" aria-label="Token anomaly progress"></progress>
+            <div class="run-caption"><span id="token-anomaly-status" role="status">Ready</span><span id="token-anomaly-counter">0 / 5</span></div>
+            <p class="history-note">Uses real, context-heavy Foundry calls and reports actual token totals. A bounded run demonstrates an anomaly but may not cross the 200,000-token static alert threshold.</p>
+          </section>
           <div class="section-heading"><h2>Task results</h2><button id="agent-clear" class="icon-button" title="Clear task results" aria-label="Clear task results"><i data-lucide="trash-2"></i></button></div>
           <div id="agent-status" class="status-band" role="status">No tasks submitted</div>
           <div id="agent-results" class="agent-results"></div>

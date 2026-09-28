@@ -109,7 +109,7 @@
         <mxCell id="b3" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Application_Insights.svg" value="App Insights" vertex="1">
           <mxGeometry height="52" width="80" x="1070" y="110" as="geometry" />
         </mxCell>
-        <mxCell id="b4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="b4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="810" y="210" as="geometry" />
         </mxCell>
         <mxCell id="b5" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/storage/Storage_Accounts.svg" value="Storage" vertex="1">
@@ -135,6 +135,9 @@
         </mxCell>
         <mxCell id="b12" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/ai_machine_learning/Anomaly_Detector.svg" value="Smart Detect" vertex="1">
           <mxGeometry height="52" width="80" x="1070" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="b13" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="Agent issue AMW" vertex="1">
+          <mxGeometry height="52" width="80" x="810" y="510" as="geometry" />
         </mxCell>
         <mxCell id="k1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Workbooks.svg" value="Workbooks" vertex="1">
           <mxGeometry height="52" width="80" x="1230" y="110" as="geometry" />
@@ -171,6 +174,12 @@
         </mxCell>
         <mxCell id="k12" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Cost_Management.svg" value="Cost wb" vertex="1">
           <mxGeometry height="52" width="80" x="1490" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="k13" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/ObservabilityAgent.svg" value="Observability Agent" vertex="1">
+          <mxGeometry height="52" width="100" x="1230" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="k14" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/github/GitHubCopilotCLI.png" value="GitHub Copilot CLI" vertex="1">
+          <mxGeometry height="52" width="100" x="1360" y="510" as="geometry" />
         </mxCell>
         <mxCell id="g1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Policy.svg" value="Policy DINE" vertex="1">
           <mxGeometry height="52" width="80" x="80" y="670" as="geometry" />
@@ -282,7 +291,7 @@
         <mxCell id="a3" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Application_Insights.svg" value="App Insights" vertex="1">
           <mxGeometry height="52" width="80" x="460" y="140" as="geometry" />
         </mxCell>
-        <mxCell id="a4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="a4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="650" y="140" as="geometry" />
         </mxCell>
         <mxCell id="a5" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Location.svg" value="DCE" vertex="1">
@@ -449,7 +458,7 @@
         <mxCell id="lawShared" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Log_Analytics_Workspaces.svg" value="LAW Central" vertex="1">
           <mxGeometry height="52" width="80" x="1100" y="240" as="geometry" />
         </mxCell>
-        <mxCell id="amwShared" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="amwShared" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="1280" y="240" as="geometry" />
         </mxCell>
         <mxCell id="aks1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/compute/Kubernetes_Services.svg" value="AKS" vertex="1">
@@ -908,7 +917,7 @@
         <mxCell id="t9" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Log_Analytics_Workspaces.svg" value="LAW Central" vertex="1">
           <mxGeometry height="52" width="80" x="1540" y="140" as="geometry" />
         </mxCell>
-        <mxCell id="t10" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="t10" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="100" y="240" as="geometry" />
         </mxCell>
         <mxCell id="t11" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Cubes.svg" value="Prom Rules" vertex="1">

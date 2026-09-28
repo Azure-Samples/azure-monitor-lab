@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "5786879968200268881"
+      "templateHash": "11093617091725445620"
     }
   },
   "parameters": {
@@ -1311,6 +1311,9 @@
           "primaryActionGroupId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
           },
+          "vmIds": {
+            "value": "[concat(if(parameters('deployLinuxVm'), createArray(resourceId('Microsoft.Compute/virtualMachines', variables('linuxVmName'))), createArray()), if(parameters('deployWindowsVm'), createArray(resourceId('Microsoft.Compute/virtualMachines', variables('windowsVmName'))), createArray()))]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -1322,7 +1325,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "13121049081722469721"
+              "templateHash": "1152571597193598490"
             }
           },
           "parameters": {
@@ -1343,6 +1346,13 @@
               "type": "string",
               "metadata": {
                 "description": "Primary Action Group ID (on-call / high severity)."
+              }
+            },
+            "vmIds": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Lab VM resource IDs whose alert notifications are suppressed during automatic shutdown hours."
               }
             },
             "tags": {
@@ -1418,31 +1428,39 @@
               }
             },
             {
+              "condition": "[not(empty(parameters('vmIds')))]",
               "type": "Microsoft.AlertsManagement/actionRules",
               "apiVersion": "2021-08-08",
-              "name": "[format('apr-{0}-nightly-patch-window', parameters('namePrefix'))]",
+              "name": "[format('apr-{0}-vm-auto-shutdown', parameters('namePrefix'))]",
               "location": "global",
               "tags": "[parameters('tags')]",
               "properties": {
-                "description": "Suppress all alerts during the nightly patch window (02:00–04:00 UTC, daily).",
+                "description": "Suppress alert actions for lab VMs during automatic shutdown hours (23:00–07:00 CET/CEST, daily).",
                 "enabled": true,
-                "scopes": [
-                  "[parameters('resourceGroupId')]"
-                ],
+                "scopes": "[parameters('vmIds')]",
                 "actions": [
                   {
                     "actionType": "RemoveAllActionGroups"
                   }
                 ],
+                "conditions": [
+                  {
+                    "field": "TargetResourceType",
+                    "operator": "Equals",
+                    "values": [
+                      "Microsoft.Compute/virtualMachines"
+                    ]
+                  }
+                ],
                 "schedule": {
-                  "effectiveFrom": "2025-01-01T02:00:00",
-                  "effectiveUntil": "2030-12-31T04:00:00",
-                  "timeZone": "UTC",
+                  "effectiveFrom": "2025-01-01T23:00:00",
+                  "effectiveUntil": "2035-12-31T07:00:00",
+                  "timeZone": "Romance Standard Time",
                   "recurrences": [
                     {
                       "recurrenceType": "Daily",
-                      "startTime": "02:00:00",
-                      "endTime": "04:00:00"
+                      "startTime": "23:00:00",
+                      "endTime": "07:00:00"
                     }
                   ]
                 }
@@ -1460,7 +1478,7 @@
             },
             "nightlyMaintenanceRuleName": {
               "type": "string",
-              "value": "[format('apr-{0}-nightly-patch-window', parameters('namePrefix'))]"
+              "value": "[if(not(empty(parameters('vmIds'))), format('apr-{0}-vm-auto-shutdown', parameters('namePrefix')), '')]"
             }
           }
         }

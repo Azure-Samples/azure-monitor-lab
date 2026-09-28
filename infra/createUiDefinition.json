@@ -329,6 +329,51 @@
             "options": {
               "text": "Azure SRE Agent uses a preview API, is pinned to swedencentral, and creates a subscription-scope Monitoring Contributor assignment for its connector identity. After deployment, run ./scripts/setup-sre-agent.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group> to validate the agent and print its portal URL. Delete the agent before the trial ends if you do not intend to continue with paid usage. Custom investigators and response plans are configured after deployment."
             }
+          },
+          {
+            "name": "enableObservabilityAgent",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable Azure Copilot Observability Agent",
+            "defaultValue": false,
+            "toolTip": "Deploys the preview Observability Agent, a dedicated Azure Monitor workspace, autonomous alert correlation, and least-privilege RBAC. Chat and deep investigations consume Azure Agent Credits."
+          },
+          {
+            "name": "observabilityAgentLocation",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Observability Agent region",
+            "defaultValue": "westeurope",
+            "visible": "[equals(steps('advanced').enableObservabilityAgent, true)]",
+            "toolTip": "The agent and its Azure Monitor workspace must share a supported region.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Australia East", "value": "australiaeast" },
+                { "label": "Canada Central", "value": "canadacentral" },
+                { "label": "Central US", "value": "centralus" },
+                { "label": "East Asia", "value": "eastasia" },
+                { "label": "East US", "value": "eastus" },
+                { "label": "South Central US", "value": "southcentralus" },
+                { "label": "UK South", "value": "uksouth" },
+                { "label": "West Central US", "value": "westcentralus" },
+                { "label": "West Europe", "value": "westeurope" }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "enableObservabilityAgentAutomaticInvestigation",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Automatically investigate agent-created issues",
+            "defaultValue": false,
+            "visible": "[equals(steps('advanced').enableObservabilityAgent, true)]",
+            "toolTip": "Billable deep investigations run automatically for every issue the agent creates. Leave off for cost-controlled demos."
+          },
+          {
+            "name": "observabilityAgentInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('advanced').enableObservabilityAgent, true)]",
+            "options": {
+              "text": "Azure Copilot Observability Agent autonomous operations are in preview. The deployment creates a dedicated Azure Monitor workspace, grants Issue Contributor there and Monitoring Reader at subscription scope, and monitors this lab's Application Insights resource. Alert correlation is automatic; deep investigation remains manual unless explicitly enabled."
+            }
           }
         ]
       }
@@ -355,7 +400,10 @@
       "appServiceRepoUrl": "[steps('advanced').appServiceRepoUrl]",
       "siemWebhookUrl": "[steps('advanced').siemWebhookUrl]",
       "enableAi": "[steps('advanced').enableAi]",
-      "enableSreAgent": "[steps('advanced').enableSreAgent]"
+      "enableSreAgent": "[steps('advanced').enableSreAgent]",
+      "enableObservabilityAgent": "[steps('advanced').enableObservabilityAgent]",
+      "observabilityAgentLocation": "[steps('advanced').observabilityAgentLocation]",
+      "enableObservabilityAgentAutomaticInvestigation": "[steps('advanced').enableObservabilityAgentAutomaticInvestigation]"
     }
   }
 }

@@ -11,7 +11,7 @@ if ($guideStageE -lt 0 -or $guideSentinelContent -le $guideStageE -or
 }
 $blocks = [regex]::Matches($guide, '(?ms)^```powershell\r?\n(.*?)^```')
 $helperImport = '. ./scripts/staged-deploy-helpers.ps1'
-foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'scripts/README.md')) {
+foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
   $text = Get-Content -LiteralPath (Join-Path $source $relativePath) -Raw
   foreach ($example in [regex]::Matches($text, '(?ms)^```powershell\r?\n(.*?)^```')) {
     $errors = $null
@@ -33,6 +33,17 @@ $tenant = [guid]::NewGuid()
 $rg = 'test-rg'
 $sourceParameters = (Get-Content -LiteralPath (Join-Path $source 'infra/main.parameters.json.template') -Raw | ConvertFrom-Json -AsHashtable).parameters
 $sourceParameters.vmAdminPassword = @{ reference = @{ keyVault = @{ id = "/subscriptions/$sub/resourceGroups/test-rg/providers/Microsoft.KeyVault/vaults/test-vault" }; secretName = 'vm-password' } }
+$observabilityStage = Get-Content -LiteralPath (Join-Path $source 'infra/stages/70-observability-agent.json') -Raw | ConvertFrom-Json -AsHashtable
+foreach ($name in @('enableObservabilityAgentAutomaticInvestigation', 'observabilityAgentInstructions')) {
+  if (-not $observabilityStage.parameters.ContainsKey($name) -or -not $sourceParameters.ContainsKey($name)) {
+    throw "Stage 70 must preserve shared Observability Agent parameter '$name'."
+  }
+}
+foreach ($legacyName in @('enableAutomaticInvestigation', 'issueCreationInstructions')) {
+  if ($observabilityStage.parameters.ContainsKey($legacyName)) {
+    throw "Stage 70 must not use legacy parameter '$legacyName' because staged projection would drop its configured value."
+  }
+}
 $stageE = Get-Content -LiteralPath (Join-Path $source 'infra/stages/40-optional-advanced.json') -Raw
 $sentinelContent = Get-Content -LiteralPath (Join-Path $source 'infra/stages/41-sentinel-content.json') -Raw
 if ($stageE -match 'Microsoft.SecurityInsights/alertRules' -or $stageE -notmatch 'Microsoft.SecurityInsights/onboardingStates' -or
@@ -112,7 +123,7 @@ try {
     ForEach-Object { $_.ValidValues }
   if ($allowedStages -notcontains '41-sentinel-content') { throw 'Reloading must replace the stale Stage ValidateSet.' }
   Write-Output 'PASS: dot-sourcing replaces stale stage helpers, accepts Stage 41, and preserves inputs without Azure calls.'
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent')) {
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '70-observability-agent')) {
     $templateReference = "--template-file ./infra/stages/$stage.bicep"
     $parameterReference = '--parameters "@$($stageParameterFiles[''{0}''])"' -f $stage
     if (-not $guide.Contains($templateReference) -or -not $guide.Contains($parameterReference)) {
@@ -122,7 +133,7 @@ try {
   if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 9) {
     throw 'Every staged deployment command must include a what-if confirmation.'
   }
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent')) {
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '70-observability-agent')) {
     $fixture.Stage = $stage
     $fixture.Events.Clear()
     $fixture.AccountChecks = 0
@@ -153,17 +164,18 @@ try {
   foreach ($path in $fixture.Files) {
     if (Test-Path -LiteralPath $path) { throw 'A temporary parameters file survived completion or failure.' }
   }
-  foreach ($stage in @('AI', 'SRE Agent')) {
+  foreach ($stage in @('AI', 'SRE Agent', 'Observability Agent')) {
     $section = [regex]::Match($guide, "(?ms)^### Stage $stage deploy.*?(?=^### |^## |\z)").Value
     if ($section -notmatch 'if \(\$webApp\)' -or $section -notmatch './scripts/deploy-webapp.ps1' -or $section -match './scripts/post-staged-deploy.ps1') {
       throw "$stage must refresh an existing console without requiring Stage B for standalone deployment."
     }
     if ($stage -eq 'AI' -and $section.IndexOf('./scripts/deploy-webapp.ps1') -gt $section.IndexOf('./scripts/setup-ai.ps1')) { throw 'Late AI traffic must follow console publication.' }
     if ($stage -eq 'SRE Agent' -and $section.IndexOf('./scripts/setup-sre-agent.ps1') -gt $section.IndexOf('./scripts/deploy-webapp.ps1')) { throw 'SRE validation must precede console publication.' }
+    if ($stage -eq 'Observability Agent' -and $section.IndexOf('./scripts/setup-observability-agent.ps1') -gt $section.IndexOf('./scripts/deploy-webapp.ps1')) { throw 'Observability Agent validation must precede console publication.' }
   }
   if ($guide -match '--template-file infra/main.bicep') { throw 'A staged guide must not deploy the full-lab template.' }
-  Write-Output 'PASS: all eight Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
-  Write-Output 'PASS: late AI/SRE instructions refresh existing consoles and preserve standalone A-only scenarios.'
+  Write-Output 'PASS: all nine Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
+  Write-Output 'PASS: late AI/SRE/Observability Agent instructions refresh existing consoles and preserve standalone A-only scenarios.'
 } finally {
   Pop-Location
   foreach ($path in $fixture.Files | Select-Object -Unique) {

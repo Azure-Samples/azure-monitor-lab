@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "9556683742930615605"
+      "templateHash": "2931977062575298158"
     }
   },
   "parameters": {
@@ -160,7 +160,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "12131549831957383843"
+              "templateHash": "4543397936947810126"
             }
           },
           "parameters": {
@@ -310,6 +310,28 @@
               ]
             },
             {
+              "type": "Microsoft.DevTestLab/schedules",
+              "apiVersion": "2018-09-15",
+              "name": "[format('shutdown-computevm-{0}', parameters('vmName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "status": "Enabled",
+                "taskType": "ComputeVmShutdownTask",
+                "dailyRecurrence": {
+                  "time": "2300"
+                },
+                "timeZoneId": "Romance Standard Time",
+                "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
+                "notificationSettings": {
+                  "status": "Disabled"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
+              ]
+            },
+            {
               "type": "Microsoft.Compute/virtualMachines/extensions",
               "apiVersion": "2024-03-01",
               "name": "[format('{0}/{1}', parameters('vmName'), 'AzureMonitorLinuxAgent')]",
@@ -416,7 +438,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "2277149854853002146"
+              "templateHash": "375882843770355197"
             }
           },
           "parameters": {
@@ -567,6 +589,28 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DevTestLab/schedules",
+              "apiVersion": "2018-09-15",
+              "name": "[format('shutdown-computevm-{0}', parameters('vmName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "status": "Enabled",
+                "taskType": "ComputeVmShutdownTask",
+                "dailyRecurrence": {
+                  "time": "2300"
+                },
+                "timeZoneId": "Romance Standard Time",
+                "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
+                "notificationSettings": {
+                  "status": "Disabled"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
               ]
             },
             {
@@ -1684,7 +1728,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "5513852199695061519"
+              "templateHash": "11234850322725984323"
             }
           },
           "parameters": {
@@ -1776,11 +1820,14 @@
                       "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
                       "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read",
                       "Microsoft.Compute/virtualMachineScaleSets/start/action",
+                      "Microsoft.Compute/virtualMachineScaleSets/deallocate/action",
                       "Microsoft.ContainerService/managedClusters/read",
                       "Microsoft.ContainerService/managedClusters/start/action",
+                      "Microsoft.ContainerService/managedClusters/stop/action",
                       "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
                       "Microsoft.Web/sites/read",
                       "Microsoft.Web/sites/start/action",
+                      "Microsoft.Web/sites/stop/action",
                       "Microsoft.Insights/components/read",
                       "Microsoft.Insights/components/Annotations/read",
                       "Microsoft.Insights/components/Annotations/write",

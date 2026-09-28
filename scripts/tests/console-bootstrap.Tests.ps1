@@ -38,6 +38,19 @@ foreach ($templatePath in @('infra/main.json', 'infra/stages/10-workloads.json')
   if ($platformModule.Count -ne 1 -or $cpuExpression -notmatch "and\(parameters\('deployLinuxVm'\), parameters\('deployWindowsVm'\)\)") { throw "$templatePath must grant CPU guest access only when both demo VMs are deployed." }
 }
 $platformTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/modules/lab-console-platform.json') -Raw | ConvertFrom-Json
+$runnerRole = @($platformTemplate.resources | Where-Object {
+    $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and
+    $_.properties.permissions.actions -contains 'Microsoft.Compute/virtualMachines/deallocate/action'
+  })
+$requiredStopActions = @(
+  'Microsoft.Compute/virtualMachines/deallocate/action',
+  'Microsoft.Compute/virtualMachineScaleSets/deallocate/action',
+  'Microsoft.ContainerService/managedClusters/stop/action',
+  'Microsoft.Web/sites/stop/action'
+)
+if ($runnerRole.Count -ne 1 -or @($requiredStopActions | Where-Object { $_ -notin $runnerRole[0].properties.permissions.actions }).Count) {
+  throw 'The Lab Operations runner role must include every Stop Lab action.'
+}
 $cpuRole = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and $_.properties.permissions.actions -contains 'Microsoft.Compute/virtualMachines/runCommand/action' })
 if ($cpuRole.Count -ne 1 -or @($cpuRole[0].properties.permissions.actions).Count -ne 1) { throw 'CPU guest execution requires a separate, narrowly scoped role.' }
 $cpuAssignments = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -like '*lab-console-cpu-run-command-role*' })
@@ -67,7 +80,7 @@ $scriptDirectory = Join-Path $root 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 Copy-Item -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Destination $scriptDirectory
 foreach ($directory in @('workloads/k8s', 'workloads/operations', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
-foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
+foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
 }
 $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Raw
@@ -91,7 +104,7 @@ if ($fixture.FailAi) { throw 'Agent creation failed.' }
 $fixture = @{
   Subscription = [guid]::NewGuid().ToString(); Tenant = [guid]::NewGuid().ToString(); Operator = [guid]::NewGuid().ToString()
   AppIdentity = [guid]::NewGuid().ToString(); RunnerIdentity = [guid]::NewGuid().ToString(); Client = [guid]::NewGuid().ToString()
-  Settings = @{ Existing = 'preserve-me' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
+  Settings = @{ Existing = 'preserve-me' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailGraphAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
   WithAi = $false; FailAi = $false; AiCalls = 0
   DeletePreview = $false; LastPreview = ''; Deployments = 0
   ExistingTags = $true; FailTagRead = $false
@@ -173,7 +186,11 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 11 -or -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1'))) { throw 'Unexpected runner build context or missing CPU simulation script.' }
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 12 -or
+          -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1'))) {
+        throw 'Unexpected runner build context or missing operation script.'
+      }
       if ($fixture.FailBuild) { $global:LASTEXITCODE = 1 }
       return
     }
@@ -197,7 +214,14 @@ function az {
 function Invoke-RestMethod {
   [CmdletBinding()]
   param($Method, $Uri, $Headers, $Body, $ContentType, $TimeoutSec)
-  if ($Uri -like 'https://graph.microsoft.com/v1.0/me*') { return @{ id = $fixture.Operator } }
+  if ($Uri -like 'https://graph.microsoft.com/v1.0/me*') {
+    if ($fixture.FailGraphAuth) {
+      $exception = [Exception]::new('TokenCreatedWithOutdatedPolicies')
+      $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 401 })
+      throw $exception
+    }
+    return @{ id = $fixture.Operator }
+  }
   if ($Uri -like "https://management.azure.com$workspace*") { return @{ name = 'law-amlab-central-test'; location = 'northeurope' } }
   if ($Uri -like "https://management.azure.com$scope/providers/Microsoft.Insights/components/*") { return @{ properties = @{ ConnectionString = 'test-connection' } } }
   if ($Uri -notlike "https://management.azure.com$scope/providers/Microsoft.Web/sites/test-app*") { throw 'Unexpected setup target.' }
@@ -235,15 +259,20 @@ try {
   $fixture.WithAi = $true
   & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
   if ($fixture.AiCalls -ne 1 -or $fixture.Settings['LabConsole__Foundry__Enabled'] -ne 'True') { throw 'Optional Foundry setup was not automatic.' }
-  foreach ($failure in @('FailAuth', 'FailBuild', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
+  foreach ($failure in @('FailAuth', 'FailGraphAuth', 'FailBuild', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
     Reset-Configuration
     $fixture[$failure] = $true
     $before = $fixture.Writes.Count
     $beforeDeployments = $fixture.Deployments
     $caught = $false
-    try { & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null } catch { $caught = $true }
+    try { & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null } catch {
+      $caught = $true
+      if ($failure -eq 'FailGraphAuth' -and $_.Exception.Message -notmatch 'az logout.+az login --tenant') {
+        throw 'Stale Graph authentication did not return actionable reauthentication guidance.'
+      }
+    }
     if (-not $caught) { throw "Deployment failure was hidden: $failure" }
-    if ($failure -eq 'BadTenant') { if ($fixture.Writes.Count -ne $before) { throw 'Tenant mismatch caused writes.' } }
+    if ($failure -in @('BadTenant', 'FailGraphAuth')) { if ($fixture.Writes.Count -ne $before) { throw "$failure caused writes." } }
     elseif ($fixture.Settings['LabConsole__Operations__Enabled'] -ne 'false') { throw 'Setup failure left operations enabled.' }
     if ($failure -eq 'DeletePreview' -and $fixture.Deployments -ne $beforeDeployments) { throw 'A destructive preview did not block deployment.' }
     if ($failure -eq 'FailTagRead' -and $fixture.Deployments -ne $beforeDeployments) { throw 'Failed tag discovery must stop before redeploying runner resources.' }

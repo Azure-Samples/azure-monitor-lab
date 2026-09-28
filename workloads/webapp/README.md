@@ -6,7 +6,7 @@ Start with the [Control Center guide](../../docs/LAB-CONTROL-CENTER.md) for the 
 
 ## Lab Operations
 
-The [Lab Operations reference](LAB-OPERATIONS.md) covers seven scripts, including a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
+The [Lab Operations reference](LAB-OPERATIONS.md) covers eight scripts, including cost-aware Start/Stop controls and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
 
 ## Infrastructure Health
 

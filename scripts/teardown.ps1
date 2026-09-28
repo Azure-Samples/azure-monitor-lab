@@ -162,6 +162,32 @@ if (-not $primaryResourceGroupExists) {
   return
 }
 
+# Stop autonomous Observability Agent work before the asynchronous RG delete.
+$observabilityAgents = @(az resource list --subscription $active.id -g $ResourceGroup --resource-type Microsoft.Monitor/observabilityAgents -o json | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0) { throw "Could not inspect Observability Agents in '$ResourceGroup'." }
+foreach ($observabilityAgent in $observabilityAgents) {
+  $principalId = az resource show --subscription $active.id --ids $observabilityAgent.id --api-version 2026-05-01-preview --query identity.principalId -o tsv
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($principalId)) {
+    throw "Could not resolve the identity for Observability Agent '$($observabilityAgent.name)'."
+  }
+  $monitoringReaderRoleId = '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
+  $assignmentIds = @(az role assignment list --subscription $active.id --assignee-object-id $principalId `
+    --scope "/subscriptions/$($active.id)" `
+    --query "[?roleDefinitionId=='/subscriptions/$($active.id)/providers/Microsoft.Authorization/roleDefinitions/$monitoringReaderRoleId'].id" `
+    -o tsv)
+  if ($LASTEXITCODE -ne 0) { throw "Could not inspect subscription RBAC for Observability Agent '$($observabilityAgent.name)'." }
+  foreach ($assignmentId in $assignmentIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) {
+    Write-Host "Removing Observability Agent Monitoring Reader assignment $assignmentId ..." -ForegroundColor DarkGray
+    az role assignment delete --subscription $active.id --ids $assignmentId
+    if ($LASTEXITCODE -ne 0) { throw "Failed to remove Observability Agent subscription RBAC '$assignmentId'." }
+  }
+  Write-Host "Deleting Observability Agent $($observabilityAgent.name) before resource-group cleanup ..." -ForegroundColor Yellow
+  az resource delete --subscription $active.id --ids $observabilityAgent.id --api-version 2026-05-01-preview
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to delete Observability Agent '$($observabilityAgent.name)'. Stop before deleting the resource group and verify the agent manually to avoid continued agent operations."
+  }
+}
+
 # Delete billable SRE Agent resources explicitly before the asynchronous RG delete.
 $sreAgents = @(az resource list -g $ResourceGroup --resource-type Microsoft.App/agents -o json | ConvertFrom-Json)
 foreach ($sreAgent in $sreAgents) {

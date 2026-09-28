@@ -93,11 +93,23 @@ if ($enableLawReplication -and [string]::IsNullOrWhiteSpace($lawReplicationLocat
 }
 
 $stages = $cfg.stageToggles
-if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageSreAgent=$false } }
+if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageSreAgent=$false; enableStageObservabilityAgent=$false } }
 # AI stage is optional and defaults off when absent from the config.
 $enableStageAI = if ($null -eq $stages.enableStageAI) { $false } else { [bool]$stages.enableStageAI }
 # SRE Agent is optional and defaults off when absent from the config.
 $enableStageSreAgent = if ($null -eq $stages.enableStageSreAgent) { $false } else { [bool]$stages.enableStageSreAgent }
+# Azure Copilot Observability Agent is optional and defaults off when absent.
+$enableStageObservabilityAgent = if ($null -eq $stages.enableStageObservabilityAgent) { $false } else { [bool]$stages.enableStageObservabilityAgent }
+$observabilityAgentLocation = Coalesce $cfg.observabilityAgentLocation 'westeurope'
+$supportedObservabilityAgentLocations = @('australiaeast','canadacentral','centralus','eastasia','eastus','southcentralus','uksouth','westcentralus','westeurope')
+if ($observabilityAgentLocation -notin $supportedObservabilityAgentLocations) {
+  throw "observabilityAgentLocation '$observabilityAgentLocation' is unsupported. Use one of: $($supportedObservabilityAgentLocations -join ', ')."
+}
+$enableObservabilityAgentAutomaticInvestigation = if ($null -eq $cfg.enableObservabilityAgentAutomaticInvestigation) { $false } else { [bool]$cfg.enableObservabilityAgentAutomaticInvestigation }
+$observabilityAgentInstructions = Coalesce $cfg.observabilityAgentInstructions 'Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.'
+if ($observabilityAgentInstructions.Length -gt 8192) {
+  throw 'observabilityAgentInstructions must not exceed 8192 characters.'
+}
 
 # ---------------------------------------------------------------------------
 # Resolve target paths
@@ -143,6 +155,10 @@ $bicepParams = [ordered]@{
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
     'enableAi'        = @{ value = $enableStageAI }
     'enableSreAgent'  = @{ value = $enableStageSreAgent }
+    'enableObservabilityAgent' = @{ value = $enableStageObservabilityAgent }
+    'observabilityAgentLocation' = @{ value = $observabilityAgentLocation }
+    'enableObservabilityAgentAutomaticInvestigation' = @{ value = $enableObservabilityAgentAutomaticInvestigation }
+    'observabilityAgentInstructions' = @{ value = $observabilityAgentInstructions }
     'enableLawReplication'   = @{ value = $enableLawReplication }
     'lawReplicationLocation' = @{ value = $lawReplicationLocation }
   }
@@ -196,4 +212,8 @@ Write-Host "   - $bicepParamsPath" -ForegroundColor DarkGray
 Write-Host "   - $tfVarsPath"      -ForegroundColor DarkGray
 if ($enableStageSreAgent) {
   Write-Host "   - SRE Agent deployment enabled (swedencentral)" -ForegroundColor DarkGray
+}
+if ($enableStageObservabilityAgent) {
+  Write-Host "   - Observability Agent deployment enabled ($observabilityAgentLocation)" -ForegroundColor DarkGray
+  Write-Warn "Terraform provisioning is not supported for Observability Agent during preview; use the Bicep or portal deployment path."
 }

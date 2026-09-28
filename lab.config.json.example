@@ -27,6 +27,9 @@
 
   "siemWebhookUrl":   "",
   "forbiddenSubscriptionIds": [],
+  "observabilityAgentLocation": "westeurope",
+  "enableObservabilityAgentAutomaticInvestigation": false,
+  "observabilityAgentInstructions": "Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.",
 
   "stageToggles": {
     "enableStageA": true,
@@ -35,6 +38,7 @@
     "enableStageD": true,
     "enableStageE": true,
     "enableStageAI": false,
-    "enableStageSreAgent": false
+    "enableStageSreAgent": false,
+    "enableStageObservabilityAgent": false
   }
 }

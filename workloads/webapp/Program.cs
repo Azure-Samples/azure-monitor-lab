@@ -25,6 +25,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("lab-console.json", optional: true, reloadOnChange: false).AddEnvironmentVariables();
 builder.Services.AddApplicationInsightsTelemetry();
 builder.Services.AddSingleton<AgentPlayground>();
+builder.Services.AddSingleton<IAgentScenarioDelay, AgentScenarioDelay>();
+builder.Services.AddSingleton<AgentObservabilityScenarios>();
 builder.Services.AddSingleton<ISreMcpClient, SreMcpClient>();
 builder.Services.AddSingleton<ISreModel, SreModel>();
 builder.Services.AddSingleton<SreAssistant>();
@@ -139,7 +141,7 @@ app.UseStaticFiles();
 app.UseSession();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path == "/api/infra/health" || context.Request.Path == "/api/agents/run" || context.Request.Path == "/api/agents/catalog" || context.Request.Path.StartsWithSegments("/api/sre") || context.Request.Path.StartsWithSegments("/api/operations"))
+    if (context.Request.Path == "/api/infra/health" || context.Request.Path.StartsWithSegments("/api/agents") || context.Request.Path.StartsWithSegments("/api/sre") || context.Request.Path.StartsWithSegments("/api/operations"))
     {
         var hosted = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"));
         var allowed = hosted
@@ -218,12 +220,18 @@ app.MapGet("/api/agents/catalog", (AgentPlayground playground, CancellationToken
 app.MapPost("/api/agents/run", (AgentTask task, AgentPlayground playground, CancellationToken cancellationToken) => playground.RunAsync(task, cancellationToken))
     .RequireRateLimiting("agent-tasks")
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(20000));
+app.MapGet("/api/agents/scenarios", () => Results.Json(AgentObservabilityScenarios.Catalog));
+app.MapPost("/api/agents/scenarios/run", (AgentScenarioRequest request, AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
+    scenarios.RunAsync(request, cancellationToken))
+    .RequireRateLimiting("agent-tasks")
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2000));
 app.MapGet("/api/agents/context", (IConfiguration configuration) => Results.Json(new
 {
     resourceGroup = configuration["LabConsole:ResourceGroup"],
     appService = configuration["LabConsole:AppService"],
     sreUrl = AgentPlayground.SafeHttps(configuration["LabConsole:Links:SreAgent"]),
-    foundryUrl = AgentPlayground.SafeHttps(configuration["LabConsole:Links:Foundry"])
+    foundryUrl = AgentPlayground.SafeHttps(configuration["LabConsole:Links:Foundry"]),
+    observabilityAgentUrl = AgentPlayground.SafeHttps(configuration["LabConsole:Links:ObservabilityAgent"])
 }));
 
 app.MapGet("/api/explode", () =>

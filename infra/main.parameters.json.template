@@ -14,6 +14,10 @@
     "grafanaAdminObjectId": { "value": "" },
     "enablePlatformLogsDcr": { "value": false },
     "enableMetricsExportDcr": { "value": false },
-    "enableSreAgent": { "value": false }
+    "enableSreAgent": { "value": false },
+    "enableObservabilityAgent": { "value": false },
+    "observabilityAgentLocation": { "value": "westeurope" },
+    "enableObservabilityAgentAutomaticInvestigation": { "value": false },
+    "observabilityAgentInstructions": { "value": "Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles." }
   }
 }

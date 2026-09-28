@@ -10,6 +10,7 @@ async function ready(page) {
   await page.goto('/');
   await page.getByRole('tab', { name: 'Foundry Playground' }).click();
   await expect(page.getByLabel('Agent', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Observability scenario').locator('option')).toHaveCount(3);
 }
 async function approve(page) {
   await page.getByLabel('Task', { exact: true }).fill('The app returns an error.');
@@ -36,8 +37,166 @@ test('agent API rejects unsafe requests, enforces consent and size, defaults off
   expect((await available.json()).available).toBe(false);
   expect(available.headers()['cache-control']).toBe('no-store');
   const context = await request.get('/api/agents/context');
-  expect(Object.keys(await context.json()).sort()).toEqual(['appService', 'foundryUrl', 'resourceGroup', 'sreUrl']);
+  expect(Object.keys(await context.json()).sort()).toEqual(['appService', 'foundryUrl', 'observabilityAgentUrl', 'resourceGroup', 'sreUrl']);
   expect(await context.text()).not.toMatch(/InstrumentationKey|ConnectionString|password/i);
+});
+
+test('observability scenarios compare broken and fixed metadata-only traces', async ({ page }) => {
+  const submissions = [];
+  await page.route('**/api/agents/scenarios/run', async route => {
+    const data = route.request().postDataJSON();
+    submissions.push(data);
+    expect(route.request().headers()['x-amlab-agent-request']).toBe('true');
+    const broken = data.mode === 'broken';
+    await route.fulfill({
+      status: broken && data.scenario === 'wrong-tool' ? 409 : 200,
+      json: {
+        scenario: data.scenario,
+        mode: data.mode,
+        status: broken ? 'wrong_tool' : 'completed',
+        selectedTool: broken ? 'inventory_lookup' : 'order_lookup',
+        expectedTool: 'order_lookup',
+        durationMs: broken ? 2500 : 100,
+        traceId: 'scenario-trace',
+        investigationPrompt: `Investigate trace scenario-trace for ${data.scenario} in ${data.mode} mode.`
+      }
+    });
+
+  });
+  await ready(page);
+  await page.getByLabel('Observability scenario').selectOption('wrong-tool');
+  await page.getByLabel('Scenario profile').selectOption('broken');
+  await page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.').check();
+  await page.getByRole('button', { name: 'Generate Trace' }).click();
+  await expect(page.locator('#agent-scenario-status')).toContainText('wrong_tool');
+  await expect(page.locator('#agent-scenario-status')).toContainText('trace scenario-trace');
+  await expect(page.getByLabel('Observability Agent investigation prompt')).toHaveValue(/scenario-trace.*wrong-tool.*broken/);
+  await expect(page.getByRole('button', { name: 'Copy Prompt' })).toBeVisible();
+  await expect(page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.')).not.toBeChecked();
+  await page.getByLabel('Scenario profile').selectOption('fixed');
+  await page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.').check();
+  await page.getByRole('button', { name: 'Generate Trace' }).click();
+  await expect(page.locator('#agent-scenario-status')).toContainText('completed');
+  expect(submissions).toEqual([
+    { scenario: 'wrong-tool', mode: 'broken', consent: true },
+    { scenario: 'wrong-tool', mode: 'fixed', consent: true }
+  ]);
+});
+
+test('observability scenario failures are not replayed and non-JSON responses stay inert', async ({ page }) => {
+  let attempts = 0;
+  await page.route('**/api/agents/scenarios/run', route => {
+    attempts++;
+    route.fulfill({ status: 502, contentType: 'text/html', body: '<script>window.injected=true</script>' });
+  });
+  await ready(page);
+  await page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.').check();
+  await page.getByRole('button', { name: 'Generate Trace' }).click();
+  await expect(page.locator('#agent-scenario-status')).toContainText('Scenario failed');
+  await expect(page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.')).not.toBeChecked();
+  expect(attempts).toBe(1);
+  expect(await page.evaluate(() => window.injected)).toBeUndefined();
+});
+
+test('alert storm generates a bounded mixed batch and can stop without replay', async ({ page }) => {
+  const submissions = [];
+  await page.route('**/api/agents/scenarios/run', async route => {
+    const data = route.request().postDataJSON();
+    submissions.push(data);
+    await route.fulfill({
+      status: data.scenario === 'partial-failure' ? 502 : 200,
+      json: {
+        scenario: data.scenario,
+        mode: data.mode,
+        status: data.scenario === 'partial-failure' ? 'partial_failure' : 'completed',
+        selectedTool: 'customer_lookup',
+        expectedTool: data.scenario === 'partial-failure' ? 'order_lookup' : 'customer_lookup',
+        durationMs: 100,
+        traceId: `storm-${submissions.length}`,
+        investigationPrompt: 'Investigate the mixed batch.'
+      }
+    });
+  });
+  await ready(page);
+  await page.getByLabel('Alert storm requests').selectOption('12');
+  await page.getByLabel('Alert storm duration').selectOption('3');
+  await page.getByLabel('I approve repeated synthetic slow and failed agent requests.').check();
+  await page.getByRole('button', { name: 'Start Alert Storm' }).click();
+  await expect(page.locator('#alert-storm-counter')).toHaveText('1 / 12');
+  await page.locator('#alert-storm-stop').click();
+  await expect(page.locator('#alert-storm-status')).toContainText('Stopped after 1');
+  expect(submissions).toEqual([{ scenario: 'slow-tool', mode: 'broken', consent: true }]);
+});
+
+test('token anomaly runs only the approved real-call batch and aggregates usage', async ({ page }) => {
+  const submissions = [];
+  let pricing = 'available';
+  let callInBatch = 0;
+  await page.route('**/api/agents/run', async route => {
+    const data = route.request().postDataJSON();
+    submissions.push(data);
+    callInBatch++;
+    await route.fulfill({
+      json: {
+        ...answer,
+        inputTokens: 1200,
+        outputTokens: 30,
+        estimatedCostUsd: pricing === 'unavailable' || (pricing === 'partial' && callInBatch === 2) ? null : 0.001,
+        traceId: `token-${submissions.length}`,
+        runId: `run-${submissions.length}`
+      }
+    });
+  });
+  await ready(page);
+  await page.getByLabel('Token anomaly calls').selectOption('3');
+  await page.getByLabel('I approve this bounded batch of billable Foundry model calls.').check();
+  await page.getByRole('button', { name: 'Generate Token Anomaly' }).click();
+  await expect(page.locator('#token-anomaly-status')).toContainText('Completed 3 calls');
+  await expect(page.locator('#token-anomaly-status')).toContainText('3,600 input + 90 output tokens');
+  expect(submissions).toHaveLength(3);
+  expect(new Set(submissions.map(item => item.batchId)).size).toBe(1);
+  expect(submissions.every(item => item.scenario === 'token-anomaly' && item.consent && item.prompt.length <= 4000)).toBe(true);
+  await expect(page.getByLabel('I approve this bounded batch of billable Foundry model calls.')).not.toBeChecked();
+
+  pricing = 'unavailable';
+  callInBatch = 0;
+  await page.getByLabel('I approve this bounded batch of billable Foundry model calls.').check();
+  await page.getByRole('button', { name: 'Generate Token Anomaly' }).click();
+  await expect(page.locator('#token-anomaly-status')).toContainText('Completed 3 calls');
+  await expect(page.locator('#token-anomaly-status')).toContainText('cost unavailable; model pricing is not configured');
+  await expect(page.locator('#token-anomaly-status')).not.toContainText('$0.000000');
+
+  pricing = 'partial';
+  callInBatch = 0;
+  await page.getByLabel('I approve this bounded batch of billable Foundry model calls.').check();
+  await page.getByRole('button', { name: 'Generate Token Anomaly' }).click();
+  await expect(page.locator('#token-anomaly-status')).toContainText('Completed 3 calls');
+  await expect(page.locator('#token-anomaly-status')).toContainText('partial estimate $0.002000; pricing unavailable for 1 call');
+});
+
+test('token anomaly reports usage from an incomplete call and does not replay it', async ({ page }) => {
+  let attempts = 0;
+  await page.route('**/api/agents/run', route => {
+    attempts++;
+    route.fulfill({
+      status: 502,
+      json: {
+        error: 'Agent run ended with status incomplete (max_completion_tokens). No tool actions were executed by the console.',
+        runId: 'run-incomplete',
+        incompleteReason: 'max_completion_tokens',
+        inputTokens: 3260,
+        outputTokens: 4096,
+        estimatedCostUsd: 0.01
+      }
+    });
+  });
+  await ready(page);
+  await page.getByLabel('Token anomaly calls').selectOption('3');
+  await page.getByLabel('I approve this bounded batch of billable Foundry model calls.').check();
+  await page.getByRole('button', { name: 'Generate Token Anomaly' }).click();
+  await expect(page.locator('#token-anomaly-status')).toContainText('0 completed calls; 7,356 reported tokens');
+  await expect(page.locator('#token-anomaly-status')).toContainText('max_completion_tokens');
+  expect(attempts).toBe(1);
 });
 
 test('tabs preserve console state, support keyboard navigation, and validate agent destinations', async ({ page }) => {

@@ -78,6 +78,30 @@ param enableAi bool = false
 @description('Deploy Azure SRE Agent in Sweden Central with Azure Monitor, Application Insights, and Log Analytics connectors. Off by default (billable usage).')
 param enableSreAgent bool = false
 
+@description('Deploy Azure Copilot Observability Agent with autonomous alert correlation. Off by default (preview and billable agent operations).')
+param enableObservabilityAgent bool = false
+
+@description('Supported region for Azure Copilot Observability Agent and its dedicated Azure Monitor workspace.')
+@allowed([
+  'australiaeast'
+  'canadacentral'
+  'centralus'
+  'eastasia'
+  'eastus'
+  'southcentralus'
+  'uksouth'
+  'westcentralus'
+  'westeurope'
+])
+param observabilityAgentLocation string = 'westeurope'
+
+@description('Run billable deep investigations automatically for Observability Agent-created issues.')
+param enableObservabilityAgentAutomaticInvestigation bool = false
+
+@description('Natural-language guidance for Observability Agent alert correlation and issue creation.')
+@maxLength(8192)
+param observabilityAgentInstructions string = 'Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.'
+
 @description('Model Router deployment version for the AI feature. VERIFY for your region with "az cognitiveservices account list-models".')
 param routerModelVersion string = '2025-08-07'
 
@@ -115,6 +139,8 @@ var sliUamiName         = 'id-sli-${namePrefix}'
 var platformLogsDcrName = 'dcr-${namePrefix}-platformlogs'
 var metricsExportDcrName = 'dcr-${namePrefix}-metricsexport'
 var sreAgentName         = 'sre-${namePrefix}-${take(suffix, 5)}'
+var observabilityAgentName = 'obs-${namePrefix}-${take(suffix, 5)}'
+var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
 
 // AI feature (Foundry) is pinned to swedencentral, independent of the lab region —
 // the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth preview are region-limited.
@@ -167,6 +193,27 @@ module appInsights 'modules/appinsights.bicep' = {
     location: location
     workspaceId: lawAppInsights.outputs.id
     tags: commonTags
+  }
+}
+
+module observabilityAgent 'modules/observability-agent.bicep' = if (enableObservabilityAgent) {
+  name: 'observability-agent'
+  params: {
+    name: observabilityAgentName
+    monitoringAccountName: observabilityAgentMonitoringAccountName
+    location: observabilityAgentLocation
+    appInsightsId: appInsights.outputs.id
+    issueCreationInstructions: observabilityAgentInstructions
+    enableAutomaticInvestigation: enableObservabilityAgentAutomaticInvestigation
+    tags: commonTags
+  }
+}
+
+module observabilityAgentSubscriptionRbac 'modules/observability-agent-subscription-rbac.bicep' = if (enableObservabilityAgent) {
+  name: 'observability-agent-subscription-rbac'
+  scope: subscription()
+  params: {
+    principalId: observabilityAgent!.outputs.principalId
   }
 }
 
@@ -639,6 +686,10 @@ module alertProcessingRules 'modules/alert-processing-rules.bicep' = {
   params: {
     namePrefix: namePrefix
     primaryActionGroupId: actionGroup.outputs.id
+    vmIds: filter([
+      deployLinuxVm ? vmLinux!.outputs.vmId : ''
+      deployWindowsVm ? vmWindows!.outputs.vmId : ''
+    ], id => !empty(id))
     tags: commonTags
   }
 }
@@ -837,6 +888,7 @@ module costWorkbook 'modules/cost-workbook.bicep' = {
     name: guid(resourceGroup().id, costWorkbookName)
     location: location
     centralLawId: lawCentral.outputs.id
+    dailyCapGb: dailyCapGb
     tags: commonTags
   }
 }
@@ -992,6 +1044,14 @@ output sreAgentEnabled bool            = enableSreAgent
 output sreAgentName string             = enableSreAgent ? sreAgent!.outputs.name : ''
 output sreAgentEndpoint string         = enableSreAgent ? sreAgent!.outputs.endpoint : ''
 output sreAgentPortalUrl string        = enableSreAgent ? sreAgent!.outputs.portalUrl : ''
+
+// Optional Azure Copilot Observability Agent stage (empty unless enabled)
+output observabilityAgentEnabled bool = enableObservabilityAgent
+output observabilityAgentName string = enableObservabilityAgent ? observabilityAgent!.outputs.name : ''
+output observabilityAgentId string = enableObservabilityAgent ? observabilityAgent!.outputs.id : ''
+output observabilityAgentPortalUrl string = enableObservabilityAgent ? observabilityAgent!.outputs.portalUrl : ''
+output observabilityAgentMonitoringAccountName string = enableObservabilityAgent ? observabilityAgent!.outputs.monitoringAccountName : ''
+output observabilityAgentAutomaticInvestigationEnabled bool = enableObservabilityAgent && enableObservabilityAgentAutomaticInvestigation
 
 // NEW — Alert Processing Rules nightly window
 output nightlyMaintenanceRuleName string = alertProcessingRules.outputs.nightlyMaintenanceRuleName

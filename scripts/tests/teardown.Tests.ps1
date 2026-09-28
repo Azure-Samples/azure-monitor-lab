@@ -15,6 +15,7 @@ $fixture = @{
   MonitorOwnerChanged = $false
   RealTenantCleanup = $false; TenantDeleteError = ''
   ServiceGroupMembershipExists = $true
+  ObservabilityAgentExists = $false
   ActivityWorkspaceId = ''; ActivityDiagnosticDeletes = 0
   EntraPlan = @(); EntraCalls = [Collections.Generic.List[string]]::new(); EntraFails = ''
 }
@@ -28,6 +29,9 @@ $dceId = "$resourceGroupId/providers/Microsoft.Insights/dataCollectionEndpoints/
 $auxiliaryGroup = "MC_$($fixture.ResourceGroup)_aks-test_northeurope"
 $monitorGroup = 'MA_amw-amlab_northeurope_managed_3'
 $monitorWorkspaceId = "$resourceGroupId/providers/Microsoft.Monitor/accounts/amw-amlab"
+$observabilityAgentId = "$resourceGroupId/providers/Microsoft.Monitor/observabilityAgents/obs-amlab-test"
+$observabilityPrincipalId = [guid]::NewGuid().ToString()
+$observabilityRoleAssignmentId = "/subscriptions/$($fixture.Subscription)/providers/Microsoft.Authorization/roleAssignments/obs-monitoring-reader"
 $serviceGroupId = '/providers/Microsoft.Management/serviceGroups/amlab-workload'
 $tenantDeleteApis = [ordered]@{}
 $tenantDeleteApis["$serviceGroupId/providers/Microsoft.Monitor/slis/sli-aks-pods-running"] = '2025-03-01-preview'
@@ -134,6 +138,10 @@ function az {
             return '[]'
           }
           'Microsoft.App/agents' { return '[]' }
+          'Microsoft.Monitor/observabilityAgents' {
+            if ($fixture.ObservabilityAgentExists) { return ConvertTo-Json -InputObject @(@{ id = $observabilityAgentId; name = 'obs-amlab-test' }) }
+            return '[]'
+          }
           'Microsoft.OperationalInsights/workspaces' { return '[]' }
           'Microsoft.Insights/dataCollectionRuleAssociations' { return ConvertTo-Json -InputObject @(@{ id = $associationId }) }
           'Microsoft.Insights/dataCollectionRules' { return ConvertTo-Json -InputObject @(@{ id = $dcrId; name = 'dcr-test' }) }
@@ -176,9 +184,38 @@ function az {
       & (Join-Path $PSHOME 'pwsh') -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('$($fixture.DiscoveryError)'); exit 1"
       $global:LASTEXITCODE = $LASTEXITCODE
     }
+    'resource show' {
+      if ($args[[Array]::IndexOf($args, '--ids') + 1] -ne $observabilityAgentId -or
+          $args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString() -or
+          $args[[Array]::IndexOf($args, '--api-version') + 1] -ne '2026-05-01-preview') {
+        throw 'Unexpected Observability Agent identity lookup.'
+      }
+      return $observabilityPrincipalId
+    }
+    'role assignment' {
+      $operation = $args[2]
+      if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) {
+        throw 'Observability Agent RBAC cleanup lost the verified subscription.'
+      }
+      if ($operation -eq 'list') {
+        if ($args[[Array]::IndexOf($args, '--assignee-object-id') + 1] -ne $observabilityPrincipalId -or
+            $args[[Array]::IndexOf($args, '--scope') + 1] -ne "/subscriptions/$($fixture.Subscription)") {
+          throw 'Unexpected Observability Agent RBAC lookup.'
+        }
+        return $observabilityRoleAssignmentId
+      }
+      if ($operation -eq 'delete' -and $args[[Array]::IndexOf($args, '--ids') + 1] -eq $observabilityRoleAssignmentId) {
+        $fixture.Deletes.Add("role:$observabilityRoleAssignmentId")
+        return
+      }
+      throw 'Unexpected role assignment operation.'
+    }
     'resource delete' {
       $resourceId = $args[[Array]::IndexOf($args, '--ids') + 1]
-      if ($resourceId -notin @($associationId, $dcrId, $dceId)) { throw 'Unexpected resource deletion.' }
+      if ($resourceId -notin @($observabilityAgentId, $associationId, $dcrId, $dceId)) { throw 'Unexpected resource deletion.' }
+      if ($resourceId -eq $observabilityAgentId -and $args[[Array]::IndexOf($args, '--api-version') + 1] -ne '2026-05-01-preview') {
+        throw 'Observability Agent deletion must use its preview API.'
+      }
       $fixture.Deletes.Add($resourceId)
     }
     'monitor diagnostic-settings' {
@@ -230,6 +267,14 @@ try {
     }
   }
   $fixture.DiscoveryError = 'ERROR: (UnsupportedResourceType) Associations unsupported for this resource.'
+  $fixture.ObservabilityAgentExists = $true
+  $fixture.Deletes.Clear()
+  $fixture.TenantCleanup.Clear()
+  & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null
+  if (($fixture.Deletes[0..1] -join ',') -ne "role:$observabilityRoleAssignmentId,$observabilityAgentId") {
+    throw 'Observability Agent subscription RBAC and resource must be deleted before monitoring dependencies and resource groups.'
+  }
+  $fixture.ObservabilityAgentExists = $false
   if ($fixture.ActivityDiagnosticDeletes -eq 0) { throw 'Teardown must remove Activity Log routing owned by the selected lab.' }
   $ownedDiagnosticDeletes = $fixture.ActivityDiagnosticDeletes
   $fixture.ActivityWorkspaceId = "/subscriptions/$($fixture.Subscription)/resourceGroups/rg-other-lab/providers/Microsoft.OperationalInsights/workspaces/law-other"
@@ -360,6 +405,7 @@ try {
   Write-Output 'PASS: Entra cleanup plans are confirmed and processed before Azure deletion; cancellation, directory failures, and KeepEntraApplications preserve identities. No Azure calls.'
   Write-Output 'PASS: unsupported and missing association probes work with both native-error preferences; unexpected failures retain diagnostics and block deletion. No Azure calls.'
   Write-Output 'PASS: cleanup order, deduplication, matched group scope, tenant guard, and cancellation are preserved. No Azure calls.'
+  Write-Output 'PASS: Observability Agent subscription RBAC and resource are explicitly deleted before asynchronous resource-group cleanup. No Azure calls.'
   Write-Output 'PASS: KeepServiceGroup preserves shared tenant resources without skipping resource group cleanup. No Azure calls.'
   Write-Output 'PASS: managed Monitor groups follow exact subscription/RG/workspace ownership; other labs are excluded and cascaded or orphaned groups are handled. No Azure calls.'
   if ($IsWindows) { Write-Output 'PASS: parenthesized ARM resource paths survive native Windows .cmd argument forwarding unchanged. No Azure calls.' }

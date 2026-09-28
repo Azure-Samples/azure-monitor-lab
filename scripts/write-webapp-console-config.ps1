@@ -71,15 +71,22 @@ if ($grafana) {
   }
 }
 $sreAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.App/agents' })
+$observabilityAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' })
 $projects = @($resources | Where-Object { $_.type -ieq 'Microsoft.CognitiveServices/accounts/projects' })
 $apps = @($resources | Where-Object { $_.type -ieq 'Microsoft.Web/sites' })
 $links.SreAgent = $null
+$links.ObservabilityAgent = $null
 $links.Foundry = $null
 $projectEndpoint = $null
 if ($sreAgents.Count -eq 1) {
   $links.SreAgent = "https://sre.azure.com/#/agent/$SubscriptionId/$ResourceGroup/$($sreAgents[0].name)"
 } elseif ($sreAgents.Count -gt 1) {
   Write-Warning 'Multiple SRE agents found. Configure LabConsole:Links:SreAgent explicitly.'
+}
+if ($observabilityAgents.Count -eq 1) {
+  $links.ObservabilityAgent = "https://portal.azure.com/#resource$($observabilityAgents[0].id)"
+} elseif ($observabilityAgents.Count -gt 1) {
+  Write-Warning 'Multiple Observability Agents found. Configure LabConsole:Links:ObservabilityAgent explicitly.'
 }
 if ($projects.Count -eq 1) {
   $project = $projects[0]

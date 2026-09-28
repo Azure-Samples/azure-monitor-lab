@@ -1,6 +1,6 @@
 # Azure Monitor Lab Control Center
 
-The Control Center is the operational interface for the Azure Monitor Lab: check infrastructure health, generate application traffic, run approved lab scripts, try the existing Foundry agents, and use direct SRE MCP management tools from the deployed web app. It brings those activities together without replacing the Azure portal or the lab's [guided scenarios](DEMO-SCENARIOS.md).
+The Control Center is the operational interface for the Azure Monitor Lab: check infrastructure health, generate application traffic, run approved lab scripts, try the existing Foundry agents, generate deterministic agent-failure telemetry, and use direct SRE MCP management tools from the deployed web app. It brings those activities together without replacing the Azure portal or the lab's [guided scenarios](DEMO-SCENARIOS.md).
 
 ![Infrastructure Health first tab with resource counts and separate platform and telemetry signals](images/infrastructure-health.png)
 
@@ -31,7 +31,7 @@ The Control Center runs in the lab's existing App Service. It is not a separate 
 | Infra Health (first/default) | Check only VMs, VM scale sets, AKS clusters, and web apps. Inspect Azure platform availability, VM heartbeats, AKS reporting, and App Service server errors. | Enabled read-only backend access to the lab resource group and central workspace, plus an approved signed-in operator. No AI or SRE stage is required. |
 | Traffic & Faults | Health checks, deliberately slow requests and errors, dependency calls, checkout outcomes, bounded traffic runs, and a confirmation-gated performance experiment. Inspect request history, latency, and trace IDs. | The published lab web app. The optional AI and SRE stages are not required. |
 | Lab Operations | Start, break, or restore the lab; start the load ramp; simulate high CPU on both demo VMs; send custom logs; add a release marker. Review exact targets and parameters, then track the independent job. | Azure job, pinned image, managed identities, private journal, and operator access, all configured by deployment. CPU simulation requires both VMs running with ready VM Agents. |
-| Foundry Playground | Run an approved task against an existing lab agent. Inspect its response, reported model, token usage, run ID, and application trace. | Stage AI and an approved operator. Deployment prepares the four agents and access. |
+| Foundry Playground | Run an approved task against an existing lab agent; generate deterministic broken/fixed traces; run a bounded mixed alert storm for Scenario 64; or generate a separately consented, billable token anomaly for Scenario 65. Inspect responses, token totals, progress, and traces. | App Service authentication and an approved operator. Real agent and token-anomaly calls also require Stage AI; deployment prepares the four agents and access. |
 | SRE MCP Assistant | Ask questions about configured SRE resources and use allowed management tools. Review exact tool arguments before approving a change and inspect the operation log afterward. | Stages AI and SRE Agent, plus an approved operator. Deployment packages MCP and configures host-model access. |
 
 The SRE MCP Assistant does **not** create SRE investigation threads or run autonomous investigations. Its host model selects direct MCP tools. The investigation scenarios remain separate workflows in the SRE portal. Foundry tasks continue to use their existing temporary Foundry threads; that is a different service and workflow.
@@ -59,7 +59,9 @@ The tab does not start investigations, use a model, probe arbitrary endpoints, r
 
 The screenshot uses example configuration and a simulated run. No real operation was executed to produce it.
 
-The seven actions reuse repository scripts through an independent Azure Container Apps Job. Every action requires a five-minute proposal, review of the script, exact lab target and image digest, resource-group confirmation, and approval of changes and charges. The UI shows Azure execution status and links to the job's execution history. Switching away stops automatic status checks, not the job.
+The eight actions reuse repository scripts through an independent Azure Container Apps Job. Every action requires a five-minute proposal, review of the script, exact lab target and image digest, resource-group confirmation, and approval of changes and charges. The UI shows Azure execution status and links to the job's execution history. Switching away stops automatic status checks, not the job.
+
+Use **Stop Lab** when the environment is idle. It deallocates VMs and VMSS instances, stops AKS, and stops the Web App last. It reduces compute usage but is not teardown: fixed services, retained resources, telemetry, and optional agents can continue billing.
 
 **Simulate High CPU** submits fixed 10-minute loads to the Linux and Windows demo VMs without restarting them or using AKS. It validates both tagged targets and their VM Agents first, uses guest overlap locks and expiry, and reports submission rather than confirmed CPU or alert success. Watch **Percentage CPU** for each VM in Azure Monitor; VM health rows here assess heartbeats, not CPU. B-series CPU credits and alert evaluation windows can affect the observed result. Cancellation or Restore Lab does not stop an accepted CPU command. See [CPU simulation details](../workloads/webapp/LAB-OPERATIONS.md#simulate-high-cpu).
 
@@ -114,6 +116,7 @@ Related Scenarios links are navigation, not execution shortcuts. The [scenario c
 - [Lab Operations runner configuration, permissions, and recovery](../workloads/webapp/LAB-OPERATIONS.md).
 - [Foundry access and developer reference](../workloads/webapp/README.md#enable-foundry-access).
 - [SRE MCP configuration, permissions, limits, and recovery](../workloads/webapp/SRE-MCP.md).
+- [Observability Agent deployment, cost, privacy, and demo workflow](STAGE-OBSERVABILITY-AGENT.md).
 - [Complete guided scenarios](DEMO-SCENARIOS.md).
 
 The app's Guide and Scenarios links target the published `main` documentation. When previewing an unmerged feature branch, read this guide from that branch until it is merged. No Azure redeployment is performed by reading the guide.

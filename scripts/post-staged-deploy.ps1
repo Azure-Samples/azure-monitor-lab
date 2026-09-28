@@ -20,6 +20,10 @@
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
 
+.PARAMETER EnableStageObservabilityAgent
+  Validate Azure Copilot Observability Agent when true. When omitted, detect the
+  deployed resource. Explicit false skips validation without changing it.
+
 .EXAMPLE
   ./scripts/post-staged-deploy.ps1 -ResourceGroup rg-azure-monitor-lab
 
@@ -33,7 +37,8 @@ param(
   [string] $SubscriptionId,
   [guid[]] $ConsoleOperatorObjectIds,
   [bool] $EnableStageE = $false,
-  [bool] $EnableStageSreAgent = $false
+  [bool] $EnableStageSreAgent = $false,
+  [bool] $EnableStageObservabilityAgent = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,6 +81,9 @@ $resources = @(az resource list --subscription $active.id -g $ResourceGroup -o j
 if ($LASTEXITCODE -ne 0) { throw 'Staged resource discovery failed.' }
 if (-not $PSBoundParameters.ContainsKey('EnableStageSreAgent')) {
   $EnableStageSreAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.App/agents' }).Count -gt 0
+}
+if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
+  $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
 }
 $webApp = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*"
@@ -141,6 +149,13 @@ if ($EnableStageE) {
 if ($EnableStageSreAgent) {
   Write-Step "SRE Agent stage enabled - validating readiness and printing the swedencentral trial setup handoff"
   & (Join-Path $PSScriptRoot 'setup-sre-agent.ps1') `
+    -SubscriptionId $active.id `
+    -ResourceGroup $ResourceGroup
+}
+
+if ($EnableStageObservabilityAgent) {
+  Write-Step 'Observability Agent stage enabled - validating scope, operations, and least-privilege RBAC'
+  & (Join-Path $PSScriptRoot 'setup-observability-agent.ps1') `
     -SubscriptionId $active.id `
     -ResourceGroup $ResourceGroup
 }
