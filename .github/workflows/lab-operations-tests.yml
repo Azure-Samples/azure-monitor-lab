@@ -24,6 +24,7 @@ on:
       - 'scripts/tests/ai-traffic.Tests.ps1'
       - 'scripts/tests/staged-guide.Tests.ps1'
       - 'scripts/tests/sli-setup.Tests.ps1'
+      - 'scripts/tests/service-group.Tests.ps1'
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
@@ -36,6 +37,7 @@ on:
       - 'scripts/setup-observability-agent.ps1'
       - 'scripts/setup-slis.ps1'
       - 'scripts/setup-health-model.ps1'
+      - 'scripts/resolve-service-group-id.ps1'
       - 'scripts/remove-arm-resource.ps1'
       - 'workloads/ai/*.py'
       - 'workloads/ai/tests/**'
@@ -89,6 +91,7 @@ jobs:
           ./scripts/tests/ai-traffic.Tests.ps1
           ./scripts/tests/staged-guide.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
+          ./scripts/tests/service-group.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
           ./scripts/tests/observability-agent-config.Tests.ps1
           ./scripts/tests/entra-cleanup.Tests.ps1

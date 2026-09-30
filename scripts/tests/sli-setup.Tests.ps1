@@ -4,7 +4,7 @@ $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $root = Join-Path ([IO.Path]::GetTempPath()) ('sli-setup-test-' + [guid]::NewGuid().ToString('N'))
 $directory = Join-Path $root 'scripts'
 $null = New-Item -ItemType Directory -Path $directory -Force
-foreach ($name in @('setup-slis.ps1', 'setup-health-model.ps1', 'remove-arm-resource.ps1')) {
+foreach ($name in @('setup-slis.ps1', 'setup-health-model.ps1', 'remove-arm-resource.ps1', 'resolve-service-group-id.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source "scripts/$name") -Destination $directory
 }
 $fixture = @{
@@ -17,6 +17,7 @@ $fixture = @{
 $sliResourceIds = @('sli-aks-pods-running', 'sli-aks-pod-start-latency') |
   ForEach-Object { "/providers/Microsoft.Management/serviceGroups/amlab-workload/providers/Microsoft.Monitor/slis/$_" }
 $serviceGroupId = '/providers/Microsoft.Management/serviceGroups/amlab-workload'
+$fixture.ServiceGroupResourceId = $serviceGroupId
 $memberId = "/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg/providers/Microsoft.Relationships/serviceGroupMember/sgm-amlab-rg"
 $deleteApis = @{}
 foreach ($resourceId in $sliResourceIds) { $deleteApis[$resourceId] = '2025-03-01-preview' }
@@ -32,6 +33,8 @@ function az {
       if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Wrong subscription selected.' }
     }
     'account show' { return @{ id = $fixture.Subscription; tenantId = $fixture.Tenant } | ConvertTo-Json }
+    'group exists' { return 'true' }
+    'resource list' { return ConvertTo-Json -InputObject @(@{ id = $memberId }) }
     'rest --method' {
       if ($args[2] -eq 'delete') {
         if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Cleanup deletion lost the verified subscription.' }
@@ -50,10 +53,17 @@ function az {
         return
       }
       if ($args[2] -ne 'get') { throw 'Unexpected service group write.' }
+      if ($args[[Array]::IndexOf($args, '--url') + 1] -ne "https://management.azure.com$($fixture.ServiceGroupResourceId)?api-version=2024-02-01-preview") {
+        throw 'SLI verification must use the group selected by the RG membership.'
+      }
       return '{"properties":{"provisioningState":"Succeeded"}}'
     }
     'identity show' { return @{ id = 'test-identity'; clientId = $fixture.Principal; principalId = $fixture.Principal } | ConvertTo-Json }
     'resource show' {
+      if ($args -contains '--ids') {
+        if ($args[[Array]::IndexOf($args, '--ids') + 1] -ne $memberId) { throw 'Unexpected membership lookup.' }
+        return @{ properties = @{ targetId = $fixture.ServiceGroupResourceId } } | ConvertTo-Json
+      }
       return @{
         id = 'test-amw'
         properties = @{
@@ -193,9 +203,14 @@ try {
     if ($mode -eq 'authentication' -and $result.Failure -like '*supported MSI token audience*') { throw 'Unrelated authentication failures must not be classified as the Cloud Shell restriction.' }
   }
   $fixture.Mode = 'success'
-  $result = Invoke-TestSliSetup
-  if ($result.Failure -or $fixture.Queries -ne 4 -or -not $fixture.ExplicitSubscription -or
-      $result.Text -notmatch 'All four documented source metrics are currently flowing') { throw 'Successful SLI verification must query all four metrics with a subscription-scoped token.' }
+  foreach ($groupName in @('amlab-workload', 'amlab-workload-123456abcdef', 'custom-lab-group')) {
+    $serviceGroupId = "/providers/Microsoft.Management/serviceGroups/$groupName"
+    $fixture.ServiceGroupResourceId = $serviceGroupId
+    $result = Invoke-TestSliSetup
+    if ($result.Failure -or $fixture.Queries -ne 4 -or -not $fixture.ExplicitSubscription -or
+        $result.Text -notmatch 'All four documented source metrics are currently flowing' -or
+        -not $result.Text.Contains("$serviceGroupId/serviceLevelIndicators")) { throw "Successful SLI verification must use the lab membership and query all four metrics: $($result.Failure)" }
+  }
   Write-Output 'PASS: Cloud Shell audience errors direct wrapper users to the automatic fallback without leaking credentials; other failures stop; all four metrics remain required. No Azure calls.'
 } finally {
   Remove-Item -LiteralPath $root -Recurse -Force

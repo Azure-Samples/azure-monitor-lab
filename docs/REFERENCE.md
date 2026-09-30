@@ -91,7 +91,7 @@ rg-azure-monitor-lab/
 ├─ Workload health and reliability
 │   ├─ hm-amlab-workload          ← Health Model with entities, signals, and relationships
 │   ├─ id-sli-amlab               ← UAMI used by SLI/SLO scaffolding
-│   └─ amlab-workload             ← tenant-scoped Service Group + RG membership, created by deploy.ps1
+│   └─ amlab-workload-<scope-hash> ← per-lab tenant-scoped Service Group + RG membership, created by deploy.ps1
 └─ Workbooks
     ├─ wb-amlab-trafficlights     ← 🚦 Traffic Lights — single pane of glass
     ├─ wb-amlab-cost              ← Central LAW ingestion volume

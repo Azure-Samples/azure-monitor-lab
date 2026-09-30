@@ -22,7 +22,8 @@
 
 .PARAMETER ServiceGroupId
   ARM resource id segment. Alphanumeric + - _ ( ) . ~ ; max 250 chars; globally
-  unique within the tenant.
+  unique within the tenant. Defaults to the existing RG membership target, or
+  amlab-workload-<scope-hash> for a new lab. The hash includes subscription and RG.
 
 .PARAMETER Teardown
   Remove the member relationship and the service group. Idempotent (DELETE).
@@ -40,8 +41,8 @@
 [CmdletBinding()]
 param(
   [string] $ResourceGroup           = 'rg-azure-monitor-lab',
-  [string] $ServiceGroupId          = 'amlab-workload',
-  [string] $ServiceGroupDisplayName = 'AMLAB · Azure Monitor Lab Workload',
+  [string] $ServiceGroupId,
+  [string] $ServiceGroupDisplayName,
   [string] $RelationshipId          = 'sgm-amlab-rg',
   [switch] $Teardown
 )
@@ -67,6 +68,11 @@ if (Test-Path $targetFile) {
 
 $subId    = $active.id
 $tenantId = $active.tenantId
+$ServiceGroupId = & (Join-Path $PSScriptRoot 'resolve-service-group-id.ps1') `
+  -SubscriptionId $subId -ResourceGroup $ResourceGroup -ServiceGroupId $ServiceGroupId -RelationshipId $RelationshipId
+if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
+  $ServiceGroupDisplayName = "AMLAB - $ResourceGroup"
+}
 Write-Info "Tenant   : $tenantId"
 Write-Info "Sub      : $subId"
 Write-Info "RG       : $ResourceGroup"
@@ -236,6 +242,6 @@ Write-Host @"
 
    To remove
    ---------
-   ./scripts/setup-health-model.ps1 -Teardown
+   ./scripts/setup-health-model.ps1 -ResourceGroup '$ResourceGroup' -ServiceGroupId '$ServiceGroupId' -Teardown
 
 "@ -ForegroundColor Green

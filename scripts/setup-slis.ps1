@@ -21,7 +21,8 @@
   Expected Azure subscription. Required when .azure-target.json is absent.
 
 .PARAMETER ServiceGroupId
-  Service group that owns the portal-created SLIs.
+  Service group that owns the portal-created SLIs. Defaults to the existing RG
+  membership target, or the same subscription/RG-derived ID used by setup-health-model.ps1.
 
 .PARAMETER Teardown
   Delete the documented sample SLIs if they were created in the portal.
@@ -33,7 +34,7 @@
 param(
   [string] $ResourceGroup  = 'rg-azure-monitor-lab',
   [string] $SubscriptionId,
-  [string] $ServiceGroupId = 'amlab-workload',
+  [string] $ServiceGroupId,
   [ValidateRange(0, 60)]
   [int] $MetricWaitMinutes = 10,
   [switch] $Teardown
@@ -68,6 +69,8 @@ if ($target -and $active.tenantId -ne $target.expectedTenantId) {
 }
 Write-Info "Sub: $($active.id)"
 Write-Info "RG : $ResourceGroup"
+$ServiceGroupId = & (Join-Path $PSScriptRoot 'resolve-service-group-id.ps1') `
+  -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup -ServiceGroupId $ServiceGroupId
 Write-Info "SG : $ServiceGroupId"
 
 $sliApi = '2025-03-01-preview'
