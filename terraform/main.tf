@@ -53,6 +53,7 @@ resource "azapi_resource" "stage_b" {
         vmAdminPassword      = { value = var.vm_admin_password }
         deployWindowsVm      = { value = var.deploy_windows_vm }
         deployLinuxVm        = { value = var.deploy_linux_vm }
+        enableVmOtelMetrics  = { value = var.enable_vm_otel_metrics }
         vmSize               = { value = var.vm_size }
         aksNodeVmSize        = { value = var.aks_node_vm_size }
         aksNodeCount         = { value = var.aks_node_count }

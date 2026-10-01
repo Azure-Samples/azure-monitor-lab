@@ -21,6 +21,9 @@ param subnetId string
 @description('Data Collection Rule for VM Insights.')
 param dcrId string
 
+@description('Optional additional DCR for OpenTelemetry metrics. Empty keeps classic VM Insights only.')
+param otelDcrId string = ''
+
 @description('Resource tags.')
 param tags object = {}
 
@@ -164,6 +167,16 @@ resource dcra 'Microsoft.Insights/dataCollectionRuleAssociations@2023-03-11' = {
   properties: {
     dataCollectionRuleId: dcrId
     description: 'Associate VM Insights DCR'
+  }
+  dependsOn: [ ama ]
+}
+
+resource otelDcra 'Microsoft.Insights/dataCollectionRuleAssociations@2023-03-11' = if (!empty(otelDcrId)) {
+  scope: vm
+  name: 'vm-otel-metrics-association'
+  properties: {
+    dataCollectionRuleId: otelDcrId
+    description: 'Default OpenTelemetry guest metrics to the Azure Monitor workspace.'
   }
   dependsOn: [ ama ]
 }

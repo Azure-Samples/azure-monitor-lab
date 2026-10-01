@@ -158,6 +158,8 @@ notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdmi
 
 To change a value (e.g. region, alert email, password, stage toggles), edit `lab.config.json` and re-run `sync-config.ps1` (or just run `deploy.ps1` again).
 
+**Default-on VM OpenTelemetry metrics:** `enableVmOtelMetrics` defaults to the JSON Boolean `true`, including when omitted; explicitly set `false` to opt out. One-shot Bicep/ARM and the portal expose the same parameter; staged Bicep uses Stage B only, and Terraform uses `enable_vm_otel_metrics` (also default `true`). This adds 10 system metrics at 60 seconds to the existing `amw-<prefix>` for enabled standalone Linux/Windows VMs, not VMSS. Classic VM Insights, LAW/KQL queries, and workbooks remain unchanged; OTel uses AMW/PromQL. See [setup, limitations, cost scope, and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
+
 ### Granular RBAC demo (scenario 27)
 
 `scripts/setup-rbac-demo.ps1` creates 3 Microsoft Entra service principals (workspace-, table-, row-scoped) and writes their credentials to `scripts/.rbac-demo-config.json` (gitignored). The file is regenerated on every run — there is no committed copy to bootstrap. See `scripts/.rbac-demo-config.json.example` for the shape.

@@ -32,6 +32,9 @@ param deployWindowsVm bool = true
 @description('Deploy the Ubuntu 22.04 demo VM.')
 param deployLinuxVm bool = true
 
+@description('Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets.')
+param enableVmOtelMetrics bool = true
+
 @description('Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable.')
 param dailyCapGb int = 1
 
@@ -125,6 +128,7 @@ var webAppName          = 'app-${namePrefix}-${take(suffix, 5)}'
 var actionGroupName     = 'ag-${namePrefix}-email'
 var workbookName        = 'wb-${namePrefix}-trafficlights'
 var dcrVmInsightsName   = 'dcr-${namePrefix}-vminsights'
+var deployVmOtelMetrics = enableVmOtelMetrics && (deployLinuxVm || deployWindowsVm)
 var dcrPrometheusName   = 'dcr-${namePrefix}-prometheus'
 var dceName             = 'dce-${namePrefix}'
 var vmssName            = 'vmss-${namePrefix}'
@@ -394,8 +398,18 @@ module workspaceTransforms 'modules/dcr-workspace-transforms.bicep' = {
   }
 }
 
+module vmOtelMetrics 'modules/vm-otel-metrics.bicep' = if (deployVmOtelMetrics) {
+  name: 'vm-otel-metrics'
+  params: {
+    name: 'dcr-${namePrefix}-vm-otel'
+    location: location
+    monitoringAccountId: amw.outputs.id
+    tags: commonTags
+  }
+}
+
 // ---------------------------------------------------------------------------------
-// Linux VM (Ubuntu 22.04) with AMA + Dependency Agent + DCR association
+// Linux VM (Ubuntu 22.04) with AMA + DCR associations
 // ---------------------------------------------------------------------------------
 module vmLinux 'modules/vm-linux.bicep' = if (deployLinuxVm) {
   name: 'vm-linux'
@@ -407,6 +421,7 @@ module vmLinux 'modules/vm-linux.bicep' = if (deployLinuxVm) {
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }
@@ -424,6 +439,7 @@ module vmWindows 'modules/vm-windows.bicep' = if (deployWindowsVm) {
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }

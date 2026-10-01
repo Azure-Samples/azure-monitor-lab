@@ -20,6 +20,7 @@ $iconPaths = @{
   job      = 'other/Worker_Container_App.svg'
   net      = 'networking/Virtual_Networks.svg'
   ama      = 'general/Input_Output.svg'
+  otel     = 'local:OpenTelemetry.png'
   flow     = 'networking/Network_Watcher.svg'
   pol      = 'management_governance/Policy.svg'
   law      = 'management_governance/Log_Analytics_Workspaces.svg'
@@ -86,10 +87,11 @@ $nodes = [ordered]@{
   FDRY  = @{ col = 'WL';   i = 5; lines = @('GenAI · Foundry + agents','chat/embed/router · optional'); icons = @('foundry','agents','router') }
 
   AMA   = @{ col = 'COL';  i = 0; lines = @('Azure Monitor Agent','DCRs · DCE'); icons = @('ama') }
-  FLOW  = @{ col = 'COL';  i = 1; lines = @('NSG Flow Logs');                   icons = @('flow') }
-  POL   = @{ col = 'COL';  i = 2; lines = @('Diag Settings via','Policy (DINE)'); icons = @('pol') }
-  ACR   = @{ col = 'COL';  i = 3; lines = @('Container Registry (ACR)','digest-pinned runner image'); icons = @('acr') }
-  JOB   = @{ col = 'COL';  i = 4; lines = @('Container Apps Job','approved lab operations'); icons = @('job') }
+  OTEL  = @{ col = 'COL';  i = 1; lines = @('OpenTelemetry','Standalone VM metrics via AMA'); icons = @('otel') }
+  FLOW  = @{ col = 'COL';  i = 2; lines = @('NSG Flow Logs');                   icons = @('flow') }
+  POL   = @{ col = 'COL';  i = 3; lines = @('Diag Settings via','Policy (DINE)'); icons = @('pol') }
+  ACR   = @{ col = 'COL';  i = 4; lines = @('Container Registry (ACR)','digest-pinned runner image'); icons = @('acr') }
+  JOB   = @{ col = 'COL';  i = 5; lines = @('Container Apps Job','approved lab operations'); icons = @('job') }
 
   LAW   = @{ col = 'DATA'; i = 0; lines = @('Log Analytics','central');         icons = @('law') }
   LAWAI  = @{ col = 'DATA'; i = 1; lines = @('Log Analytics','App Insights');     icons = @('law') }
@@ -113,7 +115,7 @@ $nodes = [ordered]@{
 # --- edges (source -> target) ---------------------------------------------------------
 $edges = @(
   @('VM','AMA'), @('VMSS','AMA'), @('AKS','AMA'), @('NET','FLOW'),
-  @('AMA','LAW'), @('AMA','AMW'), @('FLOW','PLAT'), @('POL','LAW'), @('LAW','QUERY'), @('AI','LAWAI'), @('PLAT','LAW'),
+  @('AMA','LAW'), @('AMA','AMW'), @('AMA','OTEL'), @('OTEL','AMW'), @('FLOW','PLAT'), @('POL','LAW'), @('LAW','QUERY'), @('AI','LAWAI'), @('PLAT','LAW'),
   @('LAW','WB'), @('LAWAI','WB'), @('AMW','GRAF'), @('LAW','AG'), @('AI','AG'), @('AI','OBS'), @('AG','OBS'), @('OAMW','OBS'), @('AG','SRE'), @('AG','LOGIC'), @('LAW','SENT'), @('LAW','HEALTH'), @('LAW','COPILOT'),
   @('ACR','JOB')
 )
@@ -129,7 +131,7 @@ function Esc($s)     { $s -replace '&','&amp;' -replace '<','&lt;' -replace '>',
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 $W $H' font-family='Segoe UI, Helvetica, Arial, sans-serif' role='img' aria-labelledby='architecture-title architecture-description'>")
 [void]$sb.AppendLine("<title id='architecture-title'>Azure Monitor Lab architecture</title>")
-[void]$sb.AppendLine("<desc id='architecture-description'>Workloads, telemetry collection, dashboards, and response. Application Insights and alerts feed Azure Copilot Observability Agent, which stores correlated issues in a dedicated Azure Monitor workspace. GitHub Copilot CLI consumes central monitoring context for guided investigations. Azure Container Registry supplies a digest-pinned image to the Container Apps Job used for approved lab operations.</desc>")
+[void]$sb.AppendLine("<desc id='architecture-description'>Workloads, telemetry collection, dashboards, and response. Azure Monitor Agent sends standalone VM OpenTelemetry metrics to the Azure Monitor workspace alongside classic Log Analytics monitoring. Application Insights and alerts feed Azure Copilot Observability Agent, which stores correlated issues in a dedicated Azure Monitor workspace. GitHub Copilot CLI consumes central monitoring context for guided investigations. Azure Container Registry supplies a digest-pinned image to the Container Apps Job used for approved lab operations.</desc>")
 [void]$sb.AppendLine("<rect x='0' y='0' width='$W' height='$H' rx='10' fill='#0D1117'/>")
 [void]$sb.AppendLine("<text x='$($W/2)' y='34' fill='#E6EDF3' font-size='20' font-weight='700' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
 [void]$sb.AppendLine("<text x='$($W/2)' y='52' fill='#9DA7B3' font-size='11' text-anchor='middle'>optional Foundry and agent stages use their documented supported regions</text>")

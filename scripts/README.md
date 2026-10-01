@@ -26,6 +26,10 @@ Most scripts use the Azure CLI and require `az login`. Scripts that work with AK
 
 For a fresh deployment, use `deploy.ps1` rather than calling `post-deploy.ps1` directly.
 
+`sync-config.ps1` also projects the JSON Boolean `enableVmOtelMetrics` (missing means `true`) into the Bicep parameter and Terraform `enable_vm_otel_metrics`. Both classic VM Insights and OpenTelemetry metrics are enabled by default; an explicit `false` opts out of the additional metrics. Strings such as `"false"`, numbers, and `null` are rejected before any output files are written. System metrics are added only to standalone VMs in Stage B; see [setup and targeted opt-out](../docs/STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
+
+Offline configuration/UI regression check: `pwsh -NoProfile -File scripts\tests\vm-otel-config.Tests.ps1`. It copies the sync script into a disposable fixture under `scripts/tests`, uses synthetic inputs, and removes the fixture afterwards; it does not read local configuration/secrets or call Azure. Terraform's companion mocked plan test is `terraform/tests/vm-otel-metrics.tftest.hcl` (run `terraform validate` first, then `terraform test` filtered to that file from the Terraform directory).
+
 ## Lab lifecycle and demo control
 
 The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes eight scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.

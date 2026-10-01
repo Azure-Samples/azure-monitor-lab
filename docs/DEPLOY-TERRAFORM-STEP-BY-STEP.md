@@ -150,6 +150,8 @@ notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdmi
 
 `scripts/sync-config.ps1` writes `terraform/stages.tfvars` from your central config, including all seven stage toggles. Re-run it any time you change `lab.config.json` (e.g. to flip the next stage).
 
+VM OpenTelemetry metrics default to **enabled alongside classic VM Insights**. No explicit `true` is required: omitted `enableVmOtelMetrics` in central configuration and Terraform's `enable_vm_otel_metrics` both default to `true`. An explicit `false` opts out. The value is passed **only to Stage B**; Stage A and VMSS are unchanged. See [both monitoring views, costs, and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics): setting `false` on an incremental redeployment does not delete already-deployed OTel associations.
+
 **Or hand-edit `terraform/stages.tfvars` directly** (skip `sync-config.ps1`; the file is gitignored):
 
 ```hcl
@@ -158,6 +160,7 @@ resource_group_name = "rg-azure-monitor-lab"   # optional - default is rg-azure-
 location            = "northeurope"
 alert_email         = "your.alias@example.com"
 vm_admin_password   = "<STRONG-PASSWORD>"
+enable_vm_otel_metrics = true # default: both classic and OTel metrics for standalone VMs
 
 enable_stage_a = true
 enable_stage_b = false

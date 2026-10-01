@@ -9,6 +9,7 @@
     "vmAdminPassword": { "value": "<STRONG-PASSWORD>" },
     "deployWindowsVm": { "value": true },
     "deployLinuxVm": { "value": true },
+    "enableVmOtelMetrics": { "value": true },
     "dailyCapGb": { "value": 1 },
     "aksNodeCount": { "value": 2 },
     "grafanaAdminObjectId": { "value": "" },
