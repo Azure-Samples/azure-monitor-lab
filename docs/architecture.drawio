@@ -64,6 +64,20 @@
         <mxCell id="c1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Input_Output.svg" value="AMA" vertex="1">
           <mxGeometry height="52" width="80" x="465" y="110" as="geometry" />
         </mxCell>
+        <mxCell id="otel" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/OpenTelemetry.png" value="OpenTelemetry&lt;br&gt;Standalone VM metrics via AMA" vertex="1">
+          <mxGeometry height="52" width="80" x="465" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ama-otel" edge="1" parent="1" source="c1" target="otel" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;exitX=0.5;exitY=1;entryX=0.5;entryY=0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="otel-amw" edge="1" parent="1" source="otel" target="b4" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=orthogonalEdgeStyle">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="555" y="190" />
+              <mxPoint x="770" y="190" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
         <mxCell id="c2" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Module.svg" value="Dep Agent" vertex="1">
           <mxGeometry height="52" width="80" x="565" y="110" as="geometry" />
         </mxCell>
@@ -71,7 +85,7 @@
           <mxGeometry height="52" width="80" x="665" y="110" as="geometry" />
         </mxCell>
         <mxCell id="c4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Gear.svg" value="DCR · VMI" vertex="1">
-          <mxGeometry height="52" width="80" x="465" y="210" as="geometry" />
+          <mxGeometry height="52" width="80" x="465" y="410" as="geometry" />
         </mxCell>
         <mxCell id="c5" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Gear.svg" value="DCR · Prom" vertex="1">
           <mxGeometry height="52" width="80" x="565" y="210" as="geometry" />

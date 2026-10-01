@@ -26,6 +26,10 @@ Most scripts use the Azure CLI and require `az login`. Scripts that work with AK
 
 For a fresh deployment, use `deploy.ps1` rather than calling `post-deploy.ps1` directly.
 
+`sync-config.ps1` also projects the JSON Boolean `enableVmOtelMetrics` (missing means `true`) into the Bicep parameter and Terraform `enable_vm_otel_metrics`. Both classic VM Insights and OpenTelemetry metrics are enabled by default; an explicit `false` opts out of the additional metrics. Strings such as `"false"`, numbers, and `null` are rejected before any output files are written. System metrics are added only to standalone VMs in Stage B; see [setup and targeted opt-out](../docs/STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
+
+Offline configuration/UI regression check: `pwsh -NoProfile -File scripts\tests\vm-otel-config.Tests.ps1`. It copies the sync script into a disposable fixture under `scripts/tests`, uses synthetic inputs, and removes the fixture afterwards; it does not read local configuration/secrets or call Azure. Terraform's companion mocked plan test is `terraform/tests/vm-otel-metrics.tftest.hcl` (run `terraform validate` first, then `terraform test` filtered to that file from the Terraform directory).
+
 ## Lab lifecycle and demo control
 
 The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes eight scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
@@ -122,7 +126,11 @@ Cleanup includes name-matched auxiliary groups such as `MC_<lab-rg>_...` and Azu
 
 Azure normally removes the Monitor managed group when its workspace is deleted. Teardown checks whether it still exists and rechecks its ownership before requesting cleanup. A rerun can find a leftover group through its `managedBy` link even if the target lab group is already gone. Groups with missing or different ownership metadata are not selected. Delete requests remain asynchronous; an accepted request is not confirmation that the group is gone.
 
-Teardown checks for the exact `sgm-amlab-rg` membership in the selected resource group before attempting tenant-scoped SLI or Service Group deletion. If the membership is absent, shared cleanup is skipped automatically. When the membership exists but other labs share the tenant-level `amlab-workload` Service Group and SLIs, add `-KeepServiceGroup` to preserve them. The selected lab's resource-group membership is removed with its resource group.
+New labs use a tenant-scoped Service Group ID of `amlab-workload-<scope-hash>`. The suffix is the first 12 lowercase hexadecimal characters of SHA-256 over the lowercased full resource-group ARM ID, including the subscription ID. Two resource groups in the same subscription get different IDs, while redeployments reuse the same ID. A subscription-only suffix or a new random ID on every run would not provide both guarantees. A new group's default display name includes the resource-group name. Existing groups retain their display names (including legacy, custom/shared, and explicitly selected groups) unless `-ServiceGroupDisplayName` is supplied. Failed or invalid group reads stop setup rather than silently renaming an existing group.
+
+[setup-health-model.ps1](setup-health-model.ps1) and [setup-slis.ps1](setup-slis.ps1) share [resolve-service-group-id.ps1](resolve-service-group-id.ps1). They reuse the selected RG's existing membership target before deriving a name, preserving legacy `amlab-workload` groups and custom IDs. An explicit `-ServiceGroupId` still overrides discovery. Existing memberships are not automatically migrated or reparented; membership lookup failures stop rather than silently selecting a different group. This applies to one-shot, staged, Cloud Shell, and Terraform post-deployment setup because they invoke these same helpers.
+
+Teardown checks for the exact `sgm-amlab-rg` membership in the selected resource group before attempting tenant-scoped SLI or Service Group deletion; the helpers resolve its actual target. If the membership is absent, shared cleanup is skipped automatically. When the membership exists but other labs share a legacy or explicitly chosen Service Group and SLIs, add `-KeepServiceGroup` to preserve them. The selected lab's resource-group membership is removed with its resource group.
 
 ```powershell
 ./scripts/teardown.ps1 -ResourceGroup $rg -KeepServiceGroup -Yes

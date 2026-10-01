@@ -32,6 +32,7 @@ These features are deployed only when selected in the portal or enabled in the d
 
 | Feature | What remains after deployment |
 |---|---|
+| [VM OpenTelemetry metrics](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics) | Enabled by default alongside classic VM Insights unless `enableVmOtelMetrics=false`. Allow AMA configuration and metrics to arrive in the existing AMW; verify both views. No extra setup script. Incremental redeployment with `false` does not remove existing OTel associations; use the linked targeted opt-out. |
 | [Platform Logs DCR](DEMO-SCENARIOS.md#s51) | Nothing when `enablePlatformLogsDcr` was enabled successfully. If it was disabled, enable the flag and redeploy before using the scenario. |
 | [Metrics Export DCR](DEMO-SCENARIOS.md#s52) | Nothing when `enableMetricsExportDcr` was enabled successfully. If it was disabled, enable the flag and redeploy before using the scenario. |
 | [LAW replication](DEMO-SCENARIOS.md#s41) | Allow replication to become active when it was enabled. If disabled, enable it and provide a secondary region before redeploying. |

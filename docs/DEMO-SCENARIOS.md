@@ -66,6 +66,8 @@ Modern teams don't want to chain through 10 portal blades to know "is anything b
 <a id="s2"></a>
 ## 2 · VM Insights — cross-OS, agent-based monitoring
 
+> **Default side-by-side metrics views:** classic VM Insights and OpenTelemetry are both enabled. `enableVmOtelMetrics` (Terraform: `enable_vm_otel_metrics`) defaults to `true`; standalone VMs additionally send default OpenTelemetry system metrics to the existing AMW for PromQL exploration. Continue this scenario's classic LAW/KQL view unchanged. See [Stage B configuration, validation, limitations, costs, and opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
+
 **Audience:** infra / Ops teams.
 **Time:** 5 min.
 
@@ -1989,7 +1991,7 @@ Two preview features stacked:
 | 1 | `Microsoft.CloudHealth/healthmodels/hm-amlab-workload` (RG-scoped, system-assigned MI) | `infra/modules/health-model.bicep` via `deploy.ps1` |
 | 2 | 9 child entities + 11 relationships (frontend / compute / platform tiers + their Azure-resource children) and signal definitions | same Bicep module |
 | 3 | `Microsoft.CloudHealth/.../authenticationsettings/systemAssigned` (so signals can read Azure Monitor metrics) | same Bicep module |
-| 4 | `Microsoft.Management/serviceGroups/amlab-workload` (tenant scope) | `scripts/setup-health-model.ps1` (optional) |
+| 4 | `Microsoft.Management/serviceGroups/amlab-workload-<scope-hash>` (tenant scope, per subscription/RG) | `scripts/setup-health-model.ps1` (optional; existing membership targets are reused) |
 | 5 | `Microsoft.Relationships/serviceGroupMember/sgm-amlab-rg` extension on the lab RG | same helper script (optional) |
 
 ### Topology
@@ -2095,7 +2097,7 @@ Health Models *require* Service Groups precisely because the same resource may h
 |---|---|---|
 | UAMI `id-sli-amlab` + Monitoring Reader + Monitoring Metrics Publisher on `amw-amlab` | `infra/modules/sli-identity.bicep` (auto) | SLI plane needs a UAMI with read on the source AMW and write back to the destination AMW. |
 | Monitoring Metrics Publisher on AMW default DCR + DCE | `scripts/setup-slis.ps1` (auto) | The AMW's auto-created DCR/DCE live in `MA_amw-amlab_<region>_managed`. SLI ingestion fails without grants here too. |
-| Service group `amlab-workload` | `scripts/setup-health-model.ps1` (auto) | Same SG that hosts the Health Model. |
+| Service group `amlab-workload-<scope-hash>` | `scripts/setup-health-model.ps1` (auto) | Per-lab group; existing legacy/custom membership targets are reused. |
 | AKS Managed Prometheus source metrics | AKS monitoring add-on (auto) | The setup script verifies `up`, `kube_pod_status_phase`, and the pod-start histogram bucket/count series before the demo. |
 | Sample SLIs | Azure portal (manual) | Create the two preview resources using the field values below. The script intentionally avoids depending on a changing preview API contract. |
 
@@ -2115,13 +2117,14 @@ $resourceGroup = '<resource-group>'
 
 ./scripts/setup-slis.ps1 `
    -SubscriptionId $subscriptionId `
-   -ResourceGroup $resourceGroup `
-   -ServiceGroupId amlab-workload
+   -ResourceGroup $resourceGroup
 ```
 
 The AKS cluster must be running before the portal can preview these signals. After a stopped cluster starts, allow Managed Prometheus time to emit fresh samples. Do not continue if `setup-slis.ps1` reports a missing metric. A successful run confirms that all four documented source metric families currently return at least one series from `amw-amlab`.
 
-> `https://portal.azure.com/#@<tenant>/resource/providers/Microsoft.Management/serviceGroups/amlab-workload/serviceLevelIndicators`
+Use the exact Service Group ID and portal URL printed by the script. New IDs include a stable subscription/resource-group hash, while existing labs retain the group referenced by their membership:
+
+> `https://portal.azure.com/#@<tenant>/resource/providers/Microsoft.Management/serviceGroups/<resolved-service-group-id>/serviceLevelIndicators`
 
 Open the URL, select **+ Add SLI**, and create these definitions:
 
@@ -2169,7 +2172,7 @@ Azure Monitor compares the measured SLI with the **baseline target**, which is t
 Azure Monitor can alert when the SLI falls below its baseline, when a fast burn consumes budget rapidly over a short lookback, or when a slow burn persists over a longer lookback. See [Service level indicators in Azure Monitor](https://learn.microsoft.com/azure/azure-monitor/fundamentals/service-level-indicators-create#understand-baseline-target-error-budget-and-burn-rate).
 
 ### Click-through (4 min)
-1. **Portal > Service groups > `amlab-workload` > Service Level Indicators**. Open the two manually created SLIs.
+1. **Portal > Service groups > the group printed by `setup-slis.ps1` > Service Level Indicators**. Open the two manually created SLIs.
 2. Open `sli-aks-pods-running`:
    - **Definition** tab - show the `(100 * A) / B` formula, uptime criteria `>= 95`, and SLO baseline (`99` / 7d rolling).
    - **Compliance** tab - show current compliance and error budget remaining. Explain that remaining budget is the failure margin left before the SLO is missed.

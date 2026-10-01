@@ -20,6 +20,8 @@
   "_grafanaAdminObjectIdDocs": "Leave empty to grant Grafana Admin to the deploying identity. When a pipeline deploys, set the Microsoft Entra object ID of the human lab operator or group that must access Grafana, not an application client ID.",
   "deployWindowsVm":  true,
   "deployLinuxVm":    true,
+  "enableVmOtelMetrics": true,
+  "_enableVmOtelMetricsDocs": "Default-on Stage B OpenTelemetry system metrics for standalone Linux/Windows VMs into the existing Azure Monitor workspace. Classic VM Insights remains enabled; VMSS is unchanged. Omission defaults to true. Use a JSON Boolean, not a quoted string. See docs/STAGE-B-WORKLOADS.md for targeted opt-out.",
 
   "enableLawReplication":   false,
   "lawReplicationLocation": "",

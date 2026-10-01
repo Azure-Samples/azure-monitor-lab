@@ -33,6 +33,7 @@ $observabilityAgentId = "$resourceGroupId/providers/Microsoft.Monitor/observabil
 $observabilityPrincipalId = [guid]::NewGuid().ToString()
 $observabilityRoleAssignmentId = "/subscriptions/$($fixture.Subscription)/providers/Microsoft.Authorization/roleAssignments/obs-monitoring-reader"
 $serviceGroupId = '/providers/Microsoft.Management/serviceGroups/amlab-workload'
+$fixture.ServiceGroupResourceId = $serviceGroupId
 $tenantDeleteApis = [ordered]@{}
 $tenantDeleteApis["$serviceGroupId/providers/Microsoft.Monitor/slis/sli-aks-pods-running"] = '2025-03-01-preview'
 $tenantDeleteApis["$serviceGroupId/providers/Microsoft.Monitor/slis/sli-aks-pod-start-latency"] = '2025-03-01-preview'
@@ -107,6 +108,9 @@ function az {
       return ConvertTo-Json -InputObject $groups -Depth 4
     }
     'group exists' {
+      if ($fixture.RealTenantCleanup -and $args[[Array]::IndexOf($args, '-n') + 1] -eq $fixture.ResourceGroup) {
+        return $fixture.PrimaryGroupExists.ToString().ToLowerInvariant()
+      }
       if ($args[[Array]::IndexOf($args, '-n') + 1] -ne $monitorGroup) { throw 'Only the linked Monitor group needs a cascade check.' }
       if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Managed-group cleanup lost the verified subscription.' }
       return $fixture.MonitorGroupExists.ToString().ToLowerInvariant()
@@ -185,6 +189,9 @@ function az {
       $global:LASTEXITCODE = $LASTEXITCODE
     }
     'resource show' {
+      if ($fixture.RealTenantCleanup -and $args[[Array]::IndexOf($args, '--ids') + 1] -eq "$resourceGroupId/providers/Microsoft.Relationships/serviceGroupMember/sgm-amlab-rg") {
+        return @{ properties = @{ targetId = $fixture.ServiceGroupResourceId } } | ConvertTo-Json
+      }
       if ($args[[Array]::IndexOf($args, '--ids') + 1] -ne $observabilityAgentId -or
           $args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString() -or
           $args[[Array]::IndexOf($args, '--api-version') + 1] -ne '2026-05-01-preview') {
@@ -367,16 +374,25 @@ try {
     if ($entraCase.Confirm -eq 'cancel' -and ($fixture.Deletes.Count -or $messages -notmatch 'owned-console')) { throw 'Cancelled teardown must list the identity and make no changes.' }
   }
   $fixture.EntraFails = ''; $fixture.EntraPlan = @(); $fixture.EntraCalls.Clear(); $fixture.Confirm = 'DELETE'
-  foreach ($helperName in @('setup-slis.ps1', 'setup-health-model.ps1', 'remove-arm-resource.ps1')) {
+  foreach ($helperName in @('setup-slis.ps1', 'setup-health-model.ps1', 'remove-arm-resource.ps1', 'resolve-service-group-id.ps1')) {
     Copy-Item -LiteralPath (Join-Path $source "scripts/$helperName") -Destination $directory -Force
   }
   $fixture.RealTenantCleanup = $true
   foreach ($tenantCase in @(
+    @{ Error = ''; Fails = $false; Keep = $false; Membership = $true; Group = 'amlab-workload-123456abcdef' },
+    @{ Error = ''; Fails = $false; Keep = $false; Membership = $true; Group = 'custom-lab-group' },
     @{ Error = 'ERROR: Not Found({"error":{"code":"ResourceNotFound","message":"The resource does not exist."}})'; Fails = $false; Keep = $false; Membership = $true },
     @{ Error = 'ERROR: (AuthorizationFailed) Tenant cleanup was denied.'; Fails = $true; Keep = $false; Membership = $true },
     @{ Error = 'ERROR: (AuthorizationFailed) Tenant cleanup was denied.'; Fails = $false; Keep = $true; Membership = $true },
     @{ Error = 'ERROR: (AuthorizationFailed) Tenant cleanup was denied.'; Fails = $false; Keep = $false; Membership = $false }
   )) {
+    $groupName = if ($tenantCase.Group) { $tenantCase.Group } else { 'amlab-workload' }
+    $fixture.ServiceGroupResourceId = "/providers/Microsoft.Management/serviceGroups/$groupName"
+    $tenantDeleteApis = [ordered]@{}
+    $tenantDeleteApis["$($fixture.ServiceGroupResourceId)/providers/Microsoft.Monitor/slis/sli-aks-pods-running"] = '2025-03-01-preview'
+    $tenantDeleteApis["$($fixture.ServiceGroupResourceId)/providers/Microsoft.Monitor/slis/sli-aks-pod-start-latency"] = '2025-03-01-preview'
+    $tenantDeleteApis["$resourceGroupId/providers/Microsoft.Relationships/serviceGroupMember/sgm-amlab-rg"] = '2023-09-01-preview'
+    $tenantDeleteApis[$fixture.ServiceGroupResourceId] = '2024-02-01-preview'
     $fixture.TenantDeleteError = $tenantCase.Error
     $fixture.ServiceGroupMembershipExists = $tenantCase.Membership
     $fixture.Deletes.Clear()

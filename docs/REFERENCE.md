@@ -91,7 +91,7 @@ rg-azure-monitor-lab/
 ├─ Workload health and reliability
 │   ├─ hm-amlab-workload          ← Health Model with entities, signals, and relationships
 │   ├─ id-sli-amlab               ← UAMI used by SLI/SLO scaffolding
-│   └─ amlab-workload             ← tenant-scoped Service Group + RG membership, created by deploy.ps1
+│   └─ amlab-workload-<scope-hash> ← per-lab tenant-scoped Service Group + RG membership, created by deploy.ps1
 └─ Workbooks
     ├─ wb-amlab-trafficlights     ← 🚦 Traffic Lights — single pane of glass
     ├─ wb-amlab-cost              ← Central LAW ingestion volume
@@ -157,6 +157,8 @@ notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdmi
 | `terraform/stages.tfvars` | Terraform variable file consumed by `terraform apply -var-file` |
 
 To change a value (e.g. region, alert email, password, stage toggles), edit `lab.config.json` and re-run `sync-config.ps1` (or just run `deploy.ps1` again).
+
+**Default-on VM OpenTelemetry metrics:** `enableVmOtelMetrics` defaults to the JSON Boolean `true`, including when omitted; explicitly set `false` to opt out. One-shot Bicep/ARM and the portal expose the same parameter; staged Bicep uses Stage B only, and Terraform uses `enable_vm_otel_metrics` (also default `true`). This adds 10 system metrics at 60 seconds to the existing `amw-<prefix>` for enabled standalone Linux/Windows VMs, not VMSS. Classic VM Insights, LAW/KQL queries, and workbooks remain unchanged; OTel uses AMW/PromQL. See [setup, limitations, cost scope, and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
 
 ### Granular RBAC demo (scenario 27)
 

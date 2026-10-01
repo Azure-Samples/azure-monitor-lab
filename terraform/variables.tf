@@ -53,6 +53,13 @@ variable "deploy_linux_vm" {
   default = true
 }
 
+variable "enable_vm_otel_metrics" {
+  type        = bool
+  default     = true
+  nullable    = false
+  description = "Add OpenTelemetry system metrics to standalone VMs in Stage B, using the existing Azure Monitor workspace. Classic VM Insights remains enabled; VMSS is unchanged. Setting false after deployment does not remove existing DCR associations."
+}
+
 variable "vm_size" {
   type    = string
   default = "Standard_B2s"

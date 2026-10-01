@@ -42,6 +42,8 @@ This is the primary-resource inventory. Child resources, deployment records, pol
 
 The one-shot deployment also includes custom-log ingestion resources, workspace transforms, storage/Event Hubs/Key Vault telemetry sinks, Heartbeat export, a Prometheus rule group, the workload health model, and the SLI identity. Sentinel is enabled by the one-shot default but belongs to optional Stage E in staged deployments. Platform/metrics export DCRs, LAW replication, SRE Agent, and Observability Agent are conditional.
 
+> **VM OpenTelemetry metrics are on by default:** `enableVmOtelMetrics` defaults to `true`, adding `dcr-<prefix>-vm-otel` and `vm-otel-metrics-association` on enabled standalone Linux/Windows VMs, reusing `amw-<prefix>`. Classic VM Insights stays enabled and VMSS is unchanged. Explicitly set `false` to opt out. See [configuration, both views, and cleanup](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
+
 ### Endpoints on the App Service (.NET 8 minimal API)
 
 - `GET /` — 200 "Hello from Azure Monitor Lab"

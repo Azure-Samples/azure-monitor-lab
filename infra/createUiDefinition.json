@@ -100,6 +100,20 @@
             }
           },
           {
+            "name": "enableVmOtelMetrics",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Add OpenTelemetry VM metrics",
+            "defaultValue": "Yes",
+            "toolTip": "Enabled by default alongside classic VM Insights for standalone Linux and Windows VMs in the existing Azure Monitor workspace. Does not apply to VM Scale Sets or support private link. Turning off on redeployment does not remove existing associations.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Yes", "value": true },
+                { "label": "No", "value": false }
+              ],
+              "required": true
+            }
+          },
+          {
             "name": "deployWindowsVm",
             "type": "Microsoft.Common.OptionsGroup",
             "label": "Deploy Windows VM",
@@ -385,6 +399,7 @@
       "vmAdminUsername": "[basics('vmAdminUsername')]",
       "vmAdminPassword": "[basics('adminCredentials').password]",
       "deployLinuxVm": "[steps('workloads').deployLinuxVm]",
+      "enableVmOtelMetrics": "[steps('workloads').enableVmOtelMetrics]",
       "deployWindowsVm": "[steps('workloads').deployWindowsVm]",
       "vmSize": "[steps('workloads').vmSize]",
       "aksNodeVmSize": "[steps('workloads').aksNodeVmSize]",
