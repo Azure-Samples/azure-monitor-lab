@@ -66,6 +66,8 @@ Modern teams don't want to chain through 10 portal blades to know "is anything b
 <a id="s2"></a>
 ## 2 · VM Insights — cross-OS, agent-based monitoring
 
+> **Default side-by-side metrics views:** classic VM Insights and OpenTelemetry are both enabled. `enableVmOtelMetrics` (Terraform: `enable_vm_otel_metrics`) defaults to `true`; standalone VMs additionally send default OpenTelemetry system metrics to the existing AMW for PromQL exploration. Continue this scenario's classic LAW/KQL view unchanged. See [Stage B configuration, validation, limitations, costs, and opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
+
 **Audience:** infra / Ops teams.
 **Time:** 5 min.
 

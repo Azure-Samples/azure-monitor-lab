@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "1744264374651573679"
+      "templateHash": "4541774925241986220"
     }
   },
   "parameters": {
@@ -56,6 +56,13 @@
       "defaultValue": true,
       "metadata": {
         "description": "Deploy the Ubuntu 22.04 demo VM."
+      }
+    },
+    "enableVmOtelMetrics": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets."
       }
     },
     "dailyCapGb": {
@@ -229,6 +236,7 @@
     "actionGroupName": "[format('ag-{0}-email', parameters('namePrefix'))]",
     "workbookName": "[format('wb-{0}-trafficlights', parameters('namePrefix'))]",
     "dcrVmInsightsName": "[format('dcr-{0}-vminsights', parameters('namePrefix'))]",
+    "deployVmOtelMetrics": "[and(parameters('enableVmOtelMetrics'), or(parameters('deployLinuxVm'), parameters('deployWindowsVm')))]",
     "dcrPrometheusName": "[format('dcr-{0}-prometheus', parameters('namePrefix'))]",
     "dceName": "[format('dce-{0}', parameters('namePrefix'))]",
     "vmssName": "[format('vmss-{0}', parameters('namePrefix'))]",
@@ -2492,6 +2500,132 @@
       ]
     },
     {
+      "condition": "[variables('deployVmOtelMetrics')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "vm-otel-metrics",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('dcr-{0}-vm-otel', parameters('namePrefix'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "monitoringAccountId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "9334971952597745250"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Data collection rule name for default VM OpenTelemetry metrics."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region of the Azure Monitor workspace."
+              }
+            },
+            "monitoringAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Existing Azure Monitor workspace resource ID for guest metrics."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2024-03-11",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Default OpenTelemetry guest metrics alongside classic VM Insights.",
+                "dataSources": {
+                  "performanceCountersOTel": [
+                    {
+                      "name": "vmOtelSystemMetrics",
+                      "streams": [
+                        "Microsoft-OtelPerfMetrics"
+                      ],
+                      "samplingFrequencyInSeconds": 60,
+                      "counterSpecifiers": [
+                        "system.cpu.time",
+                        "system.memory.usage",
+                        "system.disk.io",
+                        "system.disk.operations",
+                        "system.disk.operation_time",
+                        "system.filesystem.usage",
+                        "system.network.io",
+                        "system.network.dropped",
+                        "system.network.errors",
+                        "system.uptime"
+                      ]
+                    }
+                  ]
+                },
+                "destinations": {
+                  "monitoringAccounts": [
+                    {
+                      "name": "vmMetricsWorkspace",
+                      "accountResourceId": "[parameters('monitoringAccountId')]"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "Microsoft-OtelPerfMetrics"
+                    ],
+                    "destinations": [
+                      "vmMetricsWorkspace"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('name'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'amw')]"
+      ]
+    },
+    {
       "condition": "[parameters('deployLinuxVm')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
@@ -2523,6 +2657,7 @@
           "dcrId": {
             "value": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]"
           },
+          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2022-09-01').outputs.id.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -2534,7 +2669,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4543397936947810126"
+              "templateHash": "4665958544144725677"
             }
           },
           "parameters": {
@@ -2579,6 +2714,13 @@
               "type": "string",
               "metadata": {
                 "description": "Data Collection Rule for VM Insights."
+              }
+            },
+            "otelDcrId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional additional DCR for OpenTelemetry metrics. Empty keeps classic VM Insights only."
               }
             },
             "tags": {
@@ -2750,6 +2892,21 @@
                 "[resourceId('Microsoft.Compute/virtualMachines/extensions', parameters('vmName'), 'AzureMonitorLinuxAgent')]",
                 "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
               ]
+            },
+            {
+              "condition": "[not(empty(parameters('otelDcrId')))]",
+              "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+              "apiVersion": "2023-03-11",
+              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "name": "vm-otel-metrics-association",
+              "properties": {
+                "dataCollectionRuleId": "[parameters('otelDcrId')]",
+                "description": "Default OpenTelemetry guest metrics to the Azure Monitor workspace."
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines/extensions', parameters('vmName'), 'AzureMonitorLinuxAgent')]",
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
+              ]
             }
           ],
           "outputs": {
@@ -2770,7 +2927,8 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]",
-        "[resourceId('Microsoft.Resources/deployments', 'network')]"
+        "[resourceId('Microsoft.Resources/deployments', 'network')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics')]"
       ]
     },
     {
@@ -2805,6 +2963,7 @@
           "dcrId": {
             "value": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]"
           },
+          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2022-09-01').outputs.id.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -2816,7 +2975,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "375882843770355197"
+              "templateHash": "15510132197638766692"
             }
           },
           "parameters": {
@@ -2862,6 +3021,13 @@
               "type": "string",
               "metadata": {
                 "description": "Data Collection Rule for VM Insights."
+              }
+            },
+            "otelDcrId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional additional DCR for OpenTelemetry metrics. Empty keeps classic VM Insights only."
               }
             },
             "tags": {
@@ -3056,6 +3222,21 @@
                 "[resourceId('Microsoft.Compute/virtualMachines/extensions', parameters('vmName'), 'AzureMonitorWindowsAgent')]",
                 "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
               ]
+            },
+            {
+              "condition": "[not(empty(parameters('otelDcrId')))]",
+              "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+              "apiVersion": "2023-03-11",
+              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "name": "vm-otel-metrics-association",
+              "properties": {
+                "dataCollectionRuleId": "[parameters('otelDcrId')]",
+                "description": "Default OpenTelemetry guest metrics to the Azure Monitor workspace."
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines/extensions', parameters('vmName'), 'AzureMonitorWindowsAgent')]",
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
+              ]
             }
           ],
           "outputs": {
@@ -3076,7 +3257,8 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]",
-        "[resourceId('Microsoft.Resources/deployments', 'network')]"
+        "[resourceId('Microsoft.Resources/deployments', 'network')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics')]"
       ]
     },
     {

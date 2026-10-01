@@ -73,6 +73,13 @@ $dailyCapGb       = Coalesce $cfg.dailyCapGb       1
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
 $deployWindowsVm  = if ($null -eq $cfg.deployWindowsVm) { $true } else { [bool]$cfg.deployWindowsVm }
 $deployLinuxVm    = if ($null -eq $cfg.deployLinuxVm)   { $true } else { [bool]$cfg.deployLinuxVm }
+$enableVmOtelMetrics = $true
+if ($null -ne $cfg.PSObject.Properties['enableVmOtelMetrics']) {
+  if ($cfg.enableVmOtelMetrics -isnot [bool]) {
+    throw 'enableVmOtelMetrics must be a JSON Boolean (true or false), not a string, number, or null.'
+  }
+  $enableVmOtelMetrics = $cfg.enableVmOtelMetrics
+}
 $siemWebhookUrl   = Coalesce $cfg.siemWebhookUrl   ''
 $subscriptionName = Coalesce $cfg.subscriptionName '<unset>'
 $forbiddenSubs    = if ($null -eq $cfg.forbiddenSubscriptionIds) { @() } else { @($cfg.forbiddenSubscriptionIds) }
@@ -150,6 +157,7 @@ $bicepParams = [ordered]@{
     'vmAdminPassword' = @{ value = $cfg.vmAdminPassword }
     'deployWindowsVm' = @{ value = $deployWindowsVm }
     'deployLinuxVm'   = @{ value = $deployLinuxVm }
+    'enableVmOtelMetrics' = @{ value = $enableVmOtelMetrics }
     'dailyCapGb'      = @{ value = [int]$dailyCapGb }
     'aksNodeCount'    = @{ value = [int]$aksNodeCount }
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
@@ -190,6 +198,7 @@ $tfLines = @(
   "grafana_admin_object_id = `"$(Esc $grafanaAdminObjectId)`""
   "deploy_windows_vm   = $($deployWindowsVm.ToString().ToLower())"
   "deploy_linux_vm     = $($deployLinuxVm.ToString().ToLower())"
+  "enable_vm_otel_metrics = $($enableVmOtelMetrics.ToString().ToLower())"
   "siem_webhook_url    = `"$(Esc $siemWebhookUrl)`""
   "enable_law_replication   = $($enableLawReplication.ToString().ToLower())"
   "law_replication_location = `"$(Esc $lawReplicationLocation)`""

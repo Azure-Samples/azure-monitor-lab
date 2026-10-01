@@ -69,6 +69,12 @@ Examples intentionally omitted from the table when a reliable single row cannot 
 
 Useful Azure Monitor variable rates from the same check include Analytics extended retention at EUR 0.103/GB-month, archive at EUR 0.0206/GB-month, search jobs at EUR 0.0052/scanned GB, restore at EUR 0.103/GB-day, data export at EUR 0.103/exported GB, workspace replication at EUR 0.2576/replicated GB, and metrics export at EUR 0.0031/1,000 samples. Allowances and tier boundaries can appear as zero-price API rows; they do not prove that all usage is permanently free.
 
+## VM OpenTelemetry metrics (enabled by default)
+
+`enableVmOtelMetrics` (Terraform: `enable_vm_otel_metrics`) defaults to `true`, including when omitted. It adds the 10 default system metrics at 60-second intervals for standalone VMs to the existing `amw-<prefix>`; it does not add a workspace or per-process metrics. Microsoft documents [default OpenTelemetry VM metrics as free](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/metrics-opentelemetry-guest).
+
+Classic VM Insights remains enabled, so its Log Analytics ingestion and retention charges **continue**. VM compute, disks/IPs, Grafana, AKS/Prometheus ingestion, and all other services retain their normal charges. This additional metrics path is not a migration away from logs-based billing. See [targeted opt-out](STAGE-B-WORKLOADS.md#targeted-opt-out-and-cleanup); setting the flag to `false` alone does not remove active associations during incremental redeployment.
+
 ## Optional AI and agent costs
 
 | Optional feature | Cost boundary |

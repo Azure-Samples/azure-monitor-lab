@@ -28,6 +28,10 @@ on:
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
+      - 'scripts/tests/vm-otel-metrics.Tests.ps1'
+      - 'scripts/tests/vm-otel-config.Tests.ps1'
+      - 'scripts/sync-config.ps1'
+      - 'lab.config.json.example'
       - 'scripts/tests/observability-agent-config.Tests.ps1'
       - 'scripts/tests/amba.Tests.ps1'
       - 'scripts/tests/webapp-publication.Tests.ps1'
@@ -45,6 +49,8 @@ on:
       - 'infra/modules/lab-console*'
       - 'infra/modules/appservice*'
       - 'infra/modules/observability-agent*'
+      - 'infra/modules/vm-*.bicep'
+      - 'infra/createUiDefinition.json'
       - 'infra/main.*'
       - 'infra/stages/*'
       - 'docs/DEPLOY-*-STEP-BY-STEP.md'
@@ -127,6 +133,8 @@ jobs:
           ./scripts/tests/amba.Tests.ps1
           ./scripts/tests/grafana-access.Tests.ps1
           ./scripts/tests/grafana-config.Tests.ps1
+          ./scripts/tests/vm-otel-metrics.Tests.ps1
+          ./scripts/tests/vm-otel-config.Tests.ps1
       - name: Validate console completion with mocked Azure providers
         working-directory: terraform
         run: |

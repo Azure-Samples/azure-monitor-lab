@@ -21,6 +21,9 @@ param deployWindowsVm bool = true
 @description('Deploy the Linux demo VM.')
 param deployLinuxVm bool = true
 
+@description('Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets.')
+param enableVmOtelMetrics bool = true
+
 @description('VM size.')
 param vmSize string = 'Standard_B2s'
 
@@ -50,6 +53,7 @@ var aksDnsPrefix = '${namePrefix}-${take(suffix, 6)}'
 var appPlanName = 'plan-${namePrefix}'
 var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
 var dcrVmInsightsName = 'dcr-${namePrefix}-vminsights'
+var deployVmOtelMetrics = enableVmOtelMetrics && (deployLinuxVm || deployWindowsVm)
 var dcrPrometheusName = 'dcr-${namePrefix}-prometheus'
 var dceName = 'dce-${namePrefix}'
 var storageAccountName = 'st${namePrefix}${take(suffix, 8)}'
@@ -108,6 +112,16 @@ resource eventHubAuthRule 'Microsoft.EventHub/namespaces/authorizationRules@2022
   name: 'RootManageSharedAccessKey'
 }
 
+module vmOtelMetrics '../modules/vm-otel-metrics.bicep' = if (deployVmOtelMetrics) {
+  name: 'vm-otel-metrics'
+  params: {
+    name: 'dcr-${namePrefix}-vm-otel'
+    location: location
+    monitoringAccountId: amw.id
+    tags: commonTags
+  }
+}
+
 module vmLinux '../modules/vm-linux.bicep' = if (deployLinuxVm) {
   name: 'vm-linux'
   params: {
@@ -118,6 +132,7 @@ module vmLinux '../modules/vm-linux.bicep' = if (deployLinuxVm) {
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }
@@ -132,6 +147,7 @@ module vmWindows '../modules/vm-windows.bicep' = if (deployWindowsVm) {
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }

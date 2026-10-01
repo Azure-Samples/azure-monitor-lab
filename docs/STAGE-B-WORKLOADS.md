@@ -10,6 +10,7 @@
 |---|---|---|
 | Linux VM | `vm-amlab-lin` (Standard_B2s) + NIC, public IP, OS disk + `shutdown-computevm-vm-amlab-lin` schedule | AMA-equipped and attached to `dcr-amlab-vminsights`. Automatically shuts down at 23:00 CET/CEST. The Linux Dependency Agent is not deployed, so Service Map is unavailable on this VM. |
 | Windows VM | `vmwin<suffix>` (Standard_B2s) + NIC, public IP, OS disk + `shutdown-computevm-vmwin<suffix>` schedule | AMA and Dependency Agent equipped, attached to `dcr-amlab-vminsights`, and automatically shut down at 23:00 CET/CEST. |
+| VM OpenTelemetry metrics | `dcr-<prefix>-vm-otel` + `vm-otel-metrics-association` on each enabled standalone VM | On by default. Adds system metrics to the existing `amw-<prefix>`; keeps classic VM Insights and its associations unchanged. No VMSS association. |
 | AKS cluster | `aks-amlab` (1× Standard_B2s system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
 | Managed Grafana | `amg-amlab-<suffix>` | Connected to `amw-amlab`. Default Azure dashboards (Node Exporter, Kubelet, K8s/Compute resources, etc.) appear automatically. |
 | App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
@@ -22,6 +23,37 @@
 Console completion requires permission to manage its Entra sign-in registration and scoped Azure roles, plus ACR Tasks availability. The registry has ongoing charges; image builds, job execution, and logs add usage charges. Stage B does not enable the optional Stage E Service Group or SLI setup. See [deployment prerequisites and upgrade behavior](../workloads/webapp/LAB-OPERATIONS.md#automatic-deployment).
 
 The templates grant **Grafana Admin** at the Managed Grafana instance scope to the deploying identity by default. For service-principal deployments, set `grafanaAdminObjectId` in Bicep or `grafana_admin_object_id` in Terraform to the intended operator or group object ID. New role assignments can take time to propagate. Azure resource ownership and Monitoring Reader on the Grafana managed identity do not grant a user Grafana data-plane access.
+
+<a id="optional-vm-opentelemetry-metrics"></a>
+### VM OpenTelemetry metrics (enabled by default)
+
+**Both experiences are enabled by default.** Classic VM Insights stays on, preserving its `InsightsMetrics` queries, alerts, and workbooks. OpenTelemetry adds the metrics-based experience alongside it, not a migration or replacement. No explicit `true` is required. Existing configurations that omit the setting also enable both on their next deployment; an explicit `false` is respected.
+
+| Deployment path | Default and opt-out setting |
+|---|---|
+| Central configuration | `enableVmOtelMetrics` defaults to `true` when omitted from `lab.config.json`. Set it to the JSON Boolean `false` to opt out, then run `scripts/sync-config.ps1` and regenerate deployment inputs. |
+| One-shot Bicep / ARM | The main template parameter `enableVmOtelMetrics` defaults to `true`; explicitly pass `false` to opt out. |
+| Staged Bicep | `enableVmOtelMetrics` defaults to `true` in `10-workloads.bicep` (Stage B). Regenerate filtered stage parameter files after syncing configuration. Stage A is unchanged. |
+| Terraform | `enable_vm_otel_metrics` defaults to `true` and is passed only to Stage B. Set it to `false` to opt out; it does not enable Stage B itself. |
+| Portal custom deployment | **Add OpenTelemetry VM metrics** in **Workloads** defaults to **Yes**. Select **No** to opt out. |
+
+The separate DCR `dcr-<prefix>-vm-otel` is configured to send `Microsoft-OtelPerfMetrics` to the existing Azure Monitor workspace `amw-<prefix>`. No new workspace or AMW configuration change is required by this lab's documented onboarding path. Each enabled standalone Linux or Windows VM receives a `vm-otel-metrics-association` in addition to its classic association. It uses the same Azure Monitor Agent (AMA), not a second agent installation. Disabled VMs receive no association. VM Scale Sets are unchanged: this option does **not** apply to VMSS. Metrics-based collection does **not** support private link.
+
+The [Microsoft onboarding DCR](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/vm-enable-monitoring) supplies these **10 default system metrics at 60-second intervals**: `system.filesystem.usage`, `system.disk.io`, `system.disk.operation_time`, `system.disk.operations`, `system.memory.usage`, `system.network.io`, `system.cpu.time`, `system.network.dropped`, `system.network.errors`, and `system.uptime`. These are DCR counter specifiers, not copy-and-paste PromQL queries. No per-process metrics are enabled.
+
+Keep the existing AMA automatic upgrades enabled. The cited onboarding guidance does not specify an additional minimum AMA version for this configuration; the lab does not invent a version prerequisite or install a separate collector.
+
+**Validate both views:** check that the OTel DCR's **Resources** lists the enabled standalone VMs and its destination is `amw-<prefix>`. Open a VM's metrics-based monitoring view or the Azure Monitor workspace's Prometheus explorer; use **PromQL** to explore the received system metrics. Separately, keep using classic VM Insights and **KQL** against `InsightsMetrics` in `law-<prefix>-central`. Existing workbooks are unchanged and are not rewritten for OTel; the workspaces require separate queries. Allow time for AMA to download the DCR and telemetry to arrive.
+
+**Validation scope:** repository tests check configuration and deployment wiring offline. They do not verify live ingestion. A successful template deployment alone does not prove that guest metrics are arriving; verify both destinations in your deployed environment before demonstrating this option.
+
+Microsoft documents **default OpenTelemetry metrics as free**, but this is not a free-lab switch: classic Log Analytics ingestion/retention, VM compute, Grafana, AKS metrics, and other services retain their existing charges. See [metrics-based versus classic monitoring, costs, and limitations](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/metrics-opentelemetry-guest) and the [lab cost guide](COST-GUIDE.md).
+
+#### Targeted opt-out and cleanup
+
+An **incremental redeployment with the flag set to `false` does not delete an already-deployed OTel DCR or its VM associations**. To stop only the additional metrics, remove the association named **`vm-otel-metrics-association`** from each affected standalone VM (for example, remove those VM associations through **`dcr-<prefix>-vm-otel` → Resources**), then set the configuration flag to `false` and regenerate deployment inputs to prevent it being re-added. Verify the association is gone on those VMs.
+
+**Do not delete the classic `dcr-<prefix>-vminsights` associations or uninstall AMA.** Classic VM Insights must keep working. The now-unused OTel DCR can remain until normal cleanup. The existing full lab resource-group teardown removes the RG-scoped DCR and the associations along with their VMs; no subscription-scoped OTel cleanup is needed.
 
 ## 2) Speaker notes
 

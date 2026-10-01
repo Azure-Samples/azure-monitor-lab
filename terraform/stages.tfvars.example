@@ -21,6 +21,11 @@ alert_email         = "your.alias@example.com"
 vm_admin_password   = "<STRONG-PASSWORD>"
 grafana_admin_object_id = ""
 
+# Default-on Stage B VM metrics; classic VM Insights stays on. Not applied to VMSS.
+# Setting false after enabling does not delete existing OTel DCR associations;
+# follow the targeted opt-out in docs/STAGE-B-WORKLOADS.md.
+enable_vm_otel_metrics = true
+
 # Stage toggles - enable one at a time the first time through, then flip the
 # next one and re-run plan/apply. Each new stage adds exactly one
 # azapi_resource.stage_* to the plan.
