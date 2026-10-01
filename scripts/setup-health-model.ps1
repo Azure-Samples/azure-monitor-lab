@@ -25,6 +25,10 @@
   unique within the tenant. Defaults to the existing RG membership target, or
   amlab-workload-<scope-hash> for a new lab. The hash includes subscription and RG.
 
+.PARAMETER ServiceGroupDisplayName
+  Explicit display-name override. Otherwise preserve the existing group's name,
+  or use AMLAB - <resource-group> when creating a new group.
+
 .PARAMETER Teardown
   Remove the member relationship and the service group. Idempotent (DELETE).
 
@@ -70,9 +74,6 @@ $subId    = $active.id
 $tenantId = $active.tenantId
 $ServiceGroupId = & (Join-Path $PSScriptRoot 'resolve-service-group-id.ps1') `
   -SubscriptionId $subId -ResourceGroup $ResourceGroup -ServiceGroupId $ServiceGroupId -RelationshipId $RelationshipId
-if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
-  $ServiceGroupDisplayName = "AMLAB - $ResourceGroup"
-}
 Write-Info "Tenant   : $tenantId"
 Write-Info "Sub      : $subId"
 Write-Info "RG       : $ResourceGroup"
@@ -168,6 +169,32 @@ if ($Teardown) {
 # ===============================================================================
 
 # --- 1. Service Group (tenant scope) ------------------------------------------
+if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
+  $PSNativeCommandUseErrorActionPreference = $false
+  $groupOutput = az rest --method get --url $sgUrl --only-show-errors -o json 2>&1 | Out-String
+  $groupExitCode = $LASTEXITCODE
+  if ($groupExitCode -eq 0) {
+    $existingGroup = $groupOutput | ConvertFrom-Json
+    $ServiceGroupDisplayName = $existingGroup.properties.displayName
+    if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
+      throw "Service Group '$ServiceGroupId' has no display name; refusing to overwrite it."
+    }
+    Write-Info "Preserving existing Service Group display name: $ServiceGroupDisplayName"
+  } else {
+    $errorCode = ''
+    if ($groupOutput -match '(?ms)^\s*ERROR:\s*[^\{\r\n]*(?<body>\{.*\})\)\s*$') {
+      $errorCode = ($Matches.body | ConvertFrom-Json).error.code
+    } elseif ($groupOutput -match '(?m)^\s*ERROR:\s*\((?<code>[A-Za-z0-9]+)\)') {
+      $errorCode = $Matches.code
+    } elseif ($groupOutput -match '(?m)^\s*ERROR:\s*Not Found\s*$') {
+      $errorCode = 'NotFound'
+    }
+    if ($errorCode -notin @('ResourceNotFound', 'NotFound')) {
+      throw "Could not read Service Group '$ServiceGroupId' (Azure CLI exit code $groupExitCode). Details:`n$groupOutput"
+    }
+    $ServiceGroupDisplayName = "AMLAB - $ResourceGroup"
+  }
+}
 Write-Step "Creating service group '$ServiceGroupId' under tenant root"
 
 $sgBody = @{

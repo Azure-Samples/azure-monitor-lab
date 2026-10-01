@@ -12,6 +12,7 @@ $fixture = @{
   Tenant = '22222222-2222-2222-2222-222222222222'
   ResourceGroup = 'rg-lab-one'; Relationship = 'sgm-amlab-rg'
   Exists = 'true'; Membership = $false; Target = ''; Failure = ''
+  GroupName = ''; GroupError = ''; GroupResponse = ''
   Calls = 0; Writes = [Collections.Generic.List[object]]::new()
 }
 @{ expectedSubscriptionId = $fixture.Subscription; expectedTenantId = $fixture.Tenant } |
@@ -50,7 +51,15 @@ function az {
         $fixture.Writes.Add(@{ Url = $url; Body = (Get-Content -Raw -LiteralPath $bodyFile.Substring(1) | ConvertFrom-Json) })
         return
       }
-      if ($args[2] -eq 'get') { return '{"properties":{"provisioningState":"Succeeded"}}' }
+      if ($args[2] -eq 'get') {
+        if ($url -like '*/Microsoft.Management/serviceGroups/*' -and $fixture.Writes.Count -eq 0) {
+          if ($fixture.GroupError) { $global:LASTEXITCODE = 1; return $fixture.GroupError }
+          if ($fixture.GroupResponse) { return $fixture.GroupResponse }
+          if (-not $fixture.GroupName) { $global:LASTEXITCODE = 1; return 'ERROR: (ResourceNotFound) Service Group does not exist.' }
+          return @{ properties = @{ displayName = $fixture.GroupName; provisioningState = 'Succeeded' } } | ConvertTo-Json
+        }
+        return '{"properties":{"provisioningState":"Succeeded"}}'
+      }
       throw 'Unexpected write in Service Group regression.'
     }
     default { throw "Unexpected Azure call: $operation" }
@@ -117,12 +126,51 @@ try {
   $fixture.Membership = $true
   foreach ($name in @('amlab-workload', $second, 'custom-lab-group')) {
     $fixture.Target = "/providers/Microsoft.Management/serviceGroups/$name"
+    $fixture.GroupName = "Preserved name for $name"
     $fixture.Writes.Clear()
     & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup | Out-Null
     if ($fixture.Writes[1].Body.properties.targetId -ne "providers/Microsoft.Management/serviceGroups/$name") {
       throw 'Redeploying a lab must not reparent its legacy, generated, or custom membership.'
     }
+    if ($fixture.Writes[0].Body.properties.displayName -cne $fixture.GroupName) {
+      throw 'Redeploying a lab must preserve its existing Service Group display name.'
+    }
   }
+  $fixture.Writes.Clear()
+  & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
+    -ServiceGroupId 'explicit-group' | Out-Null
+  if ($fixture.Writes[0].Body.properties.displayName -cne $fixture.GroupName) {
+    throw 'An explicit existing group ID must also preserve its display name without an override.'
+  }
+  foreach ($failure in @(
+    @{ Error = 'ERROR: (AuthorizationFailed) Access denied.'; Response = '' },
+    @{ Error = 'ERROR: Forbidden({"error":{"code":"AuthorizationFailed","message":"NotFound is not the error code.","details":[{"code":"ResourceNotFound"}]}})'; Response = '' },
+    @{ Error = 'ERROR: (TooManyRequests) Retry later.'; Response = '' },
+    @{ Error = ''; Response = 'not json' },
+    @{ Error = ''; Response = '{"properties":{}}' }
+  )) {
+    $fixture.GroupError = $failure.Error; $fixture.GroupResponse = $failure.Response
+    $fixture.Writes.Clear()
+    $caught = ''
+    try {
+      & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup | Out-Null
+    } catch { $caught = $_.Exception.Message }
+    if (-not $caught -or $fixture.Writes.Count -ne 0) { throw 'Failed or invalid group reads must stop before any PUT.' }
+  }
+  $fixture.GroupError = ''; $fixture.GroupResponse = ''
+  foreach ($notFound in @(
+    'ERROR: (ResourceNotFound) Service Group does not exist.',
+    'ERROR: Not Found({"error":{"code":"ResourceNotFound","message":"Service Group does not exist."}})',
+    'ERROR: Not Found'
+  )) {
+    $fixture.GroupError = $notFound
+    $fixture.Writes.Clear()
+    & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup | Out-Null
+    if ($fixture.Writes[0].Body.properties.displayName -ne "AMLAB - $($fixture.ResourceGroup)") {
+      throw 'Confirmed missing groups must receive the per-RG default name.'
+    }
+  }
+  $fixture.GroupError = ''
   $fixture.Writes.Clear()
   & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
     -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
@@ -130,6 +178,7 @@ try {
       $fixture.Writes[0].Body.properties.displayName -ne 'Explicit display') { throw 'Explicit group IDs and display names must be honored.' }
   Write-Output 'PASS: per-RG/subscription IDs are distinct, stable, case-insensitive, and consistent across group/member setup. No Azure calls.'
   Write-Output 'PASS: legacy/custom memberships and explicit IDs are preserved; discovery errors and malformed targets fail closed. No Azure calls.'
+  Write-Output 'PASS: existing display names are preserved unless explicitly overridden; failed group reads cannot cause writes. No Azure calls.'
 } finally {
   Remove-Item -LiteralPath $root -Recurse -Force
   $global:LASTEXITCODE = $previousExitCode
