@@ -1,5 +1,5 @@
 # Generates docs/architecture-overview-sre.svg, the self-contained README architecture
-# diagram with Azure service icons from the draw.io azure2 library.
+# diagram with a light card layout and Azure service icons from the draw.io azure2 library.
 # Keep the corresponding overview in docs/architecture.drawio in sync.
 #
 # Icons are downloaded from the jgraph/drawio public library and base64-embedded into a
@@ -71,10 +71,10 @@ foreach ($k in $iconPaths.Keys) {
 
 # --- tiers (columns) ------------------------------------------------------------------
 $cols = [ordered]@{
-  WL   = @{ x = 30;   w = 250; title = 'Workloads';                fill = '#0E2438'; stroke = '#4AA3E0'; text = '#D6EBFB' }
-  COL  = @{ x = 330;  w = 250; title = 'Collection & lab operations'; fill = '#0E2615'; stroke = '#57B96A'; text = '#D8F3DE' }
-  DATA = @{ x = 630;  w = 310; title = 'Telemetry backplane';      fill = '#2A1E08'; stroke = '#D9A441'; text = '#F7E6C4' }
-  USE  = @{ x = 990;  w = 300; title = 'Consumption & response';   fill = '#1F1430'; stroke = '#A877D6'; text = '#EADDF7' }
+  WL   = @{ x = 30;   w = 300; title = 'Workloads';                  fill = '#EAF0F7' }
+  COL  = @{ x = 380;  w = 300; title = 'Collection & lab operations'; fill = '#E8F2F2' }
+  DATA = @{ x = 730;  w = 350; title = 'Telemetry backplane';        fill = '#EAF0F7' }
+  USE  = @{ x = 1130; w = 340; title = 'Consumption & response';     fill = '#EEEDF5' }
 }
 
 # --- nodes (id, column, label lines, icon key(s)) -------------------------------------
@@ -121,9 +121,9 @@ $edges = @(
 )
 
 # --- geometry -------------------------------------------------------------------------
-$W = 1320; $H = 888
-$grpY = 60; $grpH = 812
-$cellH = 66; $cellStep = 84; $firstTop = 108
+$W = 1500; $H = 1100
+$grpY = 130; $grpH = 940
+$cellH = 82; $cellStep = 100; $firstTop = 168
 function NodeTop($n) { $firstTop + ($n.i * $cellStep) }
 function ColOf($n)   { $cols[$n.col] }
 function Esc($s)     { $s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' }
@@ -132,25 +132,32 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 $W $H' font-family='Segoe UI, Helvetica, Arial, sans-serif' role='img' aria-labelledby='architecture-title architecture-description'>")
 [void]$sb.AppendLine("<title id='architecture-title'>Azure Monitor Lab architecture</title>")
 [void]$sb.AppendLine("<desc id='architecture-description'>Workloads, telemetry collection, dashboards, and response. Azure Monitor Agent sends standalone VM OpenTelemetry metrics to the Azure Monitor workspace alongside classic Log Analytics monitoring. Application Insights and alerts feed Azure Copilot Observability Agent, which stores correlated issues in a dedicated Azure Monitor workspace. GitHub Copilot CLI consumes central monitoring context for guided investigations. Azure Container Registry supplies a digest-pinned image to the Container Apps Job used for approved lab operations.</desc>")
-[void]$sb.AppendLine("<rect x='0' y='0' width='$W' height='$H' rx='10' fill='#0D1117'/>")
-[void]$sb.AppendLine("<text x='$($W/2)' y='34' fill='#E6EDF3' font-size='20' font-weight='700' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
-[void]$sb.AppendLine("<text x='$($W/2)' y='52' fill='#9DA7B3' font-size='11' text-anchor='middle'>optional Foundry and agent stages use their documented supported regions</text>")
-[void]$sb.AppendLine("<defs><marker id='arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='#7D8590'/></marker></defs>")
+[void]$sb.AppendLine("<rect x='0' y='0' width='$W' height='$H' rx='18' fill='#F1F3F8'/>")
+[void]$sb.AppendLine("<text x='$($W/2)' y='50' fill='#2D4770' font-size='32' font-weight='600' text-anchor='middle'>Azure Monitor Lab</text>")
+[void]$sb.AppendLine("<text x='$($W/2)' y='77' fill='#52627A' font-size='14' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
+[void]$sb.AppendLine("<text x='$($W/2)' y='98' fill='#52627A' font-size='12' text-anchor='middle'>Optional Foundry and agent stages use their documented supported regions</text>")
+[void]$sb.AppendLine("<defs>")
+[void]$sb.AppendLine("<linearGradient id='tier-accent' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#168D89'/><stop offset='1' stop-color='#0079BA'/></linearGradient>")
+[void]$sb.AppendLine("<filter id='card-shadow' x='-15%' y='-25%' width='130%' height='160%'><feDropShadow dx='0' dy='4' stdDeviation='5' flood-color='#203553' flood-opacity='0.13'/></filter>")
+[void]$sb.AppendLine("<marker id='arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='#71859C'/></marker>")
+[void]$sb.AppendLine("</defs>")
+[void]$sb.AppendLine("<rect x='14' y='116' width='$($W-28)' height='$($H-130)' rx='20' fill='#FAFBFD' stroke='#FFFFFF' stroke-width='2'/>")
 
 # group boxes
 foreach ($key in $cols.Keys) {
   $c = $cols[$key]
-  [void]$sb.AppendLine("<rect x='$($c.x)' y='$grpY' width='$($c.w)' height='$grpH' rx='12' fill='$($c.fill)' stroke='$($c.stroke)' stroke-width='1.5'/>")
-  [void]$sb.AppendLine("<text x='$($c.x + $c.w/2)' y='$($grpY+28)' fill='$($c.text)' font-size='15' font-weight='700' text-anchor='middle'>$(Esc $c.title)</text>")
+  [void]$sb.AppendLine("<rect x='$($c.x)' y='$grpY' width='$($c.w)' height='$grpH' rx='22' fill='$($c.fill)'/>")
+  [void]$sb.AppendLine("<rect x='$($c.x+14)' y='$($grpY-12)' width='$($c.w-28)' height='36' rx='18' fill='url(#tier-accent)'/>")
+  [void]$sb.AppendLine("<text x='$($c.x + $c.w/2)' y='$($grpY+11)' fill='#FFFFFF' font-size='16' font-weight='600' text-anchor='middle'>$(Esc $c.title)</text>")
 }
 
 # edges first (under nodes)
-function AnchorRight($n) { $c = ColOf $n; @(($c.x + $c.w), ((NodeTop $n) + $cellH/2)) }
-function AnchorLeft($n)  { $c = ColOf $n; @($c.x, ((NodeTop $n) + $cellH/2)) }
+function AnchorRight($n) { $c = ColOf $n; @(($c.x + $c.w - 12), ((NodeTop $n) + $cellH/2)) }
+function AnchorLeft($n)  { $c = ColOf $n; @(($c.x + 12), ((NodeTop $n) + $cellH/2)) }
 function AnchorTop($n)   { $c = ColOf $n; @(($c.x + $c.w/2), (NodeTop $n)) }
 function AnchorBottom($n){ $c = ColOf $n; @(($c.x + $c.w/2), ((NodeTop $n) + $cellH)) }
 
-$lineStyle = "stroke='#7D8590' marker-end='url(#arrow)'"
+$lineStyle = "stroke='#71859C' marker-end='url(#arrow)'"
 foreach ($e in $edges) {
   $s = $nodes[$e[0]]; $t = $nodes[$e[1]]
   if ($s.col -eq $t.col) {
@@ -168,24 +175,27 @@ foreach ($e in $edges) {
 foreach ($id in $nodes.Keys) {
   $n = $nodes[$id]; $c = ColOf $n; $top = NodeTop $n
   [void]$sb.AppendLine("<g id='node-$id'>")
-  [void]$sb.AppendLine("<rect x='$($c.x+8)' y='$top' width='$($c.w-16)' height='$cellH' rx='8' fill='#161B22' stroke='$($c.stroke)' stroke-opacity='0.5' stroke-width='1'/>")
+  [void]$sb.AppendLine("<rect x='$($c.x+12)' y='$top' width='$($c.w-24)' height='$cellH' rx='14' fill='#FFFFFF' filter='url(#card-shadow)'/>")
   $ic = $n.icons
   if ($ic.Count -eq 1) {
-    [void]$sb.AppendLine("<image x='$($c.x+16)' y='$($top+13)' width='40' height='40' href='$($dataUri[$ic[0]])'/>")
-    $lx = $c.x + 64
+    [void]$sb.AppendLine("<image x='$($c.x+24)' y='$($top+19)' width='44' height='44' href='$($dataUri[$ic[0]])'/>")
+    $lx = $c.x + 80
   } else {
-    $ix = $c.x + 16
-    foreach ($k in $ic) { [void]$sb.AppendLine("<image x='$ix' y='$($top+8)' width='30' height='30' href='$($dataUri[$k])'/>"); $ix += 34 }
-    $lx = $c.x + 16
+    $ix = $c.x + 24
+    foreach ($k in $ic) { [void]$sb.AppendLine("<image x='$ix' y='$($top+10)' width='30' height='30' href='$($dataUri[$k])'/>"); $ix += 38 }
+    $lx = $c.x + 24
   }
   $lines = $n.lines
   if ($ic.Count -gt 1) {
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+52)' fill='$($c.text)' font-size='11.5' font-weight='600'>$(Esc $lines[0])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+57)' fill='#182B45' font-size='14' font-weight='600'>$(Esc $lines[0])</text>")
+    if ($lines.Count -gt 1) {
+      [void]$sb.AppendLine("<text x='$lx' y='$($top+73)' fill='#52627A' font-size='12'>$(Esc $lines[1])</text>")
+    }
   } elseif ($lines.Count -eq 1) {
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+38)' fill='$($c.text)' font-size='12.5' font-weight='600'>$(Esc $lines[0])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+46)' fill='#182B45' font-size='14' font-weight='600'>$(Esc $lines[0])</text>")
   } else {
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+28)' fill='$($c.text)' font-size='12.5' font-weight='600'>$(Esc $lines[0])</text>")
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+44)' fill='$($c.text)' font-size='10.5' opacity='0.85'>$(Esc $lines[1])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+35)' fill='#182B45' font-size='14' font-weight='600'>$(Esc $lines[0])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+55)' fill='#52627A' font-size='12'>$(Esc $lines[1])</text>")
   }
   [void]$sb.AppendLine('</g>')
 }
