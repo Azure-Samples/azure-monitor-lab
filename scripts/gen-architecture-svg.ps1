@@ -137,7 +137,7 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("<text x='$($W/2)' y='77' fill='#52627A' font-size='14' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
 [void]$sb.AppendLine("<text x='$($W/2)' y='98' fill='#52627A' font-size='12' text-anchor='middle'>Optional Foundry and agent stages use their documented supported regions</text>")
 [void]$sb.AppendLine("<defs>")
-[void]$sb.AppendLine("<linearGradient id='tier-accent' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#168D89'/><stop offset='1' stop-color='#0079BA'/></linearGradient>")
+[void]$sb.AppendLine("<linearGradient id='tier-accent' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#0F7774'/><stop offset='1' stop-color='#0079BA'/></linearGradient>")
 [void]$sb.AppendLine("<filter id='card-shadow' x='-15%' y='-25%' width='130%' height='160%'><feDropShadow dx='0' dy='4' stdDeviation='5' flood-color='#203553' flood-opacity='0.13'/></filter>")
 [void]$sb.AppendLine("<marker id='arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='#71859C'/></marker>")
 [void]$sb.AppendLine("</defs>")
