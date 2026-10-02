@@ -33,7 +33,7 @@ The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can a
 
 > 📦 For a full, resource-by-resource list of what gets created, see [REFERENCE.md → What gets deployed](docs/REFERENCE.md#what-gets-deployed).
 
-[![Azure Monitor Lab architecture including Azure Copilot Observability Agent, Container Apps Jobs, and Azure Container Registry](docs/architecture-overview-sre.svg)](docs/architecture.drawio)
+[![Azure Monitor Lab architecture: workloads, collection, telemetry, and response, including OpenTelemetry VM metrics and Azure Copilot Observability Agent](docs/architecture-overview-sre.svg)](docs/architecture.drawio)
 
 ## Prerequisites
 
