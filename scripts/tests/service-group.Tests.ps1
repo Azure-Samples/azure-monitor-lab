@@ -161,6 +161,7 @@ try {
   foreach ($notFound in @(
     'ERROR: (ResourceNotFound) Service Group does not exist.',
     'ERROR: Not Found({"error":{"code":"ResourceNotFound","message":"Service Group does not exist."}})',
+    'ERROR: Not Found({"error":{"code":"ServiceGroupNameNotFound","message":"ServiceGroup name not found"}})',
     'ERROR: Not Found'
   )) {
     $fixture.GroupError = $notFound
