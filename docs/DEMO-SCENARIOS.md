@@ -14,7 +14,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 |---|---|
 | **Cross-stack — single pane of glass** | <ul><li>[1](#s1) Traffic-Lights workbook</li><li>[60](#s60) Lab Control Center</li></ul> |
 | **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[46](#s46) SLIs / SLOs</li></ul> |
-| **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li></ul> |
+| **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li></ul> |
 | **AKS (`aks-amlab`)** | <ul><li>[4](#s4) Container Insights + Prom + Grafana</li><li>[14](#s14) OTel tracing AKS→App Service</li><li>[30](#s30) Node.js OTel</li><li>[31](#s31) Prom rule group</li><li>[32](#s32) Grafana alert rule</li></ul> |
 | **Azure VMs (Linux + Windows)** | <ul><li>[2](#s2) VM Insights cross-OS</li></ul> |
 | **VMSS (`vmss-amlab`)** | <ul><li>[19](#s19) Predictive autoscale</li></ul> |
@@ -26,7 +26,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | **AI / ML in Azure Monitor** | <ul><li>[16](#s16) Copilot</li><li>[13](#s13) Smart Detection</li><li>[17](#s17) Dynamic Thresholds</li><li>[18](#s18) Code Optimizations</li><li>[19](#s19) Predictive autoscale</li></ul> |
 | **GenAI observability (optional AI stage)** | <ul><li>[53](#s53) AI FinOps — token / trace / cost</li></ul> |
 | **Azure SRE Agent (optional trial)** | <ul><li>[54](#s54) Trial readiness</li><li>[55](#s55) Alert-driven App Service investigation</li><li>[56](#s56) AKS crash-loop diagnosis</li><li>[57](#s57) Change correlation</li><li>[58](#s58) Alert merging and verified recovery</li><li>[59](#s59) Automatic incident command brief</li></ul> |
-| **Azure Copilot Observability Agent (optional preview)** | <ul><li>[61](#s61) Slow tool</li><li>[62](#s62) Wrong tool</li><li>[63](#s63) Partial failure</li><li>[64](#s64) Alert storm correlation</li><li>[65](#s65) Token-cost spike</li><li>[66](#s66) Deployment regression</li><li>[67](#s67) Platform versus application failure</li></ul> |
+| **Azure Copilot Observability Agent (optional preview)** | <ul><li>[61](#s61) Slow tool</li><li>[62](#s62) Wrong tool</li><li>[63](#s63) Partial failure</li><li>[64](#s64) Alert storm correlation</li><li>[65](#s65) Token-cost spike</li><li>[66](#s66) Deployment regression</li><li>[67](#s67) Platform versus application failure</li><li>[69](#s69) End-to-end Application Insights incident</li></ul> |
 | **GitHub Copilot CLI + Azure MCP** | <ul><li>[68](#s68) Evidence-first terminal investigation</li></ul> |
 | **Platform foundations** | <ul><li>[5](#s5) Policy auto-onboard</li><li>[6](#s6) Cross-workspace KQL</li><li>[24](#s24) Custom Logs Ingestion API</li><li>[26](#s26) KQL Functions</li><li>[51](#s51) Platform logs at scale (DCR)</li></ul> |
 
@@ -95,7 +95,7 @@ A small .NET 8 web app (`AmlabHello`) is running on Linux App Service. We did **
 
 ### Click-path
 1. **`app-amlab-<suffix>`** → click the URL in the Overview blade → open `/`, `/api/slow`, `/api/dep`, `/api/explode`.
-2. **`appi-amlab`** → *Live Metrics* — show throughput, failure rate, and the load gen heartbeat.
+2. **`appi-amlab-<suffix>`** → *Live Metrics* — show throughput, failure rate, and the load gen heartbeat.
 3. *Application Map* — show outbound dependency to `aka.ms` from `/api/dep`.
 4. *Failures* → click into `/api/explode` → show the full call stack of the `InvalidOperationException`.
 5. *Performance* → sort by p95 → `/api/slow` is on top.
@@ -398,7 +398,7 @@ Some signals are too noisy or subtle to set thresholds for. App Insights **Smart
    ```
 2. *(Optionally watch)*: `kubectl logs -f job/loadgen-ramp -n demo`
 3. Carry on with **the rest of the demo for 15 minutes** (this is the time to do Application Map, KQL queries, etc).
-4. ~15 min in, refresh **`appi-amlab` → Smart Detection** → expand the detection. You'll also have an **email from Azure** titled *"Smart Detection: Abnormal rise in failed request rate"*.
+4. ~15 min in, refresh **`appi-amlab-<suffix>` → Smart Detection** → expand the detection. You'll also have an **email from Azure** titled *"Smart Detection: Abnormal rise in failed request rate"*.
 5. Open the detection card → show the root-cause analysis with the auto-generated KQL.
 
 ### Killer line
@@ -418,7 +418,7 @@ Some signals are too noisy or subtle to set thresholds for. App Insights **Smart
 One App Insights instance, two different runtimes (Python on AKS + .NET on App Service), connected by an HTTP call. Both use **OpenTelemetry** — the AKS pod uses the `azure-monitor-opentelemetry` Python distro; the App Service uses the .NET auto-instrumentation. App Insights stitches them together automatically via the W3C `traceparent` header.
 
 ### Click-path
-1. **`appi-amlab` → Application Map** → 2 nodes:
+1. **`appi-amlab-<suffix>` → Application Map** → 2 nodes:
    - `demo.otel-caller-aks` (the AKS pod)
    - `app-amlab-<suffix>` (the App Service)
    - …with an arrow showing the cross-service dependency.
@@ -596,7 +596,7 @@ Azure Monitor now has AI woven into every blade. You don't need to memorize KQL 
 
 #### D) App Insights Copilot investigation (2 min)
 
-1. **`appi-amlab` → Investigate (preview)** (left nav).
+1. **`appi-amlab-<suffix>` → Investigate (preview)** (left nav).
 2. Copilot shows a summary of recent application health — anomalies, failure spikes, latency changes.
 3. Ask a follow-up question in the chat:
    > *"Why did failure rate increase in the last 30 minutes?"*
@@ -731,7 +731,7 @@ The script publishes the updated webapp (so `/api/inefficient` is live), then ru
 
 **Option B — Walk the UI live:**
 
-1. **`appi-amlab` → Performance** (left nav) → **Code Optimizations** tab (or *Investigate* → *Code Optimizations*).
+1. **`appi-amlab-<suffix>` → Performance** (left nav) → **Code Optimizations** tab (or *Investigate* → *Code Optimizations*).
 2. If recommendations are available, expand one:
    - **Insight type** — e.g. "String concatenation in a hot path", "Synchronous I/O on async call stack", "Excessive allocations in request pipeline".
    - **Call tree** — the exact method chain from your code (e.g. `Program.cs → SlowEndpoint → Thread.Sleep`).
@@ -958,7 +958,7 @@ Real users are spread across the world. **Availability Tests** ping your app fro
 
 ### Click-path
 
-1. **`appi-amlab` → Availability** (left nav) → show the scatter chart: each dot is a test execution from a global location.
+1. **`appi-amlab-<suffix>` → Availability** (left nav) → show the scatter chart: each dot is a test execution from a global location.
 2. Click any dot → see response time, HTTP status, SSL validation result.
 3. **Map view** → show the 5 probe locations on a world map with green/red status.
 4. Run saved query **`22 — Availability · Global test results (last 1h)`** — tabular view with pass/fail per location.
@@ -1311,7 +1311,7 @@ app.MapPost("/api/checkout", (HttpRequest req, TelemetryClient telemetry) =>
      Invoke-WebRequest -Uri $url -Method POST -Headers $h -SkipHttpErrorCheck -UseBasicParsing | Out-Null
    }
    ```
-2. **`appi-amlab` → Metrics** → namespace **azure.applicationinsights** → metric **`amlab.cartValue`** → split by anything → render as line chart. Show p50 / p95 / avg pivots.
+2. **`appi-amlab-<suffix>` → Metrics** → namespace **azure.applicationinsights** → metric **`amlab.cartValue`** → split by anything → render as line chart. Show p50 / p95 / avg pivots.
 3. Run saved query **`27 — Custom · App Insights amlab.cartValue metric (1h)`** — same data via KQL on `AppMetrics`.
 4. Run saved query **`28 — Custom · CheckoutCompleted events (1h)`** — `ok` vs `declined` stacked column — the **5% intentional decline** is plainly visible.
 5. Optional: add an alert directly on the custom metric — *"Avg cart value drops below €40 for 10 min"*. Same alert engine, same Action Group.
@@ -1355,8 +1355,8 @@ The lab's App Service `app-amlab-<suffix>` has both turned on via `infra/modules
    1..30 | ForEach-Object { Invoke-WebRequest "https://app-amlab-<suffix>.azurewebsites.net/api/slow"    -UseBasicParsing | Out-Null }
    1..15 | ForEach-Object { Invoke-WebRequest "https://app-amlab-<suffix>.azurewebsites.net/api/explode" -SkipHttpErrorCheck -UseBasicParsing | Out-Null }
    ```
-2. **`appi-amlab` → Performance → Profiler** → wait until a profile is collected (5-15 min). Click a sample → flame graph appears → **`Thread.Sleep`** lights up red as the hot frame.
-3. **`appi-amlab` → Failures → click an `/api/explode` row → Open debug snapshot** → you see the local `boom` variable, the call stack, and parameters captured at the exception moment.
+2. **`appi-amlab-<suffix>` → Performance → Profiler** → wait until a profile is collected (5-15 min). Click a sample → flame graph appears → **`Thread.Sleep`** lights up red as the hot frame.
+3. **`appi-amlab-<suffix>` → Failures → click an `/api/explode` row → Open debug snapshot** → you see the local `boom` variable, the call stack, and parameters captured at the exception moment.
 4. *(Optional)* Verify the app settings are in place:
    ```powershell
    az webapp config appsettings list -g rg-azure-monitor-lab -n app-amlab-<suffix> `
@@ -1392,12 +1392,12 @@ Scenario 14 showed Python + .NET wired into the same App Insights via OpenTeleme
    kubectl -n demo get pods -l app=nodeapp-otel
    kubectl -n demo logs -l app=nodeapp-otel --tail=20
    ```
-2. **`appi-amlab` → Application Map** → now **three** cloud-role-name nodes:
+2. **`appi-amlab-<suffix>` → Application Map** → now **three** cloud-role-name nodes:
    - `app-amlab-<suffix>` (.NET on App Service)
    - `demo.otel-caller-aks` (Python on AKS)
    - 🟣 `demo.nodeapp-otel-aks` (Node.js on AKS) ← **new**
 3. Click the arrow `demo.nodeapp-otel-aks → app-amlab-<suffix>` → end-to-end transaction → both sides correlated by `operation_Id`.
-4. **`appi-amlab` → Logs** → `dependencies | where cloud_RoleName == "demo.nodeapp-otel-aks" | take 50` — every outbound HTTP call captured.
+4. **`appi-amlab-<suffix>` → Logs** → `dependencies | where cloud_RoleName == "demo.nodeapp-otel-aks" | take 50` — every outbound HTTP call captured.
 
 ### Killer line
 > *"Same App Insights, same operation correlation, same KQL — and now from Node.js with **a single `require`**. Polyglot observability without polyglot ops."*
@@ -1498,7 +1498,7 @@ All three call `scripts/send-release-annotation.ps1`, which PUTs to `…/Annotat
 
 ### Click-path
 
-1. **`appi-amlab` → Performance** (or Failures, or any metric chart) → look at the timechart — vertical dashed lines mark every annotation.
+1. **`appi-amlab-<suffix>` → Performance** (or Failures, or any metric chart) → look at the timechart — vertical dashed lines mark every annotation.
 2. Hover any line → tooltip shows name + category.
 3. Run the break/restore sequence:
    ```powershell
@@ -2520,7 +2520,7 @@ Every other scenario watches infra/platform telemetry. This one points the **exa
 |---|---|
 | Foundry workload | `ai<amlab><suffix>` AI Services account + `amlab-ai-proj` project (swedencentral) |
 | Model deployments | `gpt-5-mini` · `text-embedding-3-small` · `gpt-5.4` · **`model-router`** (all GlobalStandard) |
-| Tracing | Project → `appi-amlab` connection → `gen_ai.*` spans in the App Insights LAW |
+| Tracing | Project → `appi-amlab-<suffix>` connection → `gen_ai.*` spans in the App Insights LAW |
 | Query pack | `qp-ai-finops` — 14 GenAI KQL queries (token usage, cached ratio, router mix, efficiency, and an illustrative PTU query with rates disabled until configured) |
 | Workbook | **"AI FinOps — Foundry Agents"** (Monitor → Workbooks → Shared) |
 | Alerts | `alert-amlab-token-anomaly` (dynamic threshold) + `alert-amlab-token-spike` (static ceiling) on `TotalTokens` |
@@ -2529,7 +2529,7 @@ Every other scenario watches infra/platform telemetry. This one points the **exa
 ### Click-path
 
 1. **Foundry portal (`ai.azure.com`) → project `amlab-ai-proj` → Observability / Tracing** — show agent runs + token consumption per model from the simulated conversations.
-2. **`appi-amlab` → Logs → Queries** — run *Token usage by agent (24h)* and *Model router routed-model distribution* from the `qp-ai-finops` pack.
+2. **`appi-amlab-<suffix>` → Logs → Queries** — run *Token usage by agent (24h)* and *Model router routed-model distribution* from the `qp-ai-finops` pack.
 3. **model-router is the cost lever** — the router query shows easy prompts routed to a cheap model, hard prompts to a strong one (surfaced as `gen_ai.response.model`). Even a modest routing rate compounds into real savings.
 4. **Prompt caching reduces billable input** — the `Context-Rich Assistant` uses a >1024-token static system prompt, so repeated calls can hit the prompt cache; open *Cached-input token ratio*, then apply the actual model's current cached-input rate.
 5. **Monitor → Workbooks → "AI FinOps — Foundry Agents"** — token/efficiency tiles, token-share pie, and an illustrative PTU comparison that remains unavailable until current model-specific rates are entered.
@@ -2775,7 +2775,7 @@ The agent eventually returns the right answer, but the customer waits too long. 
 ### Click-path
 1. Deploy the [Observability Agent stage](STAGE-OBSERVABILITY-AGENT.md) and open the Control Center.
 2. Under **Troubleshooting scenarios**, choose **Slow customer lookup**, select **Broken**, approve synthetic telemetry, and generate the trace.
-3. In Application Insights transaction search, locate the trace and compare the parent `GenAI` operation with the `AgentTool` dependency. Confirm the tool is correct but slow.
+3. In Application Insights transaction search, locate the trace and compare the parent `GenAI` operation, `OpenAI` planning span, and `AgentTool` dependency. Confirm the tool is correct but slow.
 4. Select **Open Observability Agent**, start a chat, and paste the trace-specific prompt generated by the Control Center. The prompt requires evidence, a bounded fault-domain hypothesis, three next checks, a targeted fix, and measurable verification instead of only a list of slow spans.
 5. Check that the answer uses `tool.latency_budget_ms`, `tool.latency_budget_exceeded`, and `tool.simulation_profile` to identify the agent-tool backend as the likely fault domain. The synthetic trace proves where time was spent; it does not by itself prove why a real backend was slow.
 6. Run the **Fixed** profile and use its generated prompt to compare tool duration against the latency budget and the overall request duration.
@@ -2815,7 +2815,7 @@ The model responds quickly but chooses an inventory lookup for an order-status r
 1. Choose **Wrong tool selection**, run the **Broken** profile, and capture the trace ID.
 2. Inspect `gen_ai.tool.name`, `expected_tool`, and `tool.selection.correct` in Application Insights.
 3. Ask Observability Agent to explain why this is an orchestration failure rather than a tool-service outage.
-4. Challenge the answer by checking that the selected dependency succeeded technically.
+4. Challenge the answer by checking that the selected dependency and HTTP request succeeded technically while `task.success=false`.
 5. Run **Fixed** and verify that the selected and expected tools match.
 
 ### Killer line
@@ -2830,12 +2830,12 @@ The model responds quickly but chooses an inventory lookup for an order-status r
 **Time:** 6-10 min.
 
 ### Story
-A multi-step task retrieves the right customer record, then fails while completing the requested action. Without trace hierarchy, support sees either a generic failure or misleading evidence that the first tool succeeded.
+A multi-step refund task submits the state-changing action, then fails while retrieving confirmation. Without trace hierarchy, support sees either a generic failure or misleading evidence that one tool succeeded. Retrying the whole workflow could duplicate the action.
 
 ### Click-path
 1. Choose **Partial task failure** and run **Broken**.
-2. Follow the trace through the successful first dependency and failed later dependency.
-3. In Observability Agent, ask which work completed, which step failed, and whether retrying the entire workflow is safe.
+2. Follow the trace through successful `refund_submit` (`tool.state_changing=true`) and failed `refund_confirmation`.
+3. In Observability Agent, ask which work completed, which step failed, and why retrying the entire workflow is unsafe without idempotency.
 4. Check the agent's conclusion against span ordering and status.
 5. Run **Fixed** and verify the full task completes.
 
@@ -3127,6 +3127,99 @@ copilot mcp remove microsoft-learn
 
 ---
 
+<a id="s69"></a>
+## 69 · End-to-end Application Insights incident — browser to agent to verified recovery
+
+**Audience:** application developers, AI engineers, SREs, operations teams.
+**Time:** 25–35 min.
+
+### Story
+
+A customer opens the lab console and asks the support agent for an order update. The web request returns, but the agent can be slow, choose the wrong tool, retry excessively, lose context during a handoff, or complete only part of the task. The operator starts with customer impact, scopes the problem, follows one W3C-correlated trace from browser activity through the ASP.NET request and agent/model/tool dependencies, correlates it with a version or release, applies the smallest safe correction, and proves recovery with the fixed profile.
+
+This scenario ties together the Application Insights experiences described in the [Application Insights OpenTelemetry observability overview](https://learn.microsoft.com/azure/azure-monitor/app/app-insights-overview): availability, Application Dashboard, Live Metrics, Application Map, Failures, Performance, Transaction Search, Logs, Workbooks, alerts, and agent monitoring.
+
+### What is deployed
+
+| Capability | Lab implementation |
+|---|---|
+| Browser telemetry | Application Insights browser SDK with W3C correlation, page views, browser exceptions, same-origin dependencies, and a random synthetic session ID. Cookies, request/response header capture, and prompt/completion capture are disabled. |
+| Server and agent telemetry | Request → `customer_support_agent` → model, handoff, and tool dependencies with technical, task, performance, trace-quality, retry, token, cohort, and version dimensions. |
+| Deterministic failures | Slow tool, wrong tool, partial failure, retry loop, dependency fallback, context explosion, multi-agent handoff, model regression, trace propagation, model throttling, and parallel fan-out. |
+| Availability | Root reachability plus `avail-amlab-agent-task` / `test-amlab-agent-task`, which exercises a deterministic fixed customer function. |
+| Alerts | Technical failed requests, semantic agent task failures, agent efficiency regression, and availability failures. |
+| Investigation content | `qp-amlab-appinsights` query pack and **Application Insights — End-to-End Agent Investigation** workbook. |
+
+### Run the incident
+
+1. Open the Control Center → **Foundry Playground** → **Troubleshooting scenarios**.
+2. Expand **End-to-end Application Insights investigation**. It is the guided checklist for the rest of the demo.
+3. Choose a failure. For the flagship story, start with **Retry loop and token amplification** or **Multi-agent handoff**.
+4. Select **Broken**, approve generation of synthetic metadata-only telemetry, and select **Generate Trace**.
+5. Copy the returned trace ID. Note the separate **Technical**, **Task**, **Performance**, and **Trace** outcomes, plus retries and tokens.
+
+### Detect and scope
+
+1. Open **`appi-amlab-<suffix>` → Application Dashboard**. Establish request volume, server response time, failure rate, and availability.
+2. Open **Live Metrics** and repeat the broken run if you want to show the request arriving in real time.
+3. Open **Availability**. Compare the root test with the agent-task test: URL reachability and customer-function health answer different questions.
+4. Open **Failures** and **Performance**:
+   - Technical failures appear under Failures.
+   - Slow successful operations appear under Performance.
+   - A wrong-tool or handoff-quality failure can remain HTTP 200 and must be found through task telemetry.
+5. Open **Application Map** to identify the App Service and affected dependency path.
+
+### Trace-level investigation
+
+1. Open **Transaction Search**, filter to the run time, and locate the generated operation ID.
+2. Reconstruct the expected hierarchy: browser dependency → ASP.NET request → `customer_support_agent` → model/handoff/tool dependencies.
+3. Check:
+   - `technical.success`, `task.success`, `performance.success`, and `trace.complete`
+   - `selected_tool` versus `expected_tool`
+   - `retry.count`
+   - `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens`
+   - tool latency against `tool.latency_budget_ms`
+   - `agent.version`, `workflow.version`, and response model
+4. For **Trace propagation failure**, call out the disconnected tool span before drawing any causal conclusion.
+5. For **Partial task failure**, verify that `refund_submit` is state-changing and completed before deciding whether a whole-workflow replay is safe.
+6. For **Parallel tool fan-out**, distinguish total work from the dependency on the critical path.
+
+### Cohort, change, and efficiency analysis
+
+1. Open **Logs → Queries** and use `qp-amlab-appinsights`:
+   - *Agent task health*
+   - *End-to-end trace timeline*
+   - *Broken versus fixed comparison*
+   - *Retry and token efficiency*
+   - *Agent trace quality*
+   - *Version and cohort impact*
+   - *Browser-to-agent correlation*
+2. Open **Workbooks → Application Insights — End-to-End Agent Investigation** for the consolidated operational view.
+3. Use release annotations and `agent.version` / `workflow.version` / `gen_ai.response.model` to correlate onset with a change. Timing is evidence for a hypothesis, not proof by itself.
+4. If the optional Foundry stage is enabled, continue into **Agents** and the AI FinOps workbook for actual model runs and model-specific token analysis.
+
+### Fix and verify
+
+1. Return to the Control Center, choose the same scenario, select **Fixed**, approve telemetry, and generate the comparison trace.
+2. Re-run *Broken versus fixed comparison*.
+3. Accept the correction only when the same measurements prove:
+   - task success recovered;
+   - end-to-end and critical-path duration meet their budgets;
+   - retry amplification stopped;
+   - token usage returned to the expected range;
+   - trace hierarchy is complete;
+   - root and task availability remain healthy.
+4. End in Live Metrics or the investigation workbook to show current recovery.
+
+### Upgrade note
+
+Application Insights is now named `appi-<prefix>-<suffix>`. Azure resources cannot be renamed. Upgrading an older deployment creates the suffixed component and rewires newly deployed telemetry and monitoring artifacts. The old unsuffixed component and its historical data remain until an operator verifies the new flow and deliberately retires the old resource. The lab never deletes it automatically.
+
+### Killer line
+> *"We did not jump straight to a log query: we detected customer impact, scoped it, proved the critical path and task outcome in one trace, correlated the change, and verified the fix with the same evidence."*
+
+---
+
 ## Updated demo flow (≈50 min)
 
 | Min | Scenario |
@@ -3161,7 +3254,7 @@ copilot mcp remove microsoft-learn
 
 | Audience | Run scenarios |
 |---|---|
-| **App developers** | 3 → 28 → 29 → 14 → 30 → 18 → 33 → 25 |
+| **App developers** | 69 → 3 → 28 → 29 → 14 → 18 → 33 → 25 |
 | **Platform / SRE on AKS** | 4 → 14 → 30 → 31 → 32 → 8 → 15 |
 | **Infra ops (VM + network)** | 2 → 50 → 34 → 35 → 7 → 12 → 15 |
 | **FinOps** | 9 → 11 → 20 → 21 → 39 → 42 → 51 → 52 |
@@ -3169,7 +3262,7 @@ copilot mcp remove microsoft-learn
 | **AI/ML curious** | 16 → 13 → 17 → 18 → 19 → 53 |
 | **Workload owners / SRE leads** | 60 → 1 → 45 → 12 → 7 → 8 (Root entity flips Unhealthy) |
 | **SRE Agent evaluation** | 54 → 55 → 56 → 57 → 58 → 59 |
-| **Agentic application troubleshooting** | 61 → 62 → 63 → 64 → 66 → 67 |
+| **Agentic application troubleshooting** | 69 → 61 → 62 → 63 → 64 → 66 → 67 |
 | **Terminal incident investigation** | 61 → 68 → 61 Fixed |
 
 ## Reset between demos

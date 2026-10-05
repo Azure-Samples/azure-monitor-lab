@@ -170,6 +170,70 @@ resource alertAppInsightsFailures 'Microsoft.Insights/scheduledQueryRules@2023-0
   }
 }
 
+resource alertAgentTaskFailures 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-agent-task-failures'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Agent tasks are technically available but fail semantic task completion.'
+    enabled: true
+    severity: 2
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: 'dependencies | where type == "GenAI" | extend TaskSuccess = tostring(customDimensions["task.success"]) | where TaskSuccess == "false" | summarize FailedTasks = count()'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 2
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: {
+      actionGroups: [ actionGroupId ]
+    }
+  }
+}
+
+resource alertAgentEfficiencyRegression 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-agent-efficiency-regression'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Agent tasks exceed performance budgets or amplify work through retries.'
+    enabled: true
+    severity: 3
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: 'dependencies | where type == "GenAI" | extend PerformanceSuccess = tostring(customDimensions["performance.success"]), RetryCount = toint(customDimensions["retry.count"]) | where PerformanceSuccess == "false" or RetryCount > 1 | summarize DegradedTasks = count()'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 5
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: {
+      actionGroups: [ actionGroupId ]
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // AKS: pod restart spike (log alert against ContainerInsights KubePodInventory)
 // ---------------------------------------------------------------------------

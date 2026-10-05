@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "7130874890888095787"
+      "templateHash": "4433059118190089749"
     }
   },
   "parameters": {
@@ -61,7 +61,7 @@
   },
   "variables": {
     "suffix": "[uniqueString(resourceGroup().id)]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "agentName": "[format('obs-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "monitoringAccountName": "[format('amw-{0}-obs', parameters('namePrefix'))]",
     "commonTags": {

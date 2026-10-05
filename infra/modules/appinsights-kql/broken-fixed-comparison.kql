@@ -1,0 +1,20 @@
+dependencies
+| where timestamp > ago(24h)
+| where type == "GenAI" and name == "customer_support_agent"
+| extend Scenario = tostring(customDimensions["scenario"]),
+         Mode = tostring(customDimensions["demo.mode"]),
+         TaskSuccess = tostring(customDimensions["task.success"]) == "true",
+         PerformanceSuccess = tostring(customDimensions["performance.success"]) == "true",
+         RetryCount = toint(customDimensions["retry.count"]),
+         InputTokens = toint(customDimensions["gen_ai.usage.input_tokens"]),
+         OutputTokens = toint(customDimensions["gen_ai.usage.output_tokens"])
+| summarize Runs = count(),
+            TaskSuccessRate = 100.0 * countif(TaskSuccess) / count(),
+            PerformanceSuccessRate = 100.0 * countif(PerformanceSuccess) / count(),
+            P50DurationMs = percentile(duration / 1ms, 50),
+            P95DurationMs = percentile(duration / 1ms, 95),
+            AvgRetries = avg(RetryCount),
+            AvgInputTokens = avg(InputTokens),
+            AvgOutputTokens = avg(OutputTokens)
+    by Scenario, Mode
+| order by Scenario asc, Mode asc

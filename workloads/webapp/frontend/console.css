@@ -207,6 +207,15 @@ dialog p { font-size: 13px; color: #53636e; line-height: 1.7; margin-bottom: 14p
 .scenario-investigation h3 { margin: 0 0 6px; font-size: 14px; }
 .scenario-investigation textarea { margin-top: 10px; background: #fff; font-size: 11px; }
 .agent-scenario-panel progress { margin-top: 14px; }
+.scenario-outcome { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1px; margin: 14px 0; background: var(--border); border: 1px solid var(--border); }
+.scenario-outcome > div { min-width: 0; padding: 10px 12px; background: #fff; }
+.scenario-outcome dt { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.scenario-outcome dd { margin: 4px 0 0; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.incident-guide { margin: 16px 0; border-top: 1px solid var(--border); padding-top: 14px; }
+.incident-guide summary { cursor: pointer; font-size: 12px; font-weight: 700; }
+.incident-guide ol { display: grid; gap: 7px; margin: 12px 0 0; padding-left: 28px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.incident-guide li.complete { color: var(--teal-dark); font-weight: 650; }
+.incident-guide li.current { color: var(--blue); font-weight: 700; }
 .sre-messages { min-height: 180px; max-height: 660px; overflow-y: auto; overflow-wrap: anywhere; }
 .sre-message { padding: 14px 12px 20px; }
 .sre-user-message { border-left: 3px solid var(--border); background: #f4f7f8; }
@@ -275,6 +284,7 @@ a[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); opacity: .65
 	.agent-layout { grid-template-columns: minmax(0,1fr); gap: 24px; }
 	.agent-settings { border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 16px; }
 	.agent-scenario-fields { grid-template-columns: minmax(0,1fr); }
+	.scenario-outcome { grid-template-columns: repeat(2,minmax(0,1fr)); }
 	.evidence-brief { min-height: 360px; font-size: 11px; }
 	.agent-metadata { grid-template-columns: 85px minmax(0,1fr); }
 }

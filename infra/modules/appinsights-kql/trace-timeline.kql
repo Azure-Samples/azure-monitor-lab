@@ -1,0 +1,14 @@
+let TraceId = "<paste-operation-id>";
+union
+    (pageViews | project timestamp, operation_Id, itemType = "pageView", name, duration, success = true, resultCode = "", customDimensions),
+    (requests | project timestamp, operation_Id, itemType = "request", name, duration, success, resultCode, customDimensions),
+    (dependencies | project timestamp, operation_Id, itemType = strcat("dependency:", type), name, duration, success, resultCode, customDimensions),
+    (customEvents | project timestamp, operation_Id, itemType = "event", name, duration = 0ms, success = true, resultCode = "", customDimensions)
+| where operation_Id == TraceId
+| extend Scenario = tostring(customDimensions["scenario"]),
+         Mode = tostring(customDimensions["demo.mode"]),
+         Agent = tostring(customDimensions["gen_ai.agent.name"]),
+         Tool = tostring(customDimensions["gen_ai.tool.name"]),
+         TaskSuccess = tostring(customDimensions["task.success"])
+| project timestamp, itemType, name, duration, success, resultCode, Agent, Tool, Scenario, Mode, TaskSuccess
+| order by timestamp asc

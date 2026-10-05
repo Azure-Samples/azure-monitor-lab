@@ -37,7 +37,7 @@ param enableObservabilityAgentAutomaticInvestigation bool = false
 param observabilityAgentInstructions string = 'Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.'
 
 var suffix = uniqueString(resourceGroup().id)
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var agentName = 'obs-${namePrefix}-${take(suffix, 5)}'
 var monitoringAccountName = 'amw-${namePrefix}-obs'
 

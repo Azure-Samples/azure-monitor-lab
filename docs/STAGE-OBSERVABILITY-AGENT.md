@@ -8,13 +8,21 @@
 
 ## What this stage demonstrates
 
-The Control Center emits bounded, synthetic OpenTelemetry-style dependency telemetry for three recognizable failure patterns:
+The Control Center emits bounded, synthetic dependency telemetry for eleven recognizable failure patterns:
 
 1. A tool call is slow.
-2. The agent chooses the wrong tool.
-3. A multi-step task fails after earlier work succeeded.
+2. The agent chooses the wrong tool while HTTP remains successful.
+3. A multi-step task fails after a state-changing step succeeded.
+4. A retry loop amplifies latency and token usage.
+5. A primary dependency outage requires a safe read-only fallback.
+6. Unbounded context increases model latency and tokens.
+7. A multi-agent handoff loses required context.
+8. A model/deployment version regresses task quality.
+9. Broken propagation disconnects a tool span from the trace.
+10. Model throttling exposes retry behavior.
+11. Parallel fan-out reveals the critical-path dependency.
 
-Each scenario has deterministic `broken` and `fixed` profiles. Run the broken profile, investigate it, make or explain the targeted correction, run the fixed profile, and compare the evidence. Prompts and tool payloads are not recorded; the demo emits metadata such as scenario, operation, selected tool, expected tool, outcome, duration, and trace ID.
+Each scenario has deterministic `broken` and `fixed` profiles. Run the broken profile, investigate it, make or explain the targeted correction, run the fixed profile, and compare the evidence. Prompts and tool payloads are not recorded; the demo emits metadata such as scenario, operation, selected tool, expected tool, technical/task/performance success, trace completeness, retries, tokens, versions, outcome, duration, and trace ID.
 
 ## Product boundaries
 
@@ -105,12 +113,14 @@ The script verifies the subscription and tenant guard, region, identity, issue a
 
 1. Open the deployed App Service and sign in as an approved lab operator.
 2. Open **Foundry Playground** and find **Troubleshooting scenarios**.
-3. Choose **Slow customer lookup**, **Wrong tool selection**, or **Partial task failure**.
+3. Choose any deterministic scenario. Start with **Retry loop and token amplification** for efficiency or **Multi-agent handoff** for a technically successful semantic failure.
 4. Select **Broken**, approve synthetic telemetry generation, and select **Generate Trace**.
-5. Open Application Insights transaction search and follow the returned trace ID through the `GenAI` and `AgentTool` dependencies.
+5. Open Application Insights transaction search and follow the returned trace ID through the browser/request, `GenAI`, `OpenAI`, `AgentHandoff`, and `AgentTool` telemetry.
 6. Open Observability Agent from the Control Center, start a chat, and paste the trace-specific investigation prompt shown after the run. It asks the agent to explain evidence, identify the likely fault domain, state uncertainty, propose concrete next checks, and define measurable fixed-run verification.
-7. Challenge the conclusion: verify timestamps, tool name, duration, expected tool, downstream dependency, and missing evidence.
+7. Challenge the conclusion: verify technical, task, and performance health separately; then verify timestamps, critical path, tool selection, retries, tokens, versions, downstream dependency, trace completeness, and missing evidence.
 8. Select **Fixed**, approve another run, and compare the new trace. Confirm the measured outcome changed; do not accept a code or configuration change as proof by itself.
+
+The always-on `qp-<prefix>-appinsights` query pack and **Application Insights — End-to-End Agent Investigation** workbook provide broken-versus-fixed, retry/token efficiency, trace-quality, version/cohort, and browser-to-agent views. The optional Observability Agent stage consumes the same Application Insights evidence but is not required to generate or inspect the traces.
 
 For Scenario 64, the same tab includes a bounded alert-storm generator with request-count, duration, progress, and Stop controls. Its default batch is designed to cross the two deployed failed-request conditions; it does not affect the availability-test endpoint or trigger a separate latency alert. For Scenario 65, it includes a separately consented generator that makes 3, 5, or 10 real Foundry calls and reports actual token totals. It reports estimated cost only when model pricing is configured. These controls never automatically replay failed or ambiguous requests.
 

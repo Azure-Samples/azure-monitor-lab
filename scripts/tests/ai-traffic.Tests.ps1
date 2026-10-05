@@ -37,7 +37,7 @@ function az {
       if ($args -contains 'Microsoft.CognitiveServices/accounts') {
         return ConvertTo-Json -InputObject @(@{ name = 'aiamlabtest'; kind = 'AIServices' })
       }
-      if ($args -contains 'Microsoft.Insights/components') { return '{"id":"test-component","name":"appi-amlab"}' }
+      if ($args -contains 'Microsoft.Insights/components') { return '{"id":"test-component","name":"appi-amlab-test1"}' }
       throw 'Unexpected resource discovery.'
     }
     'resource show' { return 'test-telemetry' }

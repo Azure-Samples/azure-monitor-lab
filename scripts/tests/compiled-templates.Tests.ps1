@@ -4,6 +4,19 @@ param([string] $BicepExecutable)
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
+if ($mainTemplate.variables.appInsightsName -ne "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]") {
+  throw 'Application Insights must use the generated five-character deployment suffix.'
+}
+$appInsightsObservability = @($mainTemplate.resources | Where-Object name -eq 'appinsights-observability')
+if ($appInsightsObservability.Count -ne 1) { throw 'The main template must deploy the Application Insights investigation query pack and workbook.' }
+$agentTaskAvailability = @($mainTemplate.resources | Where-Object name -eq 'agent-task-availability-test')
+if ($agentTaskAvailability.Count -ne 1 -or $agentTaskAvailability[0].properties.parameters.testUrl.value -notmatch '/api/agent-task-availability') {
+  throw 'The main template must deploy the task-level agent availability test.'
+}
+$alertsModule = @($mainTemplate.resources | Where-Object name -eq 'alerts')
+$agentAlerts = @($alertsModule[0].properties.template.resources | Where-Object name -in @('alert-agent-task-failures', 'alert-agent-efficiency-regression'))
+if ($alertsModule.Count -ne 1 -or $agentAlerts.Count -ne 2) { throw 'The main template must contain task correctness and efficiency alerts.' }
+Write-Output 'PASS: suffixed Application Insights, investigation content, task availability, and agent alerts are compiled.'
 $vmModules = @($mainTemplate.resources | Where-Object name -in @('vm-linux', 'vm-windows'))
 if ($vmModules.Count -ne 2) { throw 'The main template must contain both demo VM modules.' }
 foreach ($vmModule in $vmModules) {
@@ -52,7 +65,7 @@ if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Bicep CLI version 0\.37\.4\b') 
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('amlab-template-check-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary
 try {
-  foreach ($relative in @('infra/main', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job')) {
+  foreach ($relative in @('infra/main', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job')) {
     $compiled = Join-Path $temporary ([IO.Path]::GetFileName($relative) + '.json')
     $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
     if ($LASTEXITCODE -ne 0) { $messages; throw "Bicep compilation failed: $relative" }

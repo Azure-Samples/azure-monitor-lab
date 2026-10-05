@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11093617091725445620"
+      "templateHash": "6616725014477230952"
     }
   },
   "parameters": {
@@ -76,7 +76,7 @@
   "variables": {
     "suffix": "[uniqueString(resourceGroup().id)]",
     "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "linuxVmName": "[format('vm-{0}-lin', parameters('namePrefix'))]",
     "windowsVmName": "[format('vmwin{0}', take(variables('suffix'), 4))]",
     "aksName": "[format('aks-{0}', parameters('namePrefix'))]",
@@ -453,7 +453,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "14373381281535683708"
+              "templateHash": "6556775314325538619"
             }
           },
           "parameters": {
@@ -655,6 +655,80 @@
                       "timeAggregation": "Count",
                       "operator": "GreaterThan",
                       "threshold": 10,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "autoMitigate": true,
+                "actions": {
+                  "actionGroups": [
+                    "[parameters('actionGroupId')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "alert-agent-task-failures",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Agent tasks are technically available but fail semantic task completion.",
+                "enabled": true,
+                "severity": 2,
+                "scopes": [
+                  "[parameters('appInsightsId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "dependencies | where type == \"GenAI\" | extend TaskSuccess = tostring(customDimensions[\"task.success\"]) | where TaskSuccess == \"false\" | summarize FailedTasks = count()",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 2,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "autoMitigate": true,
+                "actions": {
+                  "actionGroups": [
+                    "[parameters('actionGroupId')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "alert-agent-efficiency-regression",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Agent tasks exceed performance budgets or amplify work through retries.",
+                "enabled": true,
+                "severity": 3,
+                "scopes": [
+                  "[parameters('appInsightsId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "dependencies | where type == \"GenAI\" | extend PerformanceSuccess = tostring(customDimensions[\"performance.success\"]), RetryCount = toint(customDimensions[\"retry.count\"]) | where PerformanceSuccess == \"false\" or RetryCount > 1 | summarize DegradedTasks = count()",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 5,
                       "failingPeriods": {
                         "numberOfEvaluationPeriods": 1,
                         "minFailingPeriodsToAlert": 1

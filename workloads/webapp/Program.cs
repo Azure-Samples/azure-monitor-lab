@@ -190,7 +190,26 @@ app.MapGet("/api/console/config", (IConfiguration configuration) =>
         });
     return Results.Json(new { links, performanceCooldownSeconds = 30 });
 });
+app.MapGet("/api/telemetry/config", (IConfiguration configuration) =>
+{
+    var connectionString = configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+    var valid = !string.IsNullOrWhiteSpace(connectionString)
+        && connectionString.Length <= 4096
+        && connectionString.Contains("InstrumentationKey=", StringComparison.OrdinalIgnoreCase);
+    return Results.Json(new
+    {
+        enabled = valid,
+        connectionString = valid ? connectionString : null,
+        serviceName = "azure-monitor-lab-console-browser",
+        serviceVersion = typeof(AgentAccess).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown",
+        contentRecordingEnabled = false
+    });
+});
 app.MapGet("/healthz", () => Results.Text("OK"));
+app.MapGet("/api/agent-task-availability", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
+    scenarios.RunAvailabilityAsync(cancellationToken))
+    .RequireRateLimiting("agent-tasks");
 app.MapGet("/api/console/version", () => Results.Json(new
 {
     deploymentId = typeof(AgentAccess).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown"

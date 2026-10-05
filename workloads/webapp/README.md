@@ -71,11 +71,20 @@ For local execution, log into the intended lab tenant with Azure CLI, then set `
 - Cost is unavailable by default. Optional `LabConsole:Foundry:Pricing:<reported-model>:InputUsdPerMillion` and `OutputUsdPerMillion` decimal settings enable an estimated USD cost. These are operator-supplied rates, not a live pricing feed, and ignore cached-input discounts. Reconcile estimates against Cost Management.
 - The existing Application Insights SDK records HTTP requests/dependencies. Known agent runs also emit a `GenAI` dependency named `invoke_agent`, with `gen_ai.agent.name`, `gen_ai.response.model`, `run.id`, and available token counts in custom dimensions. Successful tasks emit `AgentPlaygroundCompleted` with numerical usage metrics. No prompt or response body is included in these custom records. Sampling and ingestion delay still apply; existing workbook filters may need to include `source=web-console`.
 
+### Application Insights agent investigation
+
+The deterministic troubleshooting catalog has eleven broken/fixed scenarios: slow tool, wrong tool, partial state-changing workflow failure, retry amplification, safe dependency fallback, context explosion, multi-agent handoff, model regression, broken trace propagation, model throttling, and parallel fan-out. These calls do not invoke a billable model. They emit synthetic request, `GenAI`, `OpenAI`, `AgentHandoff`, and `AgentTool` telemetry with separate technical/task/performance/trace outcomes, latency budgets, retries, tokens, versions, cohort, and semantic routing evidence.
+
+The browser Application Insights SDK initializes only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is configured. It uses W3C correlation for same-origin API calls and records page views, browser exceptions, dependencies, and a random session-storage-only synthetic session ID. Cookies and request/response header capture are disabled. Prompt, completion, tool payload, and response body content is never added by this feature. If telemetry configuration is absent or invalid, the UI remains functional and does not report a false setup success.
+
+`GET /api/agent-task-availability` runs the fixed multi-agent handoff profile for the standard availability test. It is anonymous by design, deterministic, rate-limited, metadata-only, and never calls Foundry. Use the `qp-<prefix>-appinsights` query pack and **Application Insights — End-to-End Agent Investigation** workbook to compare broken/fixed outcomes and trace quality. See [Scenario 69](../../docs/DEMO-SCENARIOS.md#s69).
+
 ## Interactions
 
 | Control | Endpoint | Result |
 |---|---|---|
 | Check Health | `GET /healthz` | Web app health and browser round-trip latency, not whole-lab health |
+| Agent task availability | `GET /api/agent-task-availability` | Deterministic fixed customer-function trace used by the multi-region availability test |
 | Slow Request | `GET /api/slow` | A deliberately delayed response, approximately 1.5-3 seconds |
 | Trigger Error | `GET /api/explode` | Intentional HTTP 500 and exception telemetry |
 | Test Dependency | `GET /api/dep` | An outbound HTTPS dependency |

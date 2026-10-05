@@ -2,7 +2,7 @@
 
 > **Goal of this stage:** add a real **GenAI workload** to the lab so the observability stack has token/trace/cost telemetry to reason about — the "AI FinOps" story. It layers a Microsoft Foundry account + models, wires them into the lab's Application Insights, and lands token-spike alerting plus an AI FinOps query pack, workbook, and health model. Fully **opt-in** and **off by default** (it deploys billable models).
 >
-> **Depends only on Stage A** (it connects to `appi-amlab`). Pinned to **swedencentral** regardless of the lab region, because the `gpt-5-*` / `model-router` SKUs, the Foundry portal, and the CloudHealth preview are region-limited — the same reason the workload Health Model is pinned.
+> **Depends only on Stage A** (it connects to `appi-amlab-<suffix>`). Pinned to **swedencentral** regardless of the lab region, because the `gpt-5-*` / `model-router` SKUs, the Foundry portal, and the CloudHealth preview are region-limited — the same reason the workload Health Model is pinned.
 
 ## 1) What gets created
 
@@ -10,13 +10,13 @@
 |---|---|---|
 | Foundry workload | `ai<amlab><suffix>` (AI Services account) + `amlab-ai-proj` project, both swedencentral | The GenAI control plane. Project management enabled; system-assigned identity. |
 | Model deployments | `gpt-5-mini` (chat), `text-embedding-3-small` (embeddings), `gpt-5.4` (optimization), **`model-router`** — all `GlobalStandard` | The models the agents + traffic simulator exercise. `model-router` picks a cheaper/stronger underlying model per request. |
-| Tracing connection | Project → `appi-amlab` Application Insights connection | Lights up the Foundry portal Observability/Tracing tab and lands `gen_ai.*` spans in the lab App Insights. |
+| Tracing connection | Project → `appi-amlab-<suffix>` Application Insights connection | Lights up the Foundry portal Observability/Tracing tab and lands `gen_ai.*` spans in the lab App Insights. |
 | Token alerts | `alert-amlab-token-anomaly` (dynamic threshold) + `alert-amlab-token-spike` (static ceiling) on the account's `TotalTokens` metric, split per deployment | Anomaly detection + a hard guardrail for runaway token spend. Optional `ag-amlab-ai` action group when `alertEmail` is set. |
 | AI FinOps observability | `qp-ai-finops` query pack (14 GenAI KQL queries) + a shared **AI FinOps workbook** | Token usage, cached-token ratio, model-router distribution, tokens per successful request, an illustrative rate-configured PTU comparison, and latency/error percentiles. |
 | AI health tier | An **"AI" tier folded into the workload health model** (`hm-amlab-workload`): an `aiworkload` node → the Foundry account entity (Latency / TotalErrors / TotalTokens metric signals) + 4 agent entities carrying error-rate + token-volume Log Analytics signals | One health model for the whole estate — the AI workload rolls up next to frontend/compute/platform; high token volume or error rate turns an agent unhealthy. A separate `ai-healthmodel.bicep` exists as an opt-in fallback for standalone A+AI deployments (no Stage E). |
 | Agents + traffic | 4 agents (`Support Triage`, `FinOps Q&A`, `Doc Summarizer`, `Context-Rich Assistant`) + a traffic simulator, provisioned by `scripts/setup-ai.ps1` | Generates the live token/trace/cost telemetry the queries, workbook, health model, and alerts consume. Python packages listed in [`workloads/ai/requirements.txt`](../workloads/ai/requirements.txt) are pip-installed first. |
 
-> Cross-stage references: `appi-amlab` and its backing App Insights LAW (Stage A). No dependency on Stages B–E; the AI stage creates its own action group.
+> Cross-stage references: `appi-amlab-<suffix>` and its backing App Insights LAW (Stage A). No dependency on Stages B–E; the AI stage creates its own action group.
 
 ## 2) Speaker notes
 
@@ -41,7 +41,7 @@
 ## 3) Portal walkthrough (UI)
 
 1. **Foundry portal (`ai.azure.com`) → project `amlab-ai-proj` → Observability / Tracing** — show agent runs, token consumption by model, and traces from the simulated conversations.
-2. **`appi-amlab` → Logs** — run a query from the `qp-ai-finops` pack (Queries hub), e.g. *Token usage by agent (24h)* or *Model router routed-model distribution*.
+2. **`appi-amlab-<suffix>` → Logs** — run a query from the `qp-ai-finops` pack (Queries hub), e.g. *Token usage by agent (24h)* or *Model router routed-model distribution*.
 3. **Monitor → Workbooks → Shared → "AI FinOps — Foundry Agents"** — time-range picker, token/efficiency tiles, token-share pie, and rate-configured PTU comparison.
 4. **Monitor → Alerts → Alert rules** — `alert-amlab-token-anomaly` + `alert-amlab-token-spike`.
 5. **Monitor → Health models → `hm-amlab-workload`** *(preview)* — open the graph; show the **AI** tier (`aiworkload` → Foundry account + 4 agent entities) rolling up alongside frontend/compute/platform.
@@ -69,7 +69,8 @@ az monitor metrics alert list -g $rg --query "[?contains(name,'token')].{name:na
 az resource list -g $rg --resource-type Microsoft.CloudHealth/healthmodels --query "[?ends_with(name,'-ai')].{name:name,location:location}" -o table
 
 # Telemetry landed? (after running scripts/setup-ai.ps1, allow a few minutes)
-az monitor app-insights query --app appi-amlab -g $rg --analytics-query "dependencies | where timestamp > ago(1h) | extend agent=tostring(customDimensions['gen_ai.agent.name']) | where isnotempty(agent) | summarize calls=count() by agent" --query "tables[0].rows" -o json
+$appi = az resource list -g $rg --resource-type Microsoft.Insights/components --query "[?starts_with(name, 'appi-amlab-')] | [0].name" -o tsv
+az monitor app-insights query --app $appi -g $rg --analytics-query "dependencies | where timestamp > ago(1h) | extend agent=tostring(customDimensions['gen_ai.agent.name']) | where isnotempty(agent) | summarize calls=count() by agent" --query "tables[0].rows" -o json
 ```
 
 ## 5) Done-when

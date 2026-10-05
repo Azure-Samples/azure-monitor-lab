@@ -1,0 +1,14 @@
+dependencies
+| where timestamp > ago(24h)
+| where type == "GenAI" and name == "customer_support_agent"
+| extend Cohort = tostring(customDimensions["synthetic.cohort"]),
+         AgentVersion = tostring(customDimensions["agent.version"]),
+         WorkflowVersion = tostring(customDimensions["workflow.version"]),
+         TaskSuccess = tostring(customDimensions["task.success"]),
+         PerformanceSuccess = tostring(customDimensions["performance.success"])
+| summarize Runs = count(),
+            TaskFailureRate = 100.0 * countif(TaskSuccess == "false") / count(),
+            PerformanceFailureRate = 100.0 * countif(PerformanceSuccess == "false") / count(),
+            P95DurationMs = percentile(duration / 1ms, 95)
+    by Cohort, AgentVersion, WorkflowVersion
+| order by TaskFailureRate desc, PerformanceFailureRate desc

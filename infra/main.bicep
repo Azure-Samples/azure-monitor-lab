@@ -114,7 +114,7 @@ param routerModelVersion string = '2025-08-07'
 var suffix              = uniqueString(resourceGroup().id)
 var lawCentralName      = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName  = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
-var appInsightsName     = 'appi-${namePrefix}'
+var appInsightsName     = 'appi-${namePrefix}-${take(suffix, 5)}'
 var amwName             = 'amw-${namePrefix}'
 var grafanaName         = 'amg-${namePrefix}-${take(suffix, 4)}'
 var vnetName            = 'vnet-${namePrefix}'
@@ -196,6 +196,16 @@ module appInsights 'modules/appinsights.bicep' = {
     name: appInsightsName
     location: location
     workspaceId: lawAppInsights.outputs.id
+    tags: commonTags
+  }
+}
+
+module appInsightsObservability 'modules/appinsights-observability.bicep' = {
+  name: 'appinsights-observability'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    appInsightsId: appInsights.outputs.id
     tags: commonTags
   }
 }
@@ -694,6 +704,18 @@ module availabilityTest 'modules/availability-test.bicep' = {
   }
 }
 
+module agentTaskAvailabilityTest 'modules/availability-test.bicep' = {
+  name: 'agent-task-availability-test'
+  params: {
+    name: 'avail-${namePrefix}-agent-task'
+    location: location
+    appInsightsId: appInsights.outputs.id
+    testUrl: 'https://${appService.outputs.defaultHost}/api/agent-task-availability'
+    actionGroupId: actionGroup.outputs.id
+    tags: commonTags
+  }
+}
+
 // ---------------------------------------------------------------------------------
 // FEATURE 7 — Alert Processing Rules (maintenance window + severity suppression)
 // ---------------------------------------------------------------------------------
@@ -1002,6 +1024,8 @@ output webAppName string           = webAppName
 output webAppDefaultHost string    = appService.outputs.defaultHost
 output grafanaEndpoint string      = grafana.outputs.endpoint
 output workbookId string           = workbook.outputs.id
+output appInsightsInvestigationWorkbookId string = appInsightsObservability.outputs.workbookId
+output appInsightsQueryPackName string = appInsightsObservability.outputs.queryPackName
 output linuxVmNameOut string       = deployLinuxVm ? linuxVmName : ''
 output windowsVmNameOut string     = deployWindowsVm ? windowsVmName : ''
 output autoMitigationLogicAppName string = automitigation.outputs.name
@@ -1014,6 +1038,7 @@ output vmssAutoscaleName string    = vmss.outputs.autoscaleSettingName
 
 // FEATURE 6 — Availability Test
 output availabilityTestName string = availabilityTest.outputs.testName
+output agentTaskAvailabilityTestName string = agentTaskAvailabilityTest.outputs.testName
 
 // FEATURE 7 — Alert Processing Rules
 output maintenanceRuleName string  = alertProcessingRules.outputs.maintenanceRuleName

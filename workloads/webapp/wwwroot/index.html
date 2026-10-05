@@ -206,10 +206,35 @@
                 <label>Failure<select id="agent-scenario" aria-label="Observability scenario"></select></label>
                 <label>Profile<select id="agent-scenario-mode" aria-label="Scenario profile"><option value="broken">Broken</option><option value="fixed">Fixed</option></select></label>
               </div>
+              <p id="agent-scenario-description" class="history-note">Choose a deterministic scenario.</p>
               <label class="consent"><input id="agent-scenario-consent" type="checkbox">I approve generation of synthetic, metadata-only demo telemetry.</label>
               <div class="run-buttons"><button id="agent-scenario-run" class="button primary" type="submit" disabled><i data-lucide="activity"></i>Generate Trace</button></div>
             </form>
             <div id="agent-scenario-status" class="status-band" role="status">No observability scenario run</div>
+            <dl id="agent-scenario-outcome" class="scenario-outcome" hidden>
+              <div><dt>Technical</dt><dd id="scenario-technical">-</dd></div>
+              <div><dt>Task</dt><dd id="scenario-task">-</dd></div>
+              <div><dt>Performance</dt><dd id="scenario-performance">-</dd></div>
+              <div><dt>Trace</dt><dd id="scenario-trace">-</dd></div>
+              <div><dt>Retries</dt><dd id="scenario-retries">-</dd></div>
+              <div><dt>Tokens</dt><dd id="scenario-tokens">-</dd></div>
+            </dl>
+            <details class="incident-guide">
+              <summary>End-to-end Application Insights investigation</summary>
+              <p id="incident-journey-status" class="history-note" role="status">Generate a broken trace to begin the incident.</p>
+              <ol id="incident-journey">
+                <li>Establish task availability and Application Dashboard baseline.</li>
+                <li>Detect current customer impact in Live Metrics and alerts.</li>
+                <li>Separate failures, slow successes, and semantic task failures.</li>
+                <li>Use Application Map to locate the affected dependency.</li>
+                <li>Find this operation by trace ID in Transaction Search.</li>
+                <li>Traverse browser, request, agent, model, handoff, and tool telemetry.</li>
+                <li>Scope impact by scenario, cohort, agent, workflow, and model version.</li>
+                <li>Correlate the regression with release annotations and changes.</li>
+                <li>Apply the smallest safe fix and run the Fixed profile.</li>
+                <li>Verify availability, correctness, latency, retries, tokens, and trace hierarchy.</li>
+              </ol>
+            </details>
             <section id="agent-scenario-investigation" class="scenario-investigation" aria-labelledby="agent-scenario-prompt-heading" hidden>
               <h3 id="agent-scenario-prompt-heading">Observability Agent chat prompt</h3>
               <p class="history-note">Open Observability Agent, start a chat, and paste this trace-specific prompt.</p>

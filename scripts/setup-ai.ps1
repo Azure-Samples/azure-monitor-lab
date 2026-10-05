@@ -130,11 +130,14 @@ Write-Host "   Endpoint: $ProjectEndpoint" -ForegroundColor Green
 
 # --- App Insights connection string (enables tracing export) ---
 if ([string]::IsNullOrWhiteSpace($AppInsightsConnectionString)) {
-  Write-Step "Looking up Application Insights connection string (appi-$NamePrefix)"
-  $AppInsightsConnectionString = az monitor app-insights component show -g $ResourceGroup -a "appi-$NamePrefix" --query connectionString -o tsv 2>$null
+  Write-Step "Looking up Application Insights connection string (appi-$NamePrefix-<suffix>)"
+  $appInsightsName = az resource list -g $ResourceGroup --resource-type Microsoft.Insights/components --query "[?starts_with(name, 'appi-$NamePrefix-')] | sort_by(@, &name) | [0].name" -o tsv 2>$null
+  if (-not [string]::IsNullOrWhiteSpace($appInsightsName)) {
+    $AppInsightsConnectionString = az monitor app-insights component show -g $ResourceGroup -a $appInsightsName --query connectionString -o tsv 2>$null
+  }
 }
 if ([string]::IsNullOrWhiteSpace($AppInsightsConnectionString)) {
-  Write-Host "   appi-$NamePrefix not found — traffic will run without tracing export." -ForegroundColor Yellow
+  Write-Host "   appi-$NamePrefix-<suffix> not found — traffic will run without tracing export." -ForegroundColor Yellow
 }
 
 # --- Environment for the Python steps ---

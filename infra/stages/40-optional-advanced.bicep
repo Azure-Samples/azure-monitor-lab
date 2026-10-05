@@ -37,7 +37,7 @@ var aksName = 'aks-${namePrefix}'
 var actionGroupName = 'ag-${namePrefix}-email'
 var storageAccountName = 'st${namePrefix}${take(suffix, 8)}'
 var keyVaultName = 'kv-${namePrefix}-${take(suffix, 5)}'
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
 var vmssName = 'vmss-${namePrefix}'
 var linuxVmName = 'vm-${namePrefix}-lin'
@@ -131,6 +131,18 @@ module availabilityTest '../modules/availability-test.bicep' = {
     location: location
     appInsightsId: appInsights.id
     testUrl: 'https://${webApp.properties.defaultHostName}/'
+    actionGroupId: actionGroup.id
+    tags: commonTags
+  }
+}
+
+module agentTaskAvailabilityTest '../modules/availability-test.bicep' = {
+  name: 'agent-task-availability-test'
+  params: {
+    name: 'test-${namePrefix}-agent-task'
+    location: location
+    appInsightsId: appInsights.id
+    testUrl: 'https://${webApp.properties.defaultHostName}/api/agent-task-availability'
     actionGroupId: actionGroup.id
     tags: commonTags
   }

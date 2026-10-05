@@ -64,7 +64,7 @@ Use this as the workshop script: each stage adds a bounded set of capabilities a
 3. Stage C depends on Stage B resources for alert scopes.
 4. Stage D depends on Stage A ingestion and Stage C action routing.
 5. Stage E depends on A, B, and C. Its AI health tier additionally requires Stage AI to have been deployed.
-6. Stage AI depends only on Stage A (it connects to `appi-amlab`); deploy it any time after Stage A.
+6. Stage AI depends only on Stage A (it connects to `appi-amlab-<suffix>`); deploy it any time after Stage A.
 7. Stage SRE Agent depends only on Stage A (Application Insights and central LAW); deploy it any time after Stage A.
 8. Stage Observability Agent depends only on Stage A (Application Insights); deploy it any time after Stage A. Its Control Center scenario runner additionally requires Stage B.
 

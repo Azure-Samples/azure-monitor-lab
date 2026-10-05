@@ -1,0 +1,12 @@
+dependencies
+| where timestamp > ago(24h)
+| where type == "GenAI" and name == "customer_support_agent"
+| extend Scenario = tostring(customDimensions["scenario"]),
+         Mode = tostring(customDimensions["demo.mode"]),
+         TraceComplete = tostring(customDimensions["trace.complete"])
+| summarize Runs = count(),
+            Incomplete = countif(TraceComplete == "false"),
+            Complete = countif(TraceComplete == "true")
+    by Scenario, Mode
+| extend CompletenessRate = 100.0 * Complete / Runs
+| order by CompletenessRate asc

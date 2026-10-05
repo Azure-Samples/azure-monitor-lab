@@ -17,7 +17,7 @@ This is the primary-resource inventory. Child resources, deployment records, pol
 | Resource group | `rg-azure-monitor-lab` |
 | Central Log Analytics workspace | `law-amlab-central-<suffix>` |
 | App Insights LAW | `law-amlab-appinsights-<suffix>` |
-| Application Insights | `appi-amlab` |
+| Application Insights | `appi-amlab-<suffix>` |
 | Azure Monitor Workspace (Managed Prometheus) | `amw-amlab` |
 | Data Collection Endpoint | `dce-amlab` |
 | DCR — VM Insights | `dcr-amlab-vminsights` |

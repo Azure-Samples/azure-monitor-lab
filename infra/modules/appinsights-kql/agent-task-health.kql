@@ -1,0 +1,17 @@
+dependencies
+| where timestamp > ago(24h)
+| where type == "GenAI" and name == "customer_support_agent"
+| extend Scenario = tostring(customDimensions["scenario"]),
+         Mode = tostring(customDimensions["demo.mode"]),
+         TechnicalSuccess = tostring(customDimensions["technical.success"]),
+         TaskSuccess = tostring(customDimensions["task.success"]),
+         PerformanceSuccess = tostring(customDimensions["performance.success"]),
+         TraceComplete = tostring(customDimensions["trace.complete"])
+| summarize Runs = count(),
+            TechnicalFailures = countif(TechnicalSuccess == "false"),
+            TaskFailures = countif(TaskSuccess == "false"),
+            PerformanceFailures = countif(PerformanceSuccess == "false"),
+            IncompleteTraces = countif(TraceComplete == "false"),
+            P95DurationMs = percentile(duration / 1ms, 95)
+    by Scenario, Mode
+| order by Scenario asc, Mode asc

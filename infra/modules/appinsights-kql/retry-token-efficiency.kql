@@ -1,0 +1,17 @@
+dependencies
+| where timestamp > ago(24h)
+| where type == "GenAI" and name == "customer_support_agent"
+| extend Scenario = tostring(customDimensions["scenario"]),
+         Mode = tostring(customDimensions["demo.mode"]),
+         RetryCount = toint(customDimensions["retry.count"]),
+         InputTokens = toint(customDimensions["gen_ai.usage.input_tokens"]),
+         OutputTokens = toint(customDimensions["gen_ai.usage.output_tokens"]),
+         TaskSuccess = tostring(customDimensions["task.success"])
+| summarize Runs = count(),
+            SuccessfulRuns = countif(TaskSuccess == "true"),
+            Retries = sum(RetryCount),
+            InputTokens = sum(InputTokens),
+            OutputTokens = sum(OutputTokens)
+    by Scenario, Mode
+| extend TokensPerSuccessfulTask = iff(SuccessfulRuns > 0, todouble(InputTokens + OutputTokens) / SuccessfulRuns, real(null))
+| order by TokensPerSuccessfulTask desc nulls last

@@ -70,13 +70,18 @@ $centralLaw = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.OperationalInsights/workspaces' -and $_.name -like "law-$NamePrefix-central-*"
 }) | Select-Object -First 1
 $appInsights = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -ieq "appi-$NamePrefix"
-}) | Select-Object -First 1
+  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -like "appi-$NamePrefix-*"
+} | Sort-Object name) | Select-Object -First 1
+if (-not $appInsights) {
+  $appInsights = @($resources | Where-Object {
+    $_.type -ieq 'Microsoft.Insights/components' -and $_.name -ieq "appi-$NamePrefix"
+  }) | Select-Object -First 1
+}
 
 if (-not $webApp) { throw "Could not find App Service 'app-$NamePrefix-<suffix>' in '$ResourceGroup'." }
 if (-not $aks) { throw "Could not find AKS cluster 'aks-$NamePrefix' in '$ResourceGroup'." }
 if (-not $centralLaw) { throw "Could not find central LAW 'law-$NamePrefix-central-<suffix>' in '$ResourceGroup'." }
-if (-not $appInsights) { throw "Could not find Application Insights 'appi-$NamePrefix' in '$ResourceGroup'." }
+if (-not $appInsights) { throw "Could not find Application Insights 'appi-$NamePrefix-<suffix>' in '$ResourceGroup'." }
 
 $webAppHost = "$($webApp.name).azurewebsites.net"
 Write-Info "Web App: $($webApp.name)"

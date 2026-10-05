@@ -17,7 +17,7 @@ await build({
 });
 
 const notices = [];
-for (const dependency of ['lucide', 'chart.js', '@kurkle/color', '@fontsource-variable/manrope']) {
+for (const dependency of ['lucide', 'chart.js', '@kurkle/color', '@fontsource-variable/manrope', '@microsoft/applicationinsights-web']) {
   let license;
   for (const filename of ['LICENSE', 'LICENSE.md']) {
     try {

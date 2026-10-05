@@ -15,7 +15,7 @@ param namePrefix string = 'amlab'
 param ownerTag string = 'demo-lab'
 
 var suffix = uniqueString(resourceGroup().id)
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var centralLawName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var sreAgentName = 'sre-${namePrefix}-${take(suffix, 5)}'
 

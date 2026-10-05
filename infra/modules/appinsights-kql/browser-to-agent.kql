@@ -1,0 +1,18 @@
+let BrowserCalls =
+    dependencies
+    | where timestamp > ago(24h)
+    | extend SyntheticSession = tostring(customDimensions["synthetic.session_id"])
+    | where isnotempty(SyntheticSession)
+    | project operation_Id, SyntheticSession, BrowserTimestamp = timestamp, BrowserCall = name;
+let AgentRuns =
+    dependencies
+    | where timestamp > ago(24h)
+    | where type == "GenAI" and name == "customer_support_agent"
+    | extend Scenario = tostring(customDimensions["scenario"]),
+             Mode = tostring(customDimensions["demo.mode"]),
+             TaskSuccess = tostring(customDimensions["task.success"])
+    | project operation_Id, AgentTimestamp = timestamp, Scenario, Mode, TaskSuccess, AgentDuration = duration;
+BrowserCalls
+| join kind=inner AgentRuns on operation_Id
+| project BrowserTimestamp, AgentTimestamp, SyntheticSession, BrowserCall, Scenario, Mode, TaskSuccess, AgentDuration, operation_Id
+| order by AgentTimestamp desc

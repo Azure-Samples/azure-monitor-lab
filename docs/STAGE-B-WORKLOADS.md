@@ -13,12 +13,12 @@
 | VM OpenTelemetry metrics | `dcr-<prefix>-vm-otel` + `vm-otel-metrics-association` on each enabled standalone VM | On by default. Adds system metrics to the existing `amw-<prefix>`; keeps classic VM Insights and its associations unchanged. No VMSS association. |
 | AKS cluster | `aks-amlab` (1× Standard_B2s system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
 | Managed Grafana | `amg-amlab-<suffix>` | Connected to `amw-amlab`. Default Azure dashboards (Node Exporter, Kubelet, K8s/Compute resources, etc.) appear automatically. |
-| App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
+| App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab-<suffix>` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
 | Control Center runner | Basic `acrlabops<suffix>` registry, `cae-labops-<suffix>` Consumption environment, `id-labops-<suffix>` identity, `job-labops-<suffix>` manual job, `console-runner-logs` diagnostic setting, three custom roles, and scoped role assignments | The workload template provisions the platform; completion builds the image, deploys the digest-pinned job and launcher role, and configures operator sign-in and scoped access. Runner logs use the central workspace. |
 | Connection Monitor | `cm-amlab-*` (in `NetworkWatcherRG`) | Probes between the two VMs and the web app's default hostname. Populates `NetworkMonitoring` table. |
 | Flow Logs + Traffic Analytics | `fl-amlab` against `vnet-amlab`; flow logs storage = `st<amlab><suffix>`; analytics workspace = `law-amlab-central` | Network-layer telemetry for security/exfil scenarios in Stage D and reliability scenarios in Stage E. |
 
-> Cross-stage references (no module-to-module wiring): `law-amlab-central`, `law-amlab-appinsights`, `appi-amlab`, `amw-amlab`, `dce-amlab`, `dcr-amlab-vminsights`, `vnet-amlab`/`snet-workload`, `st<amlab><suffix>`, `evhns-amlab-<suffix>` are all `existing` references from Stage A.
+> Cross-stage references (no module-to-module wiring): `law-amlab-central`, `law-amlab-appinsights`, `appi-amlab-<suffix>`, `amw-amlab`, `dce-amlab`, `dcr-amlab-vminsights`, `vnet-amlab`/`snet-workload`, `st<amlab><suffix>`, `evhns-amlab-<suffix>` are all `existing` references from Stage A.
 
 Console completion requires permission to manage its Entra sign-in registration and scoped Azure roles, plus ACR Tasks availability. The registry has ongoing charges; image builds, job execution, and logs add usage charges. Stage B does not enable the optional Stage E Service Group or SLI setup. See [deployment prerequisites and upgrade behavior](../workloads/webapp/LAB-OPERATIONS.md#automatic-deployment).
 
@@ -85,7 +85,7 @@ An **incremental redeployment with the flag set to `false` does not delete an al
 6. **`aks-amlab` → Monitoring → Workbooks** — built-in Container Insights workbooks.
 7. **`amw-amlab` → Prometheus explorer** — try `up{}` or `kube_node_info{}`.
 8. **`amg-amlab-<suffix>` → Endpoint** — click the Grafana URL. Default Azure dashboards are ready to demo (e.g., *Kubernetes / Compute Resources / Cluster*).
-9. **`app-amlab-<suffix>` → Application Insights** (via *Settings → Application Insights*) — confirm it's linked to `appi-amlab`. Then *App Insights → Live Metrics*.
+9. **`app-amlab-<suffix>` → Application Insights** (via *Settings → Application Insights*) — confirm it's linked to `appi-amlab-<suffix>`. Then *App Insights → Live Metrics*.
 10. **`NetworkWatcherRG → Connection monitors`** — open the connection monitor and show test groups (VM→Web, VM→VM).
 11. **Network Watcher → Traffic Analytics** — flow data appears after ~15 min; helpful to leave running before the session.
 12. **`wb-amlab-trafficlights`** — re-open from Stage A and call out filled cells. "Same workbook, new world."

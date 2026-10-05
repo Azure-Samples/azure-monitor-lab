@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "4541774925241986220"
+      "templateHash": "13475365165156004372"
     }
   },
   "parameters": {
@@ -222,7 +222,7 @@
     "suffix": "[uniqueString(resourceGroup().id)]",
     "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "lawAppInsightsName": "[format('law-{0}-appinsights-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "amwName": "[format('amw-{0}', parameters('namePrefix'))]",
     "grafanaName": "[format('amg-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 4))]",
     "vnetName": "[format('vnet-{0}', parameters('namePrefix'))]",
@@ -784,6 +784,178 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'law-appinsights')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "appinsights-observability",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "namePrefix": {
+            "value": "[parameters('namePrefix')]"
+          },
+          "appInsightsId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "3693987551672792095"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for the query pack and workbook."
+              }
+            },
+            "namePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Short lab name prefix."
+              }
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights component resource ID."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "variables": {
+            "$fxv#0": "dependencies\r\n| where timestamp > ago(24h)\r\n| where type == \"GenAI\" and name == \"customer_support_agent\"\r\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\r\n         Mode = tostring(customDimensions[\"demo.mode\"]),\r\n         TechnicalSuccess = tostring(customDimensions[\"technical.success\"]),\r\n         TaskSuccess = tostring(customDimensions[\"task.success\"]),\r\n         PerformanceSuccess = tostring(customDimensions[\"performance.success\"]),\r\n         TraceComplete = tostring(customDimensions[\"trace.complete\"])\r\n| summarize Runs = count(),\r\n            TechnicalFailures = countif(TechnicalSuccess == \"false\"),\r\n            TaskFailures = countif(TaskSuccess == \"false\"),\r\n            PerformanceFailures = countif(PerformanceSuccess == \"false\"),\r\n            IncompleteTraces = countif(TraceComplete == \"false\"),\r\n            P95DurationMs = percentile(duration / 1ms, 95)\r\n    by Scenario, Mode\r\n| order by Scenario asc, Mode asc\r\n",
+            "$fxv#1": "let TraceId = \"<paste-operation-id>\";\r\nunion\r\n    (pageViews | project timestamp, operation_Id, itemType = \"pageView\", name, duration, success = true, resultCode = \"\", customDimensions),\r\n    (requests | project timestamp, operation_Id, itemType = \"request\", name, duration, success, resultCode, customDimensions),\r\n    (dependencies | project timestamp, operation_Id, itemType = strcat(\"dependency:\", type), name, duration, success, resultCode, customDimensions),\r\n    (customEvents | project timestamp, operation_Id, itemType = \"event\", name, duration = 0ms, success = true, resultCode = \"\", customDimensions)\r\n| where operation_Id == TraceId\r\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\r\n         Mode = tostring(customDimensions[\"demo.mode\"]),\r\n         Agent = tostring(customDimensions[\"gen_ai.agent.name\"]),\r\n         Tool = tostring(customDimensions[\"gen_ai.tool.name\"]),\r\n         TaskSuccess = tostring(customDimensions[\"task.success\"])\r\n| project timestamp, itemType, name, duration, success, resultCode, Agent, Tool, Scenario, Mode, TaskSuccess\r\n| order by timestamp asc\r\n",
+            "$fxv#2": "dependencies\r\n| where timestamp > ago(24h)\r\n| where type == \"GenAI\" and name == \"customer_support_agent\"\r\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\r\n         Mode = tostring(customDimensions[\"demo.mode\"]),\r\n         TaskSuccess = tostring(customDimensions[\"task.success\"]) == \"true\",\r\n         PerformanceSuccess = tostring(customDimensions[\"performance.success\"]) == \"true\",\r\n         RetryCount = toint(customDimensions[\"retry.count\"]),\r\n         InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]),\r\n         OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n| summarize Runs = count(),\r\n            TaskSuccessRate = 100.0 * countif(TaskSuccess) / count(),\r\n            PerformanceSuccessRate = 100.0 * countif(PerformanceSuccess) / count(),\r\n            P50DurationMs = percentile(duration / 1ms, 50),\r\n            P95DurationMs = percentile(duration / 1ms, 95),\r\n            AvgRetries = avg(RetryCount),\r\n            AvgInputTokens = avg(InputTokens),\r\n            AvgOutputTokens = avg(OutputTokens)\r\n    by Scenario, Mode\r\n| order by Scenario asc, Mode asc\r\n",
+            "$fxv#3": "dependencies\r\n| where timestamp > ago(24h)\r\n| where type == \"GenAI\" and name == \"customer_support_agent\"\r\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\r\n         Mode = tostring(customDimensions[\"demo.mode\"]),\r\n         RetryCount = toint(customDimensions[\"retry.count\"]),\r\n         InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]),\r\n         OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"]),\r\n         TaskSuccess = tostring(customDimensions[\"task.success\"])\r\n| summarize Runs = count(),\r\n            SuccessfulRuns = countif(TaskSuccess == \"true\"),\r\n            Retries = sum(RetryCount),\r\n            InputTokens = sum(InputTokens),\r\n            OutputTokens = sum(OutputTokens)\r\n    by Scenario, Mode\r\n| extend TokensPerSuccessfulTask = iff(SuccessfulRuns > 0, todouble(InputTokens + OutputTokens) / SuccessfulRuns, real(null))\r\n| order by TokensPerSuccessfulTask desc nulls last\r\n",
+            "$fxv#4": "dependencies\r\n| where timestamp > ago(24h)\r\n| where type == \"GenAI\" and name == \"customer_support_agent\"\r\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\r\n         Mode = tostring(customDimensions[\"demo.mode\"]),\r\n         TraceComplete = tostring(customDimensions[\"trace.complete\"])\r\n| summarize Runs = count(),\r\n            Incomplete = countif(TraceComplete == \"false\"),\r\n            Complete = countif(TraceComplete == \"true\")\r\n    by Scenario, Mode\r\n| extend CompletenessRate = 100.0 * Complete / Runs\r\n| order by CompletenessRate asc\r\n",
+            "$fxv#5": "dependencies\r\n| where timestamp > ago(24h)\r\n| where type == \"GenAI\" and name == \"customer_support_agent\"\r\n| extend Cohort = tostring(customDimensions[\"synthetic.cohort\"]),\r\n         AgentVersion = tostring(customDimensions[\"agent.version\"]),\r\n         WorkflowVersion = tostring(customDimensions[\"workflow.version\"]),\r\n         TaskSuccess = tostring(customDimensions[\"task.success\"]),\r\n         PerformanceSuccess = tostring(customDimensions[\"performance.success\"])\r\n| summarize Runs = count(),\r\n            TaskFailureRate = 100.0 * countif(TaskSuccess == \"false\") / count(),\r\n            PerformanceFailureRate = 100.0 * countif(PerformanceSuccess == \"false\") / count(),\r\n            P95DurationMs = percentile(duration / 1ms, 95)\r\n    by Cohort, AgentVersion, WorkflowVersion\r\n| order by TaskFailureRate desc, PerformanceFailureRate desc\r\n",
+            "$fxv#6": "let BrowserCalls =\r\n    dependencies\r\n    | where timestamp > ago(24h)\r\n    | extend SyntheticSession = tostring(customDimensions[\"synthetic.session_id\"])\r\n    | where isnotempty(SyntheticSession)\r\n    | project operation_Id, SyntheticSession, BrowserTimestamp = timestamp, BrowserCall = name;\r\nlet AgentRuns =\r\n    dependencies\r\n    | where timestamp > ago(24h)\r\n    | where type == \"GenAI\" and name == \"customer_support_agent\"\r\n    | extend Scenario = tostring(customDimensions[\"scenario\"]),\r\n             Mode = tostring(customDimensions[\"demo.mode\"]),\r\n             TaskSuccess = tostring(customDimensions[\"task.success\"])\r\n    | project operation_Id, AgentTimestamp = timestamp, Scenario, Mode, TaskSuccess, AgentDuration = duration;\r\nBrowserCalls\r\n| join kind=inner AgentRuns on operation_Id\r\n| project BrowserTimestamp, AgentTimestamp, SyntheticSession, BrowserCall, Scenario, Mode, TaskSuccess, AgentDuration, operation_Id\r\n| order by AgentTimestamp desc\r\n",
+            "$fxv#7": "{\r\n  \"version\": \"Notebook/1.0\",\r\n  \"items\": [\r\n    {\r\n      \"type\": 1,\r\n      \"content\": {\r\n        \"json\": \"# Application Insights — End-to-End Agent Investigation\\nFollow customer impact from browser and request telemetry through agent, model, handoff, tool, retry, and semantic task outcomes. All lab data is synthetic and prompt/completion content recording remains disabled.\"\r\n      },\r\n      \"name\": \"title\"\r\n    },\r\n    {\r\n      \"type\": 9,\r\n      \"content\": {\r\n        \"version\": \"KqlParameterItem/1.0\",\r\n        \"parameters\": [\r\n          {\r\n            \"id\": \"p-timerange\",\r\n            \"version\": \"KqlParameterItem/1.0\",\r\n            \"name\": \"TimeRange\",\r\n            \"label\": \"Time range\",\r\n            \"type\": 4,\r\n            \"isRequired\": true,\r\n            \"value\": { \"durationMs\": 86400000 },\r\n            \"typeSettings\": {\r\n              \"selectableValues\": [\r\n                { \"durationMs\": 3600000 },\r\n                { \"durationMs\": 14400000 },\r\n                { \"durationMs\": 86400000 },\r\n                { \"durationMs\": 604800000 }\r\n              ],\r\n              \"allowCustom\": true\r\n            }\r\n          },\r\n          {\r\n            \"id\": \"p-appinsights\",\r\n            \"version\": \"KqlParameterItem/1.0\",\r\n            \"name\": \"AppInsights\",\r\n            \"label\": \"Application Insights\",\r\n            \"type\": 5,\r\n            \"isRequired\": true,\r\n            \"multiSelect\": false,\r\n            \"quote\": \"'\",\r\n            \"resourceType\": \"microsoft.insights/components\",\r\n            \"typeSettings\": {\r\n              \"resourceTypeFilter\": { \"microsoft.insights/components\": true }\r\n            },\r\n            \"value\": \"__APPINSIGHTS_ID__\"\r\n          }\r\n        ],\r\n        \"style\": \"pills\",\r\n        \"queryType\": 0,\r\n        \"resourceType\": \"microsoft.insights/components\"\r\n      },\r\n      \"name\": \"parameters\"\r\n    },\r\n    {\r\n      \"type\": 1,\r\n      \"content\": { \"json\": \"## Detect and scope\\nTechnical success, task correctness, performance budgets, and trace completeness are independent health dimensions.\" },\r\n      \"name\": \"detect-heading\"\r\n    },\r\n    {\r\n      \"type\": 3,\r\n      \"content\": {\r\n        \"version\": \"KqlItem/1.0\",\r\n        \"query\": \"dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Technical=tostring(customDimensions['technical.success']), Task=tostring(customDimensions['task.success']), Performance=tostring(customDimensions['performance.success']), Trace=tostring(customDimensions['trace.complete']) | summarize Runs=count(), TechnicalFailures=countif(Technical=='false'), TaskFailures=countif(Task=='false'), PerformanceFailures=countif(Performance=='false'), IncompleteTraces=countif(Trace=='false'), P95DurationMs=percentile(duration/1ms,95) by Scenario, Mode | order by Scenario asc, Mode asc\",\r\n        \"size\": 0,\r\n        \"title\": \"Agent task health\",\r\n        \"timeContextFromParameter\": \"TimeRange\",\r\n        \"queryType\": 0,\r\n        \"resourceType\": \"microsoft.insights/components\",\r\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\r\n        \"visualization\": \"table\"\r\n      },\r\n      \"name\": \"agent-task-health\"\r\n    },\r\n    {\r\n      \"type\": 1,\r\n      \"content\": { \"json\": \"## Compare broken and fixed profiles\\nA fix is proven only when the same outcome, latency, retry, token, and trace-quality measurements recover.\" },\r\n      \"name\": \"compare-heading\"\r\n    },\r\n    {\r\n      \"type\": 3,\r\n      \"content\": {\r\n        \"version\": \"KqlItem/1.0\",\r\n        \"query\": \"dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Task=tostring(customDimensions['task.success'])=='true', Performance=tostring(customDimensions['performance.success'])=='true', Retries=toint(customDimensions['retry.count']), InputTokens=toint(customDimensions['gen_ai.usage.input_tokens']) | summarize Runs=count(), TaskSuccessRate=100.0*countif(Task)/count(), PerformanceSuccessRate=100.0*countif(Performance)/count(), P95DurationMs=percentile(duration/1ms,95), AvgRetries=avg(Retries), AvgInputTokens=avg(InputTokens) by Scenario, Mode | order by Scenario asc, Mode asc\",\r\n        \"size\": 0,\r\n        \"title\": \"Broken versus fixed evidence\",\r\n        \"timeContextFromParameter\": \"TimeRange\",\r\n        \"queryType\": 0,\r\n        \"resourceType\": \"microsoft.insights/components\",\r\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\r\n        \"visualization\": \"table\"\r\n      },\r\n      \"name\": \"broken-fixed\"\r\n    },\r\n    {\r\n      \"type\": 3,\r\n      \"content\": {\r\n        \"version\": \"KqlItem/1.0\",\r\n        \"query\": \"dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Retries=toint(customDimensions['retry.count']), InputTokens=toint(customDimensions['gen_ai.usage.input_tokens']), OutputTokens=toint(customDimensions['gen_ai.usage.output_tokens']), Task=tostring(customDimensions['task.success']) | summarize Runs=count(), SuccessfulRuns=countif(Task=='true'), Retries=sum(Retries), Tokens=sum(InputTokens)+sum(OutputTokens) by Scenario, Mode | extend TokensPerSuccessfulTask=iff(SuccessfulRuns>0,todouble(Tokens)/SuccessfulRuns,real(null)) | order by TokensPerSuccessfulTask desc nulls last\",\r\n        \"size\": 0,\r\n        \"title\": \"Retry and token efficiency\",\r\n        \"timeContextFromParameter\": \"TimeRange\",\r\n        \"queryType\": 0,\r\n        \"resourceType\": \"microsoft.insights/components\",\r\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\r\n        \"visualization\": \"table\"\r\n      },\r\n      \"name\": \"retry-token-efficiency\"\r\n    },\r\n    {\r\n      \"type\": 1,\r\n      \"content\": { \"json\": \"## Validate the customer function\\nThe task-level availability test checks the deterministic fixed agent path, not only the web server root.\" },\r\n      \"name\": \"availability-heading\"\r\n    },\r\n    {\r\n      \"type\": 3,\r\n      \"content\": {\r\n        \"version\": \"KqlItem/1.0\",\r\n        \"query\": \"availabilityResults | summarize Runs=count(), Failures=countif(success==false), AvailabilityPct=100.0*countif(success==true)/count(), P95DurationMs=percentile(duration,95) by name, location | order by name asc, location asc\",\r\n        \"size\": 0,\r\n        \"title\": \"Root and agent-task availability\",\r\n        \"timeContextFromParameter\": \"TimeRange\",\r\n        \"queryType\": 0,\r\n        \"resourceType\": \"microsoft.insights/components\",\r\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\r\n        \"visualization\": \"table\"\r\n      },\r\n      \"name\": \"task-availability\"\r\n    }\r\n  ],\r\n  \"styleSettings\": {},\r\n  \"$schema\": \"https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json\"\r\n}\r\n",
+            "queries": [
+              {
+                "key": "agent-task-health",
+                "display": "Agent task health",
+                "body": "[variables('$fxv#0')]"
+              },
+              {
+                "key": "trace-timeline",
+                "display": "End-to-end trace timeline",
+                "body": "[variables('$fxv#1')]"
+              },
+              {
+                "key": "broken-fixed-comparison",
+                "display": "Broken versus fixed comparison",
+                "body": "[variables('$fxv#2')]"
+              },
+              {
+                "key": "retry-token-efficiency",
+                "display": "Retry and token efficiency",
+                "body": "[variables('$fxv#3')]"
+              },
+              {
+                "key": "trace-quality",
+                "display": "Agent trace quality",
+                "body": "[variables('$fxv#4')]"
+              },
+              {
+                "key": "version-cohort-impact",
+                "display": "Version and cohort impact",
+                "body": "[variables('$fxv#5')]"
+              },
+              {
+                "key": "browser-to-agent",
+                "display": "Browser-to-agent correlation",
+                "body": "[variables('$fxv#6')]"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/queryPacks",
+              "apiVersion": "2019-09-01",
+              "name": "[format('qp-{0}-appinsights', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {}
+            },
+            {
+              "copy": {
+                "name": "packQueries",
+                "count": "[length(variables('queries'))]"
+              },
+              "type": "Microsoft.OperationalInsights/queryPacks/queries",
+              "apiVersion": "2019-09-01",
+              "name": "[format('{0}/{1}', format('qp-{0}-appinsights', parameters('namePrefix')), guid(resourceId('Microsoft.OperationalInsights/queryPacks', format('qp-{0}-appinsights', parameters('namePrefix'))), variables('queries')[copyIndex()].key))]",
+              "properties": {
+                "displayName": "[variables('queries')[copyIndex()].display]",
+                "body": "[variables('queries')[copyIndex()].body]",
+                "related": {
+                  "categories": [
+                    "applications"
+                  ],
+                  "resourceTypes": [
+                    "microsoft.insights/components"
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/queryPacks', format('qp-{0}-appinsights', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/workbooks",
+              "apiVersion": "2023-06-01",
+              "name": "[guid(resourceGroup().id, 'appinsights-investigation-workbook')]",
+              "location": "[parameters('location')]",
+              "kind": "shared",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "displayName": "Application Insights — End-to-End Agent Investigation",
+                "serializedData": "[replace(variables('$fxv#7'), '__APPINSIGHTS_ID__', parameters('appInsightsId'))]",
+                "category": "workbook",
+                "sourceId": "[toLower(parameters('appInsightsId'))]",
+                "version": "1.0"
+              }
+            }
+          ],
+          "outputs": {
+            "queryPackName": {
+              "type": "string",
+              "value": "[format('qp-{0}-appinsights', parameters('namePrefix'))]"
+            },
+            "workbookId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/workbooks', guid(resourceGroup().id, 'appinsights-investigation-workbook'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'appi')]"
       ]
     },
     {
@@ -11515,7 +11687,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "14373381281535683708"
+              "templateHash": "6556775314325538619"
             }
           },
           "parameters": {
@@ -11717,6 +11889,80 @@
                       "timeAggregation": "Count",
                       "operator": "GreaterThan",
                       "threshold": 10,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "autoMitigate": true,
+                "actions": {
+                  "actionGroups": [
+                    "[parameters('actionGroupId')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "alert-agent-task-failures",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Agent tasks are technically available but fail semantic task completion.",
+                "enabled": true,
+                "severity": 2,
+                "scopes": [
+                  "[parameters('appInsightsId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "dependencies | where type == \"GenAI\" | extend TaskSuccess = tostring(customDimensions[\"task.success\"]) | where TaskSuccess == \"false\" | summarize FailedTasks = count()",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 2,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "autoMitigate": true,
+                "actions": {
+                  "actionGroups": [
+                    "[parameters('actionGroupId')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "alert-agent-efficiency-regression",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Agent tasks exceed performance budgets or amplify work through retries.",
+                "enabled": true,
+                "severity": 3,
+                "scopes": [
+                  "[parameters('appInsightsId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "dependencies | where type == \"GenAI\" | extend PerformanceSuccess = tostring(customDimensions[\"performance.success\"]), RetryCount = toint(customDimensions[\"retry.count\"]) | where PerformanceSuccess == \"false\" or RetryCount > 1 | summarize DegradedTasks = count()",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 5,
                       "failingPeriods": {
                         "numberOfEvaluationPeriods": 1,
                         "minFailingPeriodsToAlert": 1
@@ -13408,6 +13654,185 @@
           },
           "testUrl": {
             "value": "[format('https://{0}/', reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.defaultHost.value)]"
+          },
+          "actionGroupId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "2744902256941642038"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the availability test."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region (must match App Insights region)."
+              }
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Application Insights instance."
+              }
+            },
+            "testUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "URL to test (e.g. https://app-<namePrefix>-<suffix>.azurewebsites.net/)."
+              }
+            },
+            "actionGroupId": {
+              "type": "string",
+              "metadata": {
+                "description": "Action Group resource ID for failure alerts."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "variables": {
+            "testLocations": [
+              {
+                "Id": "us-tx-sn1-azr"
+              },
+              {
+                "Id": "us-il-ch1-azr"
+              },
+              {
+                "Id": "emea-gb-db3-azr"
+              },
+              {
+                "Id": "emea-nl-ams-azr"
+              },
+              {
+                "Id": "apac-sg-sin-azr"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/webtests",
+              "apiVersion": "2022-06-15",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(parameters('tags'), createObject(format('hidden-link:{0}', parameters('appInsightsId')), 'Resource'))]",
+              "kind": "standard",
+              "properties": {
+                "SyntheticMonitorId": "[parameters('name')]",
+                "Name": "[parameters('name')]",
+                "Description": "Standard URL ping test for the demo App Service — tests from 5 global locations every 5 min.",
+                "Enabled": true,
+                "Frequency": 300,
+                "Timeout": 120,
+                "Kind": "standard",
+                "RetryEnabled": true,
+                "Locations": "[variables('testLocations')]",
+                "Request": {
+                  "RequestUrl": "[parameters('testUrl')]",
+                  "HttpVerb": "GET",
+                  "ParseDependentRequests": false,
+                  "FollowRedirects": true
+                },
+                "ValidationRules": {
+                  "ExpectedHttpStatusCode": 200,
+                  "SSLCheck": true,
+                  "SSLCertRemainingLifetimeCheck": 7
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-{0}', parameters('name'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "[format('Availability test \"{0}\" failing from 2+ global locations.', parameters('name'))]",
+                "severity": 1,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('appInsightsId')]",
+                  "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria",
+                  "webTestId": "[resourceId('Microsoft.Insights/webtests', parameters('name'))]",
+                  "componentId": "[parameters('appInsightsId')]",
+                  "failedLocationCount": 2
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[parameters('actionGroupId')]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "testId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+            },
+            "testName": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'actiongroup')]",
+        "[resourceId('Microsoft.Resources/deployments', 'appi')]",
+        "[resourceId('Microsoft.Resources/deployments', 'appservice')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "agent-task-availability-test",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('avail-{0}-agent-task', parameters('namePrefix'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "appInsightsId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+          },
+          "testUrl": {
+            "value": "[format('https://{0}/api/agent-task-availability', reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.defaultHost.value)]"
           },
           "actionGroupId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
@@ -18242,6 +18667,14 @@
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'workbook'), '2022-09-01').outputs.id.value]"
     },
+    "appInsightsInvestigationWorkbookId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2022-09-01').outputs.workbookId.value]"
+    },
+    "appInsightsQueryPackName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2022-09-01').outputs.queryPackName.value]"
+    },
     "linuxVmNameOut": {
       "type": "string",
       "value": "[if(parameters('deployLinuxVm'), variables('linuxVmName'), '')]"
@@ -18273,6 +18706,10 @@
     "availabilityTestName": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'availability-test'), '2022-09-01').outputs.testName.value]"
+    },
+    "agentTaskAvailabilityTestName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'agent-task-availability-test'), '2022-09-01').outputs.testName.value]"
     },
     "maintenanceRuleName": {
       "type": "string",

@@ -1,6 +1,7 @@
 import { initializeSreAssistant } from './sre-assistant.js';
 import { initializeInfrastructureHealth } from './infrastructure-health.js';
 import { initializeLabOperations } from './lab-operations.js';
+import { trackLabEvent } from './telemetry.js';
 
 export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWebAppHealth }) {
   const byId = id => document.getElementById(id);
@@ -13,6 +14,7 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
   let alertStorm = null;
   let tokenAnomaly = null;
   let catalogLoaded = false;
+  let scenarioCatalog = [];
   let refreshing = false;
   const tabs = [...document.querySelectorAll('[role="tab"]')];
 
@@ -158,14 +160,16 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
       const data = await response.json();
       const select = byId('agent-scenario');
       select.replaceChildren();
-      const scenarios = Array.isArray(data) ? data : data.scenarios || [];
-      for (const scenario of scenarios) {
+      scenarioCatalog = Array.isArray(data) ? data : data.scenarios || [];
+      for (const scenario of scenarioCatalog) {
         const option = document.createElement('option');
         option.value = scenario.key;
         option.textContent = scenario.name;
+        option.title = scenario.description;
         select.append(option);
       }
       if (!select.value) throw new Error('No scenarios are available');
+      updateScenarioDescription();
       updateScenarioControls();
     } catch (error) {
       byId('agent-scenario').replaceChildren();
@@ -173,6 +177,13 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
       updateScenarioControls();
     }
   }
+  function updateScenarioDescription() {
+    const scenario = scenarioCatalog.find(item => item.key === byId('agent-scenario').value);
+    byId('agent-scenario-description').textContent = scenario
+      ? `${scenario.description} Fault domain: ${scenario.faultDomain}.`
+      : 'Choose a deterministic scenario.';
+  }
+  byId('agent-scenario').addEventListener('change', updateScenarioDescription);
   byId('agent-scenario-consent').addEventListener('input', updateScenarioControls);
   byId('agent-scenario-copy').addEventListener('click', async () => {
     const prompt = byId('agent-scenario-prompt').value;
@@ -193,6 +204,11 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
       mode: byId('agent-scenario-mode').value,
       consent: byId('agent-scenario-consent').checked
     };
+    trackLabEvent('AgentScenarioStarted', {
+      scenario: payload.scenario,
+      mode: payload.mode,
+      contentRecordingEnabled: 'false'
+    });
     try {
       const response = await fetch('/api/agents/scenarios/run', {
         method: 'POST',
@@ -205,6 +221,28 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
       if (!response.ok && !data.status) throw new Error(data.error || `HTTP ${response.status}`);
       const trace = data.traceId || 'unavailable';
       byId('agent-scenario-status').textContent = `${data.scenario} / ${data.mode}: ${data.status}; ${Math.round(data.durationMs).toLocaleString()} ms; selected ${data.selectedTool}; trace ${trace}`;
+      byId('scenario-technical').textContent = data.technicalSuccess ? 'Pass' : 'Fail';
+      byId('scenario-task').textContent = data.taskSuccess ? 'Pass' : 'Fail';
+      byId('scenario-performance').textContent = data.performanceSuccess ? 'Pass' : 'Fail';
+      byId('scenario-trace').textContent = data.traceComplete ? 'Complete' : 'Incomplete';
+      byId('scenario-retries').textContent = Number(data.retryCount || 0).toLocaleString();
+      byId('scenario-tokens').textContent = `${Number(data.inputTokens || 0).toLocaleString()} in / ${Number(data.outputTokens || 0).toLocaleString()} out`;
+      byId('agent-scenario-outcome').hidden = false;
+      updateIncidentJourney(data.mode);
+      trackLabEvent('AgentScenarioCompleted', {
+        scenario: data.scenario,
+        mode: data.mode,
+        status: data.status,
+        technicalSuccess: String(Boolean(data.technicalSuccess)),
+        taskSuccess: String(Boolean(data.taskSuccess)),
+        performanceSuccess: String(Boolean(data.performanceSuccess)),
+        traceComplete: String(Boolean(data.traceComplete))
+      }, {
+        durationMs: Number(data.durationMs || 0),
+        retryCount: Number(data.retryCount || 0),
+        inputTokens: Number(data.inputTokens || 0),
+        outputTokens: Number(data.outputTokens || 0)
+      });
       if (typeof data.investigationPrompt === 'string' && data.investigationPrompt.trim()) {
         byId('agent-scenario-prompt').value = data.investigationPrompt;
         byId('agent-scenario-investigation').hidden = false;
@@ -216,11 +254,27 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
       byId('agent-scenario-status').textContent = `Scenario failed: ${error.message || 'request unavailable'}`;
       byId('agent-scenario-prompt').value = '';
       byId('agent-scenario-investigation').hidden = true;
+      trackLabEvent('AgentScenarioRequestFailed', {
+        scenario: payload.scenario,
+        mode: payload.mode,
+        errorType: error?.name || 'Error'
+      });
     } finally {
       byId('agent-scenario-consent').checked = false;
       updateScenarioControls();
     }
   });
+
+  function updateIncidentJourney(mode) {
+    const completedThrough = mode === 'fixed' ? 10 : 8;
+    document.querySelectorAll('#incident-journey li').forEach((item, index) => {
+      item.classList.toggle('complete', index < completedThrough);
+      item.classList.toggle('current', index === completedThrough);
+    });
+    byId('incident-journey-status').textContent = mode === 'fixed'
+      ? 'Recovery verified: compare the fixed trace with the broken run in Application Insights.'
+      : 'Incident generated: continue in Application Insights from detection through change correlation.';
+  }
 
   function waitForBatch(delayMs, batch) {
     return new Promise(resolve => {

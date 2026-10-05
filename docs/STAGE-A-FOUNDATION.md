@@ -9,7 +9,7 @@
 | Group | Resource(s) | Purpose |
 |---|---|---|
 | Log Analytics workspaces | `law-amlab-central`, `law-amlab-appinsights` | Two-workspace pattern: one for infra/platform logs, one dedicated to App Insights. Daily cap = 1 GB. Solutions on central: **VMInsights**, **ContainerInsights**. |
-| Workspace-based App Insights | `appi-amlab` | Pinned to `law-amlab-appinsights`. Connection string + ikey are used later by App Service and availability tests. |
+| Workspace-based App Insights | `appi-amlab-<suffix>` | Pinned to `law-amlab-appinsights-<suffix>`. Connection string + ikey are used later by App Service and availability tests. |
 | Azure Monitor workspace (Prometheus) | `amw-amlab` | The Prometheus-compatible workspace consumed by AKS Managed Prometheus and Managed Grafana in Stage B. |
 | Data Collection Endpoint | `dce-amlab` (Linux kind) | Required for DCR-based collection on Linux + AMA. |
 | Data Collection Rules | `dcr-amlab-vminsights` (Perf counters + ServiceMap), `dcr-amlab-workspace-transforms` | Inline VM Insights DCR is created here so Stage B VMs can attach to it. Workspace-transforms DCR adds an `AzureActivity` shaping rule. |
@@ -18,8 +18,8 @@
 | Event Hub namespace | `evhns-amlab-<suffix>` (+ `diagstream` event hub, `RootManageSharedAccessKey`) | Diagnostic streaming target; later used by App Service diagnostics. |
 | Key Vault | `kv-amlab-<suffix>` | Diagnostic settings already routed to `law-amlab-central`. |
 | Governance | Policy assignments (diagnostic-settings policies) | Ensures any future resource gets diagnostic settings pointed to the central LAW. |
-| Saved queries + KQL functions | Many | Drop the "starter pack" of KQL into the workspace `Queries` pane so demos start with curated assets. |
-| Workbooks | Traffic-Lights workbook (display: `wb-amlab-trafficlights`), Cost-of-Monitoring workbook (display: `wb-amlab-cost`) | Two pinned workbooks the customer will see in the next demo step. |
+| Saved queries + KQL functions | Many, plus `qp-amlab-appinsights` | Drop the infrastructure starter pack and seven Application Insights investigation queries into the relevant `Queries` panes. |
+| Workbooks | Traffic-Lights, Cost-of-Monitoring, and **Application Insights — End-to-End Agent Investigation** | Infrastructure overview, monitoring cost, and a dedicated browser/request/agent/model/tool investigation path. |
 
 > All resources are tagged `purpose=azure-monitor-lab`, `owner=demo-lab`.
 
@@ -45,6 +45,9 @@ Use these one-liners when guiding a customer through Stage A:
 6. **"Daily cap = 1 GB."**
    We deliberately cap ingestion so the lab is safe to leave running. Customers nod hard at this.
 
+7. **"Application Insights starts with an investigation workflow."**
+   The `qp-amlab-appinsights` queries and end-to-end workbook are deployed before workloads. Stage B supplies browser, request, dependency, agent, model, handoff, retry, token, and task-outcome telemetry.
+
 ## 3) Portal walkthrough (UI)
 
 Resource group: **`rg-azure-monitor-lab-terraform-test`** in **North Europe** (the App Service tier auto-pins to West Europe).
@@ -53,9 +56,9 @@ Resource group: **`rg-azure-monitor-lab-terraform-test`** in **North Europe** (t
 2. **`law-amlab-central` → Solutions** — show VMInsights and ContainerInsights pre-installed.
 3. **`law-amlab-central` → Usage and estimated costs → Daily cap** — show the 1 GB cap.
 4. **`law-amlab-central` → Tables → AzureActivity** *(if visible)* — table is shaped by the workspace-transform DCR.
-5. **`appi-amlab` → Overview** — explain it's *workspace-based* (no separate ingestion).
+5. **`appi-amlab-<suffix>` → Overview** — explain it's *workspace-based* (no separate ingestion).
 6. **`amw-amlab` → Overview** — call out "this is the Prometheus side; AKS will write here in Stage B."
-7. **Monitor → Workbooks → Browse** — open `wb-amlab-trafficlights` and `wb-amlab-cost`. They render empty/sparse right now. Promise the customer this is the "before" picture.
+7. **Monitor → Workbooks → Browse** — open `wb-amlab-trafficlights`, `wb-amlab-cost`, and **Application Insights — End-to-End Agent Investigation**. They render empty/sparse right now. Promise the customer this is the "before" picture.
 8. **Monitor → Data Collection Rules** — open `dcr-amlab-vminsights`, click *Resources*. Empty list. "Stage B fills this."
 9. **Policy → Assignments** — show the diagnostic-settings policy assignments scoped at this RG.
 
@@ -73,7 +76,8 @@ az resource list -g $rg --query "[].{name:name,type:type}" -o table
 az monitor log-analytics workspace show -g $rg -n law-amlab-central --query "{name:name,customerId:customerId,retentionInDays:retentionInDays}" -o table
 
 # App Insights connection string (drives Stage B's App Service auto-instrumentation)
-az monitor app-insights component show -g $rg -a appi-amlab --query "{name:name,connectionString:connectionString}" -o table
+$appi = az resource list -g $rg --resource-type Microsoft.Insights/components --query "[?starts_with(name, 'appi-amlab-')] | [0].name" -o tsv
+az monitor app-insights component show -g $rg -a $appi --query "{name:name,connectionString:connectionString}" -o table
 
 # AMW exists
 az monitor account show -g $rg -n amw-amlab --query "{name:name,defaultIngestionSettings:defaultIngestionSettings}" -o table
@@ -89,6 +93,12 @@ az resource list -g $rg --resource-type "Microsoft.Insights/workbooks" --query "
 az monitor log-analytics workspace show -g $rg -n law-amlab-central --query "workspaceCapping" -o json
 az monitor log-analytics saved-search list -g $rg --workspace-name law-amlab-central --query "[].{name:name,category:category}" -o table
 ```
+
+## Upgrade behavior for the suffixed Application Insights name
+
+Application Insights is named `appi-<prefix>-<suffix>`, using the same deterministic resource-group suffix as the App Service and dedicated workspace. Azure resources cannot be renamed. An incremental upgrade from an older lab therefore creates the suffixed component and rewires newly deployed workloads, tests, alerts, workbooks, Foundry connections, and agents to it.
+
+The old `appi-<prefix>` component and its historical data remain intact. After deployment, verify browser/server ingestion, availability tests, alerts, optional Foundry tracing, and agent integrations against the suffixed component. Retire the old component only through a separately reviewed operator action after its retention/export requirements are satisfied; the templates do not delete it.
 
 ## 5) Done-when
 

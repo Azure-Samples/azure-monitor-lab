@@ -150,7 +150,7 @@ function az {
         @{ name = 'app-amlab-test'; type = 'Microsoft.Web/sites' },
         @{ name = 'aks-amlab'; type = 'Microsoft.ContainerService/managedClusters' },
         @{ name = 'law-amlab-central-test'; type = 'Microsoft.OperationalInsights/workspaces' },
-        @{ name = 'appi-amlab'; id = 'test-component'; type = 'Microsoft.Insights/components' }
+        @{ name = 'appi-amlab-test1'; id = 'test-component'; type = 'Microsoft.Insights/components' }
       )
       if ($fixture.StageEResources) { $resources += @{ name = 'id-sli-amlab'; type = 'Microsoft.ManagedIdentity/userAssignedIdentities' } }
       if ($fixture.SreResources) { $resources += @{ name = 'sre-amlab-test'; type = 'Microsoft.App/agents' } }

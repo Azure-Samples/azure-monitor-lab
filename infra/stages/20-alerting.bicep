@@ -33,7 +33,7 @@ param ownerTag string = 'demo-lab'
 
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var linuxVmName = 'vm-${namePrefix}-lin'
 var windowsVmName = 'vmwin${take(suffix, 4)}'
 var aksName = 'aks-${namePrefix}'

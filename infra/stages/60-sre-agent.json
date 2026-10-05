@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "1835971735281744834"
+      "templateHash": "11678626239148336536"
     }
   },
   "parameters": {
@@ -28,7 +28,7 @@
   },
   "variables": {
     "suffix": "[uniqueString(resourceGroup().id)]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "centralLawName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "sreAgentName": "[format('sre-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "commonTags": {

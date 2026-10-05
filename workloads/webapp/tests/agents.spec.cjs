@@ -10,7 +10,7 @@ async function ready(page) {
   await page.goto('/');
   await page.getByRole('tab', { name: 'Foundry Playground' }).click();
   await expect(page.getByLabel('Agent', { exact: true })).toBeEnabled();
-  await expect(page.getByLabel('Observability scenario').locator('option')).toHaveCount(3);
+  await expect(page.getByLabel('Observability scenario').locator('option')).toHaveCount(11);
 }
 async function approve(page) {
   await page.getByLabel('Task', { exact: true }).fill('The app returns an error.');
@@ -39,6 +39,8 @@ test('agent API rejects unsafe requests, enforces consent and size, defaults off
   const context = await request.get('/api/agents/context');
   expect(Object.keys(await context.json()).sort()).toEqual(['appService', 'foundryUrl', 'observabilityAgentUrl', 'resourceGroup', 'sreUrl']);
   expect(await context.text()).not.toMatch(/InstrumentationKey|ConnectionString|password/i);
+  const telemetry = await request.get('/api/telemetry/config');
+  expect(await telemetry.json()).toMatchObject({ enabled: false, connectionString: null, contentRecordingEnabled: false });
 });
 
 test('observability scenarios compare broken and fixed metadata-only traces', async ({ page }) => {
@@ -49,16 +51,23 @@ test('observability scenarios compare broken and fixed metadata-only traces', as
     expect(route.request().headers()['x-amlab-agent-request']).toBe('true');
     const broken = data.mode === 'broken';
     await route.fulfill({
-      status: broken && data.scenario === 'wrong-tool' ? 409 : 200,
+      status: 200,
       json: {
         scenario: data.scenario,
         mode: data.mode,
-        status: broken ? 'wrong_tool' : 'completed',
+        status: broken ? 'semantic_failure' : 'completed',
         selectedTool: broken ? 'inventory_lookup' : 'order_lookup',
         expectedTool: 'order_lookup',
         durationMs: broken ? 2500 : 100,
         traceId: 'scenario-trace',
-        investigationPrompt: `Investigate trace scenario-trace for ${data.scenario} in ${data.mode} mode.`
+        investigationPrompt: `Investigate trace scenario-trace for ${data.scenario} in ${data.mode} mode.`,
+        technicalSuccess: true,
+        taskSuccess: !broken,
+        performanceSuccess: !broken,
+        traceComplete: true,
+        retryCount: broken ? 2 : 0,
+        inputTokens: broken ? 900 : 300,
+        outputTokens: 25
       }
     });
 
@@ -68,8 +77,12 @@ test('observability scenarios compare broken and fixed metadata-only traces', as
   await page.getByLabel('Scenario profile').selectOption('broken');
   await page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.').check();
   await page.getByRole('button', { name: 'Generate Trace' }).click();
-  await expect(page.locator('#agent-scenario-status')).toContainText('wrong_tool');
+  await expect(page.locator('#agent-scenario-status')).toContainText('semantic_failure');
   await expect(page.locator('#agent-scenario-status')).toContainText('trace scenario-trace');
+  await expect(page.locator('#agent-scenario-outcome')).toContainText('Task');
+  await expect(page.locator('#scenario-task')).toHaveText('Fail');
+  await expect(page.locator('#scenario-retries')).toHaveText('2');
+  await expect(page.locator('#incident-journey li.complete')).toHaveCount(8);
   await expect(page.getByLabel('Observability Agent investigation prompt')).toHaveValue(/scenario-trace.*wrong-tool.*broken/);
   await expect(page.getByRole('button', { name: 'Copy Prompt' })).toBeVisible();
   await expect(page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.')).not.toBeChecked();
@@ -77,6 +90,8 @@ test('observability scenarios compare broken and fixed metadata-only traces', as
   await page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.').check();
   await page.getByRole('button', { name: 'Generate Trace' }).click();
   await expect(page.locator('#agent-scenario-status')).toContainText('completed');
+  await expect(page.locator('#scenario-task')).toHaveText('Pass');
+  await expect(page.locator('#incident-journey li.complete')).toHaveCount(10);
   expect(submissions).toEqual([
     { scenario: 'wrong-tool', mode: 'broken', consent: true },
     { scenario: 'wrong-tool', mode: 'fixed', consent: true }

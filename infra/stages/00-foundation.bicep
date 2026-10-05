@@ -23,7 +23,7 @@ param lawReplicationLocation string = ''
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var amwName = 'amw-${namePrefix}'
 var vnetName = 'vnet-${namePrefix}'
 var nsgName = 'nsg-${namePrefix}'
@@ -80,6 +80,16 @@ module appInsights '../modules/appinsights.bicep' = {
     name: appInsightsName
     location: location
     workspaceId: lawAppInsights.outputs.id
+    tags: commonTags
+  }
+}
+
+module appInsightsObservability '../modules/appinsights-observability.bicep' = {
+  name: 'appinsights-observability'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    appInsightsId: appInsights.outputs.id
     tags: commonTags
   }
 }

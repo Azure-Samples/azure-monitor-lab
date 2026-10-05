@@ -4,7 +4,7 @@
 // Adds a Foundry account + project, four model deployments (chat, embedding,
 // optimization, Model Router), an Application Insights connection on the project,
 // and two token-consumption metric alerts. Depends on Stage A (foundation) for the
-// lab Application Insights (`appi-${namePrefix}`).
+// lab Application Insights (`appi-${namePrefix}-<suffix>`).
 //
 // The Foundry resources are pinned to swedencentral (via `aiLocation`), independent
 // of the lab region, because the gpt-5-* / model-router SKUs and the Foundry portal
@@ -37,7 +37,8 @@ param enableObservability bool = true
 @description('Deploy a SEPARATE AI health model. Off by default — the AI tier is folded into the workload health model (hm-<prefix>-workload, Stage E) instead. Turn on only for a standalone A+AI deployment with no Stage E.')
 param enableHealthModel bool = false
 
-var appInsightsName = 'appi-${namePrefix}'
+var suffix = uniqueString(resourceGroup().id)
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 
 var commonTags = {
   owner: ownerTag

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "16636375011322369274"
+      "templateHash": "10474484531269843895"
     }
   },
   "parameters": {
@@ -84,7 +84,7 @@
     "actionGroupName": "[format('ag-{0}-email', parameters('namePrefix'))]",
     "storageAccountName": "[format('st{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8))]",
     "keyVaultName": "[format('kv-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "webAppName": "[format('app-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "vmssName": "[format('vmss-{0}', parameters('namePrefix'))]",
     "linuxVmName": "[format('vm-{0}-lin', parameters('namePrefix'))]",
@@ -477,6 +477,180 @@
           },
           "testUrl": {
             "value": "[format('https://{0}/', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName)]"
+          },
+          "actionGroupId": {
+            "value": "[resourceId('Microsoft.Insights/actionGroups', variables('actionGroupName'))]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "2744902256941642038"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the availability test."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region (must match App Insights region)."
+              }
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Application Insights instance."
+              }
+            },
+            "testUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "URL to test (e.g. https://app-<namePrefix>-<suffix>.azurewebsites.net/)."
+              }
+            },
+            "actionGroupId": {
+              "type": "string",
+              "metadata": {
+                "description": "Action Group resource ID for failure alerts."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "variables": {
+            "testLocations": [
+              {
+                "Id": "us-tx-sn1-azr"
+              },
+              {
+                "Id": "us-il-ch1-azr"
+              },
+              {
+                "Id": "emea-gb-db3-azr"
+              },
+              {
+                "Id": "emea-nl-ams-azr"
+              },
+              {
+                "Id": "apac-sg-sin-azr"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/webtests",
+              "apiVersion": "2022-06-15",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(parameters('tags'), createObject(format('hidden-link:{0}', parameters('appInsightsId')), 'Resource'))]",
+              "kind": "standard",
+              "properties": {
+                "SyntheticMonitorId": "[parameters('name')]",
+                "Name": "[parameters('name')]",
+                "Description": "Standard URL ping test for the demo App Service — tests from 5 global locations every 5 min.",
+                "Enabled": true,
+                "Frequency": 300,
+                "Timeout": 120,
+                "Kind": "standard",
+                "RetryEnabled": true,
+                "Locations": "[variables('testLocations')]",
+                "Request": {
+                  "RequestUrl": "[parameters('testUrl')]",
+                  "HttpVerb": "GET",
+                  "ParseDependentRequests": false,
+                  "FollowRedirects": true
+                },
+                "ValidationRules": {
+                  "ExpectedHttpStatusCode": 200,
+                  "SSLCheck": true,
+                  "SSLCertRemainingLifetimeCheck": 7
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-{0}', parameters('name'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "[format('Availability test \"{0}\" failing from 2+ global locations.', parameters('name'))]",
+                "severity": 1,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('appInsightsId')]",
+                  "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria",
+                  "webTestId": "[resourceId('Microsoft.Insights/webtests', parameters('name'))]",
+                  "componentId": "[parameters('appInsightsId')]",
+                  "failedLocationCount": 2
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[parameters('actionGroupId')]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "testId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+            },
+            "testName": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "agent-task-availability-test",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('test-{0}-agent-task', parameters('namePrefix'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "appInsightsId": {
+            "value": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+          },
+          "testUrl": {
+            "value": "[format('https://{0}/api/agent-task-availability', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName)]"
           },
           "actionGroupId": {
             "value": "[resourceId('Microsoft.Insights/actionGroups', variables('actionGroupName'))]"
