@@ -61,6 +61,7 @@ test('observability scenarios compare broken and fixed metadata-only traces', as
         durationMs: broken ? 2500 : 100,
         traceId: 'scenario-trace',
         investigationPrompt: `Investigate trace scenario-trace for ${data.scenario} in ${data.mode} mode.`,
+        sreHandoffPrompt: `Command incident for trace scenario-trace and ${data.scenario} in ${data.mode} mode.`,
         technicalSuccess: true,
         taskSuccess: !broken,
         performanceSuccess: !broken,
@@ -84,14 +85,16 @@ test('observability scenarios compare broken and fixed metadata-only traces', as
   await expect(page.locator('#scenario-retries')).toHaveText('2');
   await expect(page.locator('#incident-journey li.complete')).toHaveCount(8);
   await expect(page.getByLabel('Observability Agent investigation prompt')).toHaveValue(/scenario-trace.*wrong-tool.*broken/);
-  await expect(page.getByRole('button', { name: 'Copy Prompt' })).toBeVisible();
+  await expect(page.getByLabel('SRE Agent incident command prompt')).toHaveValue(/scenario-trace.*wrong-tool.*broken/);
+  await expect(page.getByRole('button', { name: 'Copy Trace Prompt' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy SRE Prompt' })).toBeVisible();
   await expect(page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.')).not.toBeChecked();
   await page.getByLabel('Scenario profile').selectOption('fixed');
   await page.getByLabel('I approve generation of synthetic, metadata-only demo telemetry.').check();
   await page.getByRole('button', { name: 'Generate Trace' }).click();
   await expect(page.locator('#agent-scenario-status')).toContainText('completed');
   await expect(page.locator('#scenario-task')).toHaveText('Pass');
-  await expect(page.locator('#incident-journey li.complete')).toHaveCount(10);
+  await expect(page.locator('#incident-journey li.complete')).toHaveCount(12);
   expect(submissions).toEqual([
     { scenario: 'wrong-tool', mode: 'broken', consent: true },
     { scenario: 'wrong-tool', mode: 'fixed', consent: true }

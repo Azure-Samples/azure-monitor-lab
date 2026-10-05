@@ -113,7 +113,7 @@ if ($observabilityAgentLocation -notin $supportedObservabilityAgentLocations) {
   throw "observabilityAgentLocation '$observabilityAgentLocation' is unsupported. Use one of: $($supportedObservabilityAgentLocations -join ', ')."
 }
 $enableObservabilityAgentAutomaticInvestigation = if ($null -eq $cfg.enableObservabilityAgentAutomaticInvestigation) { $false } else { [bool]$cfg.enableObservabilityAgentAutomaticInvestigation }
-$observabilityAgentInstructions = Coalesce $cfg.observabilityAgentInstructions 'Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.'
+$observabilityAgentInstructions = Coalesce $cfg.observabilityAgentInstructions 'Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact and keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task or efficiency failures and add [OPS-REVIEW] to the title. Reconstruct the Application Insights request, agent, model, handoff, and tool hierarchy; report technical, task, performance, and trace health separately. Produce an SRE handoff packet with customer impact, likely fault domain and confidence, three timestamped evidence points with sources, the smallest safe correction, rollback conditions, missing evidence, and fixed-run verification criteria. Do not claim remediation or incident closure.'
 if ($observabilityAgentInstructions.Length -gt 8192) {
   throw 'observabilityAgentInstructions must not exceed 8192 characters.'
 }

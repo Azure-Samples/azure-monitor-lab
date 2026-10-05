@@ -189,7 +189,16 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
     const prompt = byId('agent-scenario-prompt').value;
     try {
       await navigator.clipboard.writeText(prompt);
-      toast('Observability Agent prompt copied');
+      toast('Observability Agent trace prompt copied');
+    } catch {
+      toast('Clipboard unavailable. Select the prompt to copy it.');
+    }
+  });
+  byId('agent-scenario-sre-copy').addEventListener('click', async () => {
+    const prompt = byId('agent-scenario-sre-prompt').value;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      toast('SRE Agent incident command prompt copied');
     } catch {
       toast('Clipboard unavailable. Select the prompt to copy it.');
     }
@@ -245,14 +254,19 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
       });
       if (typeof data.investigationPrompt === 'string' && data.investigationPrompt.trim()) {
         byId('agent-scenario-prompt').value = data.investigationPrompt;
+        byId('agent-scenario-sre-prompt').value = typeof data.sreHandoffPrompt === 'string'
+          ? data.sreHandoffPrompt
+          : '';
         byId('agent-scenario-investigation').hidden = false;
       } else {
         byId('agent-scenario-prompt').value = '';
+        byId('agent-scenario-sre-prompt').value = '';
         byId('agent-scenario-investigation').hidden = true;
       }
     } catch (error) {
       byId('agent-scenario-status').textContent = `Scenario failed: ${error.message || 'request unavailable'}`;
       byId('agent-scenario-prompt').value = '';
+      byId('agent-scenario-sre-prompt').value = '';
       byId('agent-scenario-investigation').hidden = true;
       trackLabEvent('AgentScenarioRequestFailed', {
         scenario: payload.scenario,
@@ -266,14 +280,14 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
   });
 
   function updateIncidentJourney(mode) {
-    const completedThrough = mode === 'fixed' ? 10 : 8;
+    const completedThrough = mode === 'fixed' ? 12 : 8;
     document.querySelectorAll('#incident-journey li').forEach((item, index) => {
       item.classList.toggle('complete', index < completedThrough);
       item.classList.toggle('current', index === completedThrough);
     });
     byId('incident-journey-status').textContent = mode === 'fixed'
-      ? 'Recovery verified: compare the fixed trace with the broken run in Application Insights.'
-      : 'Incident generated: continue in Application Insights from detection through change correlation.';
+      ? 'Recovery evidence generated: have the trace specialist and incident commander verify it before closure.'
+      : 'Incident generated: investigate in Application Insights, then hand trace RCA from Observability Agent to SRE Agent.';
   }
 
   function waitForBatch(delayMs, batch) {

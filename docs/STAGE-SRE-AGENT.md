@@ -157,10 +157,15 @@ are unavailable through the connector, state that limitation instead of using
 an empty KQL result as evidence that no annotation exists.
 Correlate evidence from 15 minutes before the first signal through 30 minutes
 after it. State the observed impact, timeline, likely cause, confidence, and the
-smallest reversible mitigation. Separate evidence from inference. Do not modify
-resources without approval. After an approved action, verify the original alert
-signal and application failure rate before declaring recovery. Do not wait for
-a follow-up question. End every response-plan run with an `Incident command
+smallest reversible mitigation. For agent-task or efficiency incidents, require
+the Observability Agent trace-specialist handoff when available. Validate its
+technical, task, performance, trace-quality, retry, token, version, and critical-
+path evidence against Azure Monitor and platform signals; treat it as a cited
+hypothesis rather than an approved action. Separate evidence from inference.
+Do not modify resources without approval. After an approved action, require a
+Fixed trace for the same scenario and verify availability, alert state, the
+original signal, and application failure rate before declaring recovery. Do not
+wait for a follow-up question. End every response-plan run with an `Incident command
 brief` containing current status, customer impact, affected resources, first
 signal, likely cause and confidence, three timestamped evidence bullets with
 their sources, the smallest safe next action, and any missing evidence.
@@ -191,10 +196,18 @@ Keep both plans in **Review** mode for the trial. Open **Incidents > Triggers & 
 
 | Plan | Severity | Title contains | Custom agent |
 |---|---|---|---|
-| `amlab-app-alerts` | Sev2 | `webapp` or `failed-requests` | `amlab-app-investigator` |
+| `amlab-app-alerts` | Sev2 | `webapp`, `failed-requests`, `agent-task`, or `agent-efficiency` | `amlab-app-investigator` |
 | `amlab-platform-alerts` | Sev2, Sev3 | `aks`, `pod`, or `vm` | `amlab-platform-investigator` |
 
 The portal currently accepts one **Title contains** value per plan. Use `webapp` for `amlab-app-alerts` and `aks` for `amlab-platform-alerts`. To cover each additional title fragment in the table, clone the corresponding plan with a unique name and replace the title filter. Confirm every plan shows status **On** and mode **Review**. Turn off plans when the demo is idle to prevent expected lab alerts from consuming active-flow AAUs.
+
+### Coordinated Scenario 69 flow
+
+1. Generate the Broken trace and let the agent-task or efficiency alert open or update the SRE incident.
+2. Run the Control Center's Observability Agent prompt and copy its SRE handoff packet into the incident thread.
+3. Run the generated SRE incident-command prompt. The application investigator reconciles trace evidence with Azure changes and platform health, then drafts a Review-mode action and rollback boundary.
+4. Obtain human approval and generate the matching Fixed trace; this deterministic profile demonstrates the approved correction rather than editing or redeploying source.
+5. Use Observability Agent to validate trace-level recovery and SRE Agent to validate availability, alert state, application failure rate, and incident closure criteria.
 
 ## 7. Run the scenarios
 

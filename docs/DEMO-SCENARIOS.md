@@ -3200,16 +3200,21 @@ This scenario ties together the Application Insights experiences described in th
 
 ### Fix and verify
 
-1. Return to the Control Center, choose the same scenario, select **Fixed**, approve telemetry, and generate the comparison trace.
-2. Re-run *Broken versus fixed comparison*.
-3. Accept the correction only when the same measurements prove:
+1. For the strongest optional flow, paste the generated trace-specialist prompt into Observability Agent. Require its SRE handoff packet with impact, fault-domain confidence, timestamped evidence, the smallest safe correction, rollback conditions, missing evidence, and verification criteria.
+2. Paste that packet and the generated incident-command prompt into SRE Agent. Have it reconcile the trace with Azure Monitor alerts, App Service health, Log Analytics, Activity Logs, deployment operations, and release timing, then draft a **Review-mode** remediation plan.
+3. After explicit human approval, return to the Control Center, choose the same scenario, select **Fixed**, approve telemetry, and generate the comparison trace. The Fixed profile demonstrates the approved correction; it does not edit or redeploy source.
+4. Re-run *Broken versus fixed comparison* and ask Observability Agent to verify trace-level recovery.
+5. Ask SRE Agent to verify availability, alert state, and application failure rate before recommending incident closure.
+6. Accept the correction only when the same measurements prove:
    - task success recovered;
    - end-to-end and critical-path duration meet their budgets;
    - retry amplification stopped;
    - token usage returned to the expected range;
    - trace hierarchy is complete;
    - root and task availability remain healthy.
-4. End in Live Metrics or the investigation workbook to show current recovery.
+7. End in Live Metrics or the investigation workbook to show current recovery.
+
+Both agents are optional. Without them, follow the same Application Insights evidence manually; no alert, trace, query, workbook, or Fixed-profile verification depends on an agent service.
 
 ### Upgrade note
 

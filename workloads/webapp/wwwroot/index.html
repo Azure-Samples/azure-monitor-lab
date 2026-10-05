@@ -231,17 +231,23 @@
                 <li>Traverse browser, request, agent, model, handoff, and tool telemetry.</li>
                 <li>Scope impact by scenario, cohort, agent, workflow, and model version.</li>
                 <li>Correlate the regression with release annotations and changes.</li>
-                <li>Apply the smallest safe fix and run the Fixed profile.</li>
-                <li>Verify availability, correctness, latency, retries, tokens, and trace hierarchy.</li>
+                <li>Use Observability Agent as trace specialist and produce the SRE handoff packet.</li>
+                <li>Use SRE Agent as incident commander to reconcile platform evidence and draft a Review-mode remediation.</li>
+                <li>Approve the smallest safe fix and run the Fixed profile.</li>
+                <li>Have both agents verify availability, correctness, latency, retries, tokens, trace hierarchy, and alert recovery.</li>
               </ol>
             </details>
             <section id="agent-scenario-investigation" class="scenario-investigation" aria-labelledby="agent-scenario-prompt-heading" hidden>
-              <h3 id="agent-scenario-prompt-heading">Observability Agent chat prompt</h3>
-              <p class="history-note">Open Observability Agent, start a chat, and paste this trace-specific prompt.</p>
+              <h3 id="agent-scenario-prompt-heading">Coordinated agent investigation</h3>
+              <p class="history-note">Step 1: open Observability Agent and paste the trace-specialist prompt. Copy its SRE handoff packet into Step 2, then paste the incident-command prompt into SRE Agent.</p>
+              <label for="agent-scenario-prompt">Observability Agent trace-specialist prompt</label>
               <textarea id="agent-scenario-prompt" rows="9" readonly aria-label="Observability Agent investigation prompt"></textarea>
-              <div class="run-buttons"><button id="agent-scenario-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy Prompt</button></div>
+              <div class="run-buttons"><button id="agent-scenario-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy Trace Prompt</button></div>
+              <label for="agent-scenario-sre-prompt">SRE Agent incident-command prompt</label>
+              <textarea id="agent-scenario-sre-prompt" rows="9" readonly aria-label="SRE Agent incident command prompt"></textarea>
+              <div class="run-buttons"><button id="agent-scenario-sre-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy SRE Prompt</button></div>
             </section>
-            <p class="history-note">Run the broken profile, open Observability Agent chat with the generated prompt, then run the fixed profile and compare latency, tool selection, and task outcome.</p>
+            <p class="history-note">The optional strongest path uses Observability Agent for trace RCA and SRE Agent for incident command in Review mode. The base Application Insights investigation remains fully usable when either optional agent is disabled.</p>
           </section>
           <section class="agent-scenario-panel" aria-labelledby="alert-storm-heading">
             <div class="section-heading"><div><p class="eyebrow">SCENARIO 64</p><h2 id="alert-storm-heading">Alert storm generator</h2></div></div>

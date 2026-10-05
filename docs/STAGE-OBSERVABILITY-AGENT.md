@@ -1,6 +1,6 @@
 # Stage Observability Agent - autonomous operations for agentic applications
 
-> **Goal:** use Azure Copilot Observability Agent (preview) to correlate alerts from the lab Application Insights resource, create issues, and investigate agentic-application failures with trace evidence.
+> **Goal:** use Azure Copilot Observability Agent (preview) as the trace specialist that correlates alerts, investigates agentic-application failures, and produces an evidence-bound handoff for the optional SRE Agent incident commander.
 >
 > **Deployment model:** optional and off by default. Bicep creates a dedicated Azure Monitor workspace, `Microsoft.Monitor/observabilityAgents`, its monitored Application Insights child, and least-privilege RBAC. Terraform provisioning is not supported for this preview.
 >
@@ -28,8 +28,8 @@ Each scenario has deterministic `broken` and `fixed` profiles. Run the broken pr
 
 | Experience | Role in this lab |
 |---|---|
-| Azure Copilot Observability Agent | Portal-based alert correlation, issue creation, chat, and optional deep investigation over Application Insights telemetry. |
-| Azure SRE Agent | Alert-driven incident investigation and Review-mode response plans across Azure Monitor resources. It is a separate optional stage. |
+| Azure Copilot Observability Agent | Trace specialist for portal-based alert correlation, issue creation, chat, deep Application Insights investigation, and a structured SRE handoff packet. |
+| Azure SRE Agent | Incident commander that reconciles the trace handoff with Azure Monitor, App Service, Log Analytics, Activity Logs, and deployment evidence; it keeps remediation in Review mode. |
 | Microsoft Foundry | Hosts the optional model workload and existing lab agents. |
 | GitHub Copilot CLI / Azure tooling | Terminal-side code and resource investigation after an issue is identified. There is no documented direct Observability Agent integration with GitHub Copilot CLI in this preview. |
 | Azure Monitor health models | Companion business-impact view using shared workload terminology. The lab does not claim that Observability Agent ingests health-model topology. |
@@ -38,7 +38,7 @@ MCP and coding-agent integration appeared as roadmap content in the LevelUp mate
 
 ## Prerequisites and limits
 
-- Stage A must already exist because the agent monitors `appi-<prefix>`.
+- Stage A must already exist because the agent monitors `appi-<prefix>-<suffix>`.
 - The deploying identity needs permission to create resources and role assignments. Owner or User Access Administrator plus an appropriate resource-deployment role is the practical lab setup.
 - Supported public regions in this implementation are Australia East, Canada Central, Central US, East Asia, East US, South Central US, UK South, West Central US, and West Europe.
 - The agent and its Azure Monitor workspace must be in the same supported region. The monitored Application Insights resource can remain in the primary lab region.
@@ -65,7 +65,7 @@ In `lab.config.json`, set:
 ```json
 "observabilityAgentLocation": "westeurope",
 "enableObservabilityAgentAutomaticInvestigation": false,
-"observabilityAgentInstructions": "Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.",
+"observabilityAgentInstructions": "Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact. For agent task or efficiency failures, reconstruct the trace and produce an evidence-bound SRE handoff packet. Do not claim remediation or closure.",
 "stageToggles": {
   "enableStageObservabilityAgent": true
 }
@@ -116,11 +116,12 @@ The script verifies the subscription and tenant guard, region, identity, issue a
 3. Choose any deterministic scenario. Start with **Retry loop and token amplification** for efficiency or **Multi-agent handoff** for a technically successful semantic failure.
 4. Select **Broken**, approve synthetic telemetry generation, and select **Generate Trace**.
 5. Open Application Insights transaction search and follow the returned trace ID through the browser/request, `GenAI`, `OpenAI`, `AgentHandoff`, and `AgentTool` telemetry.
-6. Open Observability Agent from the Control Center, start a chat, and paste the trace-specific investigation prompt shown after the run. It asks the agent to explain evidence, identify the likely fault domain, state uncertainty, propose concrete next checks, and define measurable fixed-run verification.
-7. Challenge the conclusion: verify technical, task, and performance health separately; then verify timestamps, critical path, tool selection, retries, tokens, versions, downstream dependency, trace completeness, and missing evidence.
-8. Select **Fixed**, approve another run, and compare the new trace. Confirm the measured outcome changed; do not accept a code or configuration change as proof by itself.
+6. Open Observability Agent from the Control Center and paste the generated trace-specialist prompt. Require the **SRE handoff packet** containing customer impact, likely fault domain and confidence, three timestamped evidence points, smallest safe correction, rollback conditions, missing evidence, and verification criteria.
+7. Open SRE Agent and paste the generated incident-command prompt together with the handoff packet. The SRE Agent must reconcile it with alerts, App Service health, Log Analytics, Activity Logs, deployment operations, and release timing, then draft the smallest reversible remediation in **Review** mode.
+8. Challenge both conclusions: separate technical, task, performance, and trace health; verify timestamps, critical path, tool selection, retries, tokens, versions, downstream dependencies, trace completeness, and application-versus-platform discrepancies.
+9. After human approval, select **Fixed** and generate the comparison trace. Ask Observability Agent to verify the trace-level measurements and SRE Agent to verify availability, alert state, and application failure rate before recommending closure.
 
-The always-on `qp-<prefix>-appinsights` query pack and **Application Insights — End-to-End Agent Investigation** workbook provide broken-versus-fixed, retry/token efficiency, trace-quality, version/cohort, and browser-to-agent views. The optional Observability Agent stage consumes the same Application Insights evidence but is not required to generate or inspect the traces.
+The always-on `qp-<prefix>-appinsights` query pack and **Application Insights — End-to-End Agent Investigation** workbook provide broken-versus-fixed, retry/token efficiency, trace-quality, version/cohort, and browser-to-agent views. Both agents are optional: Application Insights remains the evidence authority and the scenario remains fully usable when either optional stage is disabled.
 
 For Scenario 64, the same tab includes a bounded alert-storm generator with request-count, duration, progress, and Stop controls. Its default batch is designed to cross the two deployed failed-request conditions; it does not affect the availability-test endpoint or trigger a separate latency alert. For Scenario 65, it includes a separately consented generator that makes 3, 5, or 10 real Foundry calls and reports actual token totals. It reports estimated cost only when model pricing is configured. These controls never automatically replay failed or ambiguous requests.
 

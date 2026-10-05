@@ -83,6 +83,10 @@ public sealed class AgentObservabilityScenariosTests
         Assert.True(fixedResult.PerformanceSuccess);
         Assert.Contains("technical success, task success, performance success", broken.InvestigationPrompt);
         Assert.Contains("scenario=slow-tool", broken.InvestigationPrompt);
+        Assert.Contains("SRE handoff packet", broken.InvestigationPrompt);
+        Assert.Contains("incident commander", broken.SreHandoffPrompt);
+        Assert.Contains("operation/trace ID", broken.SreHandoffPrompt);
+        Assert.Contains("explicit human approval", broken.SreHandoffPrompt);
 
         var tools = Dependencies(channel, "AgentTool").Where(item => item.Name == "customer_lookup").ToArray();
         Assert.Equal("true", tools[0].Properties["tool.latency_budget_exceeded"]);
