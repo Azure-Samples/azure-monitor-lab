@@ -19,9 +19,11 @@ COPY --chown=runner:runner scripts/ ./scripts/
 COPY --chown=runner:runner workloads/k8s/ ./workloads/k8s/
 COPY --chown=runner:runner workloads/webapp/package.json workloads/webapp/package-lock.json ./workloads/webapp/
 COPY --chown=runner:runner workloads/webapp/scripts/ ./workloads/webapp/scripts/
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN cd /runner/workloads/webapp \
     && npm ci --ignore-scripts \
     && npx playwright install --with-deps chromium \
+    && chmod -R a+rX /ms-playwright \
     && npm cache clean --force
 RUN chown runner:runner /runner
 USER runner

@@ -87,8 +87,9 @@ $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operati
 if ($runnerDockerfile -notmatch 'Acquire::Retries=5' -or $runnerDockerfile -notmatch '(?s)rm -rf /var/lib/apt/lists/\*.+apt-get -o Acquire::Retries=5 update') {
   throw 'Runner package installation must retry downloads and refresh a stale APT index.'
 }
-if ($runnerDockerfile -notmatch 'playwright install --with-deps chromium' -or $runnerDockerfile -notmatch 'workloads/webapp/scripts') {
-  throw 'Runner image must install Chromium and include the customer traffic generator.'
+if ($runnerDockerfile -notmatch 'playwright install --with-deps chromium' -or $runnerDockerfile -notmatch 'workloads/webapp/scripts' -or
+    $runnerDockerfile -notmatch 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright' -or $runnerDockerfile -notmatch 'chmod -R a\+rX /ms-playwright') {
+  throw 'Runner image must install readable shared Chromium and include the customer traffic generator.'
 }
 @'
 param($SubscriptionId, $TenantId, $ResourceGroup, $WebAppName, $AllowedUserObjectIds, [switch]$AuthenticationOnly)
