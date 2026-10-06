@@ -18,6 +18,9 @@ var queries = [
   { key: 'trace-quality', display: 'Agent trace quality', body: loadTextContent('appinsights-kql/trace-quality.kql') }
   { key: 'version-cohort-impact', display: 'Version and cohort impact', body: loadTextContent('appinsights-kql/version-cohort-impact.kql') }
   { key: 'browser-to-agent', display: 'Browser-to-agent correlation', body: loadTextContent('appinsights-kql/browser-to-agent.kql') }
+  { key: 'customer-usage-funnel', display: 'Customer usage funnel', body: loadTextContent('appinsights-kql/customer-usage-funnel.kql') }
+  { key: 'customer-user-flows', display: 'Customer user flows', body: loadTextContent('appinsights-kql/customer-user-flows.kql') }
+  { key: 'customer-cohort-conversion', display: 'Customer cohort conversion', body: loadTextContent('appinsights-kql/customer-cohort-conversion.kql') }
 ]
 
 resource pack 'Microsoft.OperationalInsights/queryPacks@2019-09-01' = {
@@ -54,5 +57,20 @@ resource workbook 'Microsoft.Insights/workbooks@2023-06-01' = {
   }
 }
 
+resource usageWorkbook 'Microsoft.Insights/workbooks@2023-06-01' = {
+  name: guid(resourceGroup().id, 'appinsights-customer-usage-workbook')
+  location: location
+  kind: 'shared'
+  tags: tags
+  properties: {
+    displayName: 'Application Insights — Customer Usage Journey'
+    serializedData: replace(loadTextContent('appinsights-usage-workbook.json'), '__APPINSIGHTS_ID__', appInsightsId)
+    category: 'workbook'
+    sourceId: toLower(appInsightsId)
+    version: '1.0'
+  }
+}
+
 output queryPackName string = pack.name
 output workbookId string = workbook.id
+output usageWorkbookId string = usageWorkbook.id

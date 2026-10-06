@@ -251,7 +251,7 @@ textarea:disabled { background: #edf2f4; }
 .agent-metadata dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 a[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); opacity: .65; }
 @media (max-width: 760px) {
-	.app-tabs { gap: 6px; display: flex; overflow-x: auto; scrollbar-width: thin; }
+	.app-tabs { gap: 6px; display: flex; overflow-x: auto; scrollbar-width: thin; 	}
 	.app-tabs button { flex: 0 0 96px; flex-direction: column; font-size: 10px; padding: 10px 6px; gap: 7px; min-width: 0; min-height: 76px; overflow-wrap: normal; }
 	.app-tabs svg { width: 17px; height: 17px; }
 	.infra-heading { padding: 20px 0; }
@@ -315,4 +315,10 @@ a[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); opacity: .65
 	.mobile-feedback > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 	#mobile-status { font-size: 11px; overflow-wrap: anywhere; }
 	.mobile-feedback a { flex-shrink: 0; }
+}
+@media (max-width: 360px) {
+	.topbar { column-gap: 8px; padding-left: 12px; padding-right: 12px; }
+	.brand img { width: 140px; }
+	.documentation-nav { gap: 4px; }
+	.documentation-nav a { width: 30px; height: 30px; }
 }

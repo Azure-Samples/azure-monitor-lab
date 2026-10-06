@@ -98,6 +98,12 @@ builder.Services.AddRateLimiter(options =>
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("customer-journey", limiter =>
+    {
+        limiter.PermitLimit = 60;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
     options.AddFixedWindowLimiter("console-performance", limiter =>
     {
         limiter.PermitLimit = 1;
@@ -210,6 +216,9 @@ app.MapGet("/healthz", () => Results.Text("OK"));
 app.MapGet("/api/agent-task-availability", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
     scenarios.RunAvailabilityAsync(cancellationToken))
     .RequireRateLimiting("agent-tasks");
+app.MapPost("/api/customer/support", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
+    scenarios.RunAvailabilityAsync(cancellationToken))
+    .RequireRateLimiting("customer-journey");
 app.MapGet("/api/console/version", () => Results.Json(new
 {
     deploymentId = typeof(AgentAccess).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown"
@@ -330,6 +339,7 @@ app.MapGet("/api/checkout", (HttpRequest request, TelemetryClient tc) =>
 // Triggered by scripts/trigger-code-optimization.ps1.
 app.MapGet("/api/inefficient", RunInefficient);
 app.MapPost("/api/console/performance", RunInefficient).RequireRateLimiting("console-performance");
+app.MapFallbackToFile("/customer/{*path:nonfile}", "customer/index.html");
 
 app.Run();
 

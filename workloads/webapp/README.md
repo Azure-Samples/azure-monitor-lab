@@ -4,6 +4,23 @@ The ASP.NET Core 8 app serves **Azure Monitor Lab Control Center** at `/`. Five 
 
 Start with the [Control Center guide](../../docs/LAB-CONTROL-CENTER.md) for the application overview, screenshot, and scenario mapping. This page is the technical reference for configuration, local development, deployment, and runtime limits. The shared environment strip reuses existing context/catalog calls; it does not perform background model requests. Guide and Related Scenarios links open repository documentation without executing actions.
 
+## Customer Usage Journey
+
+`/customer/` is a separate customer-facing experience hosted by the same App Service and exported to the same Application Insights component. It keeps operator activity out of the product funnel while preserving browser-to-server W3C correlation. The six-step journey emits page views and business events for home, catalog, product selection, cart, checkout, and purchase completion, with optional support-agent detours and deterministic payment decline.
+
+All users, sessions, products, orders, segments, and A/B variants are synthetic. The browser calls `setAuthenticatedUserContext` with a validated `demo-user-*` identifier so the native Users experience can correlate repeat browser contexts without recording a real identity. Prompt/completion content, request/response headers, and payment details are not collected.
+
+Generate a realistic mix of completed, abandoned, declined, support-assisted, and repeat journeys:
+
+```powershell
+./scripts/generate-usage-traffic.ps1 `
+  -BaseUrl https://app-amlab-<suffix>.azurewebsites.net `
+  -Users 24 `
+  -RepeatUsers 6
+```
+
+The generator uses isolated Chromium contexts and drives the actual customer UI; it does not post fabricated telemetry directly. Install the existing browser-test dependencies first if needed with `npm ci --prefix workloads\webapp` and `npx --prefix workloads\webapp playwright install chromium`. Application Insights ingestion and Usage aggregation can take several minutes.
+
 ## Lab Operations
 
 The [Lab Operations reference](LAB-OPERATIONS.md) covers eight scripts, including cost-aware Start/Stop controls and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.

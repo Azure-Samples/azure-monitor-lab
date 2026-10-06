@@ -3,8 +3,12 @@ param([string] $BicepExecutable)
 
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$appInsightsQueryFiles = @(
+$appInsightsWorkbookFiles = @(
   Join-Path $source 'infra/modules/appinsights-investigation-workbook.json'
+  Join-Path $source 'infra/modules/appinsights-usage-workbook.json'
+)
+$appInsightsQueryFiles = @(
+  $appInsightsWorkbookFiles
   Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-kql') -Filter '*.kql' | Select-Object -ExpandProperty FullName
 )
 foreach ($queryFile in $appInsightsQueryFiles) {
@@ -14,12 +18,18 @@ foreach ($queryFile in $appInsightsQueryFiles) {
   }
 }
 Write-Output 'PASS: Application Insights queries keep duration arithmetic in numeric milliseconds.'
+if (@(Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-kql') -Filter '*.kql').Count -ne 10) {
+  throw 'The Application Insights query pack must contain seven agent-investigation queries and three customer-usage queries.'
+}
+$appInsightsWorkbookFiles | ForEach-Object { $null = Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
 if ($mainTemplate.variables.appInsightsName -ne "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]") {
   throw 'Application Insights must use the generated five-character deployment suffix.'
 }
 $appInsightsObservability = @($mainTemplate.resources | Where-Object name -eq 'appinsights-observability')
 if ($appInsightsObservability.Count -ne 1) { throw 'The main template must deploy the Application Insights investigation query pack and workbook.' }
+$appInsightsWorkbooks = @($appInsightsObservability[0].properties.template.resources | Where-Object type -eq 'Microsoft.Insights/workbooks')
+if ($appInsightsWorkbooks.Count -ne 2) { throw 'The main template must deploy both the agent-investigation and customer-usage workbooks.' }
 $agentTaskAvailability = @($mainTemplate.resources | Where-Object name -eq 'agent-task-availability-test')
 if ($agentTaskAvailability.Count -ne 1 -or $agentTaskAvailability[0].properties.parameters.testUrl.value -notmatch '/api/agent-task-availability') {
   throw 'The main template must deploy the task-level agent availability test.'
@@ -27,7 +37,7 @@ if ($agentTaskAvailability.Count -ne 1 -or $agentTaskAvailability[0].properties.
 $alertsModule = @($mainTemplate.resources | Where-Object name -eq 'alerts')
 $agentAlerts = @($alertsModule[0].properties.template.resources | Where-Object name -in @('alert-agent-task-failures', 'alert-agent-efficiency-regression'))
 if ($alertsModule.Count -ne 1 -or $agentAlerts.Count -ne 2) { throw 'The main template must contain task correctness and efficiency alerts.' }
-Write-Output 'PASS: suffixed Application Insights, investigation content, task availability, and agent alerts are compiled.'
+Write-Output 'PASS: suffixed Application Insights, investigation and usage content, task availability, and agent alerts are compiled.'
 $vmModules = @($mainTemplate.resources | Where-Object name -in @('vm-linux', 'vm-windows'))
 if ($vmModules.Count -ne 2) { throw 'The main template must contain both demo VM modules.' }
 foreach ($vmModule in $vmModules) {

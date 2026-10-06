@@ -18,8 +18,8 @@
 | Event Hub namespace | `evhns-amlab-<suffix>` (+ `diagstream` event hub, `RootManageSharedAccessKey`) | Diagnostic streaming target; later used by App Service diagnostics. |
 | Key Vault | `kv-amlab-<suffix>` | Diagnostic settings already routed to `law-amlab-central`. |
 | Governance | Policy assignments (diagnostic-settings policies) | Ensures any future resource gets diagnostic settings pointed to the central LAW. |
-| Saved queries + KQL functions | Many, plus `qp-amlab-appinsights` | Drop the infrastructure starter pack and seven Application Insights investigation queries into the relevant `Queries` panes. |
-| Workbooks | Traffic-Lights, Cost-of-Monitoring, and **Application Insights — End-to-End Agent Investigation** | Infrastructure overview, monitoring cost, and a dedicated browser/request/agent/model/tool investigation path. |
+| Saved queries + KQL functions | Many, plus `qp-amlab-appinsights` | Drop the infrastructure starter pack, seven agent-investigation queries, and three customer-usage queries into the relevant `Queries` panes. |
+| Workbooks | Traffic-Lights, Cost-of-Monitoring, **Application Insights — End-to-End Agent Investigation**, and **Application Insights — Customer Usage Journey** | Infrastructure overview, monitoring cost, agent troubleshooting, and customer funnel/cohort analysis. |
 
 > All resources are tagged `purpose=azure-monitor-lab`, `owner=demo-lab`.
 
@@ -45,8 +45,8 @@ Use these one-liners when guiding a customer through Stage A:
 6. **"Daily cap = 1 GB."**
    We deliberately cap ingestion so the lab is safe to leave running. Customers nod hard at this.
 
-7. **"Application Insights starts with an investigation workflow."**
-   The `qp-amlab-appinsights` queries and end-to-end workbook are deployed before workloads. Stage B supplies browser, request, dependency, agent, model, handoff, retry, token, and task-outcome telemetry.
+7. **"Application Insights starts with investigation and usage workflows."**
+   The `qp-amlab-appinsights` queries and both Application Insights workbooks are deployed before workloads. Stage B supplies browser, request, dependency, customer-journey, agent, model, handoff, retry, token, and task-outcome telemetry.
 
 ## 3) Portal walkthrough (UI)
 
@@ -58,7 +58,7 @@ Resource group: **`rg-azure-monitor-lab-terraform-test`** in **North Europe** (t
 4. **`law-amlab-central` → Tables → AzureActivity** *(if visible)* — table is shaped by the workspace-transform DCR.
 5. **`appi-amlab-<suffix>` → Overview** — explain it's *workspace-based* (no separate ingestion).
 6. **`amw-amlab` → Overview** — call out "this is the Prometheus side; AKS will write here in Stage B."
-7. **Monitor → Workbooks → Browse** — open `wb-amlab-trafficlights`, `wb-amlab-cost`, and **Application Insights — End-to-End Agent Investigation**. They render empty/sparse right now. Promise the customer this is the "before" picture.
+7. **Monitor → Workbooks → Browse** — open `wb-amlab-trafficlights`, `wb-amlab-cost`, **Application Insights — End-to-End Agent Investigation**, and **Application Insights — Customer Usage Journey**. They render empty/sparse right now. Promise the customer this is the "before" picture.
 8. **Monitor → Data Collection Rules** — open `dcr-amlab-vminsights`, click *Resources*. Empty list. "Stage B fills this."
 9. **Policy → Assignments** — show the diagnostic-settings policy assignments scoped at this RG.
 

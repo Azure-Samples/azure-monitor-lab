@@ -14,7 +14,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 |---|---|
 | **Cross-stack — single pane of glass** | <ul><li>[1](#s1) Traffic-Lights workbook</li><li>[60](#s60) Lab Control Center</li></ul> |
 | **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[46](#s46) SLIs / SLOs</li></ul> |
-| **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li></ul> |
+| **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li><li>[70](#s70) Customer usage journey</li></ul> |
 | **AKS (`aks-amlab`)** | <ul><li>[4](#s4) Container Insights + Prom + Grafana</li><li>[14](#s14) OTel tracing AKS→App Service</li><li>[30](#s30) Node.js OTel</li><li>[31](#s31) Prom rule group</li><li>[32](#s32) Grafana alert rule</li></ul> |
 | **Azure VMs (Linux + Windows)** | <ul><li>[2](#s2) VM Insights cross-OS</li></ul> |
 | **VMSS (`vmss-amlab`)** | <ul><li>[19](#s19) Predictive autoscale</li></ul> |
@@ -3222,6 +3222,68 @@ Application Insights is now named `appi-<prefix>-<suffix>`. Azure resources cann
 
 ### Killer line
 > *"We did not jump straight to a log query: we detected customer impact, scoped it, proved the critical path and task outcome in one trace, correlated the change, and verified the fix with the same evidence."*
+
+---
+
+<a id="s70"></a>
+## 70 · Application Insights Usage — multi-user customer journey
+
+**Audience:** product owners, application teams, UX teams, SREs.
+**Time:** 15–20 min plus telemetry ingestion time.
+
+### Story
+
+The Control Center is the operator plane; `/customer/` is a separate synthetic customer experience hosted by the same App Service and connected to the same Application Insights resource. Multiple isolated browser users browse products, abandon at different points, ask an agent for help, encounter a declined payment, return in another session, or complete a purchase. This produces meaningful data for **Users**, **Sessions**, **Events**, **Funnels**, **User Flows**, **Cohorts**, and A/B analysis without deploying or paying for another application.
+
+All identities and business data use validated `demo-user-*` values. No real identity, prompt/completion content, payment data, or request/response headers are recorded.
+
+### Generate traffic
+
+```powershell
+./scripts/generate-usage-traffic.ps1 `
+  -BaseUrl https://app-amlab-<suffix>.azurewebsites.net `
+  -Users 24 `
+  -Concurrency 4 `
+  -RepeatUsers 6
+```
+
+The script drives the real customer UI with isolated Chromium contexts. Its deterministic mix includes completed journeys, browse/cart/checkout abandonment, payment decline, agent-support detours, three customer segments, two experience variants, and repeat sessions. Allow several minutes for ingestion and Usage aggregation.
+
+### Portal walkthrough
+
+1. Open **`appi-amlab-<suffix>` → Usage → Users**.
+   - Select the `CustomerJourneyStarted` event.
+   - Split or filter by `customer.segment`, `journey.variant`, or `traffic.kind`.
+   - Show that repeat contexts share the synthetic authenticated user ID.
+2. Open **Sessions** and inspect a generated session. Follow page views and custom events in sequence.
+3. Open **Events** and compare `ProductSelected`, `SupportRequested`, `PaymentDeclined`, and `PurchaseCompleted`.
+4. Open **Funnels → Edit** and configure the maximum six steps:
+   1. `CustomerJourneyStarted`
+   2. `CatalogViewed`
+   3. `ProductSelected`
+   4. `CartUpdated`
+   5. `CheckoutStarted`
+   6. `PurchaseCompleted`
+5. Split the funnel by `journey.variant` to demonstrate A/B conversion and by `customer.segment` to compare new, returning, and premium synthetic users.
+6. Open **User Flows**, start from `CustomerJourneyStarted`, and inspect the main commerce path, support-agent detour, payment decline, and abandonment points.
+7. Create or inspect a **Cohort** for users who emitted `SupportRequested`, then compare whether they reached `PurchaseCompleted`.
+8. Open **Workbooks → Application Insights — Customer Usage Journey** for the deployed funnel, cohort, and transition tables.
+9. Open **Logs → Queries** and run:
+   - *Customer usage funnel*
+   - *Customer user flows*
+   - *Customer cohort conversion*
+10. Select one completed user/session and continue into Transaction Search to connect product usage with browser dependencies, checkout requests, and the optional support-agent trace.
+
+### What this proves
+
+- Page views show where users went; business events show what they actually did.
+- Authenticated synthetic IDs support repeat-user analysis without real customer data.
+- Funnels quantify known conversion steps; User Flows reveal unplanned paths and abandonment.
+- Cohorts and A/B properties connect feature design with customer outcomes.
+- Usage and reliability share the same trace and Application Insights resource, while the customer and operator interfaces remain cleanly separated.
+
+### Killer line
+> *"We can move from how many requests failed to which users abandoned, where they diverged, and whether an agent-assisted journey actually converted."*
 
 ---
 

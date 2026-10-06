@@ -1025,6 +1025,7 @@ output webAppDefaultHost string    = appService.outputs.defaultHost
 output grafanaEndpoint string      = grafana.outputs.endpoint
 output workbookId string           = workbook.outputs.id
 output appInsightsInvestigationWorkbookId string = appInsightsObservability.outputs.workbookId
+output appInsightsUsageWorkbookId string = appInsightsObservability.outputs.usageWorkbookId
 output appInsightsQueryPackName string = appInsightsObservability.outputs.queryPackName
 output linuxVmNameOut string       = deployLinuxVm ? linuxVmName : ''
 output windowsVmNameOut string     = deployWindowsVm ? windowsVmName : ''

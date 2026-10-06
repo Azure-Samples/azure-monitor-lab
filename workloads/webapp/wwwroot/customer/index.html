@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Synthetic customer journey for Application Insights Usage analysis.">
+  <title>Contoso Observability Shop</title>
+  <link rel="stylesheet" href="/customer/customer.css">
+  <script type="module" src="/customer/customer.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark">C</span><span>Contoso Observability Shop</span></div>
+    <span id="journey-step" class="step-pill">Customer / Home</span>
+  </header>
+  <main>
+    <section class="screen hero" data-screen="home">
+      <p class="eyebrow">Synthetic customer experience</p>
+      <h1>Operate with confidence.</h1>
+      <p class="lede">Explore monitoring products, ask an agent for help, and complete a metadata-only demo purchase. Every step is designed for Application Insights Usage analysis.</p>
+      <div class="button-row"><button id="start-journey" class="primary">Explore products</button></div>
+      <dl class="identity">
+        <div><dt>Synthetic user</dt><dd id="customer-id"></dd></div>
+        <div><dt>Segment</dt><dd id="customer-segment"></dd></div>
+        <div><dt>Experience variant</dt><dd id="customer-variant"></dd></div>
+      </dl>
+    </section>
+
+    <section class="screen panel" data-screen="browse" hidden>
+      <p class="eyebrow">Step 2 · Browse</p>
+      <h2>Choose your observability package</h2>
+      <div class="products">
+        <button class="product-card" data-product="monitoring-starter" data-product-name="Monitoring Starter" data-product-price="$49">
+          <span class="product-icon">◉</span><strong>Monitoring Starter</strong><span>Dashboards and practical alerts · $49</span>
+        </button>
+        <button class="product-card" data-product="agent-operations" data-product-name="Agent Operations" data-product-price="$89">
+          <span class="product-icon">◇</span><strong>Agent Operations</strong><span>Trace-level agent diagnostics · $89</span>
+        </button>
+        <button class="product-card" data-product="sre-command" data-product-name="SRE Command" data-product-price="$129">
+          <span class="product-icon">△</span><strong>SRE Command</strong><span>Incident workflows and recovery · $129</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="screen panel" data-screen="product" hidden>
+      <p class="eyebrow">Step 3 · Product</p>
+      <h2 id="product-name">Monitoring Starter</h2>
+      <p class="lede" style="color:#526577">A synthetic product page that creates a meaningful product-selection event for funnels, user flows, and cohorts.</p>
+      <div class="summary"><div class="summary-row"><span>Package</span><strong id="product-price">$49</strong></div></div>
+      <div class="button-row"><button id="add-to-cart" class="primary">Add to cart</button></div>
+    </section>
+
+    <section class="screen panel" data-screen="cart" hidden>
+      <p class="eyebrow">Step 4 · Cart</p>
+      <h2>Your package is ready</h2>
+      <div class="summary">
+        <div class="summary-row"><span>Items</span><strong>1</strong></div>
+        <div class="summary-row"><span>Delivery</span><strong>Immediate demo access</strong></div>
+      </div>
+      <div class="button-row">
+        <button id="begin-checkout" class="primary">Continue to checkout</button>
+        <button id="ask-support" class="secondary">Ask support agent</button>
+      </div>
+    </section>
+
+    <section class="screen panel" data-screen="support" hidden>
+      <p class="eyebrow">Optional branch · Agent support</p>
+      <h2>Support agent</h2>
+      <p id="support-status" class="status" role="status">Starting support...</p>
+      <div class="button-row"><button id="support-return" class="secondary">Return to cart</button></div>
+    </section>
+
+    <section class="screen panel" data-screen="checkout" hidden>
+      <p class="eyebrow">Step 5 · Checkout</p>
+      <h2>Complete the demo order</h2>
+      <p class="meta">No personal data or payment details are collected. This is synthetic telemetry only.</p>
+      <div class="summary">
+        <div class="summary-row"><span>Payment profile</span><strong>Demo account</strong></div>
+        <div class="summary-row"><span>Telemetry</span><strong>Metadata only</strong></div>
+      </div>
+      <p id="checkout-status" class="status" role="status"></p>
+      <div class="button-row"><button id="complete-purchase" class="primary">Complete purchase</button></div>
+    </section>
+
+    <section class="screen panel" data-screen="confirmation" hidden>
+      <p class="eyebrow">Step 6 · Conversion</p>
+      <h2>Order confirmed</h2>
+      <p>Your synthetic order <strong id="confirmation-order"></strong> completed the usage funnel.</p>
+      <div class="button-row"><button id="restart-journey" class="secondary">Start another journey</button></div>
+    </section>
+  </main>
+</body>
+</html>

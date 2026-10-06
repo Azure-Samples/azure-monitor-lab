@@ -24,6 +24,12 @@ The screenshots use example resource names, simulated health results, and local 
 
 The Control Center runs in the lab's existing App Service. It is not a separate Azure resource or a replacement for the Azure Resource Manager control plane. For local use, see the [web app developer guide](../workloads/webapp/README.md#run-locally).
 
+## Customer-Facing Usage Experience
+
+Open `/customer/` from the **Customer app** link in the header to run a customer journey that is intentionally separate from the operator interface. It shares the App Service and Application Insights resource, preserving end-to-end correlation without adding another billable application resource. Page views and business events cover a six-step commerce funnel, support-agent detours, synthetic cohorts, A/B variants, abandonment, payment decline, completion, and repeat sessions.
+
+Use `scripts/generate-usage-traffic.ps1` to drive multiple isolated browser users through the real interface, then follow [Scenario 70](DEMO-SCENARIOS.md#s70) through Application Insights Users, Sessions, Events, Funnels, User Flows, Cohorts, saved queries, and the customer-usage workbook. The Control Center remains the operations plane and does not contaminate the customer funnel.
+
 ## Workspaces
 
 | Tab | Available activities | Requirements |

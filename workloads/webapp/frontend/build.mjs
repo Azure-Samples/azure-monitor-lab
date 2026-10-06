@@ -15,6 +15,17 @@ await build({
   loader: { '.woff2': 'file', '.svg': 'file' },
   logLevel: 'info'
 });
+await build({
+  absWorkingDir: root,
+  entryPoints: ['frontend/customer.js'],
+  bundle: true,
+  minify: true,
+  outdir: 'wwwroot/customer',
+  entryNames: 'customer',
+  assetNames: '../assets/[name]-[hash]',
+  loader: { '.woff2': 'file', '.svg': 'file' },
+  logLevel: 'info'
+});
 
 const notices = [];
 for (const dependency of ['lucide', 'chart.js', '@kurkle/color', '@fontsource-variable/manrope', '@microsoft/applicationinsights-web']) {

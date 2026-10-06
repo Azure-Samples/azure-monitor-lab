@@ -1,6 +1,7 @@
 import { ApplicationInsights, DistributedTracingModes } from '@microsoft/applicationinsights-web';
 
 let client;
+let sharedProperties = {};
 
 function syntheticSessionId() {
   const key = 'amlab.synthetic-session';
@@ -12,7 +13,7 @@ function syntheticSessionId() {
   return value;
 }
 
-export async function initializeBrowserTelemetry() {
+export async function initializeBrowserTelemetry(options = {}) {
   try {
     const response = await fetch('/api/telemetry/config', {
       cache: 'no-store',
@@ -22,6 +23,10 @@ export async function initializeBrowserTelemetry() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const config = await response.json();
     if (!config.enabled || typeof config.connectionString !== 'string') return false;
+    sharedProperties = {
+      ...(options.properties ?? {}),
+      'experience.name': options.experienceName ?? 'lab-control-center'
+    };
 
     client = new ApplicationInsights({
       config: {
@@ -47,10 +52,17 @@ export async function initializeBrowserTelemetry() {
       properties['service.version'] = config.serviceVersion;
       properties['content_recording.enabled'] = String(Boolean(config.contentRecordingEnabled));
       properties['synthetic.data'] = 'true';
+      Object.assign(properties, sharedProperties);
       return true;
     });
     client.loadAppInsights();
-    client.trackPageView({ name: 'Azure Monitor Lab Control Center' });
+    if (typeof options.userId === 'string' && options.userId) {
+      client.setAuthenticatedUserContext(options.userId, undefined, false);
+    }
+    client.trackPageView({
+      name: options.pageName ?? 'Azure Monitor Lab Control Center',
+      properties: sharedProperties
+    });
     return true;
   } catch (error) {
     console.warn('Browser telemetry unavailable.', error);
@@ -60,4 +72,12 @@ export async function initializeBrowserTelemetry() {
 
 export function trackLabEvent(name, properties = {}, measurements = {}) {
   client?.trackEvent({ name, properties: { ...properties, 'synthetic.data': 'true' } }, measurements);
+}
+
+export function trackLabPageView(name, properties = {}) {
+  client?.trackPageView({ name, properties: { ...sharedProperties, ...properties, 'synthetic.data': 'true' } });
+}
+
+export function flushBrowserTelemetry() {
+  client?.flush(false);
 }
