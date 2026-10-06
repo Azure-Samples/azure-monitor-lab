@@ -84,6 +84,8 @@ public sealed class LabOperationsServiceTests : IDisposable
         Assert.Equal(409, Status(await service.PrepareAsync("operator", new("start"), default)));
         var history = Body(await service.CatalogAsync("operator", default)).GetProperty("runs");
         Assert.Single(history.EnumerateArray());
+        Assert.Equal("running", history[0].GetProperty("state").GetString());
+        Assert.Equal(1, runner.Reads);
         var runId = accepted.GetProperty("id").GetString()!;
         var reconciled = Body(await service.ReadAsync("operator", runId, default)).GetProperty("run");
         Assert.Equal("running", reconciled.GetProperty("state").GetString());
@@ -172,6 +174,7 @@ public sealed class LabOperationsServiceTests : IDisposable
         public bool RejectStart { get; set; }
         public int Verifications { get; private set; }
         public int Dispatches { get; private set; }
+        public int Reads { get; private set; }
         public Action? OnDispatch { get; set; }
         public string NextState { get; set; } = "running";
         public LabOperationRun? Submitted { get; private set; }
@@ -190,7 +193,10 @@ public sealed class LabOperationsServiceTests : IDisposable
             if (LoseDispatchResponse) throw new HttpRequestException("private diagnostic");
             return Task.FromResult<string?>("test-execution");
         }
-        public Task<LabOperationRun> ReadAsync(LabOperationRun run, CancellationToken cancellationToken) =>
-            Task.FromResult(run with { State = NextState, ExecutionName = "test-execution", Message = "Observed runner status." });
+        public Task<LabOperationRun> ReadAsync(LabOperationRun run, CancellationToken cancellationToken)
+        {
+            Reads++;
+            return Task.FromResult(run with { State = NextState, ExecutionName = "test-execution", Message = "Observed runner status." });
+        }
     }
 }

@@ -21,6 +21,15 @@ public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperati
         {
             using var state = journal.Open();
             await runner.VerifyAsync(timeout.Token);
+            var changed = false;
+            for (var index = 0; index < state.Runs.Count; index++)
+            {
+                var entry = state.Runs[index];
+                if (entry.Owner != owner || Terminal(entry.Run)) continue;
+                state.Runs[index] = new(owner, await runner.ReadAsync(entry.Run, timeout.Token));
+                changed = true;
+            }
+            if (changed) state.Save();
             var runs = state.Runs.Where(item => item.Owner == owner).Select(item => item.Run).OrderByDescending(run => run.SubmittedAt).Take(20).ToArray();
             return Results.Json(new { available = true, message = "Azure runner and pinned image verified. Operations require approval.", actions = LabOperationCatalog.Actions, target = runner.Target, runs });
         }
