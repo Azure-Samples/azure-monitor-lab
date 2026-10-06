@@ -105,6 +105,25 @@ public sealed class ContainerJobOperationsTests
         Assert.Equal(1, transport.Starts);
     }
 
+    [Fact]
+    public async Task APreUpgradeExecutionWithoutBrowserInputsStillReconciles()
+    {
+        using var transport = new FakeAzure { ImageHashChar = 'b', LegacyMissingBrowserInputs = true, Operation = "ramp", State = "Failed" };
+        var client = Client(transport);
+        var oldTarget = client.Target! with { Image = ImagePrefix + new string('b', 64) };
+        var run = Run(client) with { Parameters = new("ramp", 0, "", "", 0, 0), Target = oldTarget, ExecutionName = "test-runner-execution" };
+        var result = await client.ReadAsync(run, default);
+        Assert.Equal("failed", result.State);
+    }
+
+    [Fact]
+    public async Task CurrentExecutionWithoutBrowserInputsIsRejected()
+    {
+        using var transport = new FakeAzure { LegacyMissingBrowserInputs = true };
+        var client = Client(transport);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadAsync(Run(client) with { ExecutionName = "test-runner-execution" }, default));
+    }
+
     [Theory]
     [InlineData(400)]
     [InlineData(401)]
@@ -225,16 +244,18 @@ public sealed class ContainerJobOperationsTests
         public bool WrongScope { get; set; }
         public bool WrongIdentity { get; set; }
         public bool WrongCount { get; set; }
+        public bool LegacyMissingBrowserInputs { get; set; }
         public bool IncludeTemplateVolumes { get; set; }
         public HttpStatusCode? StartStatus { get; set; }
         public int RetryLimit { get; set; }
         public string State { get; set; } = "Succeeded";
         public string Operation { get; set; } = "logs";
+        public char ImageHashChar { get; set; } = 'a';
         public string? NextLink { get; set; }
 
         private JsonObject Template()
         {
-            var template = System.Text.Json.JsonSerializer.SerializeToNode(new { containers = new[] { new { name = "runner", image = ImagePrefix + new string(WrongImage ? 'c' : 'a', 64), env = new[]
+            var template = System.Text.Json.JsonSerializer.SerializeToNode(new { containers = new[] { new { name = "runner", image = ImagePrefix + new string(WrongImage ? 'c' : ImageHashChar, 64), env = new[]
         {
             new { name = "LAB_RESOURCE_GROUP", value = WrongScope ? "another-rg" : "test-rg" }, new { name = "LAB_SUBSCRIPTION_ID", value = Subscription }, new { name = "LAB_TENANT_ID", value = Tenant },
             new { name = "LAB_RUNNER_MODE", value = "ContainerAppsJob" }, new { name = "AZURE_CLIENT_ID", value = WrongIdentity ? Guid.NewGuid().ToString() : IdentityClient },
@@ -243,6 +264,12 @@ public sealed class ContainerJobOperationsTests
             new { name = "OP_CONCURRENCY", value = Operation == "usage" ? "4" : "0" }, new { name = "OP_REPEAT_USERS", value = Operation == "usage" ? "6" : "0" },
             new { name = "OP_ANNOTATION_NAME", value = "" }, new { name = "OP_ANNOTATION_CATEGORY", value = "" }
         }, resources = new { cpu = 1, memory = "2Gi" } } } })!.AsObject();
+            if (LegacyMissingBrowserInputs)
+            {
+                var environment = template["containers"]![0]!["env"]!.AsArray();
+                foreach (var entry in environment.Where(item => item?["name"]?.GetValue<string>() is "OP_CONCURRENCY" or "OP_REPEAT_USERS").ToArray())
+                    environment.Remove(entry);
+            }
             if (IncludeTemplateVolumes) template["volumes"] = new JsonArray();
             return template;
         }

@@ -82,7 +82,7 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
         container["args"] = new JsonArray();
         var environment = container["env"] as JsonArray ?? new JsonArray();
         if (container["env"] is null) container["env"] = environment;
-        var inputs = OperationInputs(run);
+        var inputs = OperationInputs(run, false);
         foreach (var entry in environment.Where(entry => inputs.ContainsKey(entry?["name"]?.GetValue<string>() ?? "")).ToArray()) environment.Remove(entry);
         foreach (var input in inputs) environment.Add(new JsonObject { ["name"] = input.Key, ["value"] = input.Value });
         using var request = await RequestAsync(HttpMethod.Post, Target!.JobResourceId + "/start", cancellationToken);
@@ -102,6 +102,10 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
     public async Task<LabOperationRun> ReadAsync(LabOperationRun run, CancellationToken cancellationToken)
     {
         if (!Configured || Target != run.Target with { Image = Target!.Image }) throw new InvalidOperationException("Runner target changed.");
+        var legacyInputs = run.Target.Image != Target!.Image
+            && run.Parameters.Operation != "usage"
+            && run.Parameters.Concurrency == 0
+            && run.Parameters.RepeatUsers == 0;
         var executionName = run.ExecutionName;
         JsonNode? execution = null;
         if (executionName is not null)
@@ -118,7 +122,7 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
                 if (!InfrastructureHealthService.SafeContinuation(next, first)) throw new InvalidOperationException("Invalid execution continuation.");
                 var results = await ReadJsonUriAsync(next, cancellationToken);
                 var values = results["value"]?.AsArray() ?? throw new InvalidOperationException("Execution list missing.");
-                var matches = values.Where(item => Matches(item, run)).ToArray();
+                var matches = values.Where(item => Matches(item, run, legacyInputs)).ToArray();
                 if (matches.Length > 1) throw new InvalidOperationException("Multiple executions require operator review.");
                 if (matches.Length == 1) execution = matches[0];
                 var continuation = results["nextLink"]?.GetValue<string>();
@@ -127,7 +131,7 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
             }
         }
         if (execution is null) return run with { State = "dispatch_unknown", Message = "A matching Azure execution is not visible yet. Refresh status; do not repeat the operation." };
-        if (!Matches(execution, run)) throw new InvalidOperationException("Execution scope or request identity does not match.");
+        if (!Matches(execution, run, legacyInputs)) throw new InvalidOperationException("Execution scope or request identity does not match.");
         executionName = execution["name"]?.GetValue<string>();
         if (executionName is null || !Regex.IsMatch(executionName, "^[a-z0-9-]{1,100}$")) throw new InvalidOperationException("Invalid execution identity.");
         var state = execution["properties"]?["status"]?.GetValue<string>() switch
@@ -148,22 +152,31 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
             Steps = [new("Job accepted", "succeeded"), new("Run approved operation", state)] };
     }
 
-    private static bool Matches(JsonNode? execution, LabOperationRun run)
+    private static bool Matches(JsonNode? execution, LabOperationRun run, bool legacyInputs)
     {
         var containers = execution?["properties"]?["template"]?["containers"] as JsonArray;
         if (containers?.Count != 1 || containers[0]?["image"]?.GetValue<string>() != run.Target.Image) return false;
         var environment = containers[0]?["env"] as JsonArray;
-        return environment is not null && EnvironmentMatches(environment, OperationInputs(run)) && EnvironmentMatches(environment, TargetEnvironment(run.Target));
+        return environment is not null && EnvironmentMatches(environment, OperationInputs(run, legacyInputs)) && EnvironmentMatches(environment, TargetEnvironment(run.Target));
     }
 
-    private static Dictionary<string, string> OperationInputs(LabOperationRun run) => new()
+    private static Dictionary<string, string> CoreOperationInputs(LabOperationRun run) => new()
     {
         ["OP_REQUEST_ID"] = run.Id, ["OP_OPERATION"] = run.Parameters.Operation,
         ["OP_COUNT"] = run.Parameters.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
         ["OP_ANNOTATION_NAME"] = run.Parameters.Name, ["OP_ANNOTATION_CATEGORY"] = run.Parameters.Category,
-        ["OP_CONCURRENCY"] = run.Parameters.Concurrency.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        ["OP_REPEAT_USERS"] = run.Parameters.RepeatUsers.ToString(System.Globalization.CultureInfo.InvariantCulture)
     };
+
+    private static Dictionary<string, string> OperationInputs(LabOperationRun run, bool legacyInputs)
+    {
+        var inputs = CoreOperationInputs(run);
+        if (!legacyInputs)
+        {
+            inputs["OP_CONCURRENCY"] = run.Parameters.Concurrency.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            inputs["OP_REPEAT_USERS"] = run.Parameters.RepeatUsers.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return inputs;
+    }
 
     private static Dictionary<string, string> TargetEnvironment(ContainerJobTarget target) => new()
     {
