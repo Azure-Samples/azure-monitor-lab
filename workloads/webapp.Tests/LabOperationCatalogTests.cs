@@ -7,7 +7,7 @@ public sealed class LabOperationCatalogTests
     [Fact]
     public void OnlyTheApprovedScriptsAreAvailable()
     {
-        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "cpu", "logs", "annotation" }, LabOperationCatalog.Actions.Select(action => action.Id));
+        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "usage", "cpu", "logs", "annotation" }, LabOperationCatalog.Actions.Select(action => action.Id));
         Assert.All(LabOperationCatalog.Actions, action => Assert.StartsWith("scripts/", action.Script));
         Assert.All(LabOperationCatalog.Actions, action => Assert.NotEmpty(action.Impact));
         foreach (var operation in new[] { "teardown", "deploy", "setup-rbac-demo", "../script.ps1", "start;whoami" })
@@ -43,6 +43,19 @@ public sealed class LabOperationCatalogTests
     [InlineData(-1)]
     [InlineData(101)]
     public void CustomLogCountIsBounded(int count) => Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("logs", Count: count)));
+
+    [Fact]
+    public void CustomerTrafficParametersAreBoundedAndFrozen()
+    {
+        Assert.Equal(new("usage", 24, "", "", 4, 6), LabOperationCatalog.Validate(new("usage")));
+        Assert.Equal(new("usage", 80, "", "", 8, 20), LabOperationCatalog.Validate(new("usage", Count: 80, Concurrency: 8, RepeatUsers: 20)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Count: 0)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Count: 101)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Concurrency: 0)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Concurrency: 11)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Count: 5, RepeatUsers: 6)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("start", Concurrency: 2)));
+    }
 
     [Fact]
     public void ValidParametersAreNormalized()

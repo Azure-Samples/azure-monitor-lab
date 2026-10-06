@@ -25,7 +25,7 @@ test('Control Center presents two documentation entry points and valid contextua
   await expect(page.getByRole('link', { name: 'Guide', exact: true })).toHaveAttribute('href', `${docsUrl}LAB-CONTROL-CENTER.md`);
   await expect(page.getByRole('link', { name: 'Scenarios', exact: true })).toHaveAttribute('href', `${docsUrl}DEMO-SCENARIOS.md`);
   const links = await page.locator('[data-documentation]').evaluateAll(items => items.map(item => ({ href: item.href, target: item.target, rel: item.rel })));
-  expect(links.length).toBe(15);
+  expect(links.length).toBe(16);
   for (const link of links) {
     expect(link.href.startsWith(docsUrl)).toBe(true);
     expect(link.target).toBe('_blank');

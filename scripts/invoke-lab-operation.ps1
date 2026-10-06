@@ -1,11 +1,13 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'cpu', 'logs', 'annotation')] [string] $Operation = $env:OP_OPERATION,
+  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation')] [string] $Operation = $env:OP_OPERATION,
   [ValidatePattern('^[a-f0-9]{32}$')] [string] $RequestId = $env:OP_REQUEST_ID,
   [guid] $SubscriptionId = $env:LAB_SUBSCRIPTION_ID,
   [guid] $TenantId = $env:LAB_TENANT_ID,
   [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup = $env:LAB_RESOURCE_GROUP,
   [ValidateRange(0, 100)] [int] $Count = [int]($env:OP_COUNT ?? '0'),
+  [ValidateRange(0, 10)] [int] $Concurrency = [int]($env:OP_CONCURRENCY ?? '0'),
+  [ValidateRange(0, 100)] [int] $RepeatUsers = [int]($env:OP_REPEAT_USERS ?? '0'),
   [AllowEmptyString()] [string] $Name = $env:OP_ANNOTATION_NAME ?? '',
   [AllowEmptyString()] [string] $Category = $env:OP_ANNOTATION_CATEGORY ?? '',
   [switch] $ValidateOnly,
@@ -17,14 +19,18 @@ $PSNativeCommandUseErrorActionPreference = $true
 if ($SubscriptionId -eq [guid]::Empty -or $TenantId -eq [guid]::Empty -or $ResourceGroup.EndsWith('.')) { throw 'Invalid target identifiers.' }
 if (-not $Operation -or -not $RequestId -or $env:LAB_RUNNER_MODE -ne 'ContainerAppsJob') { throw 'An approved Container Apps Job request is required.' }
 if ($SubscriptionId.ToString() -cne $env:LAB_SUBSCRIPTION_ID -or $TenantId.ToString() -cne $env:LAB_TENANT_ID -or $ResourceGroup -cne $env:LAB_RESOURCE_GROUP) { throw 'The requested target does not match the deployed runner environment.' }
-if ($Operation -eq 'logs') { if ($Count -lt 1) { throw 'Custom logs requires 1-100 events.' } }
-elseif ($Count -ne 0) { throw 'Event count is only allowed for custom logs.' }
+if ($Operation -eq 'logs') {
+  if ($Count -lt 1 -or $Concurrency -ne 0 -or $RepeatUsers -ne 0) { throw 'Custom logs requires 1-100 events and no browser parameters.' }
+} elseif ($Operation -eq 'usage') {
+  if ($Count -lt 1 -or $Concurrency -lt 1 -or $RepeatUsers -gt $Count) { throw 'Customer traffic requires 1-100 users, concurrency 1-10, and repeat users no greater than users.' }
+} elseif ($Count -ne 0 -or $Concurrency -ne 0 -or $RepeatUsers -ne 0) { throw 'Count and browser parameters are not allowed for this operation.' }
 if ($Operation -eq 'annotation') {
   if ($Name -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9 ._()-]{0,79}$' -or $Category -cnotin @('Deployment', 'Incident')) { throw 'Invalid release marker parameters.' }
 } elseif ($Name -or $Category) { throw 'Marker parameters are only allowed for annotations.' }
 $scripts = @{
   start = 'start-the-lab.ps1'; stop = 'stop-the-lab.ps1'; break = 'break-the-lab.ps1'; restore = 'restore-the-lab.ps1'
   ramp = 'start-ramp.ps1'; logs = 'send-custom-logs.ps1'; annotation = 'send-release-annotation.ps1'
+  usage = 'generate-usage-traffic.ps1'
   cpu = 'simulate-high-cpu.ps1'
 }
 if ($ValidateOnly) { Write-Output 'Approved operation parameters validated. No Azure command executed.'; return }
@@ -136,6 +142,14 @@ try {
       if ($resources.Count -ne 1) { throw 'Exactly one custom-logs DCR and endpoint are required.' }
     }
   }
+  if ($Operation -eq 'usage') {
+    $runnerPhase = 'customer traffic preflight'
+    $apps = @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
+    if ($apps.Count -ne 1 -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'Exactly one app-prefixed lab web app with a default host is required.' }
+    $customerUrl = "https://$($apps[0].defaultHostName)/customer/"
+    $response = Invoke-WebRequest -Uri $customerUrl -Method Head -MaximumRedirection 0 -SkipHttpErrorCheck -TimeoutSec 20
+    if ([int]$response.StatusCode -ne 200) { throw 'The customer journey endpoint is not ready.' }
+  }
   if ($CheckAccessOnly) {
     if ($Operation -in @('start', 'stop', 'cpu')) {
       $runnerPhase = "$Operation resource discovery"
@@ -148,6 +162,12 @@ try {
   switch ($Operation) {
     'start' { $parameters.Wait = $true; $parameters.TimeoutMinutes = 20 }
     'ramp' { $parameters.WebAppName = $apps[0].name }
+    'usage' {
+      $parameters.BaseUrl = "https://$($apps[0].defaultHostName)"
+      $parameters.Users = $Count
+      $parameters.Concurrency = $Concurrency
+      $parameters.RepeatUsers = $RepeatUsers
+    }
     'logs' { $parameters.Count = $Count }
     'annotation' { $parameters.Name = $Name; $parameters.Category = $Category }
   }

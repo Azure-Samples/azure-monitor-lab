@@ -36,7 +36,22 @@ public sealed class ContainerJobOperationsTests
         Assert.Equal(client.Target!.Image, container["image"]!.GetValue<string>());
         Assert.Equal("/runner/scripts/invoke-lab-operation.ps1", container["command"]![4]!.GetValue<string>());
         Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "OP_COUNT" && item["value"]!.GetValue<string>() == "12");
+        Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "OP_CONCURRENCY" && item["value"]!.GetValue<string>() == "0");
+        Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "OP_REPEAT_USERS" && item["value"]!.GetValue<string>() == "0");
         Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "LAB_RESOURCE_GROUP" && item["value"]!.GetValue<string>() == "test-rg");
+    }
+
+    [Fact]
+    public async Task CustomerTrafficDispatchFreezesBrowserLimits()
+    {
+        using var transport = new FakeAzure { Operation = "usage" };
+        var client = Client(transport);
+        var request = Run(client) with { Parameters = LabOperationCatalog.Validate(new("usage", Count: 24, Concurrency: 4, RepeatUsers: 6)) };
+        await client.DispatchAsync(request, default);
+        var environment = transport.Sent!["containers"]![0]!["env"]!.AsArray();
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_COUNT" && item["value"]!.GetValue<string>() == "24");
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_CONCURRENCY" && item["value"]!.GetValue<string>() == "4");
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_REPEAT_USERS" && item["value"]!.GetValue<string>() == "6");
     }
 
     [Fact]
@@ -224,7 +239,9 @@ public sealed class ContainerJobOperationsTests
             new { name = "LAB_RESOURCE_GROUP", value = WrongScope ? "another-rg" : "test-rg" }, new { name = "LAB_SUBSCRIPTION_ID", value = Subscription }, new { name = "LAB_TENANT_ID", value = Tenant },
             new { name = "LAB_RUNNER_MODE", value = "ContainerAppsJob" }, new { name = "AZURE_CLIENT_ID", value = WrongIdentity ? Guid.NewGuid().ToString() : IdentityClient },
             new { name = "OP_REQUEST_ID", value = new string(WrongRequest ? 'd' : 'b', 32) }, new { name = "OP_OPERATION", value = Operation },
-            new { name = "OP_COUNT", value = WrongCount ? "99" : Operation == "logs" ? "12" : "0" }, new { name = "OP_ANNOTATION_NAME", value = "" }, new { name = "OP_ANNOTATION_CATEGORY", value = "" }
+            new { name = "OP_COUNT", value = WrongCount ? "99" : Operation == "logs" ? "12" : Operation == "usage" ? "24" : "0" },
+            new { name = "OP_CONCURRENCY", value = Operation == "usage" ? "4" : "0" }, new { name = "OP_REPEAT_USERS", value = Operation == "usage" ? "6" : "0" },
+            new { name = "OP_ANNOTATION_NAME", value = "" }, new { name = "OP_ANNOTATION_CATEGORY", value = "" }
         }, resources = new { cpu = 1, memory = "2Gi" } } } })!.AsObject();
             if (IncludeTemplateVolumes) template["volumes"] = new JsonArray();
             return template;

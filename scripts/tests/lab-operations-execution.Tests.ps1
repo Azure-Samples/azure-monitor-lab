@@ -7,6 +7,11 @@ $source = Split-Path $PSScriptRoot -Parent
 foreach ($name in @('invoke-lab-operation.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source $name) -Destination $scriptDirectory
 }
+@'
+param([string] $BaseUrl, [int] $Users, [int] $Concurrency, [int] $RepeatUsers)
+@{ BaseUrl = $BaseUrl; Users = $Users; Concurrency = $Concurrency; RepeatUsers = $RepeatUsers } |
+  ConvertTo-Json | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'usage-parameters.json')
+'@ | Set-Content -LiteralPath (Join-Path $scriptDirectory 'generate-usage-traffic.ps1')
 $workloads = Join-Path $repo 'workloads/k8s'
 $null = New-Item -ItemType Directory -Path $workloads -Force
 foreach ($name in @('02-loadgen.yaml', '03-loadgen-ramp.yaml')) { Copy-Item -LiteralPath (Join-Path $source "../workloads/k8s/$name") -Destination $workloads }
@@ -125,10 +130,10 @@ function Invoke-FakeAzure {
       return
     }
     'webapp list' {
-      if (($args -join ' ') -match 'defaultHostName') { return 'app-test.azurewebsites.net' }
+      if (($args -join ' ') -match 'defaultHostName' -and $args -contains 'tsv') { return 'app-test.azurewebsites.net' }
       if (($args -join ' ') -match '\[0\]\.name') { return 'app-test' }
       if ($fixture.AllResourcesStopped) { return '[{"name":"app-test","state":"Stopped"}]' }
-      return '[{"name":"app-test","state":"Running"}]'
+      return '[{"name":"app-test","state":"Running","defaultHostName":"app-test.azurewebsites.net"}]'
     }
     'webapp show' { return 'app-test.azurewebsites.net' }
     'webapp stop' { return }
@@ -171,6 +176,10 @@ function Invoke-RestMethod {
 }
 function Invoke-WebRequest {
   param($Method, $Uri, $Headers, $Body)
+  if ($Method -eq 'Head' -and $Uri -eq 'https://app-test.azurewebsites.net/customer/') {
+    $fixture.Http.Add(@{ Method = $Method; Uri = $Uri })
+    return @{ StatusCode = 200 }
+  }
   if (-not $Uri.StartsWith('https://test.ingest.monitor.azure.com/')) { throw 'Unexpected ingestion endpoint.' }
   $fixture.Http.Add(@{ Method = $Method; Uri = $Uri; Body = $Body | ConvertFrom-Json })
   return @{ StatusCode = 204 }
@@ -233,10 +242,11 @@ try {
   if (@($fixture.CpuCommands | Where-Object { Test-Path -LiteralPath $_.Path }).Count) { throw 'Failed guest submission leaked temporary files.' }
   $fixture.CpuSecondSubmissionFails = $false
   $fixture.CpuMode = $false
-  foreach ($operation in @('start', 'stop', 'break', 'restore', 'ramp', 'logs', 'annotation')) {
+  foreach ($operation in @('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'logs', 'annotation')) {
     $arguments = $parameters.Clone()
     $arguments.Operation = $operation
     if ($operation -eq 'logs') { $arguments.Count = 12 }
+    if ($operation -eq 'usage') { $arguments.Count = 24; $arguments.Concurrency = 4; $arguments.RepeatUsers = 6 }
     if ($operation -eq 'annotation') { $arguments.Name = 'Release 1.2'; $arguments.Category = 'Incident' }
     try { $output = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @arguments 6>&1 | Out-String }
     catch { throw "Offline $operation failed: $(($Error | Select-Object -First 4 | ForEach-Object { $_.Exception.Message }) -join ' / ')" }
@@ -246,6 +256,10 @@ try {
   }
   if ($fixture.Credentials -ne $fixture.Conversions -or $fixture.Credentials -lt 4) { throw 'Repeated AKS credentials were not isolated and converted.' }
   if (@($fixture.Http | Where-Object { $_.Method -eq 'POST' })[0].Body.Count -ne 12) { throw 'Custom log count was not passed to the existing script.' }
+  $usageParameters = Get-Content -LiteralPath (Join-Path $root 'usage-parameters.json') -Raw | ConvertFrom-Json
+  if ($usageParameters.BaseUrl -ne 'https://app-test.azurewebsites.net' -or $usageParameters.Users -ne 24 -or $usageParameters.Concurrency -ne 4 -or $usageParameters.RepeatUsers -ne 6) {
+    throw 'Customer traffic parameters were not passed to the bounded browser generator.'
+  }
   if ($fixture.Http[-1].Body.AnnotationName -ne 'Release 1.2') { throw 'Marker parameters were not passed to the existing script.' }
   if (@($fixture.Calls | Where-Object { $_.Tool -eq 'az' -and ($_.Arguments[0..1] -join ' ') -eq 'vmss start' }).Count) { throw 'An already-running VMSS was started.' }
   $fixture.VmssStopped = $true
@@ -275,7 +289,7 @@ try {
       throw "Stop Lab did not issue '$expectedStop'."
     }
   }
-  Write-Output 'PASS: all eight scripts execute only through fake scoped commands; Stop Lab cost controls, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls or CPU load executed.'
+  Write-Output 'PASS: all nine scripts execute only through fake scoped commands; Stop Lab cost controls, bounded customer traffic, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls, browser traffic, or CPU load executed.'
 } finally {
   foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name]) }
   if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force }

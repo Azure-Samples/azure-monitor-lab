@@ -79,13 +79,16 @@ if ($registryModule.Count -ne 1 -or $registryModule[0].properties.parameters.acr
 $scriptDirectory = Join-Path $root 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 Copy-Item -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Destination $scriptDirectory
-foreach ($directory in @('workloads/k8s', 'workloads/operations', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
-foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
+foreach ($directory in @('workloads/k8s', 'workloads/operations', 'workloads/webapp/scripts', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
+foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
 }
 $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Raw
 if ($runnerDockerfile -notmatch 'Acquire::Retries=5' -or $runnerDockerfile -notmatch '(?s)rm -rf /var/lib/apt/lists/\*.+apt-get -o Acquire::Retries=5 update') {
   throw 'Runner package installation must retry downloads and refresh a stale APT index.'
+}
+if ($runnerDockerfile -notmatch 'playwright install --with-deps chromium' -or $runnerDockerfile -notmatch 'workloads/webapp/scripts') {
+  throw 'Runner image must install Chromium and include the customer traffic generator.'
 }
 @'
 param($SubscriptionId, $TenantId, $ResourceGroup, $WebAppName, $AllowedUserObjectIds, [switch]$AuthenticationOnly)
@@ -186,9 +189,11 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 12 -or
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 16 -or
           -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
-          -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1'))) {
+          -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/generate-usage-traffic.ps1')) -or
+          -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/generate-usage-traffic.mjs'))) {
         throw 'Unexpected runner build context or missing operation script.'
       }
       if ($fixture.FailBuild) { $global:LASTEXITCODE = 1 }

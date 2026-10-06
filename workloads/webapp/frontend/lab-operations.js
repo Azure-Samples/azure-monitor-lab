@@ -1,7 +1,7 @@
 export function initializeLabOperations({ refreshIcons }) {
   const byId = id => document.getElementById(id);
   const dialog = byId('operation-dialog');
-  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'cpu', 'logs', 'annotation']);
+  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation']);
   const labels = { queued: 'Queued', waiting: 'Awaiting runner', running: 'Running', succeeded: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled', dispatch_unknown: 'Dispatch outcome unknown', skipped: 'Skipped' };
   const terminal = run => ['succeeded', 'failed', 'cancelled'].includes(run.state);
   let actions = [];
@@ -144,7 +144,13 @@ export function initializeLabOperations({ refreshIcons }) {
     byId('operation-impact').textContent = selected.impact;
     byId('operation-prepare-form').reset();
     byId('operation-approve-form').reset();
-    byId('operation-count-field').hidden = selected.id !== 'logs';
+    const counted = selected.id === 'logs' || selected.id === 'usage';
+    byId('operation-count-field').hidden = !counted;
+    byId('operation-count-label').textContent = selected.id === 'usage' ? 'Synthetic users' : 'Event count';
+    byId('operation-count').value = selected.id === 'usage' ? '24' : '10';
+    byId('operation-usage-fields').hidden = selected.id !== 'usage';
+    byId('operation-concurrency').disabled = selected.id !== 'usage';
+    byId('operation-repeat-users').disabled = selected.id !== 'usage';
     byId('operation-marker-fields').hidden = selected.id !== 'annotation';
     byId('operation-name').required = selected.id === 'annotation';
     byId('operation-name').disabled = selected.id !== 'annotation';
@@ -161,14 +167,20 @@ export function initializeLabOperations({ refreshIcons }) {
     controls();
     try {
       const body = { operation: selected.id };
-      if (selected.id === 'logs') body.count = Number(byId('operation-count').value);
+      if (selected.id === 'logs' || selected.id === 'usage') body.count = Number(byId('operation-count').value);
+      if (selected.id === 'usage') {
+        body.concurrency = Number(byId('operation-concurrency').value);
+        body.repeatUsers = Number(byId('operation-repeat-users').value);
+      }
       if (selected.id === 'annotation') { body.name = byId('operation-name').value.trim(); body.category = byId('operation-category').value; }
       const data = await request('prepare', body);
       if (!data.proposal || data.proposal.parameters.operation !== selected.id) throw new Error('Operation approval could not be verified.');
       proposal = data.proposal;
       byId('operation-preview').replaceChildren(details({ Script: proposal.action.script, 'Resource group': proposal.target.resourceGroup, Subscription: proposal.target.subscriptionId,
         Tenant: proposal.target.tenantId, 'Azure job': proposal.target.jobResourceId, Image: proposal.target.image,
-        ...(selected.id === 'logs' ? { Events: proposal.parameters.count } : {}), ...(selected.id === 'annotation' ? { Marker: proposal.parameters.name, Category: proposal.parameters.category } : {}) }));
+        ...(selected.id === 'logs' ? { Events: proposal.parameters.count } : {}),
+        ...(selected.id === 'usage' ? { Users: proposal.parameters.count, Concurrency: proposal.parameters.concurrency, 'Repeat users': proposal.parameters.repeatUsers, Route: '/customer/' } : {}),
+        ...(selected.id === 'annotation' ? { Marker: proposal.parameters.name, Category: proposal.parameters.category } : {}) }));
       byId('operation-expiry').textContent = `Approval expires ${new Date(proposal.expiresAt).toLocaleTimeString()}`;
       byId('operation-prepare-form').hidden = true;
       byId('operation-approve-form').hidden = false;

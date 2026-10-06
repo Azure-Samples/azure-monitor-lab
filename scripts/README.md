@@ -32,7 +32,7 @@ Offline configuration/UI regression check: `pwsh -NoProfile -File scripts\tests\
 
 ## Lab lifecycle and demo control
 
-The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes eight scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
+The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes nine scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls and bounded customer traffic. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
 
 | Script | Purpose | Typical command |
 |---|---|---|
@@ -51,6 +51,7 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 |---|---|---|
 | `send-custom-logs.ps1` | Sends sample records through the Logs Ingestion API to the custom logs table. | `./scripts/send-custom-logs.ps1 -ResourceGroup <rg> -Count 10` |
 | `send-release-annotation.ps1` | Adds a deployment or incident release annotation to Application Insights charts. | `./scripts/send-release-annotation.ps1 -ResourceGroup <rg> -Name demo-release -Category Deployment` |
+| `generate-usage-traffic.ps1` | Drives bounded isolated Chromium users through the synthetic customer journey for Application Insights Usage analysis. Also available through the approval-gated Control Center operation. | `./scripts/generate-usage-traffic.ps1 -BaseUrl https://app-amlab-<suffix>.azurewebsites.net -Users 24 -Concurrency 4 -RepeatUsers 6` |
 | `trigger-code-optimization.ps1` | Drives traffic through the intentionally inefficient endpoint to produce Application Insights Code Optimization traces. Use `-SkipPublish` when the endpoint is already deployed. | `./scripts/trigger-code-optimization.ps1 -ResourceGroup <rg> -SkipPublish` |
 | `setup-grafana-alerts.ps1` | Creates the Grafana alert rule for the Managed Prometheus data source. | `./scripts/setup-grafana-alerts.ps1 -ResourceGroup <rg>` |
 | `create-summary-rule.ps1` | Creates or updates the hourly `Perf_Hourly_CL` summary rule. It discovers the suffixed central LAW when `-WorkspaceName` is omitted. | `./scripts/create-summary-rule.ps1 -ResourceGroup <rg>` |

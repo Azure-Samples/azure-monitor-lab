@@ -160,7 +160,9 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
     {
         ["OP_REQUEST_ID"] = run.Id, ["OP_OPERATION"] = run.Parameters.Operation,
         ["OP_COUNT"] = run.Parameters.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        ["OP_ANNOTATION_NAME"] = run.Parameters.Name, ["OP_ANNOTATION_CATEGORY"] = run.Parameters.Category
+        ["OP_ANNOTATION_NAME"] = run.Parameters.Name, ["OP_ANNOTATION_CATEGORY"] = run.Parameters.Category,
+        ["OP_CONCURRENCY"] = run.Parameters.Concurrency.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["OP_REPEAT_USERS"] = run.Parameters.RepeatUsers.ToString(System.Globalization.CultureInfo.InvariantCulture)
     };
 
     private static Dictionary<string, string> TargetEnvironment(ContainerJobTarget target) => new()

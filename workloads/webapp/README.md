@@ -19,11 +19,11 @@ Generate a realistic mix of completed, abandoned, declined, support-assisted, an
   -RepeatUsers 6
 ```
 
-The generator uses isolated Chromium contexts and drives the actual customer UI; it does not post fabricated telemetry directly. Install the existing browser-test dependencies first if needed with `npm ci --prefix workloads\webapp` and `npx --prefix workloads\webapp playwright install chromium`. Application Insights ingestion and Usage aggregation can take several minutes.
+The generator uses isolated Chromium contexts and drives the actual customer UI; it does not post fabricated telemetry directly. In a deployed lab, **Lab Operations → Generate Customer Traffic** runs it through the approval-gated job with bounded user, concurrency, and repeat-session parameters. Install the existing browser-test dependencies first for local use if needed with `npm ci --prefix workloads\webapp` and `npx --prefix workloads\webapp playwright install chromium`. Application Insights ingestion and Usage aggregation can take several minutes.
 
 ## Lab Operations
 
-The [Lab Operations reference](LAB-OPERATIONS.md) covers eight scripts, including cost-aware Start/Stop controls and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
+The [Lab Operations reference](LAB-OPERATIONS.md) covers nine scripts, including cost-aware Start/Stop controls, bounded customer traffic, and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, including Node.js and Chromium, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
 
 ## Infrastructure Health
 

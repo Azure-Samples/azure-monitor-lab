@@ -3239,6 +3239,10 @@ All identities and business data use validated `demo-user-*` values. No real ide
 
 ### Generate traffic
 
+From **Control Center → Lab Operations**, select **Generate Customer Traffic**, keep the default 24 users / 4 concurrent browsers / 6 repeat users (or choose bounded values), review the frozen target and parameters, confirm the resource group, and approve the job. This is the preferred live-lab path because it runs the real browser generator in the deployment's isolated operations job.
+
+For local or administrative use, run the same generator directly:
+
 ```powershell
 ./scripts/generate-usage-traffic.ps1 `
   -BaseUrl https://app-amlab-<suffix>.azurewebsites.net `
@@ -3247,7 +3251,7 @@ All identities and business data use validated `demo-user-*` values. No real ide
   -RepeatUsers 6
 ```
 
-The script drives the real customer UI with isolated Chromium contexts. Its deterministic mix includes completed journeys, browse/cart/checkout abandonment, payment decline, agent-support detours, three customer segments, two experience variants, and repeat sessions. Allow several minutes for ingestion and Usage aggregation.
+Both paths drive the real customer UI with isolated Chromium contexts. The deterministic mix includes completed journeys, browse/cart/checkout abandonment, payment decline, agent-support detours, three customer segments, two experience variants, and repeat sessions. Allow several minutes for ingestion and Usage aggregation. Container Apps Job compute, Application Insights ingestion, and any resulting retention charges apply.
 
 ### Portal walkthrough
 

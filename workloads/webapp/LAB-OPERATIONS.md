@@ -1,6 +1,6 @@
 # Lab Operations
 
-The **Lab Operations** tab runs eight repository scripts in an independent **Azure Container Apps Job**. Normal lab deployment creates the infrastructure, builds the image in Azure, configures operator sign-in and managed-identity access, and enables the console. No GitHub App, runner repository, manual image publication, or separate enablement command is required.
+The **Lab Operations** tab runs nine repository scripts in an independent **Azure Container Apps Job**. Normal lab deployment creates the infrastructure, builds the image in Azure, configures operator sign-in and managed-identity access, and enables the console. No GitHub App, runner repository, manual image publication, or separate enablement command is required.
 
 The Web App prepares approvals and reads execution status. It does not execute PowerShell, Azure CLI, or Kubernetes commands inside the app process. GitHub Actions is used only for repository tests, not runtime execution.
 
@@ -13,11 +13,20 @@ The Web App prepares approvals and reads execution status. It does not execute P
 | Break Lab | [break-the-lab.ps1](../../scripts/break-the-lab.ps1) | Deallocates VMs, replaces the AKS demo frontend image, changes the load-generator error rate, starts a short load job, and adds an incident annotation. |
 | Restore Lab | [restore-the-lab.ps1](../../scripts/restore-the-lab.ps1) | Starts VMs and restores the known demo frontend/load-generator configuration. Adds a release annotation. This is not a rollback of arbitrary changes. |
 | Start Load Ramp | [start-ramp.ps1](../../scripts/start-ramp.ps1) | Replaces the named ramp job/configuration and submits approximately 60 minutes of AKS traffic against the lab app. |
+| Generate Customer Traffic | [generate-usage-traffic.ps1](../../scripts/generate-usage-traffic.ps1) | Runs 1-100 isolated Chromium users through the deployed `/customer/` journey, with concurrency 1-10 and repeat users no greater than total users. |
 | Simulate High CPU | [simulate-high-cpu.ps1](../../scripts/simulate-high-cpu.ps1) | Submits fixed, self-expiring 10-minute CPU loads on both running demo VMs through Azure VM Run Command. No AKS dependency or VM restart. |
 | Send Custom Logs | [send-custom-logs.ps1](../../scripts/send-custom-logs.ps1) | Ingests 1-100 sample audit events into the existing custom table. |
 | Add Release Marker | [send-release-annotation.ps1](../../scripts/send-release-annotation.ps1) | Adds a marker with a 1-80 character name and Deployment or Incident category. |
 
 No arbitrary commands, script paths, deployment, teardown, permission setup, or AI execution are exposed. Existing SRE MCP approvals and health permissions are unchanged.
+
+### Generate Customer Traffic
+
+Select **Generate Customer Traffic**, set the bounded user, browser-concurrency, and repeat-user values, review the exact target and parameters, then approve. The runner requires exactly one app-prefixed Web App in the resource group and a healthy `/customer/` endpoint before it opens Chromium. The generator drives real routes and UI interactions; it does not submit fabricated telemetry directly.
+
+The default 24 users, 4 concurrent browsers, and 6 repeat users provide completed, abandoned, declined, support-assisted, cohort, variant, and repeat-session paths for [Scenario 70](../../docs/DEMO-SCENARIOS.md#s70). The operation has no automatic retry and only one Lab Operations run can be active. Container Apps Job compute, Application Insights ingestion, and retention charges apply. Usage aggregation can lag behind raw telemetry.
+
+The runner image now includes Node.js dependencies and Chromium, so an existing environment must rebuild the operations image and republish the Web App. Rerun `deploy.ps1`, or use the normal [console upgrade](../../scripts/deploy-webapp.ps1); updating only the browser bundle is insufficient.
 
 ### Simulate High CPU
 
@@ -71,7 +80,7 @@ The subscription/region must support Basic Container Registry, ACR Tasks, and a 
 5. A private persistent journal at `/home/data/lab-operations/journal.json` and generated settings, followed by enablement. Unrelated app settings are preserved.
 6. With Stage AI, four matching demo agents are reused or created without simulated conversations. With both AI and SRE stages, native MCP and host-model access are configured. An SRE-only deployment does not include the separate host model required by this console's SRE assistant.
 
-The registry has ongoing service/storage charges. Builds, jobs, logs, running workloads, and optional model use have their usual Azure charges. The runner has no always-running application replica. Deployment does not execute any of the eight lab operations.
+The registry has ongoing service/storage charges. Builds, jobs, logs, running workloads, and optional model use have their usual Azure charges. The runner has no always-running application replica. Deployment does not execute any of the nine lab operations.
 
 ## Access Boundaries
 
@@ -81,7 +90,7 @@ The registry has ongoing service/storage charges. Builds, jobs, logs, running wo
 | Web App managed identity | Read-only lab inventory/workspace access and read/start access on one runner job. Optional agent roles are resource-scoped. |
 | Runner managed identity | Reader and a custom lifecycle/annotation role at the lab resource group, AcrPull on its registry, Monitoring Metrics Publisher on the custom-log DCR, and a separate Run Command role on the two selected demo VMs. |
 
-Azure job-start permission supports template overrides. It is not an RBAC restriction to eight scripts: a compromised Web App identity could exercise the runner identity's permissions through that job. The application validates the image, execution limits, identity, fixed lab environment, and approved inputs. Keep deployment access and both identities restricted to a disposable lab.
+Azure job-start permission supports template overrides. It is not an RBAC restriction to nine scripts: a compromised Web App identity could exercise the runner identity's permissions through that job. The application validates the image, execution limits, identity, fixed lab environment, and approved inputs. Keep deployment access and both identities restricted to a disposable lab.
 
 `Microsoft.Compute/virtualMachines/runCommand/action` allows elevated guest execution as root on Linux and SYSTEM on Windows. Azure RBAC cannot restrict that permission to the fixed CPU payload or its duration. The CPU role is assigned on individual VM resources, never at subscription or resource-group scope; the existing lifecycle role does not gain guest execution. Removing a VM from the selected pair prevents future script submission but incremental deployment does not revoke older role assignments. Review and remove obsolete VM assignments when repurposing a lab.
 
@@ -114,7 +123,7 @@ Do not put secrets or sensitive data in marker text. Execution metadata is visib
 
 ## Verification
 
-[Lab Operations Tests](../../.github/workflows/lab-operations-tests.yml) covers approval/journal/ARM contracts, [eight real scripts under fake commands](../../scripts/tests/lab-operations-execution.Tests.ps1), [automatic bootstrap](../../scripts/tests/console-bootstrap.Tests.ps1), [deployment handoffs](../../scripts/tests/console-deployment.Tests.ps1), and browser regressions. CPU tests cover both OS payloads, readiness and target failures, no-write `-WhatIf`, partial submission, and temporary-file cleanup without running CPU load. These offline tests do not prove live guest execution, alert firing, tenant policy, ACR build availability, role propagation, or Kubernetes access.
+[Lab Operations Tests](../../.github/workflows/lab-operations-tests.yml) covers approval/journal/ARM contracts, [nine real scripts under fake commands](../../scripts/tests/lab-operations-execution.Tests.ps1), [automatic bootstrap](../../scripts/tests/console-bootstrap.Tests.ps1), [deployment handoffs](../../scripts/tests/console-deployment.Tests.ps1), and browser regressions. Customer-traffic tests cover immutable browser limits, target discovery, endpoint readiness, and wrapper invocation without opening a browser. CPU tests cover both OS payloads, readiness and target failures, no-write `-WhatIf`, partial submission, and temporary-file cleanup without running CPU load. These offline tests do not prove live Chromium execution, guest execution, alert firing, tenant policy, ACR build availability, role propagation, or Kubernetes access.
 
 The runner's `-CheckAccessOnly` mode validates its managed-identity login, target account, resource group, and action-specific prerequisites. For Start Lab, it also runs the real script's complete resource discovery with `-WhatIf`, including expanded VMSS instance views, without issuing start commands. For CPU simulation it verifies both VM targets and agents with `-WhatIf`, without submitting Run Command. It can acquire credentials and create temporary local files, but it does not execute a lab operation or prove that every later write will succeed. `-ValidateOnly` checks parameters without authenticating. Offline coverage includes duplicate Azure CLI paths, running and stopped VMSS instances, write-blocked discovery with all four resource types stopped, and sanitized failure phases and command names.
 

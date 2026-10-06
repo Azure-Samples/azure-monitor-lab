@@ -9,13 +9,14 @@ const actions = [
   ['break', 'Break Lab', 'break-the-lab.ps1', 'Deallocates lab VMs, disrupts the AKS frontend, and increases application failures.'],
   ['restore', 'Restore Lab', 'restore-the-lab.ps1', 'Starts VMs and restores the demo frontend and load generator.'],
   ['ramp', 'Start Load Ramp', 'start-ramp.ps1', 'Replaces the previous ramp job and starts 60 minutes of traffic.'],
+  ['usage', 'Generate Customer Traffic', 'generate-usage-traffic.ps1', 'Runs isolated Chromium users through customer pages, abandonment, support, checkout, and repeat sessions.'],
   ['cpu', 'Simulate High CPU', 'simulate-high-cpu.ps1', 'Runs a self-expiring 10-minute CPU load on both running demo VMs via Run Command. Performance, CPU credits, and telemetry charges are affected.'],
   ['logs', 'Send Custom Logs', 'send-custom-logs.ps1', 'Ingests sample audit events into the lab custom table.'],
   ['annotation', 'Add Release Marker', 'send-release-annotation.ps1', 'Writes a deployment or incident marker.']
 ].map(([id, title, file, impact]) => ({ id, title, script: `scripts/${file}`, impact }));
 const proposalId = 'b'.repeat(32);
 const runId = 'c'.repeat(32);
-const operationRun = (operation = 'start', state = 'queued') => ({ id: runId, parameters: { operation, count: 0, name: '', category: '' }, target,
+const operationRun = (operation = 'start', state = 'queued') => ({ id: runId, parameters: { operation, count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0 }, target,
   submittedAt: now.toISOString(), state, message: state === 'succeeded' ? 'The approved script completed.' : 'The Azure runner is executing the approved operation.', executionName: 'job-labops-demo-execution',
   url: 'https://portal.azure.com/#resource' + target.jobResourceId + '/overview', steps: [{ name: 'Job accepted', state: 'succeeded' }, { name: 'Run approved operation', state: state === 'succeeded' ? 'succeeded' : 'running' }] });
 
@@ -34,7 +35,7 @@ async function prepare(page, options = {}) {
     calls.referrers.push(route.request().headers().referer);
     expect(route.request().headers()['x-amlab-agent-request']).toBe('true');
     return route.fulfill({ json: { state: 'approval_required', proposal: { id: proposalId, action: actions.find(action => action.id === input.operation),
-      parameters: { count: 0, name: '', category: '', ...input }, target, expiresAt: new Date(now.getTime() + 300000).toISOString() } } });
+      parameters: { count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0, ...input }, target, expiresAt: new Date(now.getTime() + 300000).toISOString() } } });
   });
   await page.route('**/api/operations/approval', route => {
     const input = route.request().postDataJSON();
@@ -59,6 +60,11 @@ async function review(page, operation) {
   await page.getByRole('button', { name: actions.find(action => action.id === operation).title, exact: true }).click();
   await expect(page.locator('#operation-dialog')).toBeVisible();
   if (operation === 'logs') await page.getByLabel('Event count', { exact: true }).fill('25');
+  if (operation === 'usage') {
+    await page.getByLabel('Synthetic users').fill('24');
+    await page.getByLabel('Browser concurrency').fill('4');
+    await page.getByLabel('Repeat users').fill('6');
+  }
   if (operation === 'annotation') {
     await page.getByLabel('Marker name', { exact: true }).fill('Release 1.2 (demo)');
     await page.getByLabel('Marker category').selectOption('Incident');
@@ -71,7 +77,9 @@ for (const action of actions) {
   test(`Lab Operations reviews ${action.title} with frozen parameters and cancellation never executes`, async ({ page }) => {
     const calls = await prepare(page);
     await review(page, action.id);
-    const expected = { operation: action.id, ...(action.id === 'logs' ? { count: 25 } : {}), ...(action.id === 'annotation' ? { name: 'Release 1.2 (demo)', category: 'Incident' } : {}) };
+    const expected = { operation: action.id, ...(action.id === 'logs' ? { count: 25 } : {}),
+      ...(action.id === 'usage' ? { count: 24, concurrency: 4, repeatUsers: 6 } : {}),
+      ...(action.id === 'annotation' ? { name: 'Release 1.2 (demo)', category: 'Incident' } : {}) };
     expect(calls.prepared).toEqual([expected]);
     expect(calls.approvals).toEqual([]);
     await expect(page.locator('#operation-preview')).toContainText(action.script);
@@ -191,7 +199,7 @@ test('Lab Operations API is disabled by default and enforces operator and same-o
   const catalog = await request.get('/api/operations/catalog');
   expect(catalog.status()).toBe(200);
   expect((await catalog.json()).available).toBe(false);
-  expect((await catalog.json()).actions).toHaveLength(8);
+  expect((await catalog.json()).actions).toHaveLength(9);
   expect(catalog.headers()['cache-control']).toBe('no-store');
   expect((await request.post('/api/operations/prepare', { data: { operation: 'start' } })).status()).toBe(403);
   expect((await request.post('/api/operations/prepare', { headers: { ...headers, Host: 'attacker.example' }, data: { operation: 'start' } })).status()).toBe(401);
