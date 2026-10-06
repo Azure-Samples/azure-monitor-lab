@@ -11,8 +11,8 @@ dependencies
 | summarize Runs = count(),
             TaskSuccessRate = 100.0 * countif(TaskSuccess) / count(),
             PerformanceSuccessRate = 100.0 * countif(PerformanceSuccess) / count(),
-            P50DurationMs = percentile(duration / 1ms, 50),
-            P95DurationMs = percentile(duration / 1ms, 95),
+            P50DurationMs = percentile(duration, 50),
+            P95DurationMs = percentile(duration, 95),
             AvgRetries = avg(RetryCount),
             AvgInputTokens = avg(InputTokens),
             AvgOutputTokens = avg(OutputTokens)

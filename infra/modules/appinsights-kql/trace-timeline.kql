@@ -3,7 +3,7 @@ union
     (pageViews | project timestamp, operation_Id, itemType = "pageView", name, duration, success = true, resultCode = "", customDimensions),
     (requests | project timestamp, operation_Id, itemType = "request", name, duration, success, resultCode, customDimensions),
     (dependencies | project timestamp, operation_Id, itemType = strcat("dependency:", type), name, duration, success, resultCode, customDimensions),
-    (customEvents | project timestamp, operation_Id, itemType = "event", name, duration = 0ms, success = true, resultCode = "", customDimensions)
+    (customEvents | project timestamp, operation_Id, itemType = "event", name, duration = 0.0, success = true, resultCode = "", customDimensions)
 | where operation_Id == TraceId
 | extend Scenario = tostring(customDimensions["scenario"]),
          Mode = tostring(customDimensions["demo.mode"]),

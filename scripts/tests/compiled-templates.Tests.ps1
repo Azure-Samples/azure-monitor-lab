@@ -3,6 +3,17 @@ param([string] $BicepExecutable)
 
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$appInsightsQueryFiles = @(
+  Join-Path $source 'infra/modules/appinsights-investigation-workbook.json'
+  Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-kql') -Filter '*.kql' | Select-Object -ExpandProperty FullName
+)
+foreach ($queryFile in $appInsightsQueryFiles) {
+  $queryText = Get-Content -LiteralPath $queryFile -Raw
+  if ($queryText -match 'duration\s*/\s*1ms' -or $queryText -match 'duration\s*=\s*0ms') {
+    throw "Application Insights resource queries expose duration as numeric milliseconds; '$queryFile' must not mix it with timespan literals."
+  }
+}
+Write-Output 'PASS: Application Insights queries keep duration arithmetic in numeric milliseconds.'
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
 if ($mainTemplate.variables.appInsightsName -ne "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]") {
   throw 'Application Insights must use the generated five-character deployment suffix.'

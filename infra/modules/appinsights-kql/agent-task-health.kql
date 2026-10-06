@@ -12,6 +12,6 @@ dependencies
             TaskFailures = countif(TaskSuccess == "false"),
             PerformanceFailures = countif(PerformanceSuccess == "false"),
             IncompleteTraces = countif(TraceComplete == "false"),
-            P95DurationMs = percentile(duration / 1ms, 95)
+            P95DurationMs = percentile(duration, 95)
     by Scenario, Mode
 | order by Scenario asc, Mode asc

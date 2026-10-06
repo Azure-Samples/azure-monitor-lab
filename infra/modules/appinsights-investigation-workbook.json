@@ -62,7 +62,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Technical=tostring(customDimensions['technical.success']), Task=tostring(customDimensions['task.success']), Performance=tostring(customDimensions['performance.success']), Trace=tostring(customDimensions['trace.complete']) | summarize Runs=count(), TechnicalFailures=countif(Technical=='false'), TaskFailures=countif(Task=='false'), PerformanceFailures=countif(Performance=='false'), IncompleteTraces=countif(Trace=='false'), P95DurationMs=percentile(duration/1ms,95) by Scenario, Mode | order by Scenario asc, Mode asc",
+        "query": "dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Technical=tostring(customDimensions['technical.success']), Task=tostring(customDimensions['task.success']), Performance=tostring(customDimensions['performance.success']), Trace=tostring(customDimensions['trace.complete']) | summarize Runs=count(), TechnicalFailures=countif(Technical=='false'), TaskFailures=countif(Task=='false'), PerformanceFailures=countif(Performance=='false'), IncompleteTraces=countif(Trace=='false'), P95DurationMs=percentile(duration,95) by Scenario, Mode | order by Scenario asc, Mode asc",
         "size": 0,
         "title": "Agent task health",
         "timeContextFromParameter": "TimeRange",
@@ -82,7 +82,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Task=tostring(customDimensions['task.success'])=='true', Performance=tostring(customDimensions['performance.success'])=='true', Retries=toint(customDimensions['retry.count']), InputTokens=toint(customDimensions['gen_ai.usage.input_tokens']) | summarize Runs=count(), TaskSuccessRate=100.0*countif(Task)/count(), PerformanceSuccessRate=100.0*countif(Performance)/count(), P95DurationMs=percentile(duration/1ms,95), AvgRetries=avg(Retries), AvgInputTokens=avg(InputTokens) by Scenario, Mode | order by Scenario asc, Mode asc",
+        "query": "dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Task=tostring(customDimensions['task.success'])=='true', Performance=tostring(customDimensions['performance.success'])=='true', Retries=toint(customDimensions['retry.count']), InputTokens=toint(customDimensions['gen_ai.usage.input_tokens']) | summarize Runs=count(), TaskSuccessRate=100.0*countif(Task)/count(), PerformanceSuccessRate=100.0*countif(Performance)/count(), P95DurationMs=percentile(duration,95), AvgRetries=avg(Retries), AvgInputTokens=avg(InputTokens) by Scenario, Mode | order by Scenario asc, Mode asc",
         "size": 0,
         "title": "Broken versus fixed evidence",
         "timeContextFromParameter": "TimeRange",
