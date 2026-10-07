@@ -262,6 +262,7 @@ try {
   }
   foreach ($operation in @('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'logs', 'annotation')) {
     $arguments = $parameters.Clone()
+    $webAppShowCalls = @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'webapp show' }).Count
     $arguments.Operation = $operation
     if ($operation -eq 'logs') { $arguments.Count = 12 }
     if ($operation -eq 'usage') { $arguments.Count = 24; $arguments.Concurrency = 4; $arguments.RepeatUsers = 6 }
@@ -269,6 +270,9 @@ try {
     try { $output = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @arguments 6>&1 | Out-String }
     catch { throw "Offline $operation failed: $(($Error | Select-Object -First 4 | ForEach-Object { $_.Exception.Message }) -join ' / ')" }
     if ($output -notmatch "Approved action '$operation' completed") { throw "The $operation script was not completed." }
+    if ($operation -eq 'ramp' -and @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'webapp show' }).Count -ne $webAppShowCalls) {
+      throw 'Ramp execution requested publishing-profile-backed Web App details instead of using its approved host.'
+    }
     if ($output -match 'fake-session-token|private diagnostic') { throw 'Raw command output leaked.' }
     if (Test-Path (Join-Path $repo '.azure-target.json')) { throw 'Runner target file was not cleaned up.' }
   }

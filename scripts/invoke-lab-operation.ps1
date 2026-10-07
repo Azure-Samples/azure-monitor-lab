@@ -151,6 +151,7 @@ try {
     if ($clusters.Count -ne 1 -or $clusters[0].powerState.code -ne 'Running') { throw 'Exactly one running lab AKS cluster is required.' }
     $apps = @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
     if ($apps.Count -ne 1) { throw 'Exactly one app-prefixed lab web app is required.' }
+    if ($Operation -eq 'ramp' -and [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'The ramp target Web App did not report a default host.' }
     $version = $clusters[0].currentKubernetesVersion
     if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'AKS did not report a supported Kubernetes client version.' }
     $kubectlPath = Join-Path $temporary 'kubectl'
@@ -206,7 +207,7 @@ try {
   $parameters = if ($Operation -eq 'usage') { @{} } else { @{ ResourceGroup = $ResourceGroup } }
   switch ($Operation) {
     'start' { $parameters.Wait = $true; $parameters.TimeoutMinutes = 20 }
-    'ramp' { $parameters.WebAppName = $apps[0].name }
+    'ramp' { $parameters.WebAppName = $apps[0].name; $parameters.WebAppHost = $apps[0].defaultHostName }
     'usage' {
       $parameters.BaseUrl = "https://$($apps[0].defaultHostName)"
       $parameters.Users = $Count
