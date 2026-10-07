@@ -203,7 +203,7 @@ try {
     Write-Output 'Runner prerequisites verified. No lab operation executed.'
     return
   }
-  $parameters = @{ ResourceGroup = $ResourceGroup }
+  $parameters = if ($Operation -eq 'usage') { @{} } else { @{ ResourceGroup = $ResourceGroup } }
   switch ($Operation) {
     'start' { $parameters.Wait = $true; $parameters.TimeoutMinutes = 20 }
     'ramp' { $parameters.WebAppName = $apps[0].name }

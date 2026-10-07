@@ -8,6 +8,7 @@ foreach ($name in @('invoke-lab-operation.ps1', 'start-the-lab.ps1', 'stop-the-l
   Copy-Item -LiteralPath (Join-Path $source $name) -Destination $scriptDirectory
 }
 @'
+[CmdletBinding()]
 param([string] $BaseUrl, [int] $Users, [int] $Concurrency, [int] $RepeatUsers)
 @{ BaseUrl = $BaseUrl; Users = $Users; Concurrency = $Concurrency; RepeatUsers = $RepeatUsers } |
   ConvertTo-Json | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'usage-parameters.json')
