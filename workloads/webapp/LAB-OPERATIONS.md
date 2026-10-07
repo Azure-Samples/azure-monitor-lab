@@ -22,9 +22,9 @@ No arbitrary commands, script paths, deployment, teardown, permission setup, or 
 
 ### Generate Customer Traffic
 
-Select **Generate Customer Traffic**, set the bounded user, browser-concurrency, and repeat-user values, review the exact target and parameters, then approve. The runner requires exactly one app-prefixed Web App in the resource group and a healthy `/customer/` endpoint before it opens Chromium. The generator drives real routes and UI interactions; it does not submit fabricated telemetry directly.
+Select **Generate Customer Traffic**, set the bounded user, browser-concurrency, and repeat-user values, review the exact target and parameters, then approve. The runner requires exactly one app-prefixed Web App in the resource group and a healthy `/customer/` endpoint before it opens Chromium. Transient managed-identity, Azure discovery, and endpoint-readiness failures receive up to three bounded preflight attempts with safe phase diagnostics. The generator drives real routes and UI interactions; it does not submit fabricated telemetry directly.
 
-The default 24 users, 4 concurrent browsers, and 6 repeat users provide completed, abandoned, declined, support-assisted, cohort, variant, and repeat-session paths for [Scenario 70](../../docs/DEMO-SCENARIOS.md#s70). The operation has no automatic retry and only one Lab Operations run can be active. Container Apps Job compute, Application Insights ingestion, and retention charges apply. Usage aggregation can lag behind raw telemetry.
+The default 24 users, 4 concurrent browsers, and 6 repeat users provide completed, abandoned, declined, support-assisted, cohort, variant, and repeat-session paths for [Scenario 70](../../docs/DEMO-SCENARIOS.md#s70). The approved script and browser workload have no automatic retry, and only one Lab Operations run can be active. Container Apps Job compute, Application Insights ingestion, and retention charges apply. Usage aggregation can lag behind raw telemetry.
 
 The runner image now includes Node.js dependencies and Chromium, so an existing environment must rebuild the operations image and republish the Web App. Rerun `deploy.ps1`, or use the normal [console upgrade](../../scripts/deploy-webapp.ps1); updating only the browser bundle is insufficient.
 

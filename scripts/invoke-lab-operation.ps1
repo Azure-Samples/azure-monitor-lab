@@ -48,6 +48,40 @@ $env:KUBECONFIG = Join-Path $temporary 'kubeconfig'
 $env:TEMP = $temporary
 $env:TMP = $temporary
 $commandFailure = @{ Name = $null }
+$runnerPhase = 'initialization'
+
+function Write-RunnerPhase {
+  param(
+    [Parameter(Mandatory)] [string] $Phase,
+    [Parameter(Mandatory)] [ValidateSet('started', 'retrying', 'succeeded', 'failed')] [string] $State,
+    [int] $Attempt = 1
+  )
+  Write-Information ([ordered]@{ event = 'lab-operation-phase'; requestId = $RequestId; phase = $Phase; state = $State; attempt = $Attempt } | ConvertTo-Json -Compress) -InformationAction Continue
+}
+
+function Invoke-ReadOnlyPreflight {
+  param(
+    [Parameter(Mandatory)] [string] $Phase,
+    [Parameter(Mandatory)] [scriptblock] $Action,
+    [ValidateRange(1, 3)] [int] $Attempts = 3
+  )
+  $script:runnerPhase = $Phase
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    Write-RunnerPhase -Phase $Phase -State started -Attempt $attempt
+    try {
+      $result = & $Action
+      Write-RunnerPhase -Phase $Phase -State succeeded -Attempt $attempt
+      return $result
+    } catch {
+      if ($attempt -eq $Attempts) {
+        Write-RunnerPhase -Phase $Phase -State failed -Attempt $attempt
+        throw
+      }
+      Write-RunnerPhase -Phase $Phase -State retrying -Attempt $attempt
+      Start-Sleep -Seconds ([Math]::Pow(2, $attempt))
+    }
+  }
+}
 
 function az {
   $arguments = [Collections.Generic.List[string]]::new()
@@ -65,6 +99,7 @@ function az {
     $arguments.Add('--context'); $arguments.Add($context)
   }
   if (-not $arguments.Contains('--only-show-errors')) { $arguments.Add('--only-show-errors') }
+  $commandFailure.Name = $null
   try {
     $output = & $azureExecutable @arguments 2>&1
     if ($LASTEXITCODE -ne 0) { throw 'Native command failed.' }
@@ -90,18 +125,24 @@ function kubectl {
   } catch { throw 'A Kubernetes operation failed. Diagnostic output is suppressed.' }
 }
 
-$runnerPhase = 'managed identity validation'
 try {
+  $runnerPhase = 'managed identity validation'
+  Write-RunnerPhase -Phase $runnerPhase -State started
   if (-not $env:IDENTITY_ENDPOINT -or -not $env:IDENTITY_HEADER -or -not $env:AZURE_CLIENT_ID) { throw 'The deployed runner managed identity is unavailable.' }
-  $runnerPhase = 'managed identity login'
-  $null = & $azureExecutable login --identity --client-id $env:AZURE_CLIENT_ID --output none --only-show-errors 2>&1
-  if ($LASTEXITCODE -ne 0) { throw 'Managed identity login failed.' }
-  $runnerPhase = 'account verification'
-  az account set --subscription $SubscriptionId | Out-Null
-  $account = az account show --query '{id:id,tenantId:tenantId}' --output json | ConvertFrom-Json
+  Write-RunnerPhase -Phase $runnerPhase -State succeeded
+  $null = Invoke-ReadOnlyPreflight -Phase 'managed identity login' -Action {
+    $null = & $azureExecutable login --identity --client-id $env:AZURE_CLIENT_ID --output none --only-show-errors 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Managed identity login failed.' }
+  }
+  $account = Invoke-ReadOnlyPreflight -Phase 'account verification' -Action {
+    az account set --subscription $SubscriptionId | Out-Null
+    az account show --query '{id:id,tenantId:tenantId}' --output json | ConvertFrom-Json
+  }
   if ($account.id -ne $SubscriptionId.ToString() -or $account.tenantId -ne $TenantId.ToString()) { throw 'Azure account does not match the approved target.' }
-  $runnerPhase = 'resource group verification'
-  if ((az group exists --name $ResourceGroup --output tsv) -ne 'true') { throw 'The approved resource group does not exist.' }
+  $resourceGroupExists = Invoke-ReadOnlyPreflight -Phase 'resource group verification' -Action {
+    az group exists --name $ResourceGroup --output tsv
+  }
+  if ($resourceGroupExists -ne 'true') { throw 'The approved resource group does not exist.' }
   @{ expectedSubscriptionId = $SubscriptionId.ToString(); expectedTenantId = $TenantId.ToString() } | ConvertTo-Json | Set-Content -LiteralPath $targetFile
 
   if ($Operation -in @('break', 'restore', 'ramp')) {
@@ -143,12 +184,16 @@ try {
     }
   }
   if ($Operation -eq 'usage') {
-    $runnerPhase = 'customer traffic preflight'
-    $apps = @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
+    $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer web app discovery' -Action {
+      @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
+    })
     if ($apps.Count -ne 1 -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'Exactly one app-prefixed lab web app with a default host is required.' }
     $customerUrl = "https://$($apps[0].defaultHostName)/customer/"
-    $response = Invoke-WebRequest -Uri $customerUrl -Method Head -MaximumRedirection 0 -SkipHttpErrorCheck -TimeoutSec 20
-    if ([int]$response.StatusCode -ne 200) { throw 'The customer journey endpoint is not ready.' }
+    $null = Invoke-ReadOnlyPreflight -Phase 'customer endpoint readiness' -Action {
+      $readiness = Invoke-WebRequest -Uri $customerUrl -Method Get -MaximumRedirection 0 -SkipHttpErrorCheck -TimeoutSec 20
+      if ([int]$readiness.StatusCode -ne 200) { throw 'The customer journey endpoint is not ready.' }
+      $readiness
+    }
   }
   if ($CheckAccessOnly) {
     if ($Operation -in @('start', 'stop', 'cpu')) {
@@ -172,10 +217,13 @@ try {
     'annotation' { $parameters.Name = $Name; $parameters.Category = $Category }
   }
   $runnerPhase = 'approved script execution'
+  Write-RunnerPhase -Phase $runnerPhase -State started
   Write-Output "Approved action '$Operation' is starting."
   $null = & (Join-Path $PSScriptRoot $scripts[$Operation]) @parameters *>&1
   Write-Output "Approved action '$Operation' completed. Azure state and telemetry can take time to settle."
+  Write-RunnerPhase -Phase $runnerPhase -State succeeded
 } catch {
+  Write-RunnerPhase -Phase $runnerPhase -State failed
   $commandDetail = if ($commandFailure.Name) { " Azure command '$($commandFailure.Name)' failed." } else { '' }
   throw "The approved operation failed during $runnerPhase.$commandDetail No automatic rollback or retry was performed. Check the affected lab resources before another operation."
 }

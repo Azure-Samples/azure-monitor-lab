@@ -20,6 +20,7 @@ $fixture = @{
   Calls = [Collections.Generic.List[object]]::new(); Http = [Collections.Generic.List[object]]::new(); Credentials = 0; Conversions = 0
   BadTenant = $false; DenyKubernetes = $false; FailVmStart = $false; FailKubernetes = $false; ObservedTarget = $false
   FailLogin = $false; VmssStopped = $false; AllResourcesStopped = $false; FailVmInventory = $false
+  WebAppFailures = 0; CustomerFailures = 0; Sleeps = [Collections.Generic.List[int]]::new()
   CpuMode = $false; CpuMissingWindows = $false; CpuExtraVm = $false; CpuStoppedWindows = $false; CpuAgentUnavailable = $false
   CpuWrongScope = $false; CpuSecondSubmissionFails = $false; CpuCommands = [Collections.Generic.List[object]]::new()
 }
@@ -130,6 +131,7 @@ function Invoke-FakeAzure {
       return
     }
     'webapp list' {
+      if ($fixture.WebAppFailures -gt 0) { $fixture.WebAppFailures--; $global:LASTEXITCODE = 4; return 'private diagnostic output' }
       if (($args -join ' ') -match 'defaultHostName' -and $args -contains 'tsv') { return 'app-test.azurewebsites.net' }
       if (($args -join ' ') -match '\[0\]\.name') { return 'app-test' }
       if ($fixture.AllResourcesStopped) { return '[{"name":"app-test","state":"Stopped"}]' }
@@ -175,8 +177,9 @@ function Invoke-RestMethod {
   return @{}
 }
 function Invoke-WebRequest {
-  param($Method, $Uri, $Headers, $Body)
-  if ($Method -eq 'Head' -and $Uri -eq 'https://app-test.azurewebsites.net/customer/') {
+  param($Method, $Uri, $Headers, $Body, $MaximumRedirection, $TimeoutSec, [switch] $SkipHttpErrorCheck)
+  if ($Method -eq 'Get' -and $Uri -eq 'https://app-test.azurewebsites.net/customer/') {
+    if ($fixture.CustomerFailures -gt 0) { $fixture.CustomerFailures--; return @{ StatusCode = 503 } }
     $fixture.Http.Add(@{ Method = $Method; Uri = $Uri })
     return @{ StatusCode = 200 }
   }
@@ -184,7 +187,10 @@ function Invoke-WebRequest {
   $fixture.Http.Add(@{ Method = $Method; Uri = $Uri; Body = $Body | ConvertFrom-Json })
   return @{ StatusCode = 204 }
 }
-function Start-Sleep { throw 'Offline fixture should complete without polling.' }
+function Start-Sleep {
+  param([int] $Seconds)
+  $fixture.Sleeps.Add($Seconds)
+}
 
 try {
   $fixture.AllResourcesStopped = $true
@@ -242,6 +248,17 @@ try {
   if (@($fixture.CpuCommands | Where-Object { Test-Path -LiteralPath $_.Path }).Count) { throw 'Failed guest submission leaked temporary files.' }
   $fixture.CpuSecondSubmissionFails = $false
   $fixture.CpuMode = $false
+  $fixture.WebAppFailures = 1
+  $fixture.CustomerFailures = 1
+  $retryStart = $fixture.Calls.Count
+  $retryOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation usage -Count 1 -Concurrency 1 -CheckAccessOnly 6>&1 | Out-String
+  if ($retryOutput -notmatch '"phase":"customer web app discovery","state":"retrying"' -or
+      $retryOutput -notmatch '"phase":"customer endpoint readiness","state":"retrying"' -or
+      @($fixture.Calls | Select-Object -Skip $retryStart | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'webapp list' }).Count -ne 2 -or
+      @($fixture.Http | Where-Object { $_.Method -eq 'Get' }).Count -ne 1 -or
+      ($fixture.Sleeps -join ',') -notmatch '2,2') {
+    throw 'Customer preflight did not retry transient read-only failures with safe phase diagnostics.'
+  }
   foreach ($operation in @('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'logs', 'annotation')) {
     $arguments = $parameters.Clone()
     $arguments.Operation = $operation
@@ -289,7 +306,7 @@ try {
       throw "Stop Lab did not issue '$expectedStop'."
     }
   }
-  Write-Output 'PASS: all nine scripts execute only through fake scoped commands; Stop Lab cost controls, bounded customer traffic, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls, browser traffic, or CPU load executed.'
+  Write-Output 'PASS: all nine scripts execute only through fake scoped commands; Stop Lab cost controls, bounded customer traffic, read-only preflight retries, safe phase diagnostics, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls, browser traffic, or CPU load executed.'
 } finally {
   foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name]) }
   if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force }
