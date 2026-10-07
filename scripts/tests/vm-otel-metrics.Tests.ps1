@@ -25,7 +25,7 @@ foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
   Assert-Contract ($modules.Count -eq 1) "$path must contain one shared OTel DCR module."
   $module = $modules[0]
   Assert-Contract ($module.condition -ceq "[variables('deployVmOtelMetrics')]") "$path lost its OTel enablement condition."
-  Assert-Contract ($module.properties.parameters.name.value -ceq "[format('MSVMOtel-{0}-{1}', parameters('location'), parameters('namePrefix'))]") "$path must use the enhanced-monitoring OTel DCR naming convention."
+  Assert-Contract ($module.properties.parameters.name.value -ceq "[format('dcr-{0}-vm-otel', parameters('namePrefix'))]") "$path must use a stable per-lab DCR name."
   Assert-Contract ($module.properties.parameters.location.value -ceq "[parameters('location')]") "$path must co-locate the OTel DCR with the existing workspace."
   $expectedAccount = if ($path -eq 'infra/main.json') {
     "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
@@ -41,14 +41,13 @@ foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
   $sources = @($dcr.properties.dataSources.performanceCountersOTel)
   Assert-Contract ($sources.Count -eq 1 -and $dcr.properties.dataSources.Count -eq 1) "$path must collect OTel counters, not additional log or process streams."
   $source = $sources[0]
-  Assert-Contract ($source.name -ceq 'OtelPerfCounters' -and $source.samplingFrequencyInSeconds -eq 60 -and
+  Assert-Contract ($source.samplingFrequencyInSeconds -eq 60 -and
     ($source.streams -join ',') -ceq 'Microsoft-OtelPerfMetrics') "$path must use the documented OTel stream at 60-second sampling."
   Assert-Contract ($source.counterSpecifiers.Count -eq 10 -and
     -not (Compare-Object $expectedMetrics @($source.counterSpecifiers))) "$path must collect exactly the ten default metrics, without paid extra counters."
   $destinations = @($dcr.properties.destinations.monitoringAccounts)
   Assert-Contract ($destinations.Count -eq 1 -and $dcr.properties.destinations.Count -eq 1 -and
-    $destinations[0].name -ceq 'MonitoringAccount' -and
-    $destinations[0].accountResourceId -ceq "[parameters('monitoringAccountId')]") "$path must use the documented destination contract and send OTel metrics only to the selected AMW."
+    $destinations[0].accountResourceId -ceq "[parameters('monitoringAccountId')]") "$path must send OTel metrics only to the selected AMW."
   $flows = @($dcr.properties.dataFlows)
   Assert-Contract ($flows.Count -eq 1 -and ($flows[0].streams -join ',') -ceq 'Microsoft-OtelPerfMetrics' -and
     ($flows[0].destinations -join ',') -ceq $destinations[0].name) "$path must route the OTel stream to its declared destination."

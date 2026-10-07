@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "18156577338093676491"
+      "templateHash": "11625226393453023466"
     }
   },
   "parameters": {
@@ -137,7 +137,7 @@
         "mode": "Incremental",
         "parameters": {
           "name": {
-            "value": "[format('MSVMOtel-{0}-{1}', parameters('location'), parameters('namePrefix'))]"
+            "value": "[format('dcr-{0}-vm-otel', parameters('namePrefix'))]"
           },
           "location": {
             "value": "[parameters('location')]"
@@ -156,7 +156,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "14148072662878558968"
+              "templateHash": "9334971952597745250"
             }
           },
           "parameters": {
@@ -198,7 +198,7 @@
                 "dataSources": {
                   "performanceCountersOTel": [
                     {
-                      "name": "OtelPerfCounters",
+                      "name": "vmOtelSystemMetrics",
                       "streams": [
                         "Microsoft-OtelPerfMetrics"
                       ],
@@ -221,7 +221,7 @@
                 "destinations": {
                   "monitoringAccounts": [
                     {
-                      "name": "MonitoringAccount",
+                      "name": "vmMetricsWorkspace",
                       "accountResourceId": "[parameters('monitoringAccountId')]"
                     }
                   ]
@@ -232,7 +232,7 @@
                       "Microsoft-OtelPerfMetrics"
                     ],
                     "destinations": [
-                      "MonitoringAccount"
+                      "vmMetricsWorkspace"
                     ]
                   }
                 ]

@@ -115,7 +115,7 @@ resource eventHubAuthRule 'Microsoft.EventHub/namespaces/authorizationRules@2022
 module vmOtelMetrics '../modules/vm-otel-metrics.bicep' = if (deployVmOtelMetrics) {
   name: 'vm-otel-metrics'
   params: {
-    name: 'MSVMOtel-${location}-${namePrefix}'
+    name: 'dcr-${namePrefix}-vm-otel'
     location: location
     monitoringAccountId: amw.id
     tags: commonTags
