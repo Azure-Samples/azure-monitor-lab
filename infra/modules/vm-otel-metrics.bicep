@@ -20,7 +20,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
     dataSources: {
       performanceCountersOTel: [
         {
-          name: 'vmOtelSystemMetrics'
+          name: 'OtelPerfCounters'
           streams: [ 'Microsoft-OtelPerfMetrics' ]
           samplingFrequencyInSeconds: 60
           counterSpecifiers: [
@@ -41,7 +41,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
     destinations: {
       monitoringAccounts: [
         {
-          name: 'vmMetricsWorkspace'
+          name: 'MonitoringAccount'
           accountResourceId: monitoringAccountId
         }
       ]
@@ -49,7 +49,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
     dataFlows: [
       {
         streams: [ 'Microsoft-OtelPerfMetrics' ]
-        destinations: [ 'vmMetricsWorkspace' ]
+        destinations: [ 'MonitoringAccount' ]
       }
     ]
   }
