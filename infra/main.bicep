@@ -81,6 +81,9 @@ param enableAi bool = false
 @description('Deploy Azure SRE Agent in Sweden Central with Azure Monitor, Application Insights, and Log Analytics connectors. Off by default (billable usage).')
 param enableSreAgent bool = false
 
+@description('Enable the broken App Service deployment-slot recovery scenario. Upgrades the App Service plan from B1 to S1 and adds a preloaded broken slot. Off by default.')
+param enableSlotFailureScenario bool = false
+
 @description('Deploy Azure Copilot Observability Agent with autonomous alert correlation. Off by default (preview and billable agent operations).')
 param enableObservabilityAgent bool = false
 
@@ -240,6 +243,8 @@ module sreAgent 'modules/sre-agent.bicep' = if (enableSreAgent) {
     appInsightsConnectionString: appInsights.outputs.connectionString
     logAnalyticsId: lawCentral.outputs.id
     managedResourceGroupId: resourceGroup().id
+    webAppId: appService.outputs.webAppId
+    enableSlotFailureScenario: enableSlotFailureScenario
     tags: commonTags
   }
 }
@@ -503,6 +508,7 @@ module appService 'modules/appservice.bicep' = {
     diagStorageAccountId: appDiagStorage.outputs.id
     diagEventHubAuthRuleId: eventHub.outputs.sendRuleId
     diagEventHubName: eventHub.outputs.hubName
+    enableSlotFailureScenario: enableSlotFailureScenario
     tags: commonTags
   }
 }
@@ -515,6 +521,7 @@ module consolePlatform 'modules/lab-console-platform.bicep' = {
     location: appServiceLocation
     tags: commonTags
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []
+    enableSlotFailureScenario: enableSlotFailureScenario
   }
 }
 

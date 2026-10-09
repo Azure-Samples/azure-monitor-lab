@@ -337,6 +337,21 @@
             "toolTip": "Deploys the preview Azure SRE Agent and connectors in swedencentral. Active usage is billable and always-on billing can begin after an eligible trial. Requires subscription-level role-assignment permission."
           },
           {
+            "name": "enableSlotFailureScenario",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable broken deployment-slot recovery scenario",
+            "defaultValue": false,
+            "toolTip": "Upgrades the App Service plan from Basic B1 to Standard S1, provisions a preloaded broken slot, and allows an approved Control Center action to swap it into production."
+          },
+          {
+            "name": "slotFailureScenarioInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
+            "options": {
+              "text": "This option increases App Service cost by using Standard S1. Triggering the scenario intentionally makes the customer app and Control Center return HTTP 503. Recovery must be performed externally with Azure SRE Agent in Review mode or the documented GitHub Copilot CLI workflow."
+            }
+          },
+          {
             "name": "sreAgentInfo",
             "type": "Microsoft.Common.TextBlock",
             "visible": "[equals(steps('advanced').enableSreAgent, true)]",
@@ -416,6 +431,7 @@
       "siemWebhookUrl": "[steps('advanced').siemWebhookUrl]",
       "enableAi": "[steps('advanced').enableAi]",
       "enableSreAgent": "[steps('advanced').enableSreAgent]",
+      "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",
       "enableObservabilityAgent": "[steps('advanced').enableObservabilityAgent]",
       "observabilityAgentLocation": "[steps('advanced').observabilityAgentLocation]",
       "enableObservabilityAgentAutomaticInvestigation": "[steps('advanced').enableObservabilityAgentAutomaticInvestigation]"

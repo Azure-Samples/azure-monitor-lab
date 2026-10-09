@@ -30,7 +30,12 @@ foreach ($templatePath in @('infra/main.json', 'infra/stages/10-workloads.json')
     throw "$templatePath must preserve the existing settings snapshot and overlay only the intended telemetry settings."
   }
   $intendedSettings = $settingsModule[0].properties.parameters.appSettings.value
-  if ($intendedSettings.PSObject.Properties.Name -match '^LabConsole__|^MICROSOFT_PROVIDER_AUTHENTICATION_SECRET$') { throw 'Infrastructure must not replace runtime-owned console or sign-in values.' }
+  $infrastructureOwnedConsoleSettings = @('LabConsole__SlotScenarioEnabled', 'LabConsole__ForceOutage')
+  $runtimeOwnedSettings = @($intendedSettings.PSObject.Properties.Name | Where-Object {
+      ($_ -like 'LabConsole__*' -and $_ -notin $infrastructureOwnedConsoleSettings) -or
+      $_ -eq 'MICROSOFT_PROVIDER_AUTHENTICATION_SECRET'
+    })
+  if ($runtimeOwnedSettings.Count) { throw 'Infrastructure must not replace runtime-owned console or sign-in values.' }
   Write-Output "PASS: $templatePath securely merges app settings without a resource self-reference."
   $platformModule = @($template.resources | Where-Object { $_.type -eq 'Microsoft.Resources/deployments' -and $_.name -eq 'lab-console-platform' })
   $cpuParameter = $platformModule[0].properties.parameters.cpuVmNames
@@ -40,7 +45,7 @@ foreach ($templatePath in @('infra/main.json', 'infra/stages/10-workloads.json')
 $platformTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/modules/lab-console-platform.json') -Raw | ConvertFrom-Json
 $runnerRole = @($platformTemplate.resources | Where-Object {
     $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and
-    $_.properties.permissions.actions -contains 'Microsoft.Compute/virtualMachines/deallocate/action'
+    ($_.properties.permissions.actions | ConvertTo-Json -Compress) -match [regex]::Escape('Microsoft.Compute/virtualMachines/deallocate/action')
   })
 $requiredStopActions = @(
   'Microsoft.Compute/virtualMachines/deallocate/action',
@@ -48,10 +53,14 @@ $requiredStopActions = @(
   'Microsoft.ContainerService/managedClusters/stop/action',
   'Microsoft.Web/sites/stop/action'
 )
-if ($runnerRole.Count -ne 1 -or @($requiredStopActions | Where-Object { $_ -notin $runnerRole[0].properties.permissions.actions }).Count) {
+$runnerActions = $runnerRole[0].properties.permissions.actions | ConvertTo-Json -Compress
+if ($runnerRole.Count -ne 1 -or @($requiredStopActions | Where-Object { $runnerActions -notmatch [regex]::Escape($_) }).Count) {
   throw 'The Lab Operations runner role must include every Stop Lab action.'
 }
-$cpuRole = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and $_.properties.permissions.actions -contains 'Microsoft.Compute/virtualMachines/runCommand/action' })
+$cpuRole = @($platformTemplate.resources | Where-Object {
+    $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and
+    ($_.properties.permissions.actions | ConvertTo-Json -Compress) -match [regex]::Escape('Microsoft.Compute/virtualMachines/runCommand/action')
+  })
 if ($cpuRole.Count -ne 1 -or @($cpuRole[0].properties.permissions.actions).Count -ne 1) { throw 'CPU guest execution requires a separate, narrowly scoped role.' }
 $cpuAssignments = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -like '*lab-console-cpu-run-command-role*' })
 if ($cpuAssignments.Count -ne 1 -or $cpuAssignments[0].scope -notmatch 'Microsoft.Compute/virtualMachines/' -or $cpuAssignments[0].copy.count -cne "[length(parameters('cpuVmNames'))]" -or $cpuAssignments[0].properties.principalType -ne 'ServicePrincipal') { throw 'CPU role assignments must target only the selected individual VMs.' }
@@ -80,7 +89,7 @@ $scriptDirectory = Join-Path $root 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 Copy-Item -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Destination $scriptDirectory
 foreach ($directory in @('workloads/k8s', 'workloads/operations', 'workloads/webapp/scripts', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
-foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
+foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
 }
 $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Raw
@@ -108,7 +117,7 @@ if ($fixture.FailAi) { throw 'Agent creation failed.' }
 $fixture = @{
   Subscription = [guid]::NewGuid().ToString(); Tenant = [guid]::NewGuid().ToString(); Operator = [guid]::NewGuid().ToString()
   AppIdentity = [guid]::NewGuid().ToString(); RunnerIdentity = [guid]::NewGuid().ToString(); Client = [guid]::NewGuid().ToString()
-  Settings = @{ Existing = 'preserve-me' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailGraphAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
+  Settings = @{ Existing = 'preserve-me'; LabConsole__SlotScenarioEnabled = 'true' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailGraphAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
   WithAi = $false; FailAi = $false; AiCalls = 0
   DeletePreview = $false; LastPreview = ''; Deployments = 0
   ExistingTags = $true; FailTagRead = $false
@@ -144,6 +153,7 @@ function az {
         if ($deploymentName -eq 'lab-console-platform') {
           $expectedCpuNames = if ($fixture.NoCpuPair) { @() } else { @('vm-test-lin', 'vmwintest') }
           if (@($tagParameters.cpuVmNames.value).Count -ne $expectedCpuNames.Count -or @($tagParameters.cpuVmNames.value | Where-Object { $_ -notin $expectedCpuNames }).Count) { throw 'CPU role target selection is incorrect.' }
+          if ($tagParameters.enableSlotFailureScenario.value -ne $true) { throw 'The enabled slot scenario was not propagated to the runner role.' }
         } elseif ($tagParameters.ContainsKey('cpuVmNames')) { throw 'VM role parameters must not leak into the job deployment schema.' }
       }
       if ($args[2] -eq 'what-if') {
@@ -190,9 +200,10 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 16 -or
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 17 -or
           -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/trigger-broken-slot.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/generate-usage-traffic.ps1')) -or
           -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/generate-usage-traffic.mjs'))) {
         throw 'Unexpected runner build context or missing operation script.'

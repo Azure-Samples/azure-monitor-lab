@@ -32,7 +32,7 @@ The table reflects the current Bicep defaults. Optional stages are excluded unle
 | AKS | Free-tier control plane; **1 x Standard_B2s** node | Node VM, OS disk, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | `az aks stop` stops node compute, but retained disks, IPs, and telemetry can still bill |
 | Demo VMs | **1 Linux B2s + 1 Windows B2s** | VM hours, managed OS/data disks, public IPs, bandwidth, monitoring | Deallocation stops VM compute; disks, IPs, and monitoring remain |
 | VM scale set | **1 Linux Standard_B1s** instance | VM hours, disk, public IP/load-balancing as applicable, monitoring | Scaling to zero stops instance compute, not retained resources |
-| App Service | Linux Basic B1 plan and web app | App Service plan instance-hours, even when the web app is stopped | Delete the plan to stop plan billing |
+| App Service | Linux Basic B1 plan and web app by default; optional broken-slot scenario uses Standard S1 plus one deployment slot | App Service plan instance-hours, even when the web app is stopped. Enabling `enableSlotFailureScenario` raises the plan tier and cost | Delete the plan to stop plan billing; disabling the toggle does not guarantee an automatic downgrade or slot deletion in incremental deployments |
 | Managed Grafana | **Standard**, not Essential | Standard instance/node-hours plus active users | Continues billing while provisioned |
 | Event Hubs | **Basic**, 1 throughput unit | TU-hours, ingress events, retention/operations where applicable | Continues billing while provisioned |
 | Container Registry | Basic | Registry-days, storage, data transfer, and ACR Tasks build vCPU-seconds | Continues billing while provisioned |

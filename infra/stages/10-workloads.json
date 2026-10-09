@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11625226393453023466"
+      "templateHash": "12547320485187704465"
     }
   },
   "parameters": {
@@ -92,6 +92,13 @@
       "defaultValue": "demo-lab",
       "metadata": {
         "description": "Tag every resource with this owner."
+      }
+    },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable the broken App Service deployment-slot recovery scenario. Upgrades the plan to Standard S1."
       }
     }
   },
@@ -1579,6 +1586,9 @@
           "diagEventHubName": {
             "value": "diagstream"
           },
+          "enableSlotFailureScenario": {
+            "value": "[parameters('enableSlotFailureScenario')]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -1590,7 +1600,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "17927996694735374534"
+              "templateHash": "6415512128418902222"
             }
           },
           "parameters": {
@@ -1657,6 +1667,13 @@
               "metadata": {
                 "description": "Resource tags."
               }
+            },
+            "enableSlotFailureScenario": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1."
+              }
             }
           },
           "resources": [
@@ -1667,8 +1684,8 @@
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "sku": {
-                "name": "B1",
-                "tier": "Basic",
+                "name": "[if(parameters('enableSlotFailureScenario'), 'S1', 'B1')]",
+                "tier": "[if(parameters('enableSlotFailureScenario'), 'Standard', 'Basic')]",
                 "capacity": 1
               },
               "kind": "linux",
@@ -1700,6 +1717,53 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableSlotFailureScenario')]",
+              "type": "Microsoft.Web/sites/slots",
+              "apiVersion": "2023-12-01",
+              "name": "[format('{0}/{1}', parameters('webAppName'), 'broken')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(parameters('tags'), createObject('amlab-scenario', 'broken-slot'))]",
+              "kind": "app,linux",
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "linuxFxVersion": "DOTNETCORE|8.0",
+                  "alwaysOn": true,
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "http20Enabled": true,
+                  "healthCheckPath": "/api/slot-warmup",
+                  "appSettings": [
+                    {
+                      "name": "LabConsole__SlotScenarioEnabled",
+                      "value": "true"
+                    },
+                    {
+                      "name": "LabConsole__ForceOutage",
+                      "value": "true"
+                    },
+                    {
+                      "name": "WEBSITE_SWAP_WARMUP_PING_PATH",
+                      "value": "/api/slot-warmup"
+                    },
+                    {
+                      "name": "WEBSITE_SWAP_WARMUP_PING_STATUSES",
+                      "value": "200"
+                    },
+                    {
+                      "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+                      "value": "false"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
               ]
             },
             {
@@ -1807,7 +1871,11 @@
                       "APPINSIGHTS_SNAPSHOTFEATURE_VERSION": "1.0.0",
                       "SnapshotDebugger_EXTENSION_VERSION": "~1",
                       "SCM_DO_BUILD_DURING_DEPLOYMENT": "true",
-                      "WEBSITE_HTTPLOGGING_RETENTION_DAYS": "3"
+                      "WEBSITE_HTTPLOGGING_RETENTION_DAYS": "3",
+                      "LabConsole__SlotScenarioEnabled": "[string(parameters('enableSlotFailureScenario'))]",
+                      "LabConsole__ForceOutage": "false",
+                      "WEBSITE_SWAP_WARMUP_PING_PATH": "/api/slot-warmup",
+                      "WEBSITE_SWAP_WARMUP_PING_STATUSES": "200"
                     }
                   }
                 },
@@ -1872,6 +1940,10 @@
             "planId": {
               "type": "string",
               "value": "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]"
+            },
+            "brokenSlotId": {
+              "type": "string",
+              "value": "[if(parameters('enableSlotFailureScenario'), resourceId('Microsoft.Web/sites/slots', parameters('webAppName'), 'broken'), '')]"
             }
           }
         }
@@ -1902,7 +1974,10 @@
           "tags": {
             "value": "[variables('commonTags')]"
           },
-          "cpuVmNames": "[if(and(parameters('deployLinuxVm'), parameters('deployWindowsVm')), createObject('value', createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmName.value, reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmName.value)), createObject('value', createArray()))]"
+          "cpuVmNames": "[if(and(parameters('deployLinuxVm'), parameters('deployWindowsVm')), createObject('value', createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmName.value, reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmName.value)), createObject('value', createArray()))]",
+          "enableSlotFailureScenario": {
+            "value": "[parameters('enableSlotFailureScenario')]"
+          }
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -1911,7 +1986,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "11234850322725984323"
+              "templateHash": "14161633711119577354"
             }
           },
           "parameters": {
@@ -1950,6 +2025,13 @@
               "maxLength": 2,
               "metadata": {
                 "description": "Names of the two demo VMs allowed to receive the CPU simulation Run Command. Empty when the pair is not deployed."
+              }
+            },
+            "enableSlotFailureScenario": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Allow the independent runner to trigger the opt-in broken-slot swap."
               }
             }
           },
@@ -1992,31 +2074,7 @@
                 ],
                 "permissions": [
                   {
-                    "actions": [
-                      "Microsoft.Resources/subscriptions/resourceGroups/read",
-                      "Microsoft.Resources/subscriptions/resources/read",
-                      "Microsoft.Compute/virtualMachines/read",
-                      "Microsoft.Compute/virtualMachines/instanceView/read",
-                      "Microsoft.Compute/virtualMachines/start/action",
-                      "Microsoft.Compute/virtualMachines/deallocate/action",
-                      "Microsoft.Compute/virtualMachineScaleSets/read",
-                      "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
-                      "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read",
-                      "Microsoft.Compute/virtualMachineScaleSets/start/action",
-                      "Microsoft.Compute/virtualMachineScaleSets/deallocate/action",
-                      "Microsoft.ContainerService/managedClusters/read",
-                      "Microsoft.ContainerService/managedClusters/start/action",
-                      "Microsoft.ContainerService/managedClusters/stop/action",
-                      "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
-                      "Microsoft.Web/sites/read",
-                      "Microsoft.Web/sites/start/action",
-                      "Microsoft.Web/sites/stop/action",
-                      "Microsoft.Insights/components/read",
-                      "Microsoft.Insights/components/Annotations/read",
-                      "Microsoft.Insights/components/Annotations/write",
-                      "Microsoft.Insights/dataCollectionRules/read",
-                      "Microsoft.Insights/dataCollectionEndpoints/read"
-                    ],
+                    "actions": "[concat(createArray('Microsoft.Resources/subscriptions/resourceGroups/read', 'Microsoft.Resources/subscriptions/resources/read', 'Microsoft.Compute/virtualMachines/read', 'Microsoft.Compute/virtualMachines/instanceView/read', 'Microsoft.Compute/virtualMachines/start/action', 'Microsoft.Compute/virtualMachines/deallocate/action', 'Microsoft.Compute/virtualMachineScaleSets/read', 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read', 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read', 'Microsoft.Compute/virtualMachineScaleSets/start/action', 'Microsoft.Compute/virtualMachineScaleSets/deallocate/action', 'Microsoft.ContainerService/managedClusters/read', 'Microsoft.ContainerService/managedClusters/start/action', 'Microsoft.ContainerService/managedClusters/stop/action', 'Microsoft.ContainerService/managedClusters/listClusterUserCredential/action', 'Microsoft.Web/sites/read', 'Microsoft.Web/sites/start/action', 'Microsoft.Web/sites/stop/action', 'Microsoft.Insights/components/read', 'Microsoft.Insights/components/Annotations/read', 'Microsoft.Insights/components/Annotations/write', 'Microsoft.Insights/dataCollectionRules/read', 'Microsoft.Insights/dataCollectionEndpoints/read'), if(parameters('enableSlotFailureScenario'), createArray('Microsoft.Web/sites/slots/read', 'Microsoft.Web/sites/slots/slotsswap/action'), createArray()))]",
                     "notActions": [],
                     "dataActions": [],
                     "notDataActions": []

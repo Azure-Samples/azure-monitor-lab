@@ -156,6 +156,9 @@ if ($deployExitCode -ne 0 -and -not $publicationVerified) {
 if (-not $publicationVerified) {
   & (Join-Path $PSScriptRoot 'wait-webapp-publication.ps1') -WebAppHost $WebAppHost -DeploymentId $deploymentId
 }
+Write-Step 'Preparing the opt-in broken deployment slot when provisioned'
+& (Join-Path $PSScriptRoot 'prepare-broken-slot.ps1') -SubscriptionId $active.id -ResourceGroup $ResourceGroup `
+  -WebAppName $WebAppName -ArchivePath $zip -DeploymentId $deploymentId
 Write-Step 'Cleaning up local Web App package files'
 Remove-Item -Recurse -Force $pub
 Remove-Item -Force $zip

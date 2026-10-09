@@ -20,6 +20,12 @@ param managedResourceGroupId string
 @description('Resource tags.')
 param tags object = {}
 
+@description('Web App resource ID containing the opt-in broken slot.')
+param webAppId string = ''
+
+@description('Grant the SRE Agent action identity permission to reverse the broken-slot swap.')
+param enableSlotFailureScenario bool = false
+
 var location = 'swedencentral'
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
@@ -56,6 +62,42 @@ resource logAnalyticsReader 'Microsoft.Authorization/roleAssignments@2022-04-01'
   scope: resourceGroup()
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893')
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource webApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+  name: last(split(webAppId, '/'))
+}
+
+resource slotRollbackRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (enableSlotFailureScenario) {
+  name: guid(resourceGroup().id, 'sre-agent-slot-rollback')
+  properties: {
+    roleName: 'Lab SRE Slot Rollback ${take(uniqueString(resourceGroup().id), 8)}'
+    description: 'Read the lab Web App slots and reverse the controlled broken-slot swap.'
+    type: 'CustomRole'
+    assignableScopes: [resourceGroup().id]
+    permissions: [
+      {
+        actions: [
+          'Microsoft.Web/sites/read'
+          'Microsoft.Web/sites/slots/read'
+          'Microsoft.Web/sites/slots/slotsswap/action'
+        ]
+        notActions: []
+        dataActions: []
+        notDataActions: []
+      }
+    ]
+  }
+}
+
+resource slotRollbackAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSlotFailureScenario) {
+  name: guid(webApp!.id, identity.id, slotRollbackRole!.id)
+  scope: webApp!
+  properties: {
+    roleDefinitionId: slotRollbackRole!.id
     principalId: identity.properties.principalId
     principalType: 'ServicePrincipal'
   }
@@ -108,6 +150,7 @@ resource agent 'Microsoft.App/agents@2025-05-01-preview' = {
     reader
     monitoringReader
     logAnalyticsReader
+    slotRollbackAccess
   ]
 }
 

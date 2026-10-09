@@ -48,6 +48,8 @@ try {
     --src-path $archive --type zip --restart true --async false --track-status false --timeout 600000 --output none --only-show-errors
   if ($LASTEXITCODE -ne 0) { throw 'ZIP deployment did not report success. Check deployment status before retrying.' }
   & (Join-Path $PSScriptRoot 'wait-webapp-publication.ps1') -WebAppHost $web.host -DeploymentId $deploymentId
+  & (Join-Path $PSScriptRoot 'prepare-broken-slot.ps1') -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup `
+    -WebAppName $WebAppName -ArchivePath $archive -DeploymentId $deploymentId
   Write-Host "Web App code deployment completed: https://$($web.host)"
   Write-Host 'Web App and its console runner/access configuration are ready. No AKS workloads or lab actions were applied.'
 } finally {

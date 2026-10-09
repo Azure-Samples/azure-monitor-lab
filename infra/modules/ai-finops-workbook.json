@@ -358,7 +358,7 @@
     },
     {
       "type": 1,
-      "content": { "json": "## Illustrative Provisioned Throughput (PTU) comparison\nThis calculation is disabled until you enter current prices for **one comparable model and deployment type**. Do not use a blended rate for Model Router or across this lab's chat and embedding deployments.\n\nEnter PTU count, USD per PTU-hour, and USD per one million input/output tokens below. Zero means unavailable. Rates, PTU minimums, reservations, regions, and customer agreements vary; reconcile the result with Azure pricing and Cost Management. Short sampling windows extrapolate aggressively." },
+      "content": { "json": "## Illustrative Provisioned Throughput (PTU) comparison\nThis calculation starts with **illustrative assumptions**, not current Azure prices: 15 PTU, USD 1.00 per PTU-hour, USD 0.25 per one million input tokens, and USD 2.00 per one million output tokens. Replace all four values with current prices for **one comparable model and deployment type** before making a decision. Do not use a blended rate for Model Router or across this lab's chat and embedding deployments.\n\nRates, PTU minimums, reservations, regions, and customer agreements vary; reconcile the result with Azure pricing and Cost Management. Short sampling windows extrapolate aggressively." },
       "name": "hdr-ptu"
     },
     {
@@ -366,10 +366,10 @@
       "content": {
         "version": "KqlParameterItem/1.0",
         "parameters": [
-          { "id": "p-ptu-count", "version": "KqlParameterItem/1.0", "name": "PTU_Count", "label": "PTU reserved", "type": 1, "isRequired": true, "value": "0" },
-          { "id": "p-ptu-price", "version": "KqlParameterItem/1.0", "name": "PTU_HourlyUSD", "label": "Current USD per PTU-hour", "type": 1, "isRequired": true, "value": "0" },
-          { "id": "p-input-price", "version": "KqlParameterItem/1.0", "name": "InputPerMillionUSD", "label": "Current USD per 1M input tokens", "type": 1, "isRequired": true, "value": "0" },
-          { "id": "p-output-price", "version": "KqlParameterItem/1.0", "name": "OutputPerMillionUSD", "label": "Current USD per 1M output tokens", "type": 1, "isRequired": true, "value": "0" }
+          { "id": "p-ptu-count", "version": "KqlParameterItem/1.0", "name": "PTU_Count", "label": "PTU reserved (illustrative)", "type": 1, "isRequired": true, "value": "15" },
+          { "id": "p-ptu-price", "version": "KqlParameterItem/1.0", "name": "PTU_HourlyUSD", "label": "USD per PTU-hour (illustrative)", "type": 1, "isRequired": true, "value": "1.0" },
+          { "id": "p-input-price", "version": "KqlParameterItem/1.0", "name": "InputPerMillionUSD", "label": "USD per 1M input tokens (illustrative)", "type": 1, "isRequired": true, "value": "0.25" },
+          { "id": "p-output-price", "version": "KqlParameterItem/1.0", "name": "OutputPerMillionUSD", "label": "USD per 1M output tokens (illustrative)", "type": 1, "isRequired": true, "value": "2.00" }
         ],
         "style": "pills",
         "queryType": 0,
@@ -379,14 +379,14 @@
     },
     {
       "type": 1,
-      "content": { "json": "**PTU vs consumption:** available only after all four current, model-specific inputs are set above." },
+      "content": { "json": "**PTU vs consumption:** populated using the illustrative assumptions above. Replace them with current, model-specific values before using the result for planning." },
       "name": "desc-ptu"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize prompt=sum(inTok), completion=sum(outTok), firstT=min(timestamp), lastT=max(timestamp) | extend windowHours=max_of(todouble(datetime_diff('second',lastT,firstT))/3600.0,1.0), total_tokens=prompt+completion, input_rate=toreal({InputPerMillionUSD}), output_rate=toreal({OutputPerMillionUSD}), ptu_count=toreal({PTU_Count}), ptu_rate=toreal({PTU_HourlyUSD}) | extend consumption_usd=prompt/1000000.0*input_rate+completion/1000000.0*output_rate, ptu_usd_day=ptu_count*ptu_rate*24 | extend tokens_per_day=round(total_tokens/windowHours*24,0), consumption_usd_day=round(consumption_usd/windowHours*24,2), configured=input_rate>0 and output_rate>0 and ptu_count>0 and ptu_rate>0 | extend price_per_token=consumption_usd/iff(total_tokens>0,total_tokens,1), breakeven_tokens_day=iff(configured,round(ptu_usd_day/iff(price_per_token>0,price_per_token,1.0),0),real(null)), verdict=iff(not(configured),'Set current model-specific rates before comparing',iff(consumption_usd_day>=ptu_usd_day,'PTU cheaper at current volume','Consumption cheaper at current volume')) | project tokens_per_day, breakeven_tokens_day, consumption_usd_day=iff(configured,consumption_usd_day,real(null)), ptu_usd_day=iff(configured,round(ptu_usd_day,2),real(null)), verdict",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize prompt=sum(inTok), completion=sum(outTok), firstT=min(timestamp), lastT=max(timestamp) | extend windowHours=max_of(todouble(datetime_diff('second',lastT,firstT))/3600.0,1.0), total_tokens=prompt+completion, input_rate=toreal({InputPerMillionUSD}), output_rate=toreal({OutputPerMillionUSD}), ptu_count=toreal({PTU_Count}), ptu_rate=toreal({PTU_HourlyUSD}) | extend consumption_usd=prompt/1000000.0*input_rate+completion/1000000.0*output_rate, ptu_usd_day=ptu_count*ptu_rate*24 | extend tokens_per_day=round(total_tokens/windowHours*24,0), consumption_usd_day=round(consumption_usd/windowHours*24,2), configured=input_rate>0 and output_rate>0 and ptu_count>0 and ptu_rate>0 | extend price_per_token=consumption_usd/iff(total_tokens>0,total_tokens,1) | extend breakeven_tokens_day=iff(configured,round(ptu_usd_day/iff(price_per_token>0,price_per_token,1.0),0),real(null)), verdict=iff(not(configured),'Set current model-specific rates before comparing',iff(consumption_usd_day>=ptu_usd_day,'PTU cheaper at current volume','Consumption cheaper at current volume')) | project tokens_per_day, breakeven_tokens_day, consumption_usd_day=iff(configured,consumption_usd_day,real(null)), ptu_usd_day=iff(configured,round(ptu_usd_day,2),real(null)), verdict",
         "size": 0,
         "title": "PTU vs consumption break-even",
         "timeContext": { "durationMs": 86400000 },

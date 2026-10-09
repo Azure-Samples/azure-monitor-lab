@@ -72,6 +72,7 @@ try {
   $settingsResponse = Invoke-ConsoleApi POST "https://management.azure.com$webId/config/appsettings/list?api-version=2024-11-01"
   $settings = @{}
   foreach ($property in $settingsResponse.properties.PSObject.Properties) { $settings[$property.Name] = $property.Value }
+  $slotScenarioEnabled = $settings['LabConsole__SlotScenarioEnabled'] -ieq 'true'
   $settings['LabConsole__Operations__Enabled'] = 'false'
   $settings['LabConsole__Health__Enabled'] = 'false'
   $null = Invoke-ConsoleApi PUT "https://management.azure.com$webId/config/appsettings?api-version=2024-11-01" @{ properties = $settings }
@@ -123,6 +124,7 @@ try {
   $tagParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $tagParametersPath -Encoding utf8
   $platformParametersPath = Join-Path $temporary 'runner-platform.parameters.json'
   $tagParameters.parameters.cpuVmNames = @{ value = $cpuVmNames }
+  $tagParameters.parameters.enableSlotFailureScenario = @{ value = $slotScenarioEnabled }
   $tagParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $platformParametersPath -Encoding utf8
   $platform = Invoke-ConsoleDeployment 'lab-console-platform' (Join-Path $root 'infra/modules/lab-console-platform.json') @(
     "webAppName=$WebAppName", "centralLawId=$($config.LabConsole.Health.CentralWorkspaceResourceId)", "location=$($web.location)", "@$platformParametersPath"
@@ -143,6 +145,7 @@ try {
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/webapp/scripts') -Force
   $files = @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
     'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1',
+    'scripts/trigger-broken-slot.ps1',
     'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json',
     'workloads/webapp/scripts/generate-usage-traffic.mjs')
   foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $build $file) }

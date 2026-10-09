@@ -1,7 +1,7 @@
 // =====================================================================================
 // Stage SRE Agent (optional) - Azure SRE Agent and Azure Monitor connectors.
 //
-// Depends on Stage A for Application Insights and the central Log Analytics workspace.
+// Depends on Stage A for monitoring resources and Stage B when slot recovery is enabled.
 // The agent and its managed identity are hard pinned to swedencentral by the shared module.
 // =====================================================================================
 targetScope = 'resourceGroup'
@@ -14,10 +14,14 @@ param namePrefix string = 'amlab'
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
+@description('Grant the SRE Agent permission to reverse the opt-in broken-slot scenario.')
+param enableSlotFailureScenario bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var centralLawName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var sreAgentName = 'sre-${namePrefix}-${take(suffix, 5)}'
+var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
 
 var commonTags = {
   owner: ownerTag
@@ -35,6 +39,10 @@ resource centralLaw 'Microsoft.OperationalInsights/workspaces@2023-09-01' existi
   name: centralLawName
 }
 
+resource webApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+  name: webAppName
+}
+
 module sreAgent '../modules/sre-agent.bicep' = {
   name: 'sre-agent'
   params: {
@@ -44,6 +52,8 @@ module sreAgent '../modules/sre-agent.bicep' = {
     appInsightsConnectionString: appInsights.properties.ConnectionString
     logAnalyticsId: centralLaw.id
     managedResourceGroupId: resourceGroup().id
+    webAppId: enableSlotFailureScenario ? webApp!.id : ''
+    enableSlotFailureScenario: enableSlotFailureScenario
     tags: commonTags
   }
 }

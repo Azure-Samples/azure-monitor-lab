@@ -97,6 +97,7 @@ This repo ships a working staged Terraform scaffold at `terraform/` and pre-comp
 | `enable_stage_e` | `infra/stages/40-optional-advanced.json` and, when Sentinel is enabled, `infra/stages/41-sentinel-content.json` |
 | `enable_stage_ai` | `infra/stages/50-ai.json` |
 | `enable_stage_sre_agent` | `infra/stages/60-sre-agent.json` |
+| `enable_slot_failure_scenario` | Upgrades Stage B App Service to S1, provisions the `broken` slot, and grants Stage SRE Agent bounded rollback access |
 
 Each toggle gates its own `azapi_resource "Microsoft.Resources/deployments@2022-09-01"` block. Disabling a flag removes its deployment record, not the nested Azure resources. Console and SRE completion also follow explicit Terraform selections; they do not require matching flags in a local central config.
 

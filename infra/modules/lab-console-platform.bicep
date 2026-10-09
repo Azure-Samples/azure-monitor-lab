@@ -16,6 +16,9 @@ param existingResourceTags object = {}
 @maxLength(2)
 param cpuVmNames array = []
 
+@description('Allow the independent runner to trigger the opt-in broken-slot swap.')
+param enableSlotFailureScenario bool = false
+
 var suffix = uniqueString(resourceGroup().id, webAppName)
 var registryName = 'acrlabops${take(suffix, 12)}'
 var environmentName = 'cae-labops-${take(suffix, 8)}'
@@ -99,7 +102,7 @@ resource runnerRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
     assignableScopes: [resourceGroup().id]
     permissions: [
       {
-        actions: [
+        actions: concat([
           'Microsoft.Resources/subscriptions/resourceGroups/read'
           'Microsoft.Resources/subscriptions/resources/read'
           'Microsoft.Compute/virtualMachines/read'
@@ -123,7 +126,10 @@ resource runnerRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
           'Microsoft.Insights/components/Annotations/write'
           'Microsoft.Insights/dataCollectionRules/read'
           'Microsoft.Insights/dataCollectionEndpoints/read'
-        ]
+        ], enableSlotFailureScenario ? [
+          'Microsoft.Web/sites/slots/read'
+          'Microsoft.Web/sites/slots/slotsswap/action'
+        ] : [])
         notActions: []
         dataActions: []
         notDataActions: []

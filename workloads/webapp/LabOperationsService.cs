@@ -1,7 +1,8 @@
 public sealed record LabOperationProposal(string Id, LabOperationDefinition Action, LabOperationParameters Parameters,
     ContainerJobTarget Target, DateTimeOffset ExpiresAt);
 
-public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperationsJournal journal, TimeProvider clock, ILogger<LabOperationsService> logger)
+public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperationsJournal journal, TimeProvider clock, ILogger<LabOperationsService> logger,
+    IConfiguration? configuration = null)
 {
     private readonly Dictionary<string, (string Owner, LabOperationProposal Proposal)> proposals = new();
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -9,11 +10,14 @@ public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperati
     private static bool Terminal(LabOperationRun run) => run.State is "succeeded" or "failed" or "cancelled";
     private static IResult Busy() => Results.Json(new { error = "An operation is active or its outcome is unknown. Refresh its status before submitting another." }, statusCode: 409);
     private static IResult Disabled() => Results.Json(new { error = "Lab Operations is not enabled or the independent runner is not configured." }, statusCode: 503);
+    private bool SlotScenarioEnabled => configuration?.GetValue<bool>("LabConsole:SlotScenarioEnabled") == true;
+    private IReadOnlyList<LabOperationDefinition> AvailableActions =>
+        LabOperationCatalog.Actions.Where(action => !action.RequiresSlotScenario || SlotScenarioEnabled).ToArray();
 
     public async Task<IResult> CatalogAsync(string owner, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(owner)) return Results.Unauthorized();
-        if (!runner.Configured) return Results.Json(new { available = false, message = "The Azure runner has not finished deployment configuration.", actions = LabOperationCatalog.Actions, target = runner.Target, runs = Array.Empty<LabOperationRun>() });
+        if (!runner.Configured) return Results.Json(new { available = false, message = "The Azure runner has not finished deployment configuration.", actions = AvailableActions, target = runner.Target, runs = Array.Empty<LabOperationRun>() });
         if (!await gate.WaitAsync(0, cancellationToken)) return Busy();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(25));
@@ -31,12 +35,12 @@ public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperati
             }
             if (changed) state.Save();
             var runs = state.Runs.Where(item => item.Owner == owner).Select(item => item.Run).OrderByDescending(run => run.SubmittedAt).Take(20).ToArray();
-            return Results.Json(new { available = true, message = "Azure runner and pinned image verified. Operations require approval.", actions = LabOperationCatalog.Actions, target = runner.Target, runs });
+            return Results.Json(new { available = true, message = "Azure runner and pinned image verified. Operations require approval.", actions = AvailableActions, target = runner.Target, runs });
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             Log(exception);
-            return Results.Json(new { available = false, message = "Azure runner unavailable. Check deployment status and resource access.", actions = LabOperationCatalog.Actions, target = runner.Target, runs = Array.Empty<LabOperationRun>() });
+            return Results.Json(new { available = false, message = "Azure runner unavailable. Check deployment status and resource access.", actions = AvailableActions, target = runner.Target, runs = Array.Empty<LabOperationRun>() });
         }
         finally { gate.Release(); }
     }
@@ -47,6 +51,9 @@ public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperati
         LabOperationParameters parameters;
         try { parameters = LabOperationCatalog.Validate(request); }
         catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+        var action = LabOperationCatalog.Actions.Single(item => item.Id == parameters.Operation);
+        if (action.RequiresSlotScenario && !SlotScenarioEnabled)
+            return Results.Json(new { error = "The deployment-slot failure scenario is not enabled for this lab." }, statusCode: 409);
         if (!runner.Configured || runner.Target is null) return Disabled();
         if (!await gate.WaitAsync(0, cancellationToken)) return Busy();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -58,7 +65,7 @@ public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperati
             foreach (var key in proposals.Where(item => item.Value.Proposal.ExpiresAt <= clock.GetUtcNow() || item.Value.Owner == owner).Select(item => item.Key).ToArray()) proposals.Remove(key);
             if (proposals.Count >= 100) return Results.Json(new { error = "Approval capacity reached. Retry later." }, statusCode: 429);
             await runner.VerifyAsync(timeout.Token);
-            var proposal = new LabOperationProposal(Guid.NewGuid().ToString("N"), LabOperationCatalog.Actions.Single(action => action.Id == parameters.Operation), parameters,
+            var proposal = new LabOperationProposal(Guid.NewGuid().ToString("N"), action, parameters,
                 runner.Target, clock.GetUtcNow().AddMinutes(5));
             proposals[proposal.Id] = (owner, proposal);
             return Results.Json(new { state = "approval_required", proposal });

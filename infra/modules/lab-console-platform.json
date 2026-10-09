@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11234850322725984323"
+      "templateHash": "14161633711119577354"
     }
   },
   "parameters": {
@@ -44,6 +44,13 @@
       "maxLength": 2,
       "metadata": {
         "description": "Names of the two demo VMs allowed to receive the CPU simulation Run Command. Empty when the pair is not deployed."
+      }
+    },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Allow the independent runner to trigger the opt-in broken-slot swap."
       }
     }
   },
@@ -86,31 +93,7 @@
         ],
         "permissions": [
           {
-            "actions": [
-              "Microsoft.Resources/subscriptions/resourceGroups/read",
-              "Microsoft.Resources/subscriptions/resources/read",
-              "Microsoft.Compute/virtualMachines/read",
-              "Microsoft.Compute/virtualMachines/instanceView/read",
-              "Microsoft.Compute/virtualMachines/start/action",
-              "Microsoft.Compute/virtualMachines/deallocate/action",
-              "Microsoft.Compute/virtualMachineScaleSets/read",
-              "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
-              "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read",
-              "Microsoft.Compute/virtualMachineScaleSets/start/action",
-              "Microsoft.Compute/virtualMachineScaleSets/deallocate/action",
-              "Microsoft.ContainerService/managedClusters/read",
-              "Microsoft.ContainerService/managedClusters/start/action",
-              "Microsoft.ContainerService/managedClusters/stop/action",
-              "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
-              "Microsoft.Web/sites/read",
-              "Microsoft.Web/sites/start/action",
-              "Microsoft.Web/sites/stop/action",
-              "Microsoft.Insights/components/read",
-              "Microsoft.Insights/components/Annotations/read",
-              "Microsoft.Insights/components/Annotations/write",
-              "Microsoft.Insights/dataCollectionRules/read",
-              "Microsoft.Insights/dataCollectionEndpoints/read"
-            ],
+            "actions": "[concat(createArray('Microsoft.Resources/subscriptions/resourceGroups/read', 'Microsoft.Resources/subscriptions/resources/read', 'Microsoft.Compute/virtualMachines/read', 'Microsoft.Compute/virtualMachines/instanceView/read', 'Microsoft.Compute/virtualMachines/start/action', 'Microsoft.Compute/virtualMachines/deallocate/action', 'Microsoft.Compute/virtualMachineScaleSets/read', 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read', 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read', 'Microsoft.Compute/virtualMachineScaleSets/start/action', 'Microsoft.Compute/virtualMachineScaleSets/deallocate/action', 'Microsoft.ContainerService/managedClusters/read', 'Microsoft.ContainerService/managedClusters/start/action', 'Microsoft.ContainerService/managedClusters/stop/action', 'Microsoft.ContainerService/managedClusters/listClusterUserCredential/action', 'Microsoft.Web/sites/read', 'Microsoft.Web/sites/start/action', 'Microsoft.Web/sites/stop/action', 'Microsoft.Insights/components/read', 'Microsoft.Insights/components/Annotations/read', 'Microsoft.Insights/components/Annotations/write', 'Microsoft.Insights/dataCollectionRules/read', 'Microsoft.Insights/dataCollectionEndpoints/read'), if(parameters('enableSlotFailureScenario'), createArray('Microsoft.Web/sites/slots/read', 'Microsoft.Web/sites/slots/slotsswap/action'), createArray()))]",
             "notActions": [],
             "dataActions": [],
             "notDataActions": []

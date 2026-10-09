@@ -99,7 +99,7 @@ cd azure-monitor-lab
 Copy-Item lab.config.json.example lab.config.json
 notepad lab.config.json
 # Save your changes and close Notepad before continuing.
-# One-shot ignores enableStageA-E; enableStageAI and enableStageSreAgent remain optional.
+# One-shot ignores enableStageA-E; enableStageAI, enableStageSreAgent, and enableSlotFailureScenario remain optional.
 
 # 3. Deploy (deploy.ps1 calls sync-config.ps1 for you)
 ./scripts/deploy.ps1

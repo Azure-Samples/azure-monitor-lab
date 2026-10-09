@@ -13,10 +13,26 @@ public sealed class LabOperationsServiceTests : IDisposable
     private readonly FakeClock clock = new();
     private LabOperationsJournal Journal => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["LabConsole:Operations:JournalPath"] = Path.Combine(directory, "state.json") }).Build());
-    private LabOperationsService Service() => new(runner, Journal, clock, NullLogger<LabOperationsService>.Instance);
+    private LabOperationsService Service(bool slotScenarioEnabled = false) => new(runner, Journal, clock, NullLogger<LabOperationsService>.Instance,
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["LabConsole:SlotScenarioEnabled"] = slotScenarioEnabled.ToString() }).Build());
     private static int Status(IResult result) => (result as IStatusCodeHttpResult)?.StatusCode ?? 200;
     private static JsonElement Body(IResult result) => JsonSerializer.SerializeToElement(((IValueHttpResult)result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
     private async Task<string> Prepare(LabOperationsService service, string owner = "operator") => Body(await service.PrepareAsync(owner, new("logs", Count: 12), default)).GetProperty("proposal").GetProperty("id").GetString()!;
+
+    [Fact]
+    public async Task SlotFailureIsExposedAndPreparedOnlyWhenEnabled()
+    {
+        var disabled = Service();
+        var disabledCatalog = Body(await disabled.CatalogAsync("operator", default));
+        Assert.DoesNotContain(disabledCatalog.GetProperty("actions").EnumerateArray(), item => item.GetProperty("id").GetString() == "slot-failure");
+        Assert.Equal(409, Status(await disabled.PrepareAsync("operator", new("slot-failure"), default)));
+
+        var enabled = Service(true);
+        var enabledCatalog = Body(await enabled.CatalogAsync("operator", default));
+        Assert.Contains(enabledCatalog.GetProperty("actions").EnumerateArray(), item => item.GetProperty("id").GetString() == "slot-failure");
+        Assert.Equal("approval_required", Body(await enabled.PrepareAsync("operator", new("slot-failure"), default)).GetProperty("state").GetString());
+    }
 
     [Fact]
     public async Task PreparationFreezesTheTargetAndDoesNotDispatch()

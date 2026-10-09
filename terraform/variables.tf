@@ -128,6 +128,12 @@ variable "enable_stage_sre_agent" {
   description = "Deploy the optional preview Azure SRE Agent stage. The agent is hard pinned to swedencentral and can incur billable usage."
 }
 
+variable "enable_slot_failure_scenario" {
+  type        = bool
+  default     = false
+  description = "Provision an S1 App Service plan and a preloaded broken slot for the opt-in SRE rollback scenario."
+}
+
 variable "ai_location" {
   type        = string
   default     = "swedencentral"

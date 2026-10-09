@@ -36,6 +36,10 @@ $fixture.Events.Add('initialize')
 if ($fixture.FailSetup) { throw 'Bootstrap failed.' }
 '@ | Set-Content (Join-Path $directory 'initialize-webapp-console.ps1')
 @'
+param($SubscriptionId, $ResourceGroup, $WebAppName, $ArchivePath, $DeploymentId)
+if ($SubscriptionId -ne $fixture.Subscription -or -not (Test-Path -LiteralPath $ArchivePath) -or $DeploymentId -ne $fixture.DeploymentId) { throw 'Wrong broken-slot publication inputs.' }
+'@ | Set-Content (Join-Path $directory 'prepare-broken-slot.ps1')
+@'
 param([guid]$SubscriptionId, [guid]$TenantId, $ResourceGroup, $WebAppName, $AksName, $WebAppHost, $CentralLawName, $ConsoleOperatorObjectIds, $AppInsightsConnectionString)
 if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or $ConsoleOperatorObjectIds[0] -ne $fixture.Operator) { throw 'Deployment wrapper lost the verified target or operator inputs.' }
 $fixture.Events.Add('post-deploy')

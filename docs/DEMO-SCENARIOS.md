@@ -14,7 +14,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 |---|---|
 | **Cross-stack — single pane of glass** | <ul><li>[1](#s1) Traffic-Lights workbook</li><li>[60](#s60) Lab Control Center</li></ul> |
 | **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[46](#s46) SLIs / SLOs</li></ul> |
-| **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li><li>[70](#s70) Customer usage journey</li></ul> |
+| **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li><li>[70](#s70) Customer usage journey</li><li>[71](#s71) Broken-slot SRE rollback</li></ul> |
 | **AKS (`aks-amlab`)** | <ul><li>[4](#s4) Container Insights + Prom + Grafana</li><li>[14](#s14) OTel tracing AKS→App Service</li><li>[30](#s30) Node.js OTel</li><li>[31](#s31) Prom rule group</li><li>[32](#s32) Grafana alert rule</li></ul> |
 | **Azure VMs (Linux + Windows)** | <ul><li>[2](#s2) VM Insights cross-OS</li></ul> |
 | **VMSS (`vmss-amlab`)** | <ul><li>[19](#s19) Predictive autoscale</li></ul> |
@@ -25,9 +25,9 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | **Security** | <ul><li>[27](#s27) Granular RBAC</li><li>[43](#s43) Sentinel</li><li>[44](#s44) Search jobs + Restore</li><li>[47](#s47) Control-plane drift watch</li><li>[48](#s48) Privilege escalation watch</li><li>[49](#s49) Exfil early warning</li></ul> |
 | **AI / ML in Azure Monitor** | <ul><li>[16](#s16) Copilot</li><li>[13](#s13) Smart Detection</li><li>[17](#s17) Dynamic Thresholds</li><li>[18](#s18) Code Optimizations</li><li>[19](#s19) Predictive autoscale</li></ul> |
 | **GenAI observability (optional AI stage)** | <ul><li>[53](#s53) AI FinOps — token / trace / cost</li></ul> |
-| **Azure SRE Agent (optional trial)** | <ul><li>[54](#s54) Trial readiness</li><li>[55](#s55) Alert-driven App Service investigation</li><li>[56](#s56) AKS crash-loop diagnosis</li><li>[57](#s57) Change correlation</li><li>[58](#s58) Alert merging and verified recovery</li><li>[59](#s59) Automatic incident command brief</li></ul> |
+| **Azure SRE Agent (optional trial)** | <ul><li>[54](#s54) Trial readiness</li><li>[55](#s55) Alert-driven App Service investigation</li><li>[56](#s56) AKS crash-loop diagnosis</li><li>[57](#s57) Change correlation</li><li>[58](#s58) Alert merging and verified recovery</li><li>[59](#s59) Automatic incident command brief</li><li>[71](#s71) Broken-slot rollback</li></ul> |
 | **Azure Copilot Observability Agent (optional preview)** | <ul><li>[61](#s61) Slow tool</li><li>[62](#s62) Wrong tool</li><li>[63](#s63) Partial failure</li><li>[64](#s64) Alert storm correlation</li><li>[65](#s65) Token-cost spike</li><li>[66](#s66) Deployment regression</li><li>[67](#s67) Platform versus application failure</li><li>[69](#s69) End-to-end Application Insights incident</li></ul> |
-| **GitHub Copilot CLI + Azure MCP** | <ul><li>[68](#s68) Evidence-first terminal investigation</li></ul> |
+| **GitHub Copilot CLI + Azure MCP** | <ul><li>[68](#s68) Evidence-first terminal investigation</li><li>[71](#s71) Broken-slot rollback</li></ul> |
 | **Platform foundations** | <ul><li>[5](#s5) Policy auto-onboard</li><li>[6](#s6) Cross-workspace KQL</li><li>[24](#s24) Custom Logs Ingestion API</li><li>[26](#s26) KQL Functions</li><li>[51](#s51) Platform logs at scale (DCR)</li></ul> |
 
 > **Suggested 25-min "by-workload" demos:** App Service → 3, 22, 28, 29, 33 · AKS → 4, 14, 30, 31 · Cost → 9, 11, 20, 39, 42 · Security → 27, 47, 48 · Workload health → 1 + 45 + 46.
@@ -2521,7 +2521,7 @@ Every other scenario watches infra/platform telemetry. This one points the **exa
 | Foundry workload | `ai<amlab><suffix>` AI Services account + `amlab-ai-proj` project (swedencentral) |
 | Model deployments | `gpt-5-mini` · `text-embedding-3-small` · `gpt-5.4` · **`model-router`** (all GlobalStandard) |
 | Tracing | Project → `appi-amlab-<suffix>` connection → `gen_ai.*` spans in the App Insights LAW |
-| Query pack | `qp-ai-finops` — 14 GenAI KQL queries (token usage, cached ratio, router mix, efficiency, and an illustrative PTU query with rates disabled until configured) |
+| Query pack | `qp-ai-finops` — 14 GenAI KQL queries (token usage, cached ratio, router mix, efficiency, and an illustrative PTU query with clearly labeled example rates) |
 | Workbook | **"AI FinOps — Foundry Agents"** (Monitor → Workbooks → Shared) |
 | Alerts | `alert-amlab-token-anomaly` (dynamic threshold) + `alert-amlab-token-spike` (static ceiling) on `TotalTokens` |
 | Health tier | An **AI tier** folded into `hm-amlab-workload` — `aiworkload` → Foundry account + 4 agent entities (error-rate + token-volume signals) |
@@ -2532,7 +2532,7 @@ Every other scenario watches infra/platform telemetry. This one points the **exa
 2. **`appi-amlab-<suffix>` → Logs → Queries** — run *Token usage by agent (24h)* and *Model router routed-model distribution* from the `qp-ai-finops` pack.
 3. **model-router is the cost lever** — the router query shows easy prompts routed to a cheap model, hard prompts to a strong one (surfaced as `gen_ai.response.model`). Even a modest routing rate compounds into real savings.
 4. **Prompt caching reduces billable input** — the `Context-Rich Assistant` uses a >1024-token static system prompt, so repeated calls can hit the prompt cache; open *Cached-input token ratio*, then apply the actual model's current cached-input rate.
-5. **Monitor → Workbooks → "AI FinOps — Foundry Agents"** — token/efficiency tiles, token-share pie, and an illustrative PTU comparison that remains unavailable until current model-specific rates are entered.
+5. **Monitor → Workbooks → "AI FinOps — Foundry Agents"** — token/efficiency tiles, token-share pie, and an illustrative PTU comparison populated with example assumptions. Replace all four assumptions with current rates for one comparable model and deployment type before using the result for planning.
 6. **Monitor → Alerts** — `alert-amlab-token-anomaly` + `alert-amlab-token-spike`. Trigger live by running the simulator hot: `python workloads/ai/simulate_traffic.py --conversations 100 --interval 5`.
 7. **Monitor → Health models → `hm-amlab-workload`** *(preview)* — the **AI** tier rolls up next to frontend/compute/platform; excessive hourly token volume can turn an agent Unhealthy.
 
@@ -3291,6 +3291,118 @@ Both paths drive the real customer UI with isolated Chromium contexts. The deter
 
 ---
 
+<a id="s71"></a>
+## 71 · App Service broken-slot deployment — SRE Agent or GitHub Copilot CLI rollback
+
+**Audience:** application teams, SREs, incident commanders, platform engineers.
+**Time:** 10–15 min plus alert and telemetry ingestion time.
+
+### Prerequisites and cost
+
+This destructive demo is opt-in. Set both toggles before deployment:
+
+```json
+{
+  "stageToggles": {
+    "enableStageB": true,
+    "enableStageSreAgent": true,
+    "enableSlotFailureScenario": true
+  }
+}
+```
+
+Run `./scripts/sync-config.ps1` and deploy. The scenario upgrades the App Service plan from Basic B1 to Standard S1 and provisions a `broken` slot, so it increases cost. The normal post-deployment workflow publishes the same immutable application package to production and the slot, then arms only the slot with `LabConsole__ForceOutage=true`. The outage setting is intentionally swappable, not sticky.
+
+### Story
+
+A deployment slot that passed its dedicated warm-up probe is promoted to production, but its customer-facing configuration returns HTTP 503. The customer application and Control Center go down together. Application Insights and availability telemetry show the impact; the Azure Activity Log records the slot swap as the correlated control-plane change. Because the Control Center is unavailable, remediation must come from the external Azure SRE Agent or GitHub Copilot CLI. The smallest safe correction is a reverse swap: the previous healthy production version is still preserved in the `broken` slot.
+
+### Trigger the incident
+
+1. Open **Control Center → Lab Operations**.
+2. Select **Deploy Broken Slot**.
+3. Review the exact target and warning. Confirm the resource group and approve.
+4. The independent Container Apps job verifies that production is healthy, verifies that the `broken` slot is armed, and performs exactly one `broken` → `production` swap.
+5. Expect the Control Center status request to disconnect. This is expected customer impact, not an invitation to submit the action again.
+6. Verify `https://app-amlab-<suffix>.azurewebsites.net/healthz` returns HTTP 503. Do not trigger another swap from a stale browser tab.
+
+The swap keeps `/api/slot-warmup` healthy solely so Azure can complete the controlled deployment operation. It does not hide the customer outage: `/`, `/customer/`, `/healthz`, and normal API routes return 503.
+
+### Option A — recover with Azure SRE Agent
+
+Open the deployed agent at [sre.azure.com](https://sre.azure.com/) and submit:
+
+```text
+Investigate the current outage of app-amlab-<suffix> in resource group <resource-group>.
+Establish customer impact from Application Insights requests, availability results, and
+the production /healthz endpoint. Correlate the outage start with Azure Activity Log
+control-plane changes, paying particular attention to
+Microsoft.Web/sites/slots/slotsswap/action. Inspect production and the slot named
+broken without changing configuration.
+
+If, and only if, the evidence shows that the broken slot was swapped into production
+and the previous healthy production workload is preserved in the broken slot, propose
+the smallest safe remediation: reverse the swap by swapping slot broken to target
+production. Do not edit app settings, deploy code, restart the app, delete a slot, or
+perform a second swap without first proving the current slot state. Operate in Review
+mode, show the exact Azure operation, and wait for my approval.
+
+After approval, verify /healthz returns 200, customer requests recover, availability
+recovers, and the intentional outage marker is back in the broken slot. Report the
+Activity Log timestamps for the incident-causing swap and rollback. Do not claim
+recovery before those measurements pass.
+```
+
+The agent's action identity has a custom role scoped to this Web App. It can read the app and slots and perform the slot-swap action; it cannot edit settings, deploy code, stop the app, or delete resources. Review mode still requires an authorized administrator to approve the proposed operation.
+
+### Option B — investigate and recover with GitHub Copilot CLI
+
+From the repository, start GitHub Copilot CLI in an authenticated shell and submit:
+
+```text
+Investigate the outage of app-amlab-<suffix> in <resource-group>. Use Azure evidence
+before proposing a change: check the production health endpoint, Application Insights
+request failures, and Azure Activity Log events for the Web App. Determine whether the
+failure began immediately after a deployment-slot swap and establish the current
+production/broken slot state. Do not expose app-setting values.
+
+If the evidence proves the controlled broken-slot scenario is active, show me the exact
+rollback command using scripts/rollback-broken-slot.ps1 and wait for confirmation
+before running it. Afterward verify HTTP 200 from /healthz and show the rollback swap
+in Activity Log. Do not deploy, restart, edit settings, or delete resources.
+```
+
+The bounded recovery command Copilot should propose is:
+
+```powershell
+./scripts/rollback-broken-slot.ps1 `
+  -ResourceGroup <resource-group> `
+  -WebAppName app-amlab-<suffix>
+```
+
+The script is idempotent for an already healthy production state. It refuses ambiguous states, refuses to swap when both sides carry the outage marker, performs no automatic retry, and verifies production health after Azure reports the reverse swap complete.
+
+### Evidence and expected outcome
+
+Before remediation, capture:
+
+- Application Insights request/availability failures and their first affected timestamp.
+- The Activity Log `slotsswap/action` event, caller, source slot, target slot, and completion status.
+- Production HTTP 503 and the healthy dedicated slot warm-up endpoint.
+- The current slot state proving the previous production workload remains recoverable.
+
+After the approved reverse swap, prove:
+
+- `/healthz` and `/customer/` return HTTP 200.
+- New Application Insights requests succeed and availability recovers.
+- The rollback `slotsswap/action` completed successfully after the incident-causing swap.
+- Production no longer carries the outage behavior and the `broken` slot is rearmed for a future demo.
+
+### Killer line
+> *"The SRE did not guess or redeploy: it correlated the outage with the exact slot change, reversed only that change under approval, and measured recovery."*
+
+---
+
 ## Updated demo flow (≈50 min)
 
 | Min | Scenario |
@@ -3332,9 +3444,9 @@ Both paths drive the real customer UI with isolated Chromium contexts. The deter
 | **SecOps** | 27 → 47 → 48 → 49 → 44 |
 | **AI/ML curious** | 16 → 13 → 17 → 18 → 19 → 53 |
 | **Workload owners / SRE leads** | 60 → 1 → 45 → 12 → 7 → 8 (Root entity flips Unhealthy) |
-| **SRE Agent evaluation** | 54 → 55 → 56 → 57 → 58 → 59 |
+| **SRE Agent evaluation** | 54 → 55 → 56 → 57 → 58 → 59 → 71 |
 | **Agentic application troubleshooting** | 69 → 61 → 62 → 63 → 64 → 66 → 67 |
-| **Terminal incident investigation** | 61 → 68 → 61 Fixed |
+| **Terminal incident investigation** | 61 → 68 → 61 Fixed → 71 |
 
 ## Reset between demos
 

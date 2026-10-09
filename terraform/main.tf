@@ -11,6 +11,13 @@ data "azurerm_resource_group" "lab" {
   name = var.resource_group_name
 }
 
+check "slot_failure_requires_workloads" {
+  assert {
+    condition     = !var.enable_slot_failure_scenario || var.enable_stage_b
+    error_message = "enable_slot_failure_scenario requires enable_stage_b=true."
+  }
+}
+
 resource "azapi_resource" "stage_a" {
   count     = var.enable_stage_a ? 1 : 0
   type      = "Microsoft.Resources/deployments@2022-09-01"
@@ -47,18 +54,19 @@ resource "azapi_resource" "stage_b" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/10-workloads.json")))
       parameters = {
-        location             = { value = var.location }
-        namePrefix           = { value = var.name_prefix }
-        vmAdminUsername      = { value = var.vm_admin_username }
-        vmAdminPassword      = { value = var.vm_admin_password }
-        deployWindowsVm      = { value = var.deploy_windows_vm }
-        deployLinuxVm        = { value = var.deploy_linux_vm }
-        enableVmOtelMetrics  = { value = var.enable_vm_otel_metrics }
-        vmSize               = { value = var.vm_size }
-        aksNodeVmSize        = { value = var.aks_node_vm_size }
-        aksNodeCount         = { value = var.aks_node_count }
-        grafanaAdminObjectId = { value = var.grafana_admin_object_id }
-        ownerTag             = { value = var.owner_tag }
+        location                  = { value = var.location }
+        namePrefix                = { value = var.name_prefix }
+        vmAdminUsername           = { value = var.vm_admin_username }
+        vmAdminPassword           = { value = var.vm_admin_password }
+        deployWindowsVm           = { value = var.deploy_windows_vm }
+        deployLinuxVm             = { value = var.deploy_linux_vm }
+        enableVmOtelMetrics       = { value = var.enable_vm_otel_metrics }
+        vmSize                    = { value = var.vm_size }
+        aksNodeVmSize             = { value = var.aks_node_vm_size }
+        aksNodeCount              = { value = var.aks_node_count }
+        grafanaAdminObjectId      = { value = var.grafana_admin_object_id }
+        enableSlotFailureScenario = { value = var.enable_slot_failure_scenario }
+        ownerTag                  = { value = var.owner_tag }
       }
     }
   }
@@ -204,15 +212,16 @@ resource "azapi_resource" "stage_sre_agent" {
   name      = "stage-sre-agent"
   parent_id = data.azurerm_resource_group.lab.id
 
-  depends_on = [azapi_resource.stage_a]
+  depends_on = [azapi_resource.stage_a, azapi_resource.stage_b]
 
   body = {
     properties = {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/60-sre-agent.json")))
       parameters = {
-        namePrefix = { value = var.name_prefix }
-        ownerTag   = { value = var.owner_tag }
+        namePrefix                = { value = var.name_prefix }
+        ownerTag                  = { value = var.owner_tag }
+        enableSlotFailureScenario = { value = var.enable_slot_failure_scenario }
       }
     }
   }

@@ -1,7 +1,7 @@
 export function initializeLabOperations({ refreshIcons }) {
   const byId = id => document.getElementById(id);
   const dialog = byId('operation-dialog');
-  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation']);
+  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure']);
   const labels = { queued: 'Queued', waiting: 'Awaiting runner', running: 'Running', succeeded: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled', dispatch_unknown: 'Dispatch outcome unknown', skipped: 'Skipped' };
   const terminal = run => ['succeeded', 'failed', 'cancelled'].includes(run.state);
   let actions = [];
@@ -25,7 +25,11 @@ export function initializeLabOperations({ refreshIcons }) {
   }
   function controls() {
     const blocked = !available || pending || runs.some(run => !terminal(run));
-    document.querySelectorAll('[data-operation]').forEach(button => { button.disabled = blocked || !actions.some(action => action.id === button.dataset.operation); });
+    document.querySelectorAll('[data-operation]').forEach(button => {
+      const configured = actions.some(action => action.id === button.dataset.operation);
+      if (button.dataset.operation === 'slot-failure') button.hidden = !configured;
+      button.disabled = blocked || !configured;
+    });
     byId('operations-connect').disabled = pending || dialog.open;
     byId('operations-refresh').disabled = pending || !available || !runs.some(run => !terminal(run));
     byId('operation-review').disabled = pending;

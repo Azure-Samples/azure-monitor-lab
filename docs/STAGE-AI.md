@@ -12,7 +12,7 @@
 | Model deployments | `gpt-5-mini` (chat), `text-embedding-3-small` (embeddings), `gpt-5.4` (optimization), **`model-router`** — all `GlobalStandard` | The models the agents + traffic simulator exercise. `model-router` picks a cheaper/stronger underlying model per request. |
 | Tracing connection | Project → `appi-amlab-<suffix>` Application Insights connection | Lights up the Foundry portal Observability/Tracing tab and lands `gen_ai.*` spans in the lab App Insights. |
 | Token alerts | `alert-amlab-token-anomaly` (dynamic threshold) + `alert-amlab-token-spike` (static ceiling) on the account's `TotalTokens` metric, split per deployment | Anomaly detection + a hard guardrail for runaway token spend. Optional `ag-amlab-ai` action group when `alertEmail` is set. |
-| AI FinOps observability | `qp-ai-finops` query pack (14 GenAI KQL queries) + a shared **AI FinOps workbook** | Token usage, cached-token ratio, model-router distribution, tokens per successful request, an illustrative rate-configured PTU comparison, and latency/error percentiles. |
+| AI FinOps observability | `qp-ai-finops` query pack (14 GenAI KQL queries) + a shared **AI FinOps workbook** | Token usage, cached-token ratio, model-router distribution, tokens per successful request, an illustrative PTU comparison populated with clearly labeled example assumptions, and latency/error percentiles. |
 | AI health tier | An **"AI" tier folded into the workload health model** (`hm-amlab-workload`): an `aiworkload` node → the Foundry account entity (Latency / TotalErrors / TotalTokens metric signals) + 4 agent entities carrying error-rate + token-volume Log Analytics signals | One health model for the whole estate — the AI workload rolls up next to frontend/compute/platform; high token volume or error rate turns an agent unhealthy. A separate `ai-healthmodel.bicep` exists as an opt-in fallback for standalone A+AI deployments (no Stage E). |
 | Agents + traffic | 4 agents (`Support Triage`, `FinOps Q&A`, `Doc Summarizer`, `Context-Rich Assistant`) + a traffic simulator, provisioned by `scripts/setup-ai.ps1` | Generates the live token/trace/cost telemetry the queries, workbook, health model, and alerts consume. Python packages listed in [`workloads/ai/requirements.txt`](../workloads/ai/requirements.txt) are pip-installed first. |
 
@@ -42,7 +42,7 @@
 
 1. **Foundry portal (`ai.azure.com`) → project `amlab-ai-proj` → Observability / Tracing** — show agent runs, token consumption by model, and traces from the simulated conversations.
 2. **`appi-amlab-<suffix>` → Logs** — run a query from the `qp-ai-finops` pack (Queries hub), e.g. *Token usage by agent (24h)* or *Model router routed-model distribution*.
-3. **Monitor → Workbooks → Shared → "AI FinOps — Foundry Agents"** — time-range picker, token/efficiency tiles, token-share pie, and rate-configured PTU comparison.
+3. **Monitor → Workbooks → Shared → "AI FinOps — Foundry Agents"** — time-range picker, token/efficiency tiles, token-share pie, and a PTU comparison that works with illustrative defaults. Replace those defaults with current rates for one comparable model and deployment type before planning.
 4. **Monitor → Alerts → Alert rules** — `alert-amlab-token-anomaly` + `alert-amlab-token-spike`.
 5. **Monitor → Health models → `hm-amlab-workload`** *(preview)* — open the graph; show the **AI** tier (`aiworkload` → Foundry account + 4 agent entities) rolling up alongside frontend/compute/platform.
 

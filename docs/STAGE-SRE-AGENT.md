@@ -49,6 +49,7 @@ For a one-shot deployment, `deploy.ps1` maps this toggle to the Bicep `enableSre
 - A regional user-assigned managed identity
 - Reader, Monitoring Reader, and Log Analytics Reader access to the lab resource group
 - Monitoring Contributor access for the connector system identity at subscription scope
+- When `enableSlotFailureScenario=true`, a custom role scoped to the lab Web App that permits the action identity to read slots and perform only the slot-swap rollback action
 - SRE Agent Administrator access for the deploying user and agent identity
 - Azure Monitor, Application Insights, and Log Analytics connectors
 
@@ -106,6 +107,7 @@ The documented role set is:
 | Log Analytics Reader | Lab resource group | Query workspace and Application Insights logs |
 | Monitoring Reader | Lab resource group | Read metrics and monitoring data |
 | Monitoring Contributor | Subscription | Acknowledge and close Azure Monitor alerts |
+| Lab SRE Slot Rollback *(only when enabled)* | Lab Web App | Read deployment slots and reverse the controlled `broken`-to-production swap after Review-mode approval |
 
 The Bicep deployment assigns all roles in the table, including subscription-scope Monitoring Contributor. If that assignment was removed or an older deployment is being upgraded, review the scope and grant the missing role explicitly:
 

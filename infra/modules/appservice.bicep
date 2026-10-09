@@ -28,13 +28,16 @@ param diagEventHubName string = ''
 @description('Resource tags.')
 param tags object = {}
 
+@description('Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1.')
+param enableSlotFailureScenario bool = false
+
 resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: planName
   location: location
   tags: tags
   sku: {
-    name: 'B1'
-    tier: 'Basic'
+    name: enableSlotFailureScenario ? 'S1' : 'B1'
+    tier: enableSlotFailureScenario ? 'Standard' : 'Basic'
     capacity: 1
   }
   kind: 'linux'
@@ -82,6 +85,37 @@ module appSettings './appservice-settings.bicep' = {
       SnapshotDebugger_EXTENSION_VERSION: '~1'
       SCM_DO_BUILD_DURING_DEPLOYMENT: 'true'
       WEBSITE_HTTPLOGGING_RETENTION_DAYS: '3'
+      LabConsole__SlotScenarioEnabled: string(enableSlotFailureScenario)
+      LabConsole__ForceOutage: 'false'
+      WEBSITE_SWAP_WARMUP_PING_PATH: '/api/slot-warmup'
+      WEBSITE_SWAP_WARMUP_PING_STATUSES: '200'
+    }
+  }
+}
+
+resource brokenSlot 'Microsoft.Web/sites/slots@2023-12-01' = if (enableSlotFailureScenario) {
+  parent: site
+  name: 'broken'
+  location: location
+  tags: union(tags, { 'amlab-scenario': 'broken-slot' })
+  kind: 'app,linux'
+  properties: {
+    serverFarmId: plan.id
+    httpsOnly: true
+    siteConfig: {
+      linuxFxVersion: 'DOTNETCORE|8.0'
+      alwaysOn: true
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      http20Enabled: true
+      healthCheckPath: '/api/slot-warmup'
+      appSettings: [
+        { name: 'LabConsole__SlotScenarioEnabled', value: 'true' }
+        { name: 'LabConsole__ForceOutage', value: 'true' }
+        { name: 'WEBSITE_SWAP_WARMUP_PING_PATH', value: '/api/slot-warmup' }
+        { name: 'WEBSITE_SWAP_WARMUP_PING_STATUSES', value: '200' }
+        { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
+      ]
     }
   }
 }
@@ -136,3 +170,4 @@ output webAppId string = site.id
 output webAppName string = site.name
 output defaultHost string = site.properties.defaultHostName
 output planId string = plan.id
+output brokenSlotId string = enableSlotFailureScenario ? brokenSlot!.id : ''

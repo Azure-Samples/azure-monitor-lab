@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation')] [string] $Operation = $env:OP_OPERATION,
+  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure')] [string] $Operation = $env:OP_OPERATION,
   [ValidatePattern('^[a-f0-9]{32}$')] [string] $RequestId = $env:OP_REQUEST_ID,
   [guid] $SubscriptionId = $env:LAB_SUBSCRIPTION_ID,
   [guid] $TenantId = $env:LAB_TENANT_ID,
@@ -32,6 +32,7 @@ $scripts = @{
   ramp = 'start-ramp.ps1'; logs = 'send-custom-logs.ps1'; annotation = 'send-release-annotation.ps1'
   usage = 'generate-usage-traffic.ps1'
   cpu = 'simulate-high-cpu.ps1'
+  'slot-failure' = 'trigger-broken-slot.ps1'
 }
 if ($ValidateOnly) { Write-Output 'Approved operation parameters validated. No Azure command executed.'; return }
 
@@ -195,6 +196,14 @@ try {
       if ([int]$readiness.StatusCode -ne 200) { throw 'The customer journey endpoint is not ready.' }
       $readiness
     }
+    if ($Operation -eq 'slot-failure') {
+      $apps = @(Invoke-ReadOnlyPreflight -Phase 'deployment slot discovery' -Action {
+        @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
+      })
+      if ($apps.Count -ne 1) { throw 'Exactly one app-prefixed lab web app is required.' }
+      $slots = @(az webapp deployment slot list --resource-group $ResourceGroup --name $apps[0].name --output json | ConvertFrom-Json)
+      if (@($slots | Where-Object name -eq 'broken').Count -ne 1) { throw "The opt-in 'broken' deployment slot is not provisioned." }
+    }
   }
   if ($CheckAccessOnly) {
     if ($Operation -in @('start', 'stop', 'cpu')) {
@@ -216,6 +225,7 @@ try {
     }
     'logs' { $parameters.Count = $Count }
     'annotation' { $parameters.Name = $Name; $parameters.Category = $Category }
+    'slot-failure' { $parameters.WebAppName = $apps[0].name }
   }
   $runnerPhase = 'approved script execution'
   Write-RunnerPhase -Phase $runnerPhase -State started

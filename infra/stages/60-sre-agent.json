@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11678626239148336536"
+      "templateHash": "15631644600112928910"
     }
   },
   "parameters": {
@@ -24,6 +24,13 @@
       "metadata": {
         "description": "Tag every resource with this owner."
       }
+    },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Grant the SRE Agent permission to reverse the opt-in broken-slot scenario."
+      }
     }
   },
   "variables": {
@@ -31,6 +38,7 @@
     "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "centralLawName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "sreAgentName": "[format('sre-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
+    "webAppName": "[format('app-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "commonTags": {
       "owner": "[parameters('ownerTag')]",
       "purpose": "azure-monitor-lab",
@@ -66,6 +74,10 @@
           "managedResourceGroupId": {
             "value": "[resourceGroup().id]"
           },
+          "webAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', resourceId('Microsoft.Web/sites', variables('webAppName'))), createObject('value', ''))]",
+          "enableSlotFailureScenario": {
+            "value": "[parameters('enableSlotFailureScenario')]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -77,7 +89,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "677787519081786153"
+              "templateHash": "16101143513066606212"
             }
           },
           "parameters": {
@@ -122,6 +134,20 @@
               "defaultValue": {},
               "metadata": {
                 "description": "Resource tags."
+              }
+            },
+            "webAppId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Web App resource ID containing the opt-in broken slot."
+              }
+            },
+            "enableSlotFailureScenario": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Grant the SRE Agent action identity permission to reverse the broken-slot swap."
               }
             }
           },
@@ -179,6 +205,47 @@
               ]
             },
             {
+              "condition": "[parameters('enableSlotFailureScenario')]",
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, 'sre-agent-slot-rollback')]",
+              "properties": {
+                "roleName": "[format('Lab SRE Slot Rollback {0}', take(uniqueString(resourceGroup().id), 8))]",
+                "description": "Read the lab Web App slots and reverse the controlled broken-slot swap.",
+                "type": "CustomRole",
+                "assignableScopes": [
+                  "[resourceGroup().id]"
+                ],
+                "permissions": [
+                  {
+                    "actions": [
+                      "Microsoft.Web/sites/read",
+                      "Microsoft.Web/sites/slots/read",
+                      "Microsoft.Web/sites/slots/slotsswap/action"
+                    ],
+                    "notActions": [],
+                    "dataActions": [],
+                    "notDataActions": []
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('enableSlotFailureScenario')]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('webAppId'), '/'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback')))]",
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), '2024-11-30').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name')))]",
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))]"
+              ]
+            },
+            {
               "type": "Microsoft.App/agents",
               "apiVersion": "2025-05-01-preview",
               "name": "[parameters('name')]",
@@ -226,7 +293,8 @@
                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name')))]",
                 "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('managedResourceGroupId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), '73c42c96-874c-492b-b04d-ab87d138a893'))]",
                 "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('managedResourceGroupId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), '43d0d8ad-25c7-4714-9337-8ba259a9fe05'))]",
-                "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('managedResourceGroupId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), 'acdd72a7-3385-48ef-bd42-f606fba81ae7'))]"
+                "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('managedResourceGroupId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), 'acdd72a7-3385-48ef-bd42-f606fba81ae7'))]",
+                "[resourceId('Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', last(split(parameters('webAppId'), '/'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))))]"
               ]
             },
             {

@@ -6,16 +6,17 @@
 //           of a Provisioned Throughput (PTU) reservation — and reports the
 //           token/day break-even where PTU becomes the cheaper option.
 // Source:   Application Insights `dependencies` (GenAI spans).
-// Tune:     Enter current rates for ONE comparable model/deployment type.
+// Tune:     Illustrative defaults keep this query usable out of the box.
+//           Replace them with current rates for ONE comparable model/deployment type.
 //           Do not use this blended calculation for Model Router or a mix
 //           of chat and embedding models.
 // Caveat:   Zero defaults deliberately report unavailable. PTU minimums,
 //           reservations, regions, agreements, and model rates vary.
 
-let ptuCount      = 0.0; // Set current PTU count
-let ptuHourlyUsd  = 0.0; // Set current USD/PTU-hour
-let inPrice       = 0.0; // Set current USD/1M input tokens
-let outPrice      = 0.0; // Set current USD/1M output tokens
+let ptuCount      = 15.0; // Illustrative PTU count
+let ptuHourlyUsd  = 1.0;  // Illustrative USD/PTU-hour
+let inPrice       = 0.25; // Illustrative USD/1M input tokens
+let outPrice      = 2.0;  // Illustrative USD/1M output tokens
 dependencies
 | where isnotempty(tostring(customDimensions["gen_ai.agent.name"]))
 | extend inTok  = toint(customDimensions["gen_ai.usage.input_tokens"]),

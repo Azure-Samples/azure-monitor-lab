@@ -137,6 +137,22 @@ app.Use(async (context, next) =>
     });
     await next(context);
 });
+app.Use(async (context, next) =>
+{
+    if (app.Configuration.GetValue<bool>("LabConsole:ForceOutage")
+        && context.Request.Path != "/api/slot-warmup")
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.Headers.RetryAfter = "60";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Intentional deployment-slot outage.",
+            recovery = "Swap the broken slot back with production."
+        });
+        return;
+    }
+    await next(context);
+});
 app.UseExceptionHandler(handler => handler.Run(async context =>
 {
     await Results.Problem("The lab request failed. Inspect its trace in Application Insights.",
@@ -213,6 +229,11 @@ app.MapGet("/api/telemetry/config", (IConfiguration configuration) =>
     });
 });
 app.MapGet("/healthz", () => Results.Text("OK"));
+app.MapGet("/api/slot-warmup", () => Results.Json(new
+{
+    ready = true,
+    deploymentId = typeof(AgentAccess).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown"
+}));
 app.MapGet("/api/agent-task-availability", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
     scenarios.RunAvailabilityAsync(cancellationToken))
     .RequireRateLimiting("agent-tasks");

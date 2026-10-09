@@ -100,13 +100,17 @@ if ($enableLawReplication -and [string]::IsNullOrWhiteSpace($lawReplicationLocat
 }
 
 $stages = $cfg.stageToggles
-if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageSreAgent=$false; enableStageObservabilityAgent=$false } }
+if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageSreAgent=$false; enableStageObservabilityAgent=$false; enableSlotFailureScenario=$false } }
 # AI stage is optional and defaults off when absent from the config.
 $enableStageAI = if ($null -eq $stages.enableStageAI) { $false } else { [bool]$stages.enableStageAI }
 # SRE Agent is optional and defaults off when absent from the config.
 $enableStageSreAgent = if ($null -eq $stages.enableStageSreAgent) { $false } else { [bool]$stages.enableStageSreAgent }
 # Azure Copilot Observability Agent is optional and defaults off when absent.
 $enableStageObservabilityAgent = if ($null -eq $stages.enableStageObservabilityAgent) { $false } else { [bool]$stages.enableStageObservabilityAgent }
+$enableSlotFailureScenario = if ($null -eq $stages.enableSlotFailureScenario) { $false } else { [bool]$stages.enableSlotFailureScenario }
+if ($enableSlotFailureScenario -and -not [bool]$stages.enableStageB) {
+  throw 'stageToggles.enableSlotFailureScenario requires stageToggles.enableStageB=true.'
+}
 $observabilityAgentLocation = Coalesce $cfg.observabilityAgentLocation 'westeurope'
 $supportedObservabilityAgentLocations = @('australiaeast','canadacentral','centralus','eastasia','eastus','southcentralus','uksouth','westcentralus','westeurope')
 if ($observabilityAgentLocation -notin $supportedObservabilityAgentLocations) {
@@ -163,6 +167,7 @@ $bicepParams = [ordered]@{
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
     'enableAi'        = @{ value = $enableStageAI }
     'enableSreAgent'  = @{ value = $enableStageSreAgent }
+    'enableSlotFailureScenario' = @{ value = $enableSlotFailureScenario }
     'enableObservabilityAgent' = @{ value = $enableStageObservabilityAgent }
     'observabilityAgentLocation' = @{ value = $observabilityAgentLocation }
     'enableObservabilityAgentAutomaticInvestigation' = @{ value = $enableObservabilityAgentAutomaticInvestigation }
@@ -210,6 +215,7 @@ $tfLines = @(
   "enable_stage_e = $((($stages.enableStageE -as [bool]).ToString()).ToLower())"
   "enable_stage_ai = $($enableStageAI.ToString().ToLower())"
   "enable_stage_sre_agent = $($enableStageSreAgent.ToString().ToLower())"
+  "enable_slot_failure_scenario = $($enableSlotFailureScenario.ToString().ToLower())"
 )
 Set-Content -Path $tfVarsPath -Value ($tfLines -join "`r`n") -Encoding UTF8
 Write-Done "OK"

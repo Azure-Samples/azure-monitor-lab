@@ -1,0 +1,354 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "6415512128418902222"
+    }
+  },
+  "parameters": {
+    "planName": {
+      "type": "string",
+      "metadata": {
+        "description": "App Service Plan name."
+      }
+    },
+    "webAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Web App name (must be globally unique)."
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Region."
+      }
+    },
+    "appInsightsConnectionString": {
+      "type": "string",
+      "metadata": {
+        "description": "App Insights connection string."
+      }
+    },
+    "appInsightsInstrumentationKey": {
+      "type": "string",
+      "metadata": {
+        "description": "App Insights instrumentation key (legacy fallback)."
+      }
+    },
+    "centralLawId": {
+      "type": "string",
+      "metadata": {
+        "description": "Central LAW for diagnostic settings."
+      }
+    },
+    "diagStorageAccountId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional: Storage Account resource ID for the \"archive\" fan-out diag setting. Empty = skip."
+      }
+    },
+    "diagEventHubAuthRuleId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional: Event Hub authorization rule ID + hub name for the SIEM fan-out diag setting. Empty = skip."
+      }
+    },
+    "diagEventHubName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Event hub name (only used if diagEventHubAuthRuleId is supplied)."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Resource tags."
+      }
+    },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2023-12-01",
+      "name": "[parameters('planName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "[if(parameters('enableSlotFailureScenario'), 'S1', 'B1')]",
+        "tier": "[if(parameters('enableSlotFailureScenario'), 'Standard', 'Basic')]",
+        "capacity": 1
+      },
+      "kind": "linux",
+      "properties": {
+        "reserved": true
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-12-01",
+      "name": "[parameters('webAppName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "kind": "app,linux",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "DOTNETCORE|8.0",
+          "alwaysOn": true,
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "http20Enabled": true,
+          "healthCheckPath": "/"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('enableSlotFailureScenario')]",
+      "type": "Microsoft.Web/sites/slots",
+      "apiVersion": "2023-12-01",
+      "name": "[format('{0}/{1}', parameters('webAppName'), 'broken')]",
+      "location": "[parameters('location')]",
+      "tags": "[union(parameters('tags'), createObject('amlab-scenario', 'broken-slot'))]",
+      "kind": "app,linux",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "DOTNETCORE|8.0",
+          "alwaysOn": true,
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "http20Enabled": true,
+          "healthCheckPath": "/api/slot-warmup",
+          "appSettings": [
+            {
+              "name": "LabConsole__SlotScenarioEnabled",
+              "value": "true"
+            },
+            {
+              "name": "LabConsole__ForceOutage",
+              "value": "true"
+            },
+            {
+              "name": "WEBSITE_SWAP_WARMUP_PING_PATH",
+              "value": "/api/slot-warmup"
+            },
+            {
+              "name": "WEBSITE_SWAP_WARMUP_PING_STATUSES",
+              "value": "200"
+            },
+            {
+              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+              "value": "false"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]",
+        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+      "name": "send-to-central-law",
+      "properties": {
+        "workspaceId": "[parameters('centralLawId')]",
+        "logs": [
+          {
+            "categoryGroup": "allLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+      ]
+    },
+    {
+      "condition": "[not(empty(parameters('diagStorageAccountId')))]",
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+      "name": "archive-to-blob",
+      "properties": {
+        "storageAccountId": "[parameters('diagStorageAccountId')]",
+        "logs": [
+          {
+            "categoryGroup": "allLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+      ]
+    },
+    {
+      "condition": "[not(empty(parameters('diagEventHubAuthRuleId')))]",
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+      "name": "stream-to-eventhub",
+      "properties": {
+        "eventHubAuthorizationRuleId": "[parameters('diagEventHubAuthRuleId')]",
+        "eventHubName": "[parameters('diagEventHubName')]",
+        "logs": [
+          {
+            "categoryGroup": "allLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "app-settings",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "webAppName": {
+            "value": "[parameters('webAppName')]"
+          },
+          "existingAppSettings": {
+            "value": "[list(format('{0}/config/appsettings', resourceId('Microsoft.Web/sites', parameters('webAppName'))), '2023-12-01').properties]"
+          },
+          "appSettings": {
+            "value": {
+              "APPLICATIONINSIGHTS_CONNECTION_STRING": "[parameters('appInsightsConnectionString')]",
+              "APPINSIGHTS_INSTRUMENTATIONKEY": "[parameters('appInsightsInstrumentationKey')]",
+              "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
+              "XDT_MicrosoftApplicationInsights_Mode": "recommended",
+              "XDT_MicrosoftApplicationInsights_PreemptSdk": "1",
+              "InstrumentationEngine_EXTENSION_VERSION": "disabled",
+              "XDT_MicrosoftApplicationInsightsJava": "0",
+              "APPINSIGHTS_PROFILERFEATURE_VERSION": "1.0.0",
+              "DiagnosticServices_EXTENSION_VERSION": "~3",
+              "APPINSIGHTS_SNAPSHOTFEATURE_VERSION": "1.0.0",
+              "SnapshotDebugger_EXTENSION_VERSION": "~1",
+              "SCM_DO_BUILD_DURING_DEPLOYMENT": "true",
+              "WEBSITE_HTTPLOGGING_RETENTION_DAYS": "3",
+              "LabConsole__SlotScenarioEnabled": "[string(parameters('enableSlotFailureScenario'))]",
+              "LabConsole__ForceOutage": "false",
+              "WEBSITE_SWAP_WARMUP_PING_PATH": "/api/slot-warmup",
+              "WEBSITE_SWAP_WARMUP_PING_STATUSES": "200"
+            }
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "5145608396194603445"
+            }
+          },
+          "parameters": {
+            "webAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Web App created by the parent deployment."
+              }
+            },
+            "existingAppSettings": {
+              "type": "secureObject",
+              "metadata": {
+                "description": "Existing settings read by the parent after creating the Web App, avoiding a self-reference in the settings resource."
+              }
+            },
+            "appSettings": {
+              "type": "secureObject",
+              "metadata": {
+                "description": "Infrastructure-owned telemetry settings to merge with existing settings."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2023-12-01",
+              "name": "[format('{0}/{1}', parameters('webAppName'), 'appsettings')]",
+              "properties": "[union(parameters('existingAppSettings'), parameters('appSettings'))]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "webAppId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
+    },
+    "webAppName": {
+      "type": "string",
+      "value": "[parameters('webAppName')]"
+    },
+    "defaultHost": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName')), '2023-12-01').defaultHostName]"
+    },
+    "planId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]"
+    },
+    "brokenSlotId": {
+      "type": "string",
+      "value": "[if(parameters('enableSlotFailureScenario'), resourceId('Microsoft.Web/sites/slots', parameters('webAppName'), 'broken'), '')]"
+    }
+  }
+}

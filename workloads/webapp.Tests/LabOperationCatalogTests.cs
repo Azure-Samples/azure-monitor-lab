@@ -7,7 +7,7 @@ public sealed class LabOperationCatalogTests
     [Fact]
     public void OnlyTheApprovedScriptsAreAvailable()
     {
-        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "usage", "cpu", "logs", "annotation" }, LabOperationCatalog.Actions.Select(action => action.Id));
+        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "usage", "cpu", "logs", "annotation", "slot-failure" }, LabOperationCatalog.Actions.Select(action => action.Id));
         Assert.All(LabOperationCatalog.Actions, action => Assert.StartsWith("scripts/", action.Script));
         Assert.All(LabOperationCatalog.Actions, action => Assert.NotEmpty(action.Impact));
         foreach (var operation in new[] { "teardown", "deploy", "setup-rbac-demo", "../script.ps1", "start;whoami" })
@@ -21,11 +21,23 @@ public sealed class LabOperationCatalogTests
     [InlineData("restore")]
     [InlineData("ramp")]
     [InlineData("cpu")]
+    [InlineData("slot-failure")]
     public void LifecycleActionsRejectExtraParameters(string operation)
     {
         Assert.Equal(new(operation, 0, "", ""), LabOperationCatalog.Validate(new(operation)));
         Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new(operation, Count: 1)));
         Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new(operation, Name: "marker")));
+    }
+
+    [Fact]
+    public void SlotFailureIsExternalRecoveryOnly()
+    {
+        var action = Assert.Single(LabOperationCatalog.Actions, action => action.Id == "slot-failure");
+        Assert.True(action.RequiresSlotScenario);
+        Assert.False(action.RequiresAks);
+        Assert.Equal("scripts/trigger-broken-slot.ps1", action.Script);
+        Assert.Contains("HTTP 503", action.Impact);
+        Assert.Equal(new("slot-failure", 0, "", ""), LabOperationCatalog.Validate(new("slot-failure")));
     }
 
     [Fact]

@@ -39,6 +39,9 @@ param grafanaAdminObjectId string = ''
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
+@description('Enable the broken App Service deployment-slot recovery scenario. Upgrades the plan to Standard S1.')
+param enableSlotFailureScenario bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
@@ -203,6 +206,7 @@ module appService '../modules/appservice.bicep' = {
     diagStorageAccountId: appDiagStorage.outputs.id
     diagEventHubAuthRuleId: eventHubAuthRule.id
     diagEventHubName: 'diagstream'
+    enableSlotFailureScenario: enableSlotFailureScenario
     tags: commonTags
   }
 }
@@ -215,6 +219,7 @@ module consolePlatform '../modules/lab-console-platform.bicep' = {
     location: appServiceLocation
     tags: commonTags
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []
+    enableSlotFailureScenario: enableSlotFailureScenario
   }
 }
 
