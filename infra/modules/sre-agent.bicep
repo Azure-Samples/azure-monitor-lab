@@ -67,7 +67,7 @@ resource logAnalyticsReader 'Microsoft.Authorization/roleAssignments@2022-04-01'
   }
 }
 
-resource webApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+resource webApp 'Microsoft.Web/sites@2023-12-01' existing = {
   name: last(split(slotWebAppId, '/'))
 }
 
@@ -95,7 +95,7 @@ resource slotRollbackRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' =
 
 resource slotRollbackAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSlotFailureScenario) {
   name: guid(webApp!.id, identity.id, slotRollbackRole!.id)
-  scope: webApp!
+  scope: webApp
   properties: {
     roleDefinitionId: slotRollbackRole!.id
     principalId: identity.properties.principalId

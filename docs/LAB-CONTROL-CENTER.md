@@ -8,6 +8,8 @@ The Control Center is the operational interface for the Azure Monitor Lab: check
 
 The screenshots use example resource names, simulated health results, and local test traffic. They are not live health reports.
 
+Controls have inset card spacing, and the tab bar scrolls horizontally on narrow screens without clipping its labels. Panel changes and dialogs use brief entrance transitions; the interface respects the operating system's reduced-motion preference.
+
 ## Choose Your Starting Point
 
 | Experience | Start here |
@@ -31,6 +33,10 @@ Open `/customer/` from the **Customer app** link in the header to run a customer
 Use **Lab Operations → Generate Customer Traffic** to drive 1-100 isolated browser users through the real interface with bounded concurrency and repeat sessions. The approval freezes every parameter and exact target before the independent job starts. The same generator remains available as `scripts/generate-usage-traffic.ps1` for local or administrative use. Then follow [Scenario 70](DEMO-SCENARIOS.md#s70) through Application Insights Users, Sessions, Events, Funnels, User Flows, Cohorts, saved queries, and the customer-usage workbook. The Control Center remains the operations plane and does not contaminate the customer funnel.
 
 ## Workspaces
+
+### Customer Slot Permission Migration
+
+The opt-in customer slot operation uses a role assignment scoped to the dedicated customer Web App. Its assignment name includes a scope-migration seed so redeployment does not attempt to change an existing resource-group assignment's immutable scope. Older resource-group-scoped slot grants are not automatically deleted; review and remove them only after verifying the replacement customer-app grants for both the runner and SRE action identities.
 
 | Tab | Available activities | Requirements |
 |---|---|---|

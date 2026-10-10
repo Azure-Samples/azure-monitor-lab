@@ -32,7 +32,7 @@ resource site 'Microsoft.Web/sites@2023-12-01' existing = {
   name: webAppName
 }
 
-resource customerSite 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+resource customerSite 'Microsoft.Web/sites@2023-12-01' existing = {
   name: customerWebAppName
 }
 
@@ -165,8 +165,8 @@ resource slotScenarioRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' =
 }
 
 resource slotScenarioAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSlotFailureScenario) {
-  name: guid(customerSite!.id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', identityName), slotScenarioRole!.id)
-  scope: customerSite!
+  name: guid(customerSite.id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', identityName), slotScenarioRole!.id, 'customer-webapp-scope')
+  scope: customerSite
   properties: {
     roleDefinitionId: slotScenarioRole!.id
     principalId: identity.outputs.principalId

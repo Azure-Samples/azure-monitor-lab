@@ -68,14 +68,35 @@ main {
 .monitoring,
 .app-tabs,
 #panel-health,
+#panel-operations,
+#panel-sre,
+#panel-foundry,
 .workspace > aside,
-.workspace > article,
-.foundry-panel,
-.sre-panel {
+.workspace > .results {
   border: 1px solid var(--lab-border);
   border-radius: 16px;
   background: rgb(255 255 255 / 94%);
   box-shadow: var(--lab-shadow);
+}
+
+#panel-health,
+#panel-operations,
+#panel-sre,
+#panel-foundry,
+.workspace > aside,
+.workspace > .results {
+  min-width: 0;
+  padding: 24px;
+}
+
+.infra-heading,
+.agent-heading {
+  padding-top: 0;
+}
+
+.tool-actions,
+.agent-heading .run-buttons {
+  flex-wrap: wrap;
 }
 
 .environment-strip {
@@ -125,15 +146,27 @@ main {
 }
 
 .app-tabs {
-  gap: 5px;
+  align-items: stretch;
+  gap: 8px;
   margin-block: 18px 14px;
-  padding: 6px;
+  padding: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .app-tabs [role="tab"] {
+  flex: 1 0 auto;
+  min-height: 48px;
+  padding: 12px 16px;
+  white-space: nowrap;
   border: 1px solid transparent;
   border-radius: 10px;
   transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.app-tabs [role="tab"]:hover:not([aria-selected="true"]) {
+  color: var(--lab-brand);
+  background: #eef5ff;
 }
 
 .app-tabs [role="tab"][aria-selected="true"] {
@@ -154,14 +187,29 @@ main {
   transition: box-shadow 160ms ease, transform 160ms ease, border-color 160ms ease;
 }
 
-.action:hover,
-.button:hover {
+.action:hover:not(:disabled),
+.button:hover:not(:disabled):not([aria-disabled="true"]) {
   transform: translateY(-1px);
 }
 
-.action:hover {
+.action:hover:not(:disabled) {
   border-color: #9dbce8;
   box-shadow: 0 9px 22px rgb(16 42 67 / 9%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [role="tabpanel"]:not([hidden]) {
+    animation: lab-panel-enter 180ms ease-out;
+  }
+
+  dialog[open] {
+    animation: lab-panel-enter 160ms ease-out;
+  }
+}
+
+@keyframes lab-panel-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 a:focus-visible,
@@ -189,14 +237,46 @@ summary:focus-visible,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .environment-strip > div {
+    padding: 6px 12px;
+  }
+
+  .environment-strip dt {
+    font-size: 0.65rem;
+  }
+
+  .intro {
+    padding-block: 12px;
+  }
+
   .app-tabs {
-    overflow-x: auto;
     justify-content: flex-start;
-    scrollbar-width: thin;
+    margin-block: 12px;
+    padding: 10px;
   }
 
   .app-tabs [role="tab"] {
-    flex: 0 0 auto;
+    flex: 0 0 112px;
+    min-height: 56px;
+    padding: 8px 12px;
+    white-space: normal;
+  }
+
+  #panel-health,
+  #panel-operations,
+  #panel-sre,
+  #panel-foundry,
+  .workspace > aside,
+  .workspace > .results {
+    padding: 16px;
+  }
+
+  .workspace {
+    gap: 16px;
+  }
+
+  .action-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

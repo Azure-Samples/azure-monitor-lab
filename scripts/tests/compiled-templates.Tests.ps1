@@ -23,6 +23,25 @@ if (@(Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-k
 }
 $appInsightsWorkbookFiles | ForEach-Object { $null = Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
+foreach ($moduleName in @('sre-agent', 'lab-console-platform')) {
+  $module = @($mainTemplate.resources | Where-Object name -eq $moduleName)
+  $slotAssignments = @($module.properties.template.resources | Where-Object {
+    $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'slot-rollback|slot-scenario-role'
+  })
+  if ($module.Count -ne 1 -or $slotAssignments.Count -ne 1 -or
+      $slotAssignments[0].scope -notmatch 'Microsoft\.Web/sites/' -or
+      $slotAssignments[0].condition -notmatch 'enableSlotFailureScenario') {
+    throw "The compiled $moduleName slot role assignment must be conditional and scoped to the customer Web App, never the resource group."
+  }
+}
+Write-Output 'PASS: compiled customer slot role assignments retain their Web App scope.'
+$consoleModule = @($mainTemplate.resources | Where-Object name -eq 'lab-console-platform')
+$consoleSlotAssignment = @($consoleModule.properties.template.resources | Where-Object {
+  $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'slot-scenario-role'
+})[0]
+if ($consoleSlotAssignment.name -notmatch 'customer-webapp-scope') {
+  throw 'The customer slot assignment must use a new scope-migration seed instead of reusing the legacy resource-group assignment name.'
+}
 if ($mainTemplate.variables.appInsightsName -ne "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]") {
   throw 'Application Insights must use the generated five-character deployment suffix.'
 }

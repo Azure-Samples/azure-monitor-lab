@@ -22,6 +22,10 @@
 
 Console completion requires permission to manage its Entra sign-in registration and scoped Azure roles, plus ACR Tasks availability. The registry has ongoing charges; image builds, job execution, and logs add usage charges. Stage B does not enable the optional Stage E Service Group or SLI setup. See [deployment prerequisites and upgrade behavior](../workloads/webapp/LAB-OPERATIONS.md#automatic-deployment).
 
+Web App publication verifies the exact deployment ID through `/api/console/version`; a healthy older version does not count as a successful publication. Progress and timeout messages include the expected version and the last reported version or request error. If verification times out, inspect App Service deployment and container startup logs before uploading again: a successful ZIP upload does not prove the new application is serving. A targeted app restart can interrupt users and should be performed only after reviewing the evidence.
+
+The Control Center, customer app, and slots share plan capacity. Check plan CPU and memory when container warm-up fails; increasing capacity requires approval for the higher ongoing cost. Direct Azure capacity changes are not preserved by a full template redeployment: the current Bicep App Service module selects S1 with the slot scenario enabled, or B1 otherwise.
+
 The templates grant **Grafana Admin** at the Managed Grafana instance scope to the deploying identity by default. For service-principal deployments, set `grafanaAdminObjectId` in Bicep or `grafana_admin_object_id` in Terraform to the intended operator or group object ID. New role assignments can take time to propagate. Azure resource ownership and Monitoring Reader on the Grafana managed identity do not grant a user Grafana data-plane access.
 
 <a id="optional-vm-opentelemetry-metrics"></a>

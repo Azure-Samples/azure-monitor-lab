@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11845183008454403529"
+      "templateHash": "9155403824455234065"
     }
   },
   "parameters": {
@@ -89,7 +89,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "483107440287839225"
+              "templateHash": "8063992401361578688"
             }
           },
           "parameters": {
@@ -234,6 +234,7 @@
               "condition": "[parameters('enableSlotFailureScenario')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('slotWebAppId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback')))]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))]",
@@ -294,7 +295,7 @@
                 "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('managedResourceGroupId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), '73c42c96-874c-492b-b04d-ab87d138a893'))]",
                 "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('managedResourceGroupId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), '43d0d8ad-25c7-4714-9337-8ba259a9fe05'))]",
                 "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('managedResourceGroupId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), 'acdd72a7-3385-48ef-bd42-f606fba81ae7'))]",
-                "[resourceId('Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))))]"
+                "[extensionResourceId(resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))))]"
               ]
             },
             {

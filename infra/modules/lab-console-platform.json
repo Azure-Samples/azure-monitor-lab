@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "3628331588426020098"
+      "templateHash": "9057853626985627455"
     }
   },
   "parameters": {
@@ -138,7 +138,8 @@
       "condition": "[parameters('enableSlotFailureScenario')]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role')))]",
+      "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+      "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role')), 'customer-webapp-scope')]",
       "properties": {
         "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role'))]",
         "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
