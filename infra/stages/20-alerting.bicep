@@ -28,6 +28,9 @@ param deployWindowsVm bool = true
 @description('Deploy the Linux demo VM.')
 param deployLinuxVm bool = true
 
+@description('Enable alerts for the isolated customer Web App slot-recovery scenario.')
+param enableSlotFailureScenario bool = false
+
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
@@ -39,6 +42,7 @@ var windowsVmName = 'vmwin${take(suffix, 4)}'
 var aksName = 'aks-${namePrefix}'
 var appPlanName = 'plan-${namePrefix}'
 var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
+var customerWebAppName = 'app-${namePrefix}-${take(suffix, 5)}-customer'
 var actionGroupName = 'ag-${namePrefix}-email'
 var vmssName = 'vmss-${namePrefix}'
 var vnetName = 'vnet-${namePrefix}'
@@ -71,6 +75,10 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' existing = {
   name: webAppName
 }
 
+resource customerWebApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+  name: customerWebAppName
+}
+
 resource appPlan 'Microsoft.Web/serverfarms@2023-12-01' existing = {
   name: appPlanName
 }
@@ -88,6 +96,8 @@ module automitigation '../modules/automitigation-logicapp.bicep' = {
   params: {
     name: 'la-${namePrefix}-automitigate'
     location: location
+    linuxVmId: deployLinuxVm ? vmLinux.id : ''
+    windowsVmId: deployWindowsVm ? vmWindows.id : ''
     tags: commonTags
   }
 }
@@ -110,6 +120,7 @@ module alerts '../modules/alerts.bicep' = {
     actionGroupId: actionGroup.outputs.id
     aksId: aks.id
     webAppId: webApp.id
+    customerWebAppId: enableSlotFailureScenario ? customerWebApp!.id : ''
     webAppRegion: appServiceLocation
     appInsightsId: appInsights.id
     linuxVmId: deployLinuxVm ? vmLinux.id : ''

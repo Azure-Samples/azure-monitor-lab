@@ -15,6 +15,7 @@ $fixture = @{
   ActivityDiagnosticCreates = 0; ExistingActivityWorkspace = ''
   UploadFailure = ''; UploadFailuresRemaining = 0
   WebAppQuotaExceeded = $false; WebAppConfigWrites = 0
+  ObservabilityEnabled = $false; ObservabilityResources = $false; RbacMigrations = 0
   PublicationMode = ''; AksCredentialRequests = 0
   Packages = [Collections.Generic.List[string]]::new()
 }
@@ -23,13 +24,13 @@ foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1',
 }
 @{ expectedSubscriptionId = [guid]::NewGuid(); expectedTenantId = [guid]::NewGuid() } | ConvertTo-Json | Set-Content (Join-Path $root '.azure-target.json')
 @'
-param($PublishDirectory, $ResourceGroup, $SubscriptionId, $TenantId, $CentralLawName, $SreModelEndpoint, $SreModelDeployment, [switch]$BundleSreMcp)
+param($PublishDirectory, $ResourceGroup, $SubscriptionId, $TenantId, $CentralLawName, $SreModelEndpoint, $SreModelDeployment, $CustomerWebAppName, [switch]$BundleSreMcp)
 if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant) { throw 'Wrong package target.' }
 '{}' | Set-Content (Join-Path $PublishDirectory 'lab-console.json')
 $fixture.Events.Add('package')
 '@ | Set-Content (Join-Path $directory 'prepare-webapp-package.ps1')
 @'
-param($SubscriptionId, $TenantId, $ResourceGroup, $WebAppName, $ConsoleConfigPath, $AllowedUserObjectIds)
+param($SubscriptionId, $TenantId, $ResourceGroup, $WebAppName, $CustomerWebAppName, $ConsoleConfigPath, $AllowedUserObjectIds)
 $operatorsMatch = if ($fixture.DefaultOperator) { -not $AllowedUserObjectIds } else { $AllowedUserObjectIds[0] -eq $fixture.Operator }
 if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or -not $operatorsMatch -or -not (Test-Path $ConsoleConfigPath)) { throw 'Wrong automatic setup inputs.' }
 $fixture.Events.Add('initialize')
@@ -40,8 +41,8 @@ param($SubscriptionId, $ResourceGroup, $WebAppName, $ArchivePath, $DeploymentId)
 if ($SubscriptionId -ne $fixture.Subscription -or -not (Test-Path -LiteralPath $ArchivePath) -or $DeploymentId -ne $fixture.DeploymentId) { throw 'Wrong broken-slot publication inputs.' }
 '@ | Set-Content (Join-Path $directory 'prepare-broken-slot.ps1')
 @'
-param([guid]$SubscriptionId, [guid]$TenantId, $ResourceGroup, $WebAppName, $AksName, $WebAppHost, $CentralLawName, $ConsoleOperatorObjectIds, $AppInsightsConnectionString)
-if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or $ConsoleOperatorObjectIds[0] -ne $fixture.Operator) { throw 'Deployment wrapper lost the verified target or operator inputs.' }
+param([guid]$SubscriptionId, [guid]$TenantId, $ResourceGroup, $WebAppName, $CustomerWebAppName, $AksName, $WebAppHost, $CentralLawName, $ConsoleOperatorObjectIds, $AppInsightsConnectionString)
+if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or $ConsoleOperatorObjectIds[0] -ne $fixture.Operator -or $CustomerWebAppName -ne 'app-amlab-test-customer') { throw 'Deployment wrapper lost the verified target, customer app, or operator inputs.' }
 $fixture.Events.Add('post-deploy')
 '@ | Set-Content (Join-Path $directory 'post-deploy.ps1')
 @'
@@ -50,6 +51,16 @@ if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') 
 $fixture.Events.Add('sre')
 if ($fixture.SreSetupFails) { throw 'SRE verification failed.' }
 '@ | Set-Content (Join-Path $directory 'setup-sre-agent.ps1')
+@'
+param([guid]$SubscriptionId, $ResourceGroup)
+if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') { throw 'Observability Agent setup lost the verified target.' }
+$fixture.Events.Add('observability-agent')
+'@ | Set-Content (Join-Path $directory 'setup-observability-agent.ps1')
+@'
+param([guid]$SubscriptionId, $ResourceGroup, [switch]$AutoMitigation, [switch]$ObservabilityAgent)
+if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg' -or (-not $AutoMitigation -and -not $ObservabilityAgent)) { throw 'RBAC migration lost its verified target or intent.' }
+$fixture.RbacMigrations++
+'@ | Set-Content (Join-Path $directory 'cleanup-legacy-rbac.ps1')
 @'
 param($ResourceGroup, $SubscriptionId)
 $fixture.ServiceGroupCalls++
@@ -105,9 +116,11 @@ function az {
       if ($args[2] -ne 'show') { throw 'Unexpected deployment command.' }
       return @{
         webAppName = @{ value = 'app-amlab-test' }; webAppDefaultHost = @{ value = 'app-amlab-test.azurewebsites.net' }
+        customerWebAppName = @{ value = 'app-amlab-test-customer' }
         aksName = @{ value = 'aks-amlab' }; centralLawName = @{ value = 'law-amlab-central-test' }
         grafanaEndpoint = @{ value = 'https://example.com' }; workbookId = @{ value = 'test-workbook' }
         linuxVmNameOut = @{ value = 'vm-amlab-lin' }; windowsVmNameOut = @{ value = 'vm-amlab-win' }
+        observabilityAgentEnabled = @{ value = $fixture.ObservabilityEnabled }
       } | ConvertTo-Json -Depth 3
     }
     'monitor log-analytics' {
@@ -122,8 +135,10 @@ function az {
       return
     }
     'webapp show' {
+      $nameIndex = [Array]::IndexOf($args, '--name')
+      $name = if ($nameIndex -ge 0) { $args[$nameIndex + 1] } else { 'app-amlab-test' }
       return @{
-        kind = 'app,linux'; host = 'app-amlab-test.azurewebsites.net'
+        kind = 'app,linux'; host = "$name.azurewebsites.net"; defaultHostName = "$name.azurewebsites.net"
         state = $(if ($fixture.WebAppQuotaExceeded) { 'QuotaExceeded' } else { 'Running' })
         usageState = $(if ($fixture.WebAppQuotaExceeded) { 'Exceeded' } else { 'Normal' })
       } | ConvertTo-Json
@@ -137,6 +152,7 @@ function az {
     'webapp deploy' {
       if (($fixture.Events -join ',') -ne 'publish,package,initialize') { throw 'Code was deployed before automatic console setup.' }
       if (-not (Test-Path $args[[Array]::IndexOf($args, '--src-path') + 1])) { throw 'The app package was not created.' }
+      if ($args[[Array]::IndexOf($args, '--async') + 1] -ne 'true') { throw 'App Service ZIP deployments must not wait synchronously on the SCM endpoint.' }
       $fixture.Uploads++
       if ($fixture.UploadFailuresRemaining -gt 0) {
         $fixture.UploadFailuresRemaining--
@@ -152,12 +168,14 @@ function az {
       if ($args -contains '[0].id') { return 'test-component' }
       $resources = @(
         @{ name = 'app-amlab-test'; type = 'Microsoft.Web/sites' },
+        @{ name = 'app-amlab-test-customer'; type = 'Microsoft.Web/sites' },
         @{ name = 'aks-amlab'; type = 'Microsoft.ContainerService/managedClusters' },
         @{ name = 'law-amlab-central-test'; type = 'Microsoft.OperationalInsights/workspaces' },
         @{ name = 'appi-amlab-test1'; id = 'test-component'; type = 'Microsoft.Insights/components' }
       )
       if ($fixture.StageEResources) { $resources += @{ name = 'id-sli-amlab'; type = 'Microsoft.ManagedIdentity/userAssignedIdentities' } }
       if ($fixture.SreResources) { $resources += @{ name = 'sre-amlab-test'; type = 'Microsoft.App/agents' } }
+      if ($fixture.ObservabilityResources) { $resources += @{ name = 'obs-amlab-test'; type = 'Microsoft.Monitor/observabilityAgents' } }
       return ConvertTo-Json -InputObject $resources
     }
     'resource show' { return 'offline-connection' }
@@ -209,6 +227,19 @@ try {
   if ($fixture.Events.Count -or $fixture.Uploads) { throw 'WhatIf performed deployment work.' }
   & (Join-Path $directory 'deploy-webapp.ps1') @parameters | Out-Null
   if ($fixture.Uploads -ne 1 -or $fixture.VersionChecks -ne 2) { throw 'Successful app deployment did not upload and verify the new package.' }
+  $fixture.Events.Clear()
+  $fixture.UploadFailure = 'ERROR: 504 GatewayTimeout from app-amlab-test.scm.azurewebsites.net/api/deployments/latest'
+  $fixture.UploadFailuresRemaining = 1
+  $uploadsBefore = $fixture.Uploads
+  $fixture.VersionChecks = 0
+  & (Join-Path $directory 'deploy-webapp.ps1') @parameters | Out-Null
+  if ($fixture.Uploads -ne $uploadsBefore + 1 -or $fixture.VersionChecks -ne 2) {
+    throw 'An ambiguous SCM timeout must reconcile the exact published application version without retrying the upload.'
+  }
+  $fixture.Uploads = 1
+  $fixture.UploadFailure = ''
+  $fixture.UploadFailuresRemaining = 0
+  $fixture.VersionChecks = 0
   foreach ($failure in @('FailSetup', 'BadTenant')) {
     $fixture.Events.Clear()
     $fixture[$failure] = $true
@@ -264,6 +295,19 @@ try {
     if (-not $rejected -or ($fixture.Events -join ',') -ne $expectedFailureEvents) { throw "$name must stop before completion when resource discovery fails." }
     $fixture.ResourceDiscoveryFails = $false
   }
+  $fixture.ObservabilityResources = $true
+  $fixture.SreResources = $false
+  foreach ($name in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
+    $fixture.Events.Clear()
+    $migrationsBefore = $fixture.RbacMigrations
+    $wrapperArguments = if ($name -eq 'post-cloud-shell-deploy.ps1') { @{ TenantId = $fixture.Tenant } } else { @{} }
+    & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) @wrapperArguments | Out-Null
+    $expectedEvents = if ($name -eq 'post-cloud-shell-deploy.ps1') { 'login,post-deploy,observability-agent' } else { 'post-deploy,observability-agent' }
+    if (($fixture.Events -join ',') -ne $expectedEvents -or $fixture.RbacMigrations -ne $migrationsBefore + 1) {
+      throw "$name did not verify and migrate the discovered Observability Agent RBAC (events: $($fixture.Events -join ','), migrations: $($fixture.RbacMigrations - $migrationsBefore))."
+    }
+  }
+  $fixture.ObservabilityResources = $false
   $fixture.SliUnsupportedAudience = $true
   $fixture.SreResources = $true
   $fixture.Events.Clear()
@@ -361,9 +405,29 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
     $messages = & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) 6>&1 | Out-String
     if (($fixture.Events -join ',') -ne $selection.Events -or ($messages -match 'Agent traffic started in the background\.') -ne $selection.Ai) { throw 'Optional AI/SRE selection was not respected.' }
   }
+  $fixture.ObservabilityEnabled = $true
+  @{
+    subscriptionId = $fixture.Subscription
+    stageToggles = @{ enableStageObservabilityAgent = $true }
+  } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'lab.config.json')
+  $migrationsBefore = $fixture.RbacMigrations
+  $fixture.Events.Clear()
+  & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) | Out-Null
+  if ($fixture.RbacMigrations -ne $migrationsBefore + 1 -or
+      ($fixture.Events -join ',') -ne 'post-deploy,observability-agent') {
+    throw 'One-shot deployment did not migrate and validate the optional Observability Agent RBAC.'
+  }
+  $fixture.ObservabilityEnabled = $false
   Remove-Item -LiteralPath (Join-Path $root 'lab.config.json')
   $postDeploy = Get-Content -LiteralPath (Join-Path $source 'scripts/post-deploy.ps1') -Raw
   if ($postDeploy.IndexOf("'initialize-webapp-console.ps1'") -lt 0 -or $postDeploy.IndexOf("'initialize-webapp-console.ps1'") -gt $postDeploy.IndexOf('Compress-Archive')) { throw 'Shared publication does not wait for automatic console setup.' }
+  foreach ($wrapperName in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
+    $wrapper = Get-Content -LiteralPath (Join-Path $source "scripts/$wrapperName") -Raw
+    if ($wrapper -notmatch 'name -notmatch .*customer' -or
+        $wrapper -notmatch 'CustomerWebAppName\s+\$customerWebAppName') {
+      throw "$wrapperName must select the Control Center separately and pass the dedicated customer Web App."
+    }
+  }
   $fixture.Events.Clear()
   Copy-Item -LiteralPath (Join-Path $source 'scripts/post-deploy.ps1') -Destination $directory -Force
   & (Join-Path $directory 'post-deploy.ps1') @parameters -AksName aks-amlab -WebAppHost app-amlab-test.azurewebsites.net -CentralLawName law-amlab-central-test | Out-Null
@@ -391,6 +455,7 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
       $fixture.Events.Clear()
       $fixture.UploadFailure = $uploadCase.Message
       $fixture.UploadFailuresRemaining = $uploadCase.Failures
+      $fixture.VersionChecks = 0
       $uploadsBefore = $fixture.Uploads
       & {
         $PSNativeCommandUseErrorActionPreference = $nativeErrorPreference
@@ -401,9 +466,9 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
         if ($PSNativeCommandUseErrorActionPreference -ne $nativeErrorPreference) { throw 'Upload handling changed the caller native-error preference.' }
         if ($uploadCase.Success) {
           if ($failureMessage -or $fixture.VersionChecks -ne 2) { throw "A transient upload failure bypassed retry/publication verification: $failureMessage" }
-        } elseif ($failureMessage -notlike 'App Service ZIP upload failed.*' -or
+        } elseif ($failureMessage -notlike 'App Service ZIP upload failed*' -or
                   -not $failureMessage.Contains($uploadCase.Message) -or $fixture.VersionChecks -ne 0) {
-          throw "A failed upload must preserve CLI diagnostics and stop before publication verification: $failureMessage"
+          throw "A failed upload must preserve CLI diagnostics and stop before publication verification (messageMatch=$($failureMessage.Contains($uploadCase.Message)), versionChecks=$($fixture.VersionChecks)): $failureMessage"
         }
       }
       if ($fixture.Uploads - $uploadsBefore -ne $uploadCase.Attempts) { throw 'ZIP upload retries did not respect the known error and retry bound.' }
@@ -431,7 +496,7 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
         } elseif ($failureMessage -notlike '*expected application version*could not be verified*' -or
                   -not $failureMessage.Contains($fixture.DeploymentId) -or
                   -not $failureMessage.Contains($fixture.UploadFailure) -or
-                  $fixture.VersionChecks -ne 36 -or $fixture.AksCredentialRequests -ne $aksBefore -or
+                  $fixture.VersionChecks -ne 90 -or $fixture.AksCredentialRequests -ne $aksBefore -or
                   -not (Test-Path -LiteralPath "$($fixture.Packages[$fixture.Packages.Count - 1]).zip")) {
           throw "Unverified publication must retain the package and diagnostics and stop before AKS setup: $failureMessage"
         }

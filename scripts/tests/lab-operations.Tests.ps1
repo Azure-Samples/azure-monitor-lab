@@ -5,6 +5,7 @@ $tenant = [guid]::NewGuid().ToString()
 $environment = @{
   LAB_RUNNER_MODE = 'ContainerAppsJob'
   LAB_SUBSCRIPTION_ID = $subscription; LAB_TENANT_ID = $tenant; LAB_RESOURCE_GROUP = 'test-rg'
+  LAB_WEB_APP_NAME = 'app-amlab-test'; LAB_CUSTOMER_WEB_APP_NAME = 'app-amlab-test-customer'
 }
 $previous = @{}
 foreach ($name in $environment.Keys) { $previous[$name] = [Environment]::GetEnvironmentVariable($name); [Environment]::SetEnvironmentVariable($name, $environment[$name]) }

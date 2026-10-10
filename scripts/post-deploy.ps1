@@ -10,6 +10,7 @@
 param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [Parameter(Mandatory)] [string] $WebAppName,
+  [string] $CustomerWebAppName,
   [Parameter(Mandatory)] [string] $AksName,
   [Parameter(Mandatory)] [string] $WebAppHost,
   [string] $CentralLawName,
@@ -45,29 +46,33 @@ if ($SubscriptionId -ne [guid]::Empty) {
   throw 'Pass the expected subscription and tenant or provide the lab target configuration before deployment.'
 }
 
+$customerWebAppHost = $null
+if ($CustomerWebAppName) {
+  if ($CustomerWebAppName -cne "$WebAppName-customer") { throw 'The customer Web App must use the dedicated name derived from the Control Center.' }
+  $customerWebApp = az webapp show --subscription $active.id --resource-group $ResourceGroup --name $CustomerWebAppName `
+    --query '{state:state,usageState:usageState,defaultHostName:defaultHostName}' --output json --only-show-errors | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or -not $customerWebApp.defaultHostName) { throw 'Could not verify the dedicated customer Web App before publication.' }
+  if ($customerWebApp.state -eq 'QuotaExceeded' -or $customerWebApp.usageState -eq 'Exceeded') {
+    throw "Customer Web App '$CustomerWebAppName' is quota-blocked. Resolve App Service quota before retrying."
+  }
+  $customerWebAppHost = $customerWebApp.defaultHostName
+}
+
+Write-Step 'Replacing the auto-mitigation Logic App resource-group grant with VM-scoped access'
+& (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+  -SubscriptionId $active.id `
+  -ResourceGroup $ResourceGroup `
+  -AutoMitigation
+
 $webAppState = az webapp show --subscription $active.id --resource-group $ResourceGroup --name $WebAppName `
   --query '{state:state,usageState:usageState}' --output json --only-show-errors | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or -not $webAppState.state) { throw 'Could not verify the Web App state before publication.' }
 if ($webAppState.state -eq 'QuotaExceeded' -or $webAppState.usageState -eq 'Exceeded') {
-  throw "App Service '$WebAppName' is quota-blocked (state: $($webAppState.state), usageState: $($webAppState.usageState)). Resolve its App Service plan quota before retrying. The lab template uses Basic B1. No Web App changes were made."
+  throw "App Service '$WebAppName' is quota-blocked (state: $($webAppState.state), usageState: $($webAppState.usageState)). Resolve its App Service plan quota before retrying. The lab uses Basic B1 by default and Standard S1 when the slot scenario is enabled. No Web App changes were made."
 }
 
 # 1. Build + zip-deploy the bundled .NET 8 minimal API (workloads/webapp/AmlabHello)
 #    so App Insights gets requests/dependencies/failures from a real app.
-Write-Step "Disabling Kudu build and setting startup command"
-az webapp config appsettings set `
-  --subscription $active.id --resource-group $ResourceGroup --name $WebAppName `
-  --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false `
-  --output none
-if ($LASTEXITCODE -ne 0) { throw 'Could not configure prebuilt app deployment.' }
-az webapp config set `
-  --subscription $active.id --resource-group $ResourceGroup --name $WebAppName `
-  --startup-file 'dotnet AmlabHello.dll' `
-  --output none
-if ($LASTEXITCODE -ne 0) { throw 'Could not configure the app startup command.' }
-Start-Sleep -Seconds 30
-
-Write-Step "Publishing AmlabHello (workloads/webapp) and zip-deploying"
 $deploymentId = [guid]::NewGuid().ToString('N')
 $pub = Join-Path $tempDirectory "amlab-pub-$([guid]::NewGuid().ToString('N'))"
 $csproj = Join-Path $PSScriptRoot '..' 'workloads' 'webapp' 'AmlabHello.csproj'
@@ -96,44 +101,63 @@ if ($consoleAccount.id -ne $active.id -or $consoleAccount.tenantId -ne $active.t
 if ($SreTenantId -and $SreTenantId -ne $consoleAccount.tenantId) { throw 'SRE tenant must match the deployment tenant.' }
 & (Join-Path $PSScriptRoot 'prepare-webapp-package.ps1') `
   -PublishDirectory $pub -ResourceGroup $ResourceGroup -SubscriptionId $consoleAccount.id -TenantId $consoleAccount.tenantId `
+  -WebAppName $WebAppName -CustomerWebAppName $CustomerWebAppName `
   -CentralLawName $CentralLawName -BundleSreMcp:$BundleSreMcp `
   -SreModelEndpoint $SreModelEndpoint -SreModelDeployment $SreModelDeployment
 & (Join-Path $PSScriptRoot 'initialize-webapp-console.ps1') -SubscriptionId $consoleAccount.id -TenantId $consoleAccount.tenantId `
-  -ResourceGroup $ResourceGroup -WebAppName $WebAppName -ConsoleConfigPath (Join-Path $pub 'lab-console.json') -AllowedUserObjectIds $ConsoleOperatorObjectIds
+  -ResourceGroup $ResourceGroup -WebAppName $WebAppName -CustomerWebAppName $CustomerWebAppName `
+  -ConsoleConfigPath (Join-Path $pub 'lab-console.json') -AllowedUserObjectIds $ConsoleOperatorObjectIds
 $zip = "$pub.zip"
 Write-Step 'Compressing the Web App package (including the bundled MCP runtime)'
 Compress-Archive -Path (Join-Path $pub '*') -DestinationPath $zip -Force
-Write-Step "Uploading Web App package ($([Math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)) MiB)"
-$deployOutput = ''
-$deployExitCode = 1
-$scmRestartRetries = 0
-$zipDeployRetries = 0
-$publicationVerified = $false
-$scmHost = "$WebAppName.scm.azurewebsites.net"
-do {
-  $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
-  try {
-    $PSNativeCommandUseErrorActionPreference = $false
-    $deployOutput = & az webapp deploy `
-      --subscription $active.id --resource-group $ResourceGroup --name $WebAppName `
-      --src-path $zip --type zip --restart true --async true --track-status false --output none 2>&1 | Out-String
-    $deployExitCode = $LASTEXITCODE
-  } finally {
-    $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
-  }
-  $statusDnsFailure = $deployOutput -match [regex]::Escape($scmHost) -and
-    $deployOutput -match '/api/deployments/latest' -and
-    $deployOutput -match 'NameResolutionError|getaddrinfo failed|Failed to resolve'
-  if ($deployExitCode -ne 0 -and $statusDnsFailure) {
-    Write-Warning "Azure CLI could not resolve '$scmHost' while checking deployment status. Verifying the expected application version without uploading again."
+Write-Step "Publishing AmlabHello (workloads/webapp) to the Control Center and customer app"
+$publicationTargets = @(@{ Name = $WebAppName; Host = $WebAppHost; Description = 'Control Center' })
+if ($CustomerWebAppName) {
+  $publicationTargets += @{ Name = $CustomerWebAppName; Host = $customerWebAppHost; Description = 'customer Web App' }
+}
+foreach ($target in $publicationTargets) {
+  Write-Step "Disabling Kudu build and setting startup command for $($target.Description)"
+  az webapp config appsettings set `
+    --subscription $active.id --resource-group $ResourceGroup --name $target.Name `
+    --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false --output none --only-show-errors
+  if ($LASTEXITCODE -ne 0) { throw "Could not configure prebuilt deployment for $($target.Description)." }
+  az webapp config set `
+    --subscription $active.id --resource-group $ResourceGroup --name $target.Name `
+    --startup-file 'dotnet AmlabHello.dll' --output none --only-show-errors
+  if ($LASTEXITCODE -ne 0) { throw "Could not configure the startup command for $($target.Description)." }
+  Start-Sleep -Seconds 30
+
+  Write-Step "Uploading Web App package to $($target.Name) ($([Math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)) MiB)"
+  $deployOutput = ''
+  $deployExitCode = 1
+  $scmRestartRetries = 0
+  $zipDeployRetries = 0
+  $publicationVerified = $false
+  $scmHost = "$($target.Name).scm.azurewebsites.net"
+  do {
+    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
     try {
-      & (Join-Path $PSScriptRoot 'wait-webapp-publication.ps1') -WebAppHost $WebAppHost -DeploymentId $deploymentId
-      $publicationVerified = $true
-    } catch {
-      throw "The expected application version '$deploymentId' could not be verified after a DNS failure querying deployment status at '$scmHost'. The upload outcome is unknown. No additional ZIP upload was submitted. Package retained at '$zip'. Check DNS and App Service deployment status before retrying. Azure CLI exit code: $deployExitCode. Details:`n$deployOutput"
+      $PSNativeCommandUseErrorActionPreference = $false
+      $deployOutput = & az webapp deploy `
+        --subscription $active.id --resource-group $ResourceGroup --name $target.Name `
+        --src-path $zip --type zip --restart true --async true --track-status false --output none 2>&1 | Out-String
+      $deployExitCode = $LASTEXITCODE
+    } finally {
+      $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
     }
-    break
-  }
+    $statusDnsFailure = $deployOutput -match [regex]::Escape($scmHost) -and
+      $deployOutput -match '/api/deployments/latest' -and
+      $deployOutput -match 'NameResolutionError|getaddrinfo failed|Failed to resolve'
+    if ($deployExitCode -ne 0 -and $statusDnsFailure) {
+      Write-Warning "Azure CLI could not resolve '$scmHost' while checking deployment status. Verifying the expected application version without uploading again."
+      try {
+        & (Join-Path $PSScriptRoot 'wait-webapp-publication.ps1') -WebAppHost $target.Host -DeploymentId $deploymentId
+        $publicationVerified = $true
+      } catch {
+        throw "The expected application version '$deploymentId' could not be verified after a DNS failure querying deployment status at '$scmHost'. The upload outcome is unknown. No additional ZIP upload was submitted. Package retained at '$zip'. Check DNS and App Service deployment status before retrying. Azure CLI exit code: $deployExitCode. Details:`n$deployOutput"
+      }
+      break
+    }
   $scmRestarted = $deployOutput -match 'SCM container restart|management operation and a deployment operation in quick succession'
   $zipDeploymentFailed = $deployOutput -match 'Zip deployment failed|Status Code: 502|Deployment Failed.*OneDeploy'
   if ($deployExitCode -ne 0 -and $scmRestarted -and $scmRestartRetries -lt 2) {
@@ -150,15 +174,20 @@ do {
 } while ($true)
 
 if ($deployExitCode -ne 0 -and -not $publicationVerified) {
-  throw "App Service ZIP upload failed. Exit code: $deployExitCode. Details:`n$deployOutput"
+  throw "App Service ZIP upload failed for $($target.Description). Exit code: $deployExitCode. Details:`n$deployOutput"
 }
 
 if (-not $publicationVerified) {
-  & (Join-Path $PSScriptRoot 'wait-webapp-publication.ps1') -WebAppHost $WebAppHost -DeploymentId $deploymentId
+  & (Join-Path $PSScriptRoot 'wait-webapp-publication.ps1') -WebAppHost $target.Host -DeploymentId $deploymentId
+}
 }
 Write-Step 'Preparing the opt-in broken deployment slot when provisioned'
+if ($CustomerWebAppName) {
 & (Join-Path $PSScriptRoot 'prepare-broken-slot.ps1') -SubscriptionId $active.id -ResourceGroup $ResourceGroup `
-  -WebAppName $WebAppName -ArchivePath $zip -DeploymentId $deploymentId
+  -WebAppName $CustomerWebAppName -ArchivePath $zip -DeploymentId $deploymentId
+} else {
+Write-Host 'No dedicated customer Web App was provisioned; skipping broken-slot publication.'
+}
 Write-Step 'Cleaning up local Web App package files'
 Remove-Item -Recurse -Force $pub
 Remove-Item -Force $zip

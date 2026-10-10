@@ -4,6 +4,8 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [Parameter(Mandatory)] [string] $SubscriptionId,
   [Parameter(Mandatory)] [string] $TenantId,
+  [string] $WebAppName,
+  [string] $CustomerWebAppName,
   [string] $CentralLawName,
   [switch] $BundleSreMcp,
   [string] $SreModelEndpoint,
@@ -19,6 +21,7 @@ foreach ($requiredFile in @('AmlabHello.dll', 'wwwroot/index.html')) {
 $configPath = Join-Path $PublishDirectory 'lab-console.json'
 & (Join-Path $PSScriptRoot 'write-webapp-console-config.ps1') `
   -ResourceGroup $ResourceGroup -SubscriptionId $SubscriptionId -TenantId $TenantId `
+  -WebAppName $WebAppName -CustomerWebAppName $CustomerWebAppName `
   -CentralLawName $CentralLawName -OutputPath $configPath `
   -SreModelEndpoint $SreModelEndpoint -SreModelDeployment $SreModelDeployment
 $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -AsHashtable

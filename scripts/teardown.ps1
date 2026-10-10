@@ -181,6 +181,36 @@ foreach ($observabilityAgent in $observabilityAgents) {
     az role assignment delete --subscription $active.id --ids $assignmentId
     if ($LASTEXITCODE -ne 0) { throw "Failed to remove Observability Agent subscription RBAC '$assignmentId'." }
   }
+  $monitoredResourcesOutput = az rest --subscription $active.id --method get `
+    --url "https://management.azure.com$($observabilityAgent.id)/monitoredResources?api-version=2026-05-01-preview" `
+    --output json 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not inspect monitored resources for '$($observabilityAgent.name)':`n$($monitoredResourcesOutput -join "`n")"
+  }
+  $monitoredResponse = ($monitoredResourcesOutput -join "`n") | ConvertFrom-Json
+  $monitoredResources = @($monitoredResponse.value | Where-Object {
+    $_.properties.enabled -and $_.properties.resourceId -match '/providers/Microsoft\.Insights/components/'
+  })
+  if ($monitoredResources.Count -ne 1) {
+    throw "Expected one enabled Application Insights resource for '$($observabilityAgent.name)'; found $($monitoredResources.Count)."
+  }
+  $appInsightsId = [string]$monitoredResources[0].properties.resourceId
+  $componentAssignmentsOutput = az role assignment list --subscription $active.id --assignee-object-id $principalId `
+    --scope $appInsightsId --all -o json 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not inspect Application Insights RBAC for '$($observabilityAgent.name)':`n$($componentAssignmentsOutput -join "`n")"
+  }
+  $componentAssignments = @($componentAssignmentsOutput | ConvertFrom-Json | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_.scope) -and
+    -not [string]::IsNullOrWhiteSpace($_.roleDefinitionId) -and
+    $_.scope.TrimEnd('/') -ieq $appInsightsId.TrimEnd('/') -and
+    $_.roleDefinitionId.TrimEnd('/').Split('/')[-1] -ieq $monitoringReaderRoleId
+  })
+  foreach ($assignment in $componentAssignments) {
+    Write-Host "Removing Observability Agent Application Insights Monitoring Reader assignment $($assignment.id) ..." -ForegroundColor DarkGray
+    az role assignment delete --subscription $active.id --ids $assignment.id
+    if ($LASTEXITCODE -ne 0) { throw "Failed to remove Observability Agent Application Insights RBAC '$($assignment.id)'." }
+  }
   Write-Host "Deleting Observability Agent $($observabilityAgent.name) before resource-group cleanup ..." -ForegroundColor Yellow
   az resource delete --subscription $active.id --ids $observabilityAgent.id --api-version 2026-05-01-preview
   if ($LASTEXITCODE -ne 0) {

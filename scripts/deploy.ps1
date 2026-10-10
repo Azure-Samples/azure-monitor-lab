@@ -280,12 +280,21 @@ $outputs = $outputsJson | ConvertFrom-Json
 
 $webAppName       = $outputs.webAppName.value
 $webAppHost       = $outputs.webAppDefaultHost.value
+$customerWebAppName = $outputs.customerWebAppName.value
 $aksName          = $outputs.aksName.value
 $grafanaEndpoint  = $outputs.grafanaEndpoint.value
 $workbookId       = $outputs.workbookId.value
 $centralLawName   = $outputs.centralLawName.value
 $linuxVm          = $outputs.linuxVmNameOut.value
 $winVm            = $outputs.windowsVmNameOut.value
+
+if ($outputs.observabilityAgentEnabled.value) {
+  Write-Step 'Removing the Observability Agent subscription grant after verifying its resource-scoped replacement'
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $active.id `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
+}
 
 # 2b. Subscription-level Activity Log -> central LAW.
 #     Subscription-scope diagnostic settings cannot be deployed from RG-scope Bicep,
@@ -315,7 +324,20 @@ Write-Host "  Windows VM     : $winVm"
 
 # 3. Post-deploy
 $postDeploy = Join-Path $PSScriptRoot 'post-deploy.ps1'
-& $postDeploy -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -WebAppName $webAppName -AksName $aksName -WebAppHost $webAppHost -CentralLawName $centralLawName -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
+$postDeployParameters = @{
+  SubscriptionId = $active.id
+  TenantId = $active.tenantId
+  ResourceGroup = $ResourceGroup
+  WebAppName = $webAppName
+  AksName = $aksName
+  WebAppHost = $webAppHost
+  CentralLawName = $centralLawName
+  ConsoleOperatorObjectIds = $ConsoleOperatorObjectIds
+}
+if (-not [string]::IsNullOrWhiteSpace($customerWebAppName)) {
+  $postDeployParameters.CustomerWebAppName = $customerWebAppName
+}
+& $postDeploy @postDeployParameters
 
 # 4. Service Group (tenant-scoped, preview) + service group member relationship.
 #    Required before SLIs can be attached as extensions on the group.

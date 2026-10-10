@@ -10,6 +10,9 @@ param aksId string
 @description('Web App resource ID.')
 param webAppId string
 
+@description('Optional customer-facing Web App resource ID for the slot-recovery scenario.')
+param customerWebAppId string = ''
+
 @description('Region of the Web App / App Service Plan (metric alert targetResourceRegion must match the target).')
 param webAppRegion string = location
 
@@ -88,6 +91,39 @@ resource alertWebApp5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = {
           metricName: 'Http5xx'
           operator: 'GreaterThan'
           threshold: 5
+          timeAggregation: 'Total'
+          criterionType: 'StaticThresholdCriterion'
+        }
+      ]
+    }
+    actions: [
+      { actionGroupId: actionGroupId }
+    ]
+  }
+}
+
+resource alertCustomerWebApp5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = if (!empty(customerWebAppId)) {
+  name: 'alert-customer-app-5xx'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Customer Web App returned at least one HTTP 5xx in the last minute.'
+    severity: 1
+    enabled: true
+    scopes: [customerWebAppId]
+    targetResourceType: 'Microsoft.Web/sites'
+    targetResourceRegion: webAppRegion
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT1M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'CustomerHttp5xx'
+          metricNamespace: 'Microsoft.Web/sites'
+          metricName: 'Http5xx'
+          operator: 'GreaterThan'
+          threshold: 0
           timeAggregation: 'Total'
           criterionType: 'StaticThresholdCriterion'
         }

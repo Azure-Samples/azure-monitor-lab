@@ -1,0 +1,212 @@
+:root {
+  --lab-ink: #102a43;
+  --lab-muted: #567087;
+  --lab-brand: #175cd3;
+  --lab-brand-deep: #103a6f;
+  --lab-border: #d9e5f1;
+  --lab-surface: #fff;
+  --lab-shadow: 0 16px 42px rgb(16 42 67 / 8%);
+}
+
+body {
+  color: var(--lab-ink);
+  background:
+    radial-gradient(ellipse at 8% 0%, rgb(219 234 254 / 72%), transparent 38rem),
+    radial-gradient(ellipse at 95% 18%, rgb(220 252 231 / 42%), transparent 34rem),
+    #f4f8fc;
+}
+
+.topbar {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  border-bottom: 1px solid rgb(217 229 241 / 82%);
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 5px 24px rgb(16 42 67 / 5%);
+  backdrop-filter: blur(16px);
+}
+
+.brand,
+.documentation-nav a {
+  transition: color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.documentation-nav a {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--lab-muted);
+}
+
+.documentation-nav a:hover {
+  border-color: var(--lab-border);
+  color: var(--lab-brand);
+  background: #f3f7fc;
+  transform: translateY(-1px);
+}
+
+main {
+  max-width: 1480px;
+}
+
+.intro {
+  padding-block: 28px 20px;
+}
+
+.eyebrow,
+.nav-label {
+  color: var(--lab-brand);
+  font-weight: 750;
+  letter-spacing: 0.12em;
+}
+
+.intro h1 {
+  color: var(--lab-ink);
+  letter-spacing: -0.035em;
+}
+
+.environment-strip,
+.monitoring,
+.app-tabs,
+#panel-health,
+.workspace > aside,
+.workspace > article,
+.foundry-panel,
+.sre-panel {
+  border: 1px solid var(--lab-border);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: var(--lab-shadow);
+}
+
+.environment-strip {
+  gap: 1px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.environment-strip > div {
+  min-width: 0;
+  padding: 14px 16px;
+  background: var(--lab-surface);
+}
+
+.environment-strip dt {
+  margin-bottom: 5px;
+  color: var(--lab-muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.environment-strip dd {
+  overflow-wrap: anywhere;
+  color: var(--lab-ink);
+  font-weight: 650;
+}
+
+.monitoring {
+  align-items: center;
+  margin-top: 14px;
+  padding: 10px 14px;
+}
+
+.monitoring a,
+.scenario-links a {
+  border-radius: 9px;
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.monitoring a:hover,
+.scenario-links a:hover {
+  color: var(--lab-brand);
+  background: #eef5ff;
+  transform: translateY(-1px);
+}
+
+.app-tabs {
+  gap: 5px;
+  margin-block: 18px 14px;
+  padding: 6px;
+}
+
+.app-tabs [role="tab"] {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.app-tabs [role="tab"][aria-selected="true"] {
+  color: #fff;
+  background: linear-gradient(135deg, var(--lab-brand), var(--lab-brand-deep));
+  box-shadow: 0 5px 14px rgb(23 92 211 / 22%);
+}
+
+.button.primary {
+  background: linear-gradient(135deg, var(--lab-brand), var(--lab-brand-deep));
+  box-shadow: 0 5px 14px rgb(23 92 211 / 18%);
+}
+
+.action,
+.button,
+.control-section,
+.infra-summary > div {
+  transition: box-shadow 160ms ease, transform 160ms ease, border-color 160ms ease;
+}
+
+.action:hover,
+.button:hover {
+  transform: translateY(-1px);
+}
+
+.action:hover {
+  border-color: #9dbce8;
+  box-shadow: 0 9px 22px rgb(16 42 67 / 9%);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .documentation-nav {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .environment-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-tabs {
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: thin;
+  }
+
+  .app-tabs [role="tab"] {
+    flex: 0 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

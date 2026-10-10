@@ -81,7 +81,7 @@ param enableAi bool = false
 @description('Deploy Azure SRE Agent in Sweden Central with Azure Monitor, Application Insights, and Log Analytics connectors. Off by default (billable usage).')
 param enableSreAgent bool = false
 
-@description('Enable the broken App Service deployment-slot recovery scenario. Upgrades the App Service plan from B1 to S1 and adds a preloaded broken slot. Off by default.')
+@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan, upgrading it from B1 to S1 when needed. Off by default.')
 param enableSlotFailureScenario bool = false
 
 @description('Deploy Azure Copilot Observability Agent with autonomous alert correlation. Off by default (preview and billable agent operations).')
@@ -128,6 +128,7 @@ var aksName             = 'aks-${namePrefix}'
 var aksDnsPrefix        = '${namePrefix}-${take(suffix, 6)}'
 var appPlanName         = 'plan-${namePrefix}'
 var webAppName          = 'app-${namePrefix}-${take(suffix, 5)}'
+var customerWebAppName  = 'app-${namePrefix}-${take(suffix, 5)}-customer'
 var actionGroupName     = 'ag-${namePrefix}-email'
 var workbookName        = 'wb-${namePrefix}-trafficlights'
 var dcrVmInsightsName   = 'dcr-${namePrefix}-vminsights'
@@ -226,11 +227,11 @@ module observabilityAgent 'modules/observability-agent.bicep' = if (enableObserv
   }
 }
 
-module observabilityAgentSubscriptionRbac 'modules/observability-agent-subscription-rbac.bicep' = if (enableObservabilityAgent) {
-  name: 'observability-agent-subscription-rbac'
-  scope: subscription()
+module observabilityAgentResourceRbac 'modules/observability-agent-resource-rbac.bicep' = if (enableObservabilityAgent) {
+  name: 'observability-agent-resource-rbac'
   params: {
     principalId: observabilityAgent!.outputs.principalId
+    appInsightsName: appInsightsName
   }
 }
 
@@ -243,7 +244,7 @@ module sreAgent 'modules/sre-agent.bicep' = if (enableSreAgent) {
     appInsightsConnectionString: appInsights.outputs.connectionString
     logAnalyticsId: lawCentral.outputs.id
     managedResourceGroupId: resourceGroup().id
-    webAppId: appService.outputs.webAppId
+    slotWebAppId: enableSlotFailureScenario ? customerWebApp!.outputs.webAppId : ''
     enableSlotFailureScenario: enableSlotFailureScenario
     tags: commonTags
   }
@@ -513,6 +514,19 @@ module appService 'modules/appservice.bicep' = {
   }
 }
 
+module customerWebApp 'modules/customer-webapp.bicep' = if (enableSlotFailureScenario) {
+  name: 'customer-webapp'
+  params: {
+    webAppName: customerWebAppName
+    location: appServiceLocation
+    serverFarmResourceId: appService.outputs.planId
+    appInsightsConnectionString: appInsights.outputs.connectionString
+    appInsightsInstrumentationKey: appInsights.outputs.instrumentationKey
+    centralLawId: lawCentral.outputs.id
+    tags: commonTags
+  }
+}
+
 module consolePlatform 'modules/lab-console-platform.bicep' = {
   name: 'lab-console-platform'
   params: {
@@ -522,6 +536,7 @@ module consolePlatform 'modules/lab-console-platform.bicep' = {
     tags: commonTags
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []
     enableSlotFailureScenario: enableSlotFailureScenario
+    customerWebAppName: enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
   }
 }
 
@@ -537,6 +552,8 @@ module automitigation 'modules/automitigation-logicapp.bicep' = {
   params: {
     name: 'la-${namePrefix}-automitigation'
     location: location
+    linuxVmId: deployLinuxVm ? vmLinux!.outputs.vmId : ''
+    windowsVmId: deployWindowsVm ? vmWindows!.outputs.vmId : ''
     tags: commonTags
   }
 }
@@ -559,6 +576,7 @@ module alerts 'modules/alerts.bicep' = {
     actionGroupId: actionGroup.outputs.id
     aksId: aks.outputs.id
     webAppId: appService.outputs.webAppId
+    customerWebAppId: enableSlotFailureScenario ? customerWebApp!.outputs.webAppId : ''
     webAppRegion: appServiceLocation
     appInsightsId: appInsights.outputs.id
     linuxVmId: deployLinuxVm ? vmLinux!.outputs.vmId : ''
@@ -1029,6 +1047,8 @@ output appInsightsConnString string = appInsights.outputs.connectionString
 output aksName string              = aks.outputs.name
 output webAppName string           = webAppName
 output webAppDefaultHost string    = appService.outputs.defaultHost
+output customerWebAppName string   = enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
+output customerWebAppDefaultHost string = enableSlotFailureScenario ? customerWebApp!.outputs.defaultHost : ''
 output grafanaEndpoint string      = grafana.outputs.endpoint
 output workbookId string           = workbook.outputs.id
 output appInsightsInvestigationWorkbookId string = appInsightsObservability.outputs.workbookId

@@ -86,7 +86,7 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
   $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
 }
 $webApp = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*"
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and $_.name -notmatch '-customer$'
 }) | Select-Object -First 1
 $aks = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.ContainerService/managedClusters' -and $_.name -ieq "aks-$NamePrefix"
@@ -98,6 +98,10 @@ $centralLaw = @($resources | Where-Object {
 if (-not $webApp) {
   throw "Could not find App Service 'app-$NamePrefix-<suffix>' in resource group '$ResourceGroup'. Complete the workload stage first."
 }
+$customerWebApp = @($resources | Where-Object {
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -ieq "$($webApp.name)-customer"
+}) | Select-Object -First 1
+$customerWebAppName = if ($customerWebApp) { $customerWebApp.name } else { $null }
 if (-not $aks) {
   throw "Could not find AKS cluster 'aks-$NamePrefix' in resource group '$ResourceGroup'. Complete the workload stage first."
 }
@@ -124,6 +128,7 @@ $postDeploy = Join-Path $PSScriptRoot 'post-deploy.ps1'
   -WebAppName $webApp.name `
   -AksName $aks.name `
   -WebAppHost $webAppHost `
+  -CustomerWebAppName $customerWebAppName `
   -CentralLawName $centralLaw.name `
   -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
 
@@ -158,6 +163,10 @@ if ($EnableStageObservabilityAgent) {
   & (Join-Path $PSScriptRoot 'setup-observability-agent.ps1') `
     -SubscriptionId $active.id `
     -ResourceGroup $ResourceGroup
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $active.id `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
 }
 
 Write-Host "`nPost-staged deployment setup completed." -ForegroundColor Green

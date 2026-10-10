@@ -7,13 +7,11 @@
 //           via a webhook receiver (see actiongroup.bicep).
 // Workflow:
 //   1. Parse the inbound alert (Common Alert Schema).
-//   2. If alertTargetIDs[0] is a VM → call ARM `restart` on it.
+//   2. If alertTargetIDs[0] is a VM → call ARM `start` on it.
 //   3. Otherwise → no-op (logs the payload).
 //
-// Identity: System-assigned. Granted **Contributor** at RG scope so it can call
-//           Microsoft.Compute/virtualMachines/restart/action.
-//
-// NOTE: in production you'd narrow this to Virtual Machine Contributor.
+// Identity: System-assigned. Granted a custom VM-start role only on the
+//           configured Linux and Windows demo VMs.
 // =====================================================================================
 
 @description('Logic App name.')
@@ -24,6 +22,22 @@ param location string
 
 @description('Resource tags.')
 param tags object = {}
+
+@description('Resource ID of the optional Linux demo VM.')
+param linuxVmId string = ''
+
+@description('Resource ID of the optional Windows demo VM.')
+param windowsVmId string = ''
+
+var vmStartRoleName = 'Azure Monitor Lab VM Start'
+
+resource linuxVm 'Microsoft.Compute/virtualMachines@2024-03-01' existing = if (!empty(linuxVmId)) {
+  name: last(split(linuxVmId, '/'))
+}
+
+resource windowsVm 'Microsoft.Compute/virtualMachines@2024-03-01' existing = if (!empty(windowsVmId)) {
+  name: last(split(windowsVmId, '/'))
+}
 
 // ---------------------------------------------------------------------------------
 // Logic App workflow (Consumption)
@@ -144,13 +158,44 @@ resource logic 'Microsoft.Logic/workflows@2019-05-01' = {
   }
 }
 
-// Grant the Logic App's MSI Contributor at RG scope so it can restart VMs.
-// (Role ID: b24988ac-6180-42a0-ab88-20f7382dd24c = Contributor)
-resource roleAssign 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, logic.id, 'rg-contributor')
+resource vmStartRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
+  name: guid(resourceGroup().id, vmStartRoleName)
+  properties: {
+    roleName: vmStartRoleName
+    description: 'Allows the lab auto-mitigation Logic App to start the configured demo VMs.'
+    type: 'CustomRole'
+    permissions: [
+      {
+        actions: [
+          'Microsoft.Compute/virtualMachines/start/action'
+        ]
+        notActions: []
+        dataActions: []
+        notDataActions: []
+      }
+    ]
+    assignableScopes: [
+      resourceGroup().id
+    ]
+  }
+}
+
+resource linuxVmStartAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(linuxVmId)) {
+  name: guid(linuxVmId, logic.id, vmStartRole.id)
+  scope: linuxVm
   properties: {
     principalId: logic.identity.principalId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')
+    roleDefinitionId: vmStartRole.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource windowsVmStartAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(windowsVmId)) {
+  name: guid(windowsVmId, logic.id, vmStartRole.id)
+  scope: windowsVm
+  properties: {
+    principalId: logic.identity.principalId
+    roleDefinitionId: vmStartRole.id
     principalType: 'ServicePrincipal'
   }
 }

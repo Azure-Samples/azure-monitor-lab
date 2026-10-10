@@ -1,32 +1,35 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
-  [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9-]{2,60}$')] [string] $WebAppName,
-  [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup
+  [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup,
+  [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9-]{2,60}$')] [string] $WebAppName
 )
 
 $ErrorActionPreference = 'Stop'
 if ($ResourceGroup.EndsWith('.')) { throw 'Invalid resource group.' }
+. (Join-Path $PSScriptRoot 'slot-health.ps1')
 
-function Get-Setting {
-  param([string] $Slot)
-  $arguments = @('webapp', 'config', 'appsettings', 'list', '--resource-group', $ResourceGroup, '--name', $WebAppName, '--output', 'json')
-  if ($Slot) { $arguments += @('--slot', $Slot) }
-  $settings = @(& az @arguments | ConvertFrom-Json)
-  if ($LASTEXITCODE -ne 0) { throw "Could not read App Service settings for '$($Slot ?? 'production')'." }
-  return ($settings | Where-Object name -eq 'LabConsole__ForceOutage' | Select-Object -First 1).value
+$production = az webapp show --resource-group $ResourceGroup --name $WebAppName `
+  --query '{state:state,defaultHostName:defaultHostName}' --output json --only-show-errors | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $production.state -ne 'Running' -or -not $production.defaultHostName) {
+  throw 'The customer production Web App is not running or did not report a hostname. No swap was attempted.'
+}
+$slots = @(az webapp deployment slot list --resource-group $ResourceGroup --name $WebAppName --output json --only-show-errors | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0) { throw 'Could not inspect customer Web App deployment slots.' }
+$broken = @($slots | Where-Object name -eq 'broken')
+if ($broken.Count -ne 1 -or [string]::IsNullOrWhiteSpace($broken[0].defaultHostName)) {
+  throw "The customer Web App's 'broken' slot is not uniquely addressable."
 }
 
-$productionOutage = Get-Setting
-$brokenOutage = Get-Setting -Slot 'broken'
-if ($productionOutage -eq 'true') { throw 'Production is already serving the intentional outage. Use the rollback workflow instead of swapping again.' }
-if ($brokenOutage -ne 'true') { throw "The broken slot is not armed with LabConsole__ForceOutage=true. No swap was attempted." }
+$productionStatus = Get-LabWebAppHealthStatus -HostName $production.defaultHostName
+$brokenStatus = Get-LabWebAppHealthStatus -HostName $broken[0].defaultHostName
+if ($productionStatus -ne 200 -or $brokenStatus -ne 503) {
+  throw "The customer slot is not in the armed state (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
+}
 
-if (-not $PSCmdlet.ShouldProcess("$WebAppName/slots/broken -> production", 'Swap the intentional outage into production')) { return }
-az webapp deployment slot swap --resource-group $ResourceGroup --name $WebAppName --slot broken --target-slot production --output none
+if (-not $PSCmdlet.ShouldProcess("$WebAppName/slots/broken -> production", 'Swap the intentional outage into the customer Web App')) { return }
+az webapp deployment slot swap --resource-group $ResourceGroup --name $WebAppName --slot broken --target-slot production --output none --only-show-errors
 if ($LASTEXITCODE -ne 0) { throw 'Azure did not report a successful slot swap. Inspect the deployment operation before retrying.' }
 
-$hostName = az webapp show --resource-group $ResourceGroup --name $WebAppName --query defaultHostName --output tsv
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($hostName)) { throw 'The swap completed, but the production hostname could not be verified.' }
-$response = Invoke-WebRequest -Uri "https://$hostName/healthz" -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 30
-if ([int]$response.StatusCode -ne 503) { throw "The swap completed, but production returned HTTP $([int]$response.StatusCode) instead of the expected 503. Inspect both slots before another action." }
-Write-Output 'The broken slot is now in production and returns HTTP 503. Recover externally by swapping the broken slot back to production.'
+Wait-LabWebAppHealthStatus -HostName $production.defaultHostName -ExpectedStatusCode 503
+Wait-LabWebAppHealthStatus -HostName $broken[0].defaultHostName -ExpectedStatusCode 200
+Write-Output 'The customer Web App now returns HTTP 503 while this Control Center remains healthy. The SRE Agent should restore it from the matching Azure Monitor alert.'

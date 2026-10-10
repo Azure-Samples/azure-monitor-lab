@@ -203,6 +203,10 @@ Keep both plans in **Review** mode for the trial. Open **Incidents > Triggers & 
 
 The portal currently accepts one **Title contains** value per plan. Use `webapp` for `amlab-app-alerts` and `aks` for `amlab-platform-alerts`. To cover each additional title fragment in the table, clone the corresponding plan with a unique name and replace the title filter. Confirm every plan shows status **On** and mode **Review**. Turn off plans when the demo is idle to prevent expected lab alerts from consuming active-flow AAUs.
 
+### Scenario 71 — isolated slot recovery
+
+Scenario 71 uses a separate `amlab-slot-recovery` custom agent and an Azure Monitor response plan filtered to the dedicated `alert-customer-app-5xx` rule. Keep the general app/platform plans above in Review mode; the slot-specific plan is Autonomous only for the controlled demo and should be turned off when idle. Its action identity can swap slots only on the customer Web App, not the Control Center. Follow the exact agent instructions, incident conditions, and verification steps in [Scenario 71](DEMO-SCENARIOS.md#s71).
+
 ### Coordinated Scenario 69 flow
 
 1. Generate the Broken trace and let the agent-task or efficiency alert open or update the SRE incident.

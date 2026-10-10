@@ -2,7 +2,7 @@
 param(
   [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9.-]*\.azurewebsites\.net$')] [string] $WebAppHost,
   [Parameter(Mandatory)] [ValidatePattern('^[a-f0-9]{32}$')] [string] $DeploymentId,
-  [ValidateRange(1, 60)] [int] $MaxAttempts = 36
+  [ValidateRange(1, 120)] [int] $MaxAttempts = 90
 )
 
 $ErrorActionPreference = 'Stop'

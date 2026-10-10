@@ -401,7 +401,7 @@
             "type": "Microsoft.Common.TextBlock",
             "visible": "[equals(steps('advanced').enableObservabilityAgent, true)]",
             "options": {
-              "text": "Azure Copilot Observability Agent autonomous operations are in preview. The deployment creates a dedicated Azure Monitor workspace, grants Issue Contributor there and Monitoring Reader at subscription scope, and monitors this lab's Application Insights resource. Alert correlation is automatic; deep investigation remains manual unless explicitly enabled."
+              "text": "Azure Copilot Observability Agent autonomous operations are in preview. The deployment creates a dedicated Azure Monitor workspace, grants Issue Contributor there and Monitoring Reader directly on this lab's Application Insights resource, and monitors that resource. Alert correlation is automatic; deep investigation remains manual unless explicitly enabled."
             }
           }
         ]

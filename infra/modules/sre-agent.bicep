@@ -20,8 +20,8 @@ param managedResourceGroupId string
 @description('Resource tags.')
 param tags object = {}
 
-@description('Web App resource ID containing the opt-in broken slot.')
-param webAppId string = ''
+@description('Customer Web App resource ID containing the opt-in broken slot.')
+param slotWebAppId string = ''
 
 @description('Grant the SRE Agent action identity permission to reverse the broken-slot swap.')
 param enableSlotFailureScenario bool = false
@@ -68,14 +68,14 @@ resource logAnalyticsReader 'Microsoft.Authorization/roleAssignments@2022-04-01'
 }
 
 resource webApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
-  name: last(split(webAppId, '/'))
+  name: last(split(slotWebAppId, '/'))
 }
 
 resource slotRollbackRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (enableSlotFailureScenario) {
   name: guid(resourceGroup().id, 'sre-agent-slot-rollback')
   properties: {
     roleName: 'Lab SRE Slot Rollback ${take(uniqueString(resourceGroup().id), 8)}'
-    description: 'Read the lab Web App slots and reverse the controlled broken-slot swap.'
+    description: 'Read the customer Web App slots and reverse the controlled broken-slot swap.'
     type: 'CustomRole'
     assignableScopes: [resourceGroup().id]
     permissions: [

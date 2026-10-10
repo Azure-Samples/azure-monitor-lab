@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory)] [guid] $TenantId,
   [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup,
   [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9-]+$')] [string] $WebAppName,
+  [ValidatePattern('^[a-zA-Z0-9-]+$')] [string] $CustomerWebAppName = '',
   [Parameter(Mandatory)] [string] $ConsoleConfigPath,
   [guid[]] $AllowedUserObjectIds
 )
@@ -73,6 +74,9 @@ try {
   $settings = @{}
   foreach ($property in $settingsResponse.properties.PSObject.Properties) { $settings[$property.Name] = $property.Value }
   $slotScenarioEnabled = $settings['LabConsole__SlotScenarioEnabled'] -ieq 'true'
+  if ($slotScenarioEnabled -and (-not $CustomerWebAppName -or $CustomerWebAppName -cne "$WebAppName-customer")) {
+    throw 'The enabled slot scenario requires its exact dedicated customer Web App name.'
+  }
   $settings['LabConsole__Operations__Enabled'] = 'false'
   $settings['LabConsole__Health__Enabled'] = 'false'
   $null = Invoke-ConsoleApi PUT "https://management.azure.com$webId/config/appsettings?api-version=2024-11-01" @{ properties = $settings }
@@ -125,9 +129,10 @@ try {
   $platformParametersPath = Join-Path $temporary 'runner-platform.parameters.json'
   $tagParameters.parameters.cpuVmNames = @{ value = $cpuVmNames }
   $tagParameters.parameters.enableSlotFailureScenario = @{ value = $slotScenarioEnabled }
+  $tagParameters.parameters.customerWebAppName = @{ value = $CustomerWebAppName }
   $tagParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $platformParametersPath -Encoding utf8
   $platform = Invoke-ConsoleDeployment 'lab-console-platform' (Join-Path $root 'infra/modules/lab-console-platform.json') @(
-    "webAppName=$WebAppName", "centralLawId=$($config.LabConsole.Health.CentralWorkspaceResourceId)", "location=$($web.location)", "@$platformParametersPath"
+    "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "centralLawId=$($config.LabConsole.Health.CentralWorkspaceResourceId)", "location=$($web.location)", "@$platformParametersPath"
   )
   if ($LASTEXITCODE -ne 0 -or -not $platform.registryName.value -or -not $platform.environmentId.value -or -not $platform.runnerIdentityId.value) { throw 'The workload template did not provision the console runner platform.' }
   foreach ($id in @($platform.registryId.value, $platform.environmentId.value, $platform.runnerIdentityId.value)) {
@@ -138,12 +143,29 @@ try {
   $environment = az resource show --ids $platform.environmentId.value --subscription $SubscriptionId --api-version 2025-07-01 --output json --only-show-errors | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or -not $environment.location) { throw 'Runner environment is unavailable.' }
 
+  $phase = 'runner AcrPull role propagation'
+  $acrPullConfirmed = $false
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    $roleNames = az role assignment list --scope $platform.registryId.value --assignee-object-id $identity.principalId `
+      --subscription $SubscriptionId --query "[?roleDefinitionName=='AcrPull'].roleDefinitionName" --output tsv --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not verify the console runner AcrPull assignment.' }
+    if (@($roleNames | Where-Object { $_ -eq 'AcrPull' }).Count -gt 0) {
+      $acrPullConfirmed = $true
+      break
+    }
+    if ($attempt -lt 5) {
+      Write-Host "Waiting for runner AcrPull RBAC propagation (attempt $attempt/5, waiting 60s)..."
+      Start-Sleep -Seconds 60
+    }
+  }
+  if (-not $acrPullConfirmed) { throw 'The runner identity AcrPull assignment was not visible on its registry after five attempts.' }
+
   $phase = 'runner image build'
   $build = Join-Path $temporary 'build'
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'scripts') -Force
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/k8s') -Force
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/webapp/scripts') -Force
-  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
+  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/slot-health.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
     'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1',
     'scripts/trigger-broken-slot.ps1',
     'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json',
@@ -163,7 +185,7 @@ try {
 
   $phase = 'runner job provisioning'
   $job = Invoke-ConsoleDeployment 'lab-console-job' (Join-Path $root 'infra/modules/lab-console-job.json') @(
-    "name=$($platform.jobName.value)", "location=$($environment.location)", "webAppName=$WebAppName", "environmentId=$($platform.environmentId.value)",
+    "name=$($platform.jobName.value)", "location=$($environment.location)", "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "environmentId=$($platform.environmentId.value)",
     "registryServer=$server", "runnerIdentityId=$($identity.id)", "runnerClientId=$($identity.clientId)", "image=$image", "@$tagParametersPath"
   )
   if ($LASTEXITCODE -ne 0 -or -not $job.jobId.value) { throw 'Runner job deployment failed.' }

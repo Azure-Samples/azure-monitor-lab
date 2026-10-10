@@ -39,7 +39,7 @@ param grafanaAdminObjectId string = ''
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
-@description('Enable the broken App Service deployment-slot recovery scenario. Upgrades the plan to Standard S1.')
+@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the App Service plan, upgrading it to Standard S1 when needed.')
 param enableSlotFailureScenario bool = false
 
 var suffix = uniqueString(resourceGroup().id)
@@ -55,6 +55,7 @@ var aksName = 'aks-${namePrefix}'
 var aksDnsPrefix = '${namePrefix}-${take(suffix, 6)}'
 var appPlanName = 'plan-${namePrefix}'
 var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
+var customerWebAppName = 'app-${namePrefix}-${take(suffix, 5)}-customer'
 var dcrVmInsightsName = 'dcr-${namePrefix}-vminsights'
 var deployVmOtelMetrics = enableVmOtelMetrics && (deployLinuxVm || deployWindowsVm)
 var dcrPrometheusName = 'dcr-${namePrefix}-prometheus'
@@ -211,6 +212,19 @@ module appService '../modules/appservice.bicep' = {
   }
 }
 
+module customerWebApp '../modules/customer-webapp.bicep' = if (enableSlotFailureScenario) {
+  name: 'customer-webapp'
+  params: {
+    webAppName: customerWebAppName
+    location: appServiceLocation
+    serverFarmResourceId: appService.outputs.planId
+    appInsightsConnectionString: appInsights.properties.ConnectionString
+    appInsightsInstrumentationKey: appInsights.properties.InstrumentationKey
+    centralLawId: lawCentral.id
+    tags: commonTags
+  }
+}
+
 module consolePlatform '../modules/lab-console-platform.bicep' = {
   name: 'lab-console-platform'
   params: {
@@ -220,6 +234,7 @@ module consolePlatform '../modules/lab-console-platform.bicep' = {
     tags: commonTags
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []
     enableSlotFailureScenario: enableSlotFailureScenario
+    customerWebAppName: enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
   }
 }
 
@@ -263,3 +278,7 @@ module flowLogs '../modules/flow-logs.bicep' = {
     tags: commonTags
   }
 }
+
+output webAppName string = appService.outputs.webAppName
+output customerWebAppName string = enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
+output customerWebAppDefaultHost string = enableSlotFailureScenario ? customerWebApp!.outputs.defaultHost : ''

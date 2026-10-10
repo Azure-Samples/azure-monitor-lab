@@ -66,11 +66,11 @@ module observabilityAgent '../modules/observability-agent.bicep' = {
   }
 }
 
-module observabilityAgentSubscriptionRbac '../modules/observability-agent-subscription-rbac.bicep' = {
-  name: 'observability-agent-subscription-rbac'
-  scope: subscription()
+module observabilityAgentResourceRbac '../modules/observability-agent-resource-rbac.bicep' = {
+  name: 'observability-agent-resource-rbac'
   params: {
     principalId: observabilityAgent.outputs.principalId
+    appInsightsName: appInsightsName
   }
 }
 

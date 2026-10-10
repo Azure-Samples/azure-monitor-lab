@@ -23,7 +23,7 @@ The generator uses isolated Chromium contexts and drives the actual customer UI;
 
 ## Lab Operations
 
-The [Lab Operations reference](LAB-OPERATIONS.md) covers nine scripts, including cost-aware Start/Stop controls, bounded customer traffic, and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, including Node.js and Chromium, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
+The [Lab Operations reference](LAB-OPERATIONS.md) covers ten scripts, including cost-aware Start/Stop controls, bounded customer traffic, the isolated customer slot-failure scenario, and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, including Node.js and Chromium, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
 
 ## Infrastructure Health
 

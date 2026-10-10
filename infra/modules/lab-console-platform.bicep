@@ -19,6 +19,9 @@ param cpuVmNames array = []
 @description('Allow the independent runner to trigger the opt-in broken-slot swap.')
 param enableSlotFailureScenario bool = false
 
+@description('Customer-facing Web App targeted by the opt-in broken-slot operation.')
+param customerWebAppName string = ''
+
 var suffix = uniqueString(resourceGroup().id, webAppName)
 var registryName = 'acrlabops${take(suffix, 12)}'
 var environmentName = 'cae-labops-${take(suffix, 8)}'
@@ -27,6 +30,10 @@ var jobName = 'job-labops-${take(suffix, 8)}'
 
 resource site 'Microsoft.Web/sites@2023-12-01' existing = {
   name: webAppName
+}
+
+resource customerSite 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+  name: customerWebAppName
 }
 
 module identity 'br/public:avm/res/managed-identity/user-assigned-identity:0.6.0' = {
@@ -126,15 +133,44 @@ resource runnerRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
           'Microsoft.Insights/components/Annotations/write'
           'Microsoft.Insights/dataCollectionRules/read'
           'Microsoft.Insights/dataCollectionEndpoints/read'
-        ], enableSlotFailureScenario ? [
-          'Microsoft.Web/sites/slots/read'
-          'Microsoft.Web/sites/slots/slotsswap/action'
-        ] : [])
+        ], [])
         notActions: []
         dataActions: []
         notDataActions: []
       }
     ]
+  }
+}
+
+resource slotScenarioRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (enableSlotFailureScenario) {
+  name: guid(resourceGroup().id, 'lab-console-slot-scenario-role')
+  properties: {
+    roleName: 'Lab Console Customer Slot Operation ${take(suffix, 8)}'
+    description: 'Read and swap deployment slots only on the dedicated customer Web App.'
+    type: 'CustomRole'
+    assignableScopes: [resourceGroup().id]
+    permissions: [
+      {
+        actions: [
+          'Microsoft.Web/sites/read'
+          'Microsoft.Web/sites/slots/read'
+          'Microsoft.Web/sites/slots/slotsswap/action'
+        ]
+        notActions: []
+        dataActions: []
+        notDataActions: []
+      }
+    ]
+  }
+}
+
+resource slotScenarioAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSlotFailureScenario) {
+  name: guid(customerSite!.id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', identityName), slotScenarioRole!.id)
+  scope: customerSite!
+  properties: {
+    roleDefinitionId: slotScenarioRole!.id
+    principalId: identity.outputs.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 

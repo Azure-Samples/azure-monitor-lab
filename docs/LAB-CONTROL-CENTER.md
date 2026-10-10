@@ -65,11 +65,13 @@ The tab does not start investigations, use a model, probe arbitrary endpoints, r
 
 The screenshot uses example configuration and a simulated run. No real operation was executed to produce it.
 
-The nine actions reuse repository scripts through an independent Azure Container Apps Job. Every action requires a five-minute proposal, review of the script, exact lab target and image digest, resource-group confirmation, and approval of changes and charges. The UI shows Azure execution status and links to the job's execution history. Switching away stops automatic status checks, not the job.
+The ten actions reuse repository scripts through an independent Azure Container Apps Job. Every action requires a five-minute proposal, review of the script, exact lab target and image digest, resource-group confirmation, and approval of changes and charges. The UI shows Azure execution status and links to the job's execution history. Switching away stops automatic status checks, not the job.
 
 **Generate Customer Traffic** discovers the single app-prefixed Web App, verifies `/customer/`, then runs the real Chromium journey generator with 1-100 users, concurrency 1-10, and repeat users no greater than total users. The default is 24 users, 4 concurrent browsers, and 6 repeat users. The job is not automatically retried; inspect run history and ingested telemetry before submitting another operation.
 
-Use **Stop Lab** when the environment is idle. It deallocates VMs and VMSS instances, stops AKS, and stops the Web App last. It reduces compute usage but is not teardown: fixed services, retained resources, telemetry, and optional agents can continue billing.
+Use **Stop Lab** when the environment is idle. It deallocates VMs and VMSS instances, stops AKS, and then stops the Web Apps, including the Control Center and the separate customer app. It reduces compute usage but is not teardown: fixed services, retained resources, telemetry, and optional agents can continue billing.
+
+**Deploy Broken Slot** intentionally makes only the separate customer Web App return HTTP 503; the Control Center remains available. It requires the opt-in slot scenario to be deployed and an explicit approval. See [Scenario 71](DEMO-SCENARIOS.md#s71) for the Azure Monitor alert and narrowly scoped SRE Agent recovery plan; that Autonomous plan must be configured separately and turned off when the demo is idle.
 
 **Simulate High CPU** submits fixed 10-minute loads to the Linux and Windows demo VMs without restarting them or using AKS. It validates both tagged targets and their VM Agents first, uses guest overlap locks and expiry, and reports submission rather than confirmed CPU or alert success. Watch **Percentage CPU** for each VM in Azure Monitor; VM health rows here assess heartbeats, not CPU. B-series CPU credits and alert evaluation windows can affect the observed result. Cancellation or Restore Lab does not stop an accepted CPU command. See [CPU simulation details](../workloads/webapp/LAB-OPERATIONS.md#simulate-high-cpu).
 

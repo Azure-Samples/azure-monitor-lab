@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "6415512128418902222"
+      "templateHash": "9362756119691920294"
     }
   },
   "parameters": {
@@ -122,53 +122,6 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('enableSlotFailureScenario')]",
-      "type": "Microsoft.Web/sites/slots",
-      "apiVersion": "2023-12-01",
-      "name": "[format('{0}/{1}', parameters('webAppName'), 'broken')]",
-      "location": "[parameters('location')]",
-      "tags": "[union(parameters('tags'), createObject('amlab-scenario', 'broken-slot'))]",
-      "kind": "app,linux",
-      "properties": {
-        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]",
-        "httpsOnly": true,
-        "siteConfig": {
-          "linuxFxVersion": "DOTNETCORE|8.0",
-          "alwaysOn": true,
-          "ftpsState": "Disabled",
-          "minTlsVersion": "1.2",
-          "http20Enabled": true,
-          "healthCheckPath": "/api/slot-warmup",
-          "appSettings": [
-            {
-              "name": "LabConsole__SlotScenarioEnabled",
-              "value": "true"
-            },
-            {
-              "name": "LabConsole__ForceOutage",
-              "value": "true"
-            },
-            {
-              "name": "WEBSITE_SWAP_WARMUP_PING_PATH",
-              "value": "/api/slot-warmup"
-            },
-            {
-              "name": "WEBSITE_SWAP_WARMUP_PING_STATUSES",
-              "value": "200"
-            },
-            {
-              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
-              "value": "false"
-            }
-          ]
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]",
-        "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
       ]
     },
     {
@@ -345,10 +298,6 @@
     "planId": {
       "type": "string",
       "value": "[resourceId('Microsoft.Web/serverfarms', parameters('planName'))]"
-    },
-    "brokenSlotId": {
-      "type": "string",
-      "value": "[if(parameters('enableSlotFailureScenario'), resourceId('Microsoft.Web/sites/slots', parameters('webAppName'), 'broken'), '')]"
     }
   }
 }

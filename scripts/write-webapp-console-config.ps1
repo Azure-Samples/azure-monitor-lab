@@ -3,6 +3,8 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [Parameter(Mandatory)] [string] $SubscriptionId,
   [Parameter(Mandatory)] [string] $OutputPath,
+  [string] $WebAppName,
+  [string] $CustomerWebAppName,
   [string] $CentralLawName,
   [switch] $EnableInfrastructureHealth,
   [switch] $EnableFoundryPlayground,
@@ -39,7 +41,7 @@ $workspace = if ($CentralLawName) {
   $workspaces | Where-Object { $_.name -like '*central*' } | Select-Object -First 1
 }
 $grafana = $resources | Where-Object { $_.type -ieq 'Microsoft.Dashboard/grafana' } | Select-Object -First 1
-$links = [ordered]@{ ApplicationInsights = $null; Logs = $null; Workbook = $null; Grafana = $null }
+$links = [ordered]@{ ApplicationInsights = $null; Logs = $null; Workbook = $null; Grafana = $null; CustomerApplication = $null }
 if ($appInsights) { $links.ApplicationInsights = "https://portal.azure.com/#resource$($appInsights.id)/overview" }
 if ($workspace) { $links.Logs = "https://portal.azure.com/#resource$($workspace.id)/logs" }
 
@@ -74,6 +76,25 @@ $sreAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.App/agents' }
 $observabilityAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' })
 $projects = @($resources | Where-Object { $_.type -ieq 'Microsoft.CognitiveServices/accounts/projects' })
 $apps = @($resources | Where-Object { $_.type -ieq 'Microsoft.Web/sites' })
+$appName = if ($WebAppName) {
+  $match = @($apps | Where-Object name -ceq $WebAppName)
+  if ($match.Count -ne 1) { throw 'The configured Control Center Web App was not uniquely found in this resource group.' }
+  $WebAppName
+} elseif ($apps.Count -eq 1) {
+  $apps[0].name
+} else {
+  $null
+}
+$customerAppName = if ($CustomerWebAppName) { $CustomerWebAppName } elseif ($WebAppName) { "$WebAppName-customer" } else { $null }
+if ($customerAppName) {
+  $customerHost = az webapp show --subscription $SubscriptionId --resource-group $ResourceGroup --name $customerAppName `
+    --query defaultHostName --output tsv --only-show-errors
+  if ($LASTEXITCODE -eq 0 -and $customerHost) {
+    $links.CustomerApplication = "https://$customerHost/"
+  } elseif ($CustomerWebAppName) {
+    throw "The configured customer Web App '$customerAppName' could not be resolved."
+  }
+}
 $links.SreAgent = $null
 $links.ObservabilityAgent = $null
 $links.Foundry = $null
@@ -109,7 +130,6 @@ if ($projects.Count -eq 1) {
 } elseif ($projects.Count -gt 1) {
   Write-Warning 'Multiple Foundry projects found. Configure LabConsole:Foundry:ProjectEndpoint explicitly.'
 }
-$appName = if ($apps.Count -eq 1) { $apps[0].name } else { $null }
 if ($EnableSreAssistant -and $sreAgents.Count -ne 1) { throw 'SRE MCP assistant requires exactly one discovered agent.' }
 @{ LabConsole = @{
   Links = $links; ResourceGroup = $ResourceGroup; AppService = $appName

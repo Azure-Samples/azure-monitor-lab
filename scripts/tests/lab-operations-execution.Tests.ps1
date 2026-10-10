@@ -4,7 +4,7 @@ $repo = Join-Path $root 'repo'
 $scriptDirectory = Join-Path $repo 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 $source = Split-Path $PSScriptRoot -Parent
-foreach ($name in @('invoke-lab-operation.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1', 'trigger-broken-slot.ps1')) {
+foreach ($name in @('invoke-lab-operation.ps1', 'slot-health.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1', 'trigger-broken-slot.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source $name) -Destination $scriptDirectory
 }
 @'
@@ -28,6 +28,7 @@ $fixture = @{
 $envValues = @{
   LAB_RUNNER_MODE = 'ContainerAppsJob'; IDENTITY_ENDPOINT = 'http://localhost/identity'; IDENTITY_HEADER = 'test-header'; AZURE_CLIENT_ID = [guid]::NewGuid().ToString()
   LAB_SUBSCRIPTION_ID = $fixture.Subscription; LAB_TENANT_ID = $fixture.Tenant; LAB_RESOURCE_GROUP = 'test-rg'
+  LAB_WEB_APP_NAME = 'app-amlab-test'; LAB_CUSTOMER_WEB_APP_NAME = 'app-amlab-test-customer'
   RUNNER_TEMP = $root; AZURE_CORE_OUTPUT = 'none'; KUBECONFIG = $env:KUBECONFIG; TEMP = $env:TEMP; TMP = $env:TMP; PATH = $env:PATH
 }
 $previous = @{}
@@ -138,7 +139,13 @@ function Invoke-FakeAzure {
       if ($fixture.AllResourcesStopped) { return '[{"name":"app-test","state":"Stopped"}]' }
       return '[{"name":"app-test","state":"Running","defaultHostName":"app-test.azurewebsites.net"}]'
     }
-    'webapp show' { return 'app-test.azurewebsites.net' }
+    'webapp show' {
+      if ($fixture.WebAppFailures -gt 0) { $fixture.WebAppFailures--; $global:LASTEXITCODE = 4; return 'private diagnostic output' }
+      $nameIndex = [Array]::IndexOf($args, '--name')
+      if ($nameIndex -lt 0) { throw 'Web App discovery must name an explicit target.' }
+      $name = $args[$nameIndex + 1]
+      return @{ name = $name; defaultHostName = "$name.azurewebsites.net"; state = 'Running' } | ConvertTo-Json
+    }
     'webapp stop' { return }
     'resource list' {
       if ($args -contains 'Microsoft.Insights/components') {
@@ -179,7 +186,7 @@ function Invoke-RestMethod {
 }
 function Invoke-WebRequest {
   param($Method, $Uri, $Headers, $Body, $MaximumRedirection, $TimeoutSec, [switch] $SkipHttpErrorCheck)
-  if ($Method -eq 'Get' -and $Uri -eq 'https://app-test.azurewebsites.net/customer/') {
+  if ($Method -eq 'Get' -and $Uri -eq 'https://app-amlab-test-customer.azurewebsites.net/customer/') {
     if ($fixture.CustomerFailures -gt 0) { $fixture.CustomerFailures--; return @{ StatusCode = 503 } }
     $fixture.Http.Add(@{ Method = $Method; Uri = $Uri })
     return @{ StatusCode = 200 }
@@ -255,7 +262,7 @@ try {
   $retryOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation usage -Count 1 -Concurrency 1 -CheckAccessOnly 6>&1 | Out-String
   if ($retryOutput -notmatch '"phase":"customer web app discovery","state":"retrying"' -or
       $retryOutput -notmatch '"phase":"customer endpoint readiness","state":"retrying"' -or
-      @($fixture.Calls | Select-Object -Skip $retryStart | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'webapp list' }).Count -ne 2 -or
+      @($fixture.Calls | Select-Object -Skip $retryStart | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'webapp show' }).Count -ne 2 -or
       @($fixture.Http | Where-Object { $_.Method -eq 'Get' }).Count -ne 1 -or
       ($fixture.Sleeps -join ',') -notmatch '2,2') {
     throw 'Customer preflight did not retry transient read-only failures with safe phase diagnostics.'
@@ -270,8 +277,13 @@ try {
     try { $output = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @arguments 6>&1 | Out-String }
     catch { throw "Offline $operation failed: $(($Error | Select-Object -First 4 | ForEach-Object { $_.Exception.Message }) -join ' / ')" }
     if ($output -notmatch "Approved action '$operation' completed") { throw "The $operation script was not completed." }
-    if ($operation -eq 'ramp' -and @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'webapp show' }).Count -ne $webAppShowCalls) {
-      throw 'Ramp execution requested publishing-profile-backed Web App details instead of using its approved host.'
+    if ($operation -eq 'ramp') {
+      $rampWebAppCalls = @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'webapp show' } | Select-Object -Skip $webAppShowCalls)
+      if ($rampWebAppCalls.Count -ne 1 -or
+          $rampWebAppCalls[0].Arguments[[Array]::IndexOf($rampWebAppCalls[0].Arguments, '--name') + 1] -ne $env:LAB_WEB_APP_NAME -or
+          @($fixture.Calls | Where-Object { ($_.Arguments[0..2] -join ' ') -eq 'webapp deployment list-publishing-profiles' }).Count -ne 0) {
+        throw 'Ramp target discovery must read the configured Control Center Web App metadata without requesting publishing-profile credentials.'
+      }
     }
     if ($output -match 'fake-session-token|private diagnostic') { throw 'Raw command output leaked.' }
     if (Test-Path (Join-Path $repo '.azure-target.json')) { throw 'Runner target file was not cleaned up.' }
@@ -279,7 +291,7 @@ try {
   if ($fixture.Credentials -ne $fixture.Conversions -or $fixture.Credentials -lt 4) { throw 'Repeated AKS credentials were not isolated and converted.' }
   if (@($fixture.Http | Where-Object { $_.Method -eq 'POST' })[0].Body.Count -ne 12) { throw 'Custom log count was not passed to the existing script.' }
   $usageParameters = Get-Content -LiteralPath (Join-Path $root 'usage-parameters.json') -Raw | ConvertFrom-Json
-  if ($usageParameters.BaseUrl -ne 'https://app-test.azurewebsites.net' -or $usageParameters.Users -ne 24 -or $usageParameters.Concurrency -ne 4 -or $usageParameters.RepeatUsers -ne 6) {
+  if ($usageParameters.BaseUrl -ne 'https://app-amlab-test-customer.azurewebsites.net' -or $usageParameters.Users -ne 24 -or $usageParameters.Concurrency -ne 4 -or $usageParameters.RepeatUsers -ne 6) {
     throw 'Customer traffic parameters were not passed to the bounded browser generator.'
   }
   if ($fixture.Http[-1].Body.AnnotationName -ne 'Release 1.2') { throw 'Marker parameters were not passed to the existing script.' }
@@ -311,7 +323,7 @@ try {
       throw "Stop Lab did not issue '$expectedStop'."
     }
   }
-  Write-Output 'PASS: all nine scripts execute only through fake scoped commands; Stop Lab cost controls, bounded customer traffic, read-only preflight retries, safe phase diagnostics, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls, browser traffic, or CPU load executed.'
+  Write-Output 'PASS: all ten scripts execute only through fake scoped commands; Stop Lab cost controls, bounded customer traffic, read-only preflight retries, safe phase diagnostics, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls, browser traffic, or CPU load executed.'
 } finally {
   foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name]) }
   if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force }

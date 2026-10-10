@@ -88,6 +88,12 @@ if ($registryModule.Count -ne 1 -or $registryModule[0].properties.parameters.acr
 $scriptDirectory = Join-Path $root 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 Copy-Item -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Destination $scriptDirectory
+Copy-Item -LiteralPath (Join-Path $source 'scripts/slot-health.ps1') -Destination $scriptDirectory
+$bootstrapScript = Get-Content -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Raw
+if ($bootstrapScript -notmatch "'scripts/slot-health\.ps1'" -or
+    -not (Test-Path -LiteralPath (Join-Path $source 'scripts/slot-health.ps1'))) {
+  throw 'The runner build must package the shared slot health verifier.'
+}
 foreach ($directory in @('workloads/k8s', 'workloads/operations', 'workloads/webapp/scripts', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
 foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
@@ -122,6 +128,7 @@ $fixture = @{
   DeletePreview = $false; LastPreview = ''; Deployments = 0
   ExistingTags = $true; FailTagRead = $false
   NoCpuPair = $false; FailCpuInventory = $false; CpuScopeEscape = $false
+  AcrRolePolls = 0; AcrRoleVisibleAfter = 2; FailAcrRole = $false; SleepCalls = 0; AcrBuilds = 0; JobDeployments = 0
 }
 $scope = "/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg"
 $fixture.ResourceBase = $scope
@@ -129,8 +136,19 @@ $workspace = "$scope/providers/Microsoft.OperationalInsights/workspaces/central"
 $jobId = "$scope/providers/Microsoft.App/jobs/job-test"
 $path = Join-Path $root 'lab-console.json'
 function Reset-Configuration {
+  $fixture.AcrRolePolls = 0
+  $fixture.AcrRoleVisibleAfter = 2
+  $fixture.FailAcrRole = $false
+  $fixture.SleepCalls = 0
+  $fixture.AcrBuilds = 0
+  $fixture.JobDeployments = 0
   @{ LabConsole = @{ ResourceGroup = 'test-rg'; Health = @{ Enabled = $false; SubscriptionId = $fixture.Subscription; CentralWorkspaceResourceId = $workspace }; Foundry = @{}; Sre = @{} } } |
     ConvertTo-Json -Depth 8 | Set-Content $path
+}
+function Start-Sleep {
+  param([int]$Seconds)
+  if ($Seconds -ne 60) { throw 'AcrPull propagation must use the bounded 60-second polling interval.' }
+  $fixture.SleepCalls++
 }
 function az {
   $global:LASTEXITCODE = 0
@@ -154,6 +172,7 @@ function az {
           $expectedCpuNames = if ($fixture.NoCpuPair) { @() } else { @('vm-test-lin', 'vmwintest') }
           if (@($tagParameters.cpuVmNames.value).Count -ne $expectedCpuNames.Count -or @($tagParameters.cpuVmNames.value | Where-Object { $_ -notin $expectedCpuNames }).Count) { throw 'CPU role target selection is incorrect.' }
           if ($tagParameters.enableSlotFailureScenario.value -ne $true) { throw 'The enabled slot scenario was not propagated to the runner role.' }
+          if ($tagParameters.customerWebAppName.value -ne 'test-app-customer') { throw 'The exact customer Web App target was not propagated to the runner platform.' }
         } elseif ($tagParameters.ContainsKey('cpuVmNames')) { throw 'VM role parameters must not leak into the job deployment schema.' }
       }
       if ($args[2] -eq 'what-if') {
@@ -167,6 +186,7 @@ function az {
         return @{ registryName = @{ value = 'acrlabtest' }; registryId = @{ value = "$scope/providers/Microsoft.ContainerRegistry/registries/acrlabtest" }; environmentId = @{ value = "$scope/providers/Microsoft.App/managedEnvironments/cae-test" }; runnerIdentityId = @{ value = "$scope/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test" }; jobName = @{ value = 'job-test' } } | ConvertTo-Json
       }
       if ($args[2] -ne 'create' -or $args -notcontains 'lab-console-job') { throw 'Unexpected deployment operation.' }
+      $fixture.JobDeployments++
       return @{ jobId = @{ value = $jobId } } | ConvertTo-Json
     }
     'identity show' { return @{ id = "$scope/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test"; principalId = $fixture.RunnerIdentity; clientId = $fixture.Client } | ConvertTo-Json }
@@ -197,12 +217,14 @@ function az {
     }
     'cognitiveservices account' { return '[{"name":"chat-lab","properties":{"model":{"name":"gpt-5-mini"}}}]' }
     'acr build' {
+      $fixture.AcrBuilds++
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 17 -or
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 18 -or
           -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/slot-health.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/trigger-broken-slot.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/generate-usage-traffic.ps1')) -or
           -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/generate-usage-traffic.mjs'))) {
@@ -219,7 +241,19 @@ function az {
       return ConvertTo-Json -InputObject @($fixture.Definitions[$name])
     }
     'role assignment' {
-      if ($args[2] -eq 'list') { return ConvertTo-Json -InputObject @($fixture.Roles) }
+      if ($args[2] -eq 'list') {
+        if ($args -contains '--assignee-object-id') {
+          $roleScope = $args[[Array]::IndexOf($args, '--scope') + 1]
+          $principal = $args[[Array]::IndexOf($args, '--assignee-object-id') + 1]
+          if ($roleScope -ne "$scope/providers/Microsoft.ContainerRegistry/registries/acrlabtest" -or $principal -ne $fixture.RunnerIdentity) {
+            throw 'AcrPull propagation must be checked for the runner identity on its registry.'
+          }
+          $fixture.AcrRolePolls++
+          if (-not $fixture.FailAcrRole -and $fixture.AcrRolePolls -ge $fixture.AcrRoleVisibleAfter) { return 'AcrPull' }
+          return ''
+        }
+        return ConvertTo-Json -InputObject @($fixture.Roles)
+      }
       $roleScope = $args[[Array]::IndexOf($args, '--scope') + 1]
       if (-not $roleScope.StartsWith("$($fixture.ResourceBase)/providers/")) { throw 'Bootstrap role scope is too broad.' }
       $fixture.Roles += @{ scope = $roleScope; principalId = $args[[Array]::IndexOf($args, '--assignee-object-id') + 1]; roleDefinitionId = $args[[Array]::IndexOf($args, '--role') + 1] }
@@ -252,13 +286,16 @@ function Invoke-RestMethod {
 }
 try {
   Reset-Configuration
-  $parameters = @{ SubscriptionId = $fixture.Subscription; TenantId = $fixture.Tenant; ResourceGroup = 'test-rg'; WebAppName = 'test-app'; ConsoleConfigPath = $path }
+  $parameters = @{ SubscriptionId = $fixture.Subscription; TenantId = $fixture.Tenant; ResourceGroup = 'test-rg'; WebAppName = 'test-app'; CustomerWebAppName = 'test-app-customer'; ConsoleConfigPath = $path }
   $output = & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters 6>&1 | Out-String
   if ($output.Contains('test-setup-token')) { throw 'Setup token leaked.' }
   $config = (Get-Content $path -Raw | ConvertFrom-Json).LabConsole
   if (-not $config.Operations.Enabled -or -not $config.Health.Enabled -or $config.Operations.JobResourceId -ne $jobId) { throw 'Successful deployment did not enable the console automatically.' }
   if ($config.Operations.Image -notmatch '@sha256:[a-f0-9]{64}$') { throw 'Runner image is not immutable.' }
   if ($fixture.AuthCalls -ne 1 -or $fixture.Settings.Existing -ne 'preserve-me' -or $fixture.Roles.Count -ne 2) { throw 'Automatic access setup or settings preservation failed.' }
+  if ($fixture.AcrRolePolls -ne 2 -or $fixture.SleepCalls -ne 1 -or $fixture.AcrBuilds -ne 1 -or $fixture.JobDeployments -ne 1) {
+    throw 'Runner image/job deployment did not wait for the scoped AcrPull role to become visible.'
+  }
   if ($fixture.Writes[0]['LabConsole__Operations__Enabled'] -ne 'false' -or $fixture.Writes[-1]['LabConsole__Operations__Enabled'] -ne 'True') { throw 'Operations enablement is not gated on setup completion.' }
   Reset-Configuration
   $fixture.ExistingTags = $false
@@ -276,7 +313,7 @@ try {
   $fixture.WithAi = $true
   & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
   if ($fixture.AiCalls -ne 1 -or $fixture.Settings['LabConsole__Foundry__Enabled'] -ne 'True') { throw 'Optional Foundry setup was not automatic.' }
-  foreach ($failure in @('FailAuth', 'FailGraphAuth', 'FailBuild', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
+  foreach ($failure in @('FailAuth', 'FailGraphAuth', 'FailBuild', 'FailAcrRole', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
     Reset-Configuration
     $fixture[$failure] = $true
     $before = $fixture.Writes.Count
@@ -292,6 +329,9 @@ try {
     if ($failure -in @('BadTenant', 'FailGraphAuth')) { if ($fixture.Writes.Count -ne $before) { throw "$failure caused writes." } }
     elseif ($fixture.Settings['LabConsole__Operations__Enabled'] -ne 'false') { throw 'Setup failure left operations enabled.' }
     if ($failure -eq 'DeletePreview' -and $fixture.Deployments -ne $beforeDeployments) { throw 'A destructive preview did not block deployment.' }
+    if ($failure -eq 'FailAcrRole' -and ($fixture.AcrRolePolls -ne 5 -or $fixture.AcrBuilds -ne 0 -or $fixture.JobDeployments -ne 0)) {
+      throw 'A missing AcrPull assignment must stop before building/publishing the runner job.'
+    }
     if ($failure -eq 'FailTagRead' -and $fixture.Deployments -ne $beforeDeployments) { throw 'Failed tag discovery must stop before redeploying runner resources.' }
     if ($failure -in @('FailCpuInventory', 'CpuScopeEscape') -and $fixture.Deployments -ne $beforeDeployments) { throw 'Invalid CPU discovery must stop before guest execution access is granted.' }
     $fixture[$failure] = $false

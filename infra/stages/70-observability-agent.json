@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "8415488391953768606"
+      "templateHash": "11147986490623002836"
     }
   },
   "parameters": {
@@ -275,9 +275,7 @@
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
-      "name": "observability-agent-subscription-rbac",
-      "subscriptionId": "[subscription().subscriptionId]",
-      "location": "[resourceGroup().location]",
+      "name": "observability-agent-resource-rbac",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -286,16 +284,19 @@
         "parameters": {
           "principalId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.principalId.value]"
+          },
+          "appInsightsName": {
+            "value": "[variables('appInsightsName')]"
           }
         },
         "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
           "contentVersion": "1.0.0.0",
           "metadata": {
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "436818000402649827"
+              "templateHash": "3367133538840439263"
             }
           },
           "parameters": {
@@ -303,6 +304,12 @@
               "type": "string",
               "metadata": {
                 "description": "System-assigned principal ID of the Azure Copilot Observability Agent."
+              }
+            },
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the monitored Application Insights component."
               }
             }
           },
@@ -313,7 +320,8 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "name": "[guid(subscription().id, parameters('principalId'), variables('monitoringReaderRoleId'))]",
+              "scope": "[format('Microsoft.Insights/components/{0}', parameters('appInsightsName'))]",
+              "name": "[guid(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), parameters('principalId'), variables('monitoringReaderRoleId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReaderRoleId'))]",
                 "principalId": "[parameters('principalId')]",

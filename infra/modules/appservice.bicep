@@ -93,33 +93,6 @@ module appSettings './appservice-settings.bicep' = {
   }
 }
 
-resource brokenSlot 'Microsoft.Web/sites/slots@2023-12-01' = if (enableSlotFailureScenario) {
-  parent: site
-  name: 'broken'
-  location: location
-  tags: union(tags, { 'amlab-scenario': 'broken-slot' })
-  kind: 'app,linux'
-  properties: {
-    serverFarmId: plan.id
-    httpsOnly: true
-    siteConfig: {
-      linuxFxVersion: 'DOTNETCORE|8.0'
-      alwaysOn: true
-      ftpsState: 'Disabled'
-      minTlsVersion: '1.2'
-      http20Enabled: true
-      healthCheckPath: '/api/slot-warmup'
-      appSettings: [
-        { name: 'LabConsole__SlotScenarioEnabled', value: 'true' }
-        { name: 'LabConsole__ForceOutage', value: 'true' }
-        { name: 'WEBSITE_SWAP_WARMUP_PING_PATH', value: '/api/slot-warmup' }
-        { name: 'WEBSITE_SWAP_WARMUP_PING_STATUSES', value: '200' }
-        { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
-      ]
-    }
-  }
-}
-
 resource diagSite 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: site
   name: 'send-to-central-law'
@@ -170,4 +143,3 @@ output webAppId string = site.id
 output webAppName string = site.name
 output defaultHost string = site.properties.defaultHostName
 output planId string = plan.id
-output brokenSlotId string = enableSlotFailureScenario ? brokenSlot!.id : ''

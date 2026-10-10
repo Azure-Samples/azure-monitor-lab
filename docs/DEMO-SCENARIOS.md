@@ -438,7 +438,7 @@ One App Insights instance, two different runtimes (Python on AKS + .NET on App S
 **Time:** 5 min.
 
 ### Story
-Most alerts end with an email. That's not enough. We deployed a Consumption Logic App with a managed identity that has **Contributor on the RG** — it's already a webhook receiver on the Action Group. When any VM alert fires, it parses the Common Alert Schema payload, identifies the target VM, and calls `…/start?api-version=2024-03-01` with its MSI.
+Most alerts end with an email. That's not enough. We deployed a Consumption Logic App with a managed identity that has a custom role granting only **VM start** on the configured demo VMs — it's already a webhook receiver on the Action Group. When any VM alert fires, it parses the Common Alert Schema payload, identifies the target VM, and calls `…/start?api-version=2024-03-01` with its MSI.
 
 ### Which alert rule actually triggers the Logic App?
 
@@ -3315,45 +3315,53 @@ Run `./scripts/sync-config.ps1` and deploy. The scenario upgrades the App Servic
 
 ### Story
 
-A deployment slot that passed its dedicated warm-up probe is promoted to production, but its customer-facing configuration returns HTTP 503. The customer application and Control Center go down together. Application Insights and availability telemetry show the impact; the Azure Activity Log records the slot swap as the correlated control-plane change. Because the Control Center is unavailable, remediation must come from the external Azure SRE Agent or GitHub Copilot CLI. The smallest safe correction is a reverse swap: the previous healthy production version is still preserved in the `broken` slot.
+A deployment slot that passed its dedicated warm-up probe is promoted to the separate customer-facing Web App, but its customer-facing configuration returns HTTP 503. The customer app is affected while the Control Center stays healthy and available. Application Insights and the customer-app HTTP 5xx alert show the impact; the Azure Activity Log records the slot swap as the correlated control-plane change. A narrowly scoped Azure SRE Agent custom agent can reverse only the customer's `broken` → `production` swap, preserving the Control Center and the rest of the lab.
 
 ### Trigger the incident
 
 1. Open **Control Center → Lab Operations**.
 2. Select **Deploy Broken Slot**.
 3. Review the exact target and warning. Confirm the resource group and approve.
-4. The independent Container Apps job verifies that production is healthy, verifies that the `broken` slot is armed, and performs exactly one `broken` → `production` swap.
-5. Expect the Control Center status request to disconnect. This is expected customer impact, not an invitation to submit the action again.
-6. Verify `https://app-amlab-<suffix>.azurewebsites.net/healthz` returns HTTP 503. Do not trigger another swap from a stale browser tab.
+4. The independent Container Apps job verifies that customer production is healthy, verifies that the customer's `broken` slot is armed, and performs exactly one `broken` → `production` swap.
+5. The Control Center remains available. Open the linked customer app in a separate tab and verify `https://app-amlab-<suffix>-customer.azurewebsites.net/healthz` returns HTTP 503.
+6. Wait for the customer-specific HTTP 5xx alert and the SRE Agent response plan. Do not submit the operation again while the alert or recovery is in progress.
 
-The swap keeps `/api/slot-warmup` healthy solely so Azure can complete the controlled deployment operation. It does not hide the customer outage: `/`, `/customer/`, `/healthz`, and normal API routes return 503.
+The swap keeps `/api/slot-warmup` healthy solely so Azure can complete the controlled deployment operation. It does not hide the customer outage: the customer journey and `/healthz` return 503. The Control Center itself is not swapped or modified.
 
-### Option A — recover with Azure SRE Agent
+### Configure Azure SRE Agent autonomous recovery
 
-Open the deployed agent at [sre.azure.com](https://sre.azure.com/) and submit:
+Before the demo, connect Azure Monitor to the deployed SRE Agent and create a custom agent named `amlab-slot-recovery`. Give it the instructions below, then create and enable an incident response plan with:
+
+- **Severity:** Critical (the Azure Monitor rule is severity 1).
+- **Title contains:** `alert-customer-app-5xx`.
+- **Response custom agent:** `amlab-slot-recovery`.
+- **Agent autonomy level:** Autonomous. Review the SRE Agent autonomous-mode acknowledgment and enable this plan only for the controlled demo.
+- **Reinvestigation cooldown:** Leave enabled at its default to merge repeat fires from this alert.
+
+Use these custom-agent instructions:
 
 ```text
-Investigate the current outage of app-amlab-<suffix> in resource group <resource-group>.
-Establish customer impact from Application Insights requests, availability results, and
-the production /healthz endpoint. Correlate the outage start with Azure Activity Log
-control-plane changes, paying particular attention to
-Microsoft.Web/sites/slots/slotsswap/action. Inspect production and the slot named
-broken without changing configuration.
+Handle only the Azure Monitor alert named alert-customer-app-5xx for the dedicated
+customer Web App app-amlab-<suffix>-customer in <resource-group>. Confirm the alert's
+affected resource ID matches that exact Web App. Use Azure Monitor metrics and
+Application Insights evidence to verify customer HTTP 5xx impact, and inspect the
+Web App's production and broken-slot state plus recent Azure Activity Log events.
 
-If, and only if, the evidence shows that the broken slot was swapped into production
-and the previous healthy production workload is preserved in the broken slot, propose
-the smallest safe remediation: reverse the swap by swapping slot broken to target
-production. Do not edit app settings, deploy code, restart the app, delete a slot, or
-perform a second swap without first proving the current slot state. Operate in Review
-mode, show the exact Azure operation, and wait for my approval.
-
-After approval, verify /healthz returns 200, customer requests recover, availability
-recovers, and the intentional outage marker is back in the broken slot. Report the
-Activity Log timestamps for the incident-causing swap and rollback. Do not claim
-recovery before those measurements pass.
+Act only when production is unhealthy, the broken slot is healthy, and the recent
+slot-swap history proves the broken slot was promoted to production. Then perform
+exactly one reverse swap of the broken slot to production. Never change app settings,
+deploy code, restart or stop either app, delete a slot, or act on the Control Center.
+If resource identity or slot state is ambiguous, do not swap; report the evidence and
+stop. After the swap, verify the customer Web App returns HTTP 200 and the 5xx alert
+resolves. Report the before/after state and the Activity Log evidence. Do not claim
+recovery unless verification succeeds.
 ```
 
-The agent's action identity has a custom role scoped to this Web App. It can read the app and slots and perform the slot-swap action; it cannot edit settings, deploy code, stop the app, or delete resources. Review mode still requires an authorized administrator to approve the proposed operation.
+The plan's autonomy level controls incident response; keep the agent resource's general action configuration in Review. Its custom slot-rollback role is scoped to the customer Web App and permits read access plus the slot-swap action only. This is a controlled, non-production demo; leave the Autonomous plan off when the lab is idle. A quickstart response plan should not remain enabled alongside this narrowly filtered plan.
+
+### Option A — recover manually with Azure SRE Agent
+
+If the autonomous plan is unavailable, turn it off and recover in Review mode. Open the deployed agent at [sre.azure.com](https://sre.azure.com/) and ask it to verify the customer app's alert, health, Activity Log, and both slot states before proposing one reverse swap. Approve only the customer-app operation after confirming the target. Verify HTTP 200 and alert resolution afterward.
 
 ### Option B — investigate and recover with GitHub Copilot CLI
 
@@ -3377,7 +3385,7 @@ The bounded recovery command Copilot should propose is:
 ```powershell
 ./scripts/rollback-broken-slot.ps1 `
   -ResourceGroup <resource-group> `
-  -WebAppName app-amlab-<suffix>
+-WebAppName app-amlab-<suffix>-customer
 ```
 
 The script is idempotent for an already healthy production state. It refuses ambiguous states, refuses to swap when both sides carry the outage marker, performs no automatic retry, and verifies production health after Azure reports the reverse swap complete.

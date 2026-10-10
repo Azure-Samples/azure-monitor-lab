@@ -19,7 +19,7 @@ public static class LabOperationCatalog
         new LabOperationDefinition("cpu", "Simulate High CPU", "scripts/simulate-high-cpu.ps1", "Runs a self-expiring 10-minute CPU load on both running demo VMs via Run Command. Performance, CPU credits, and telemetry charges are affected.", false),
         new LabOperationDefinition("logs", "Send Custom Logs", "scripts/send-custom-logs.ps1", "Ingests sample audit events into the lab custom table. Ingested events are not undone by cancellation.", false),
         new LabOperationDefinition("annotation", "Add Release Marker", "scripts/send-release-annotation.ps1", "Writes a deployment or incident marker to the lab Application Insights timeline.", false)
-        ,new LabOperationDefinition("slot-failure", "Deploy Broken Slot", "scripts/trigger-broken-slot.ps1", "Swaps the preloaded broken slot into production. The customer app and this Control Center will return HTTP 503 until an external SRE Agent or CLI operator reverses the swap.", false, true)
+        ,new LabOperationDefinition("slot-failure", "Break Customer App", "scripts/trigger-broken-slot.ps1", "Swaps the preloaded broken slot into the separate customer app. This Control Center remains healthy while the customer app returns HTTP 503 until the SRE Agent automatically swaps the healthy slot back.", false, true)
     });
 
     public static LabOperationParameters Validate(LabOperationRequest request)

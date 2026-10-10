@@ -14,14 +14,14 @@ param namePrefix string = 'amlab'
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
-@description('Grant the SRE Agent permission to reverse the opt-in broken-slot scenario.')
+@description('Grant the SRE Agent permission to reverse the opt-in customer-app slot scenario.')
 param enableSlotFailureScenario bool = false
 
 var suffix = uniqueString(resourceGroup().id)
 var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var centralLawName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var sreAgentName = 'sre-${namePrefix}-${take(suffix, 5)}'
-var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
+var customerWebAppName = 'app-${namePrefix}-${take(suffix, 5)}-customer'
 
 var commonTags = {
   owner: ownerTag
@@ -39,8 +39,8 @@ resource centralLaw 'Microsoft.OperationalInsights/workspaces@2023-09-01' existi
   name: centralLawName
 }
 
-resource webApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
-  name: webAppName
+resource customerWebApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+  name: customerWebAppName
 }
 
 module sreAgent '../modules/sre-agent.bicep' = {
@@ -52,7 +52,7 @@ module sreAgent '../modules/sre-agent.bicep' = {
     appInsightsConnectionString: appInsights.properties.ConnectionString
     logAnalyticsId: centralLaw.id
     managedResourceGroupId: resourceGroup().id
-    webAppId: enableSlotFailureScenario ? webApp!.id : ''
+    slotWebAppId: enableSlotFailureScenario ? customerWebApp!.id : ''
     enableSlotFailureScenario: enableSlotFailureScenario
     tags: commonTags
   }

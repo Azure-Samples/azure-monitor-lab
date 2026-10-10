@@ -153,6 +153,16 @@ app.Use(async (context, next) =>
     }
     await next(context);
 });
+app.Use(async (context, next) =>
+{
+    if (app.Configuration.GetValue<bool>("LabConsole:CustomerAppMode")
+        && context.Request.Path == "/")
+    {
+        context.Response.Redirect("/customer/");
+        return;
+    }
+    await next(context);
+});
 app.UseExceptionHandler(handler => handler.Run(async context =>
 {
     await Results.Problem("The lab request failed. Inspect its trace in Application Insights.",

@@ -317,7 +317,7 @@ async function loadConfiguration() {
         link.rel = 'noopener noreferrer';
         link.removeAttribute('aria-disabled');
         link.title = 'Open in Azure; your account permissions apply';
-        configured.add(link.dataset.link);
+        if (!link.hasAttribute('data-link-optional')) configured.add(link.dataset.link);
       } catch { link.title = 'Not configured for this deployment'; }
     });
     byId('links-status').textContent = configured.size === 4 ? '' : `${4 - configured.size} destinations not configured`;

@@ -93,7 +93,7 @@ The stage creates:
 - `amw-<prefix>-obs`, a dedicated Azure Monitor workspace in the same region.
 - One enabled Application Insights monitored-resource child.
 - Issue Contributor on the dedicated workspace.
-- Monitoring Reader on the monitored subscription.
+- Monitoring Reader directly on the monitored Application Insights resource.
 
 Monitoring Contributor is intentionally not assigned because the lab does not enable remediation.
 
@@ -107,7 +107,7 @@ Deployment wrappers run the validator automatically when the stage is enabled. Y
   -ResourceGroup '<resource-group>'
 ```
 
-The script verifies the subscription and tenant guard, region, identity, issue and investigation operations, monitored Application Insights resource, and both RBAC assignments. It prints the portal URL only after validation succeeds.
+The script verifies the subscription and tenant guard, region, identity, issue and investigation operations, monitored Application Insights resource, and both resource-scoped RBAC assignments. It prints the portal URL only after validation succeeds. Deployment wrappers remove the previous subscription-level Monitoring Reader grant only after confirming the new component-level assignment exists.
 
 ## Demo workflow
 
@@ -137,7 +137,7 @@ Use the lab teardown so the Observability Agent is deleted explicitly before asy
 ./scripts/teardown.ps1 -Yes
 ```
 
-If retaining the rest of the lab, delete the Observability Agent before its dedicated workspace and remove its subscription role assignment. Confirm that no billable investigation is still running.
+If retaining the rest of the lab, delete the Observability Agent before its dedicated workspace and remove its Application Insights Monitoring Reader and workspace Issue Contributor assignments. Confirm that no billable investigation is still running.
 
 ## References
 

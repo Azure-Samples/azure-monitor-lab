@@ -19,6 +19,9 @@ $PSNativeCommandUseErrorActionPreference = $true
 if ($SubscriptionId -eq [guid]::Empty -or $TenantId -eq [guid]::Empty -or $ResourceGroup.EndsWith('.')) { throw 'Invalid target identifiers.' }
 if (-not $Operation -or -not $RequestId -or $env:LAB_RUNNER_MODE -ne 'ContainerAppsJob') { throw 'An approved Container Apps Job request is required.' }
 if ($SubscriptionId.ToString() -cne $env:LAB_SUBSCRIPTION_ID -or $TenantId.ToString() -cne $env:LAB_TENANT_ID -or $ResourceGroup -cne $env:LAB_RESOURCE_GROUP) { throw 'The requested target does not match the deployed runner environment.' }
+if ($env:LAB_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The Control Center Web App target is not configured.' }
+if ($env:LAB_CUSTOMER_WEB_APP_NAME -and $env:LAB_CUSTOMER_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The customer Web App target is invalid.' }
+if ($Operation -eq 'slot-failure' -and -not $env:LAB_CUSTOMER_WEB_APP_NAME) { throw 'The customer Web App slot scenario is not enabled.' }
 if ($Operation -eq 'logs') {
   if ($Count -lt 1 -or $Concurrency -ne 0 -or $RepeatUsers -ne 0) { throw 'Custom logs requires 1-100 events and no browser parameters.' }
 } elseif ($Operation -eq 'usage') {
@@ -37,6 +40,7 @@ $scripts = @{
 if ($ValidateOnly) { Write-Output 'Approved operation parameters validated. No Azure command executed.'; return }
 
 $repository = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'slot-health.ps1')
 $azureExecutable = (Get-Command az -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $kubernetesExecutable = $null
 $kubeloginExecutable = $null
@@ -150,8 +154,9 @@ try {
     $runnerPhase = 'Kubernetes preflight'
     $clusters = @(az aks list --resource-group $ResourceGroup --output json | ConvertFrom-Json)
     if ($clusters.Count -ne 1 -or $clusters[0].powerState.code -ne 'Running') { throw 'Exactly one running lab AKS cluster is required.' }
-    $apps = @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
-    if ($apps.Count -ne 1) { throw 'Exactly one app-prefixed lab web app is required.' }
+    $apps = @(az webapp show --resource-group $ResourceGroup --name $env:LAB_WEB_APP_NAME `
+      --query '{name:name,defaultHostName:defaultHostName,state:state}' --output json | ConvertFrom-Json)
+    if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running') { throw 'The configured Control Center Web App is not running.' }
     if ($Operation -eq 'ramp' -and [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'The ramp target Web App did not report a default host.' }
     $version = $clusters[0].currentKubernetesVersion
     if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'AKS did not report a supported Kubernetes client version.' }
@@ -186,23 +191,36 @@ try {
     }
   }
   if ($Operation -eq 'usage') {
+    $usageWebAppName = if ($env:LAB_CUSTOMER_WEB_APP_NAME) { $env:LAB_CUSTOMER_WEB_APP_NAME } else { $env:LAB_WEB_APP_NAME }
     $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer web app discovery' -Action {
-      @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
+      @(az webapp show --resource-group $ResourceGroup --name $usageWebAppName `
+        --query '{name:name,defaultHostName:defaultHostName,state:state}' --output json | ConvertFrom-Json)
     })
-    if ($apps.Count -ne 1 -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'Exactly one app-prefixed lab web app with a default host is required.' }
+    if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running' -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'The configured customer Web App is not ready.' }
     $customerUrl = "https://$($apps[0].defaultHostName)/customer/"
     $null = Invoke-ReadOnlyPreflight -Phase 'customer endpoint readiness' -Action {
       $readiness = Invoke-WebRequest -Uri $customerUrl -Method Get -MaximumRedirection 0 -SkipHttpErrorCheck -TimeoutSec 20
       if ([int]$readiness.StatusCode -ne 200) { throw 'The customer journey endpoint is not ready.' }
       $readiness
     }
-    if ($Operation -eq 'slot-failure') {
-      $apps = @(Invoke-ReadOnlyPreflight -Phase 'deployment slot discovery' -Action {
-        @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
-      })
-      if ($apps.Count -ne 1) { throw 'Exactly one app-prefixed lab web app is required.' }
-      $slots = @(az webapp deployment slot list --resource-group $ResourceGroup --name $apps[0].name --output json | ConvertFrom-Json)
-      if (@($slots | Where-Object name -eq 'broken').Count -ne 1) { throw "The opt-in 'broken' deployment slot is not provisioned." }
+  }
+  if ($Operation -eq 'slot-failure') {
+    $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer deployment slot discovery' -Action {
+      @(az webapp show --resource-group $ResourceGroup --name $env:LAB_CUSTOMER_WEB_APP_NAME `
+        --query '{name:name,defaultHostName:defaultHostName,state:state}' --output json | ConvertFrom-Json)
+    })
+    if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running' -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) {
+      throw 'The configured customer Web App is not running.'
+    }
+    $slots = @(az webapp deployment slot list --resource-group $ResourceGroup --name $env:LAB_CUSTOMER_WEB_APP_NAME --output json | ConvertFrom-Json)
+    $brokenSlots = @($slots | Where-Object name -eq 'broken')
+    if ($LASTEXITCODE -ne 0 -or $brokenSlots.Count -ne 1 -or [string]::IsNullOrWhiteSpace($brokenSlots[0].defaultHostName)) {
+      throw "The opt-in customer 'broken' deployment slot is not uniquely addressable."
+    }
+    $productionStatus = Get-LabWebAppHealthStatus -HostName $apps[0].defaultHostName
+    $brokenStatus = Get-LabWebAppHealthStatus -HostName $brokenSlots[0].defaultHostName
+    if ($productionStatus -ne 200 -or $brokenStatus -ne 503) {
+      throw "The customer slot is not armed (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
     }
   }
   if ($CheckAccessOnly) {
@@ -225,7 +243,7 @@ try {
     }
     'logs' { $parameters.Count = $Count }
     'annotation' { $parameters.Name = $Name; $parameters.Category = $Category }
-    'slot-failure' { $parameters.WebAppName = $apps[0].name }
+    'slot-failure' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
   }
   $runnerPhase = 'approved script execution'
   Write-RunnerPhase -Phase $runnerPhase -State started

@@ -102,9 +102,19 @@ $workspaceId = $agent.properties.monitoringAccountId
 $workspaceAssignment = @(az role assignment list --subscription $SubscriptionId --assignee-object-id $agent.identity.principalId --scope $workspaceId --query "[?roleDefinitionId=='/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions/$issueContributorRoleId']" -o json | ConvertFrom-Json)
 Write-Check 'Issue Contributor' ($workspaceAssignment.Count -gt 0) $workspaceId
 
-$subscriptionScope = "/subscriptions/$SubscriptionId"
-$subscriptionAssignment = @(az role assignment list --subscription $SubscriptionId --assignee-object-id $agent.identity.principalId --scope $subscriptionScope --query "[?roleDefinitionId=='/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions/$monitoringReaderRoleId']" -o json | ConvertFrom-Json)
-Write-Check 'Monitoring Reader' ($subscriptionAssignment.Count -gt 0) $subscriptionScope
+$appInsightsId = [string]$appInsightsChildren[0].properties.resourceId
+$monitoringAssignmentsOutput = az role assignment list --subscription $SubscriptionId --assignee-object-id $agent.identity.principalId --scope $appInsightsId --all -o json 2>&1
+if ($LASTEXITCODE -ne 0) {
+  throw "Could not inspect Monitoring Reader on '$appInsightsId'. Azure CLI returned:`n$($monitoringAssignmentsOutput -join "`n")"
+}
+$monitoringAssignments = @($monitoringAssignmentsOutput | ConvertFrom-Json)
+$applicationInsightsAssignment = @($monitoringAssignments | Where-Object {
+  -not [string]::IsNullOrWhiteSpace($_.scope) -and
+  -not [string]::IsNullOrWhiteSpace($_.roleDefinitionId) -and
+  $_.scope.TrimEnd('/') -ieq $appInsightsId.TrimEnd('/') -and
+  $_.roleDefinitionId.TrimEnd('/').Split('/')[-1] -ieq $monitoringReaderRoleId
+})
+Write-Check 'Monitoring Reader on monitored Application Insights' ($applicationInsightsAssignment.Count -gt 0) $appInsightsId
 
 Write-Host "`nObservability Agent validation passed." -ForegroundColor Green
 Write-Host "  Portal: https://portal.azure.com/#resource$($agent.id)"

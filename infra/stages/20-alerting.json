@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "6616725014477230952"
+      "templateHash": "124075701158141252"
     }
   },
   "parameters": {
@@ -65,6 +65,13 @@
         "description": "Deploy the Linux demo VM."
       }
     },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable alerts for the isolated customer Web App slot-recovery scenario."
+      }
+    },
     "ownerTag": {
       "type": "string",
       "defaultValue": "demo-lab",
@@ -82,6 +89,7 @@
     "aksName": "[format('aks-{0}', parameters('namePrefix'))]",
     "appPlanName": "[format('plan-{0}', parameters('namePrefix'))]",
     "webAppName": "[format('app-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
+    "customerWebAppName": "[format('app-{0}-{1}-customer', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "actionGroupName": "[format('ag-{0}-email', parameters('namePrefix'))]",
     "vmssName": "[format('vmss-{0}', parameters('namePrefix'))]",
     "vnetName": "[format('vnet-{0}', parameters('namePrefix'))]",
@@ -110,6 +118,8 @@
           "location": {
             "value": "[parameters('location')]"
           },
+          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', resourceId('Microsoft.Compute/virtualMachines', variables('linuxVmName'))), createObject('value', ''))]",
+          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', resourceId('Microsoft.Compute/virtualMachines', variables('windowsVmName'))), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -121,7 +131,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "14299518871303356779"
+              "templateHash": "16418142127896295886"
             }
           },
           "parameters": {
@@ -143,7 +153,24 @@
               "metadata": {
                 "description": "Resource tags."
               }
+            },
+            "linuxVmId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the optional Linux demo VM."
+              }
+            },
+            "windowsVmId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the optional Windows demo VM."
+              }
             }
+          },
+          "variables": {
+            "vmStartRoleName": "Azure Monitor Lab VM Start"
           },
           "resources": [
             {
@@ -280,16 +307,58 @@
               }
             },
             {
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, variables('vmStartRoleName'))]",
+              "properties": {
+                "roleName": "[variables('vmStartRoleName')]",
+                "description": "Allows the lab auto-mitigation Logic App to start the configured demo VMs.",
+                "type": "CustomRole",
+                "permissions": [
+                  {
+                    "actions": [
+                      "Microsoft.Compute/virtualMachines/start/action"
+                    ],
+                    "notActions": [],
+                    "dataActions": [],
+                    "notDataActions": []
+                  }
+                ],
+                "assignableScopes": [
+                  "[resourceGroup().id]"
+                ]
+              }
+            },
+            {
+              "condition": "[not(empty(parameters('linuxVmId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "name": "[guid(resourceGroup().id, resourceId('Microsoft.Logic/workflows', parameters('name')), 'rg-contributor')]",
+              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', last(split(parameters('linuxVmId'), '/')))]",
+              "name": "[guid(parameters('linuxVmId'), resourceId('Microsoft.Logic/workflows', parameters('name')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName'))))]",
               "properties": {
                 "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
-                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Logic/workflows', parameters('name'))]"
+                "[resourceId('Microsoft.Logic/workflows', parameters('name'))]",
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('windowsVmId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', last(split(parameters('windowsVmId'), '/')))]",
+              "name": "[guid(parameters('windowsVmId'), resourceId('Microsoft.Logic/workflows', parameters('name')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName'))))]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Logic/workflows', parameters('name'))]",
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]"
               ]
             }
           ],
@@ -434,6 +503,7 @@
           "webAppId": {
             "value": "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
           },
+          "customerWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', resourceId('Microsoft.Web/sites', variables('customerWebAppName'))), createObject('value', ''))]",
           "webAppRegion": {
             "value": "[variables('appServiceLocation')]"
           },
@@ -453,7 +523,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "6556775314325538619"
+              "templateHash": "1425053957084465378"
             }
           },
           "parameters": {
@@ -479,6 +549,13 @@
               "type": "string",
               "metadata": {
                 "description": "Web App resource ID."
+              }
+            },
+            "customerWebAppId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional customer-facing Web App resource ID for the slot-recovery scenario."
               }
             },
             "webAppRegion": {
@@ -583,6 +660,45 @@
                       "metricName": "Http5xx",
                       "operator": "GreaterThan",
                       "threshold": 5,
+                      "timeAggregation": "Total",
+                      "criterionType": "StaticThresholdCriterion"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[parameters('actionGroupId')]"
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[not(empty(parameters('customerWebAppId')))]",
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-customer-app-5xx",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Customer Web App returned at least one HTTP 5xx in the last minute.",
+                "severity": 1,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('customerWebAppId')]"
+                ],
+                "targetResourceType": "Microsoft.Web/sites",
+                "targetResourceRegion": "[parameters('webAppRegion')]",
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT1M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "CustomerHttp5xx",
+                      "metricNamespace": "Microsoft.Web/sites",
+                      "metricName": "Http5xx",
+                      "operator": "GreaterThan",
+                      "threshold": 0,
                       "timeAggregation": "Total",
                       "criterionType": "StaticThresholdCriterion"
                     }
