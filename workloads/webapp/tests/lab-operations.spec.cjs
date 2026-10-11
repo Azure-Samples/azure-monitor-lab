@@ -15,6 +15,10 @@ const actions = [
   ['annotation', 'Add Release Marker', 'send-release-annotation.ps1', 'Writes a deployment or incident marker.']
 ].map(([id, title, file, impact]) => ({ id, title, script: `scripts/${file}`, impact }));
 const proposalId = 'b'.repeat(32);
+const slotActions = [
+  { id: 'slot-failure', title: 'Change deployment slot: Broken', script: 'scripts/trigger-broken-slot.ps1', impact: 'Customer production will return HTTP 503. The Control Center stays available.' },
+  { id: 'slot-restore', title: 'Change deployment slot: Working', script: 'scripts/rollback-broken-slot.ps1', impact: 'Customer production will return HTTP 200. Already healthy production requires no swap.' }
+];
 const runId = 'c'.repeat(32);
 const operationRun = (operation = 'start', state = 'queued') => ({ id: runId, parameters: { operation, count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0 }, target,
   submittedAt: now.toISOString(), state, message: state === 'succeeded' ? 'The approved script completed.' : 'The Azure runner is executing the approved operation.', executionName: 'job-labops-demo-execution',
@@ -27,14 +31,14 @@ async function prepare(page, options = {}) {
   await page.route('**/api/agents/context', route => route.fulfill({ json: { resourceGroup: target.resourceGroup, appService: 'app-amlab-demo' } }));
   await page.route('**/api/operations/catalog', route => {
     calls.catalogs++;
-    return route.fulfill({ status: options.status || 200, json: { available: options.available !== false, message: options.message || 'Runner verified.', actions, target, runs } });
+    return route.fulfill({ status: options.status || 200, json: { available: options.available !== false, message: options.message || 'Runner verified.', actions: options.slots ? [...actions, ...slotActions] : actions, target, runs } });
   });
   await page.route('**/api/operations/prepare', route => {
     const input = route.request().postDataJSON();
     calls.prepared.push(input);
     calls.referrers.push(route.request().headers().referer);
     expect(route.request().headers()['x-amlab-agent-request']).toBe('true');
-    return route.fulfill({ json: { state: 'approval_required', proposal: { id: proposalId, action: actions.find(action => action.id === input.operation),
+    return route.fulfill({ json: { state: 'approval_required', proposal: { id: proposalId, action: [...actions, ...slotActions].find(action => action.id === input.operation),
       parameters: { count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0, ...input }, target, expiresAt: new Date(now.getTime() + 300000).toISOString() } } });
   });
   await page.route('**/api/operations/approval', route => {
@@ -55,6 +59,48 @@ async function prepare(page, options = {}) {
   await expect(page.locator('#operations-status')).toHaveText(options.message || 'Runner verified.');
   return calls;
 }
+
+for (const action of slotActions) {
+  test(`Change deployment slot reviews and approves the ${action.id} choice`, async ({ page }) => {
+    const calls = await prepare(page, { slots: true });
+    const button = page.getByRole('button', { name: 'Change deployment slot', exact: true });
+    await expect(button.locator('svg[data-lucide="replace"]')).toBeVisible();
+    await button.click();
+    await expect(page.locator('#operation-heading')).toHaveText('Change deployment slot');
+    const choice = page.getByLabel('Which slot should serve the customer app?');
+    await expect(choice).toHaveValue('');
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    expect(calls.prepared).toEqual([]);
+    await choice.selectOption(action.id);
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    await expect(page.locator('#operation-approve-form')).toBeVisible();
+    expect(calls.prepared).toEqual([{ operation: action.id }]);
+    expect(calls.approvals).toEqual([]);
+    await expect(page.locator('#operation-preview')).toContainText(action.script);
+    await expect(page.locator('#operation-preview')).toContainText(action.id === 'slot-failure' ? 'Broken (HTTP 503)' : 'Working (HTTP 200)');
+    await expect(page.locator('#operation-impact')).toHaveText(action.impact);
+    await page.getByLabel('Confirm resource group').fill(target.resourceGroup);
+    await page.getByLabel('I approve these changes and associated Azure charges.').check();
+    await page.getByRole('button', { name: 'Approve & Run' }).click();
+    await expect(page.locator('#operation-dialog')).toBeHidden();
+    expect(calls.approvals).toEqual([{ proposalId, resourceGroup: target.resourceGroup, approve: true }]);
+    await expect(page.locator('#operations-runs')).toContainText(action.title);
+  });
+}
+
+test('Deployment slot chooser is hidden without opt-in', async ({ page }) => {
+  await prepare(page);
+  await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toBeHidden();
+});
+
+test('Cancelling a deployment slot choice submits nothing', async ({ page }) => {
+  const calls = await prepare(page, { slots: true });
+  await page.getByRole('button', { name: 'Change deployment slot', exact: true }).click();
+  await page.getByLabel('Which slot should serve the customer app?').selectOption('slot-restore');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect(calls.prepared).toEqual([]);
+  expect(calls.approvals).toEqual([]);
+});
 
 async function review(page, operation) {
   await page.getByRole('button', { name: actions.find(action => action.id === operation).title, exact: true }).click();
@@ -259,7 +305,7 @@ for (const width of [1440, 390, 320]) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.setViewportSize({ width, height: width > 760 ? 1000 : 740 });
-    await prepare(page, { runs: [operationRun('annotation', 'succeeded')] });
+    await prepare(page, { slots: true, runs: [operationRun('annotation', 'succeeded')] });
     await page.evaluate(() => document.fonts.ready);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.locator('.mobile-feedback')).toBeHidden();
@@ -267,6 +313,13 @@ for (const width of [1440, 390, 320]) {
     if (process.env.UPDATE_CONTROL_CENTER_SCREENSHOT === '1' && width === 1440) await page.screenshot({ path: path.resolve(__dirname, '../../../docs/images/lab-operations.png'), fullPage: true });
     await review(page, 'cpu');
     await page.screenshot({ path: testInfo.outputPath(`lab-operation-review-${width}.png`), fullPage: true });
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Change deployment slot', exact: true }).click();
+    await expect(page.getByLabel('Which slot should serve the customer app?')).toBeVisible();
+    await page.getByLabel('Which slot should serve the customer app?').selectOption('slot-restore');
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    await expect(page.locator('#operation-preview')).toContainText('Working (HTTP 200)');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const clipped = await page.locator('button, input, h1, h2, .operation-details dd').evaluateAll(items => items.filter(item => item.clientWidth > 0 && item.scrollWidth > item.clientWidth + 2).map(item => item.textContent));
     expect(clipped).toEqual([]);
     expect(errors).toEqual([]);

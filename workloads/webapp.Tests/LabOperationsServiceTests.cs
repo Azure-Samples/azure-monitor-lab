@@ -20,18 +20,21 @@ public sealed class LabOperationsServiceTests : IDisposable
     private static JsonElement Body(IResult result) => JsonSerializer.SerializeToElement(((IValueHttpResult)result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
     private async Task<string> Prepare(LabOperationsService service, string owner = "operator") => Body(await service.PrepareAsync(owner, new("logs", Count: 12), default)).GetProperty("proposal").GetProperty("id").GetString()!;
 
-    [Fact]
-    public async Task SlotFailureIsExposedAndPreparedOnlyWhenEnabled()
+    [Theory]
+    [InlineData("slot-failure")]
+    [InlineData("slot-restore")]
+    public async Task SlotChangesAreExposedAndPreparedOnlyWhenEnabled(string operation)
     {
         var disabled = Service();
         var disabledCatalog = Body(await disabled.CatalogAsync("operator", default));
-        Assert.DoesNotContain(disabledCatalog.GetProperty("actions").EnumerateArray(), item => item.GetProperty("id").GetString() == "slot-failure");
-        Assert.Equal(409, Status(await disabled.PrepareAsync("operator", new("slot-failure"), default)));
+        Assert.DoesNotContain(disabledCatalog.GetProperty("actions").EnumerateArray(), item => item.GetProperty("id").GetString() == operation);
+        Assert.Equal(409, Status(await disabled.PrepareAsync("operator", new(operation), default)));
 
         var enabled = Service(true);
         var enabledCatalog = Body(await enabled.CatalogAsync("operator", default));
-        Assert.Contains(enabledCatalog.GetProperty("actions").EnumerateArray(), item => item.GetProperty("id").GetString() == "slot-failure");
-        Assert.Equal("approval_required", Body(await enabled.PrepareAsync("operator", new("slot-failure"), default)).GetProperty("state").GetString());
+        Assert.Contains(enabledCatalog.GetProperty("actions").EnumerateArray(), item => item.GetProperty("id").GetString() == operation);
+        Assert.Equal("approval_required", Body(await enabled.PrepareAsync("operator", new(operation), default)).GetProperty("state").GetString());
+        Assert.Equal(0, runner.Dispatches);
     }
 
     [Fact]

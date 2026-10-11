@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure')] [string] $Operation = $env:OP_OPERATION,
+  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure', 'slot-restore')] [string] $Operation = $env:OP_OPERATION,
   [ValidatePattern('^[a-f0-9]{32}$')] [string] $RequestId = $env:OP_REQUEST_ID,
   [guid] $SubscriptionId = $env:LAB_SUBSCRIPTION_ID,
   [guid] $TenantId = $env:LAB_TENANT_ID,
@@ -21,7 +21,7 @@ if (-not $Operation -or -not $RequestId -or $env:LAB_RUNNER_MODE -ne 'ContainerA
 if ($SubscriptionId.ToString() -cne $env:LAB_SUBSCRIPTION_ID -or $TenantId.ToString() -cne $env:LAB_TENANT_ID -or $ResourceGroup -cne $env:LAB_RESOURCE_GROUP) { throw 'The requested target does not match the deployed runner environment.' }
 if ($env:LAB_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The Control Center Web App target is not configured.' }
 if ($env:LAB_CUSTOMER_WEB_APP_NAME -and $env:LAB_CUSTOMER_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The customer Web App target is invalid.' }
-if ($Operation -eq 'slot-failure' -and -not $env:LAB_CUSTOMER_WEB_APP_NAME) { throw 'The customer Web App slot scenario is not enabled.' }
+if ($Operation -in @('slot-failure', 'slot-restore') -and -not $env:LAB_CUSTOMER_WEB_APP_NAME) { throw 'The customer Web App slot scenario is not enabled.' }
 if ($Operation -eq 'logs') {
   if ($Count -lt 1 -or $Concurrency -ne 0 -or $RepeatUsers -ne 0) { throw 'Custom logs requires 1-100 events and no browser parameters.' }
 } elseif ($Operation -eq 'usage') {
@@ -36,6 +36,7 @@ $scripts = @{
   usage = 'generate-usage-traffic.ps1'
   cpu = 'simulate-high-cpu.ps1'
   'slot-failure' = 'trigger-broken-slot.ps1'
+  'slot-restore' = 'rollback-broken-slot.ps1'
 }
 if ($ValidateOnly) { Write-Output 'Approved operation parameters validated. No Azure command executed.'; return }
 
@@ -154,8 +155,7 @@ try {
     $runnerPhase = 'Kubernetes preflight'
     $clusters = @(az aks list --resource-group $ResourceGroup --output json | ConvertFrom-Json)
     if ($clusters.Count -ne 1 -or $clusters[0].powerState.code -ne 'Running') { throw 'Exactly one running lab AKS cluster is required.' }
-    $apps = @(az webapp show --resource-group $ResourceGroup --name $env:LAB_WEB_APP_NAME `
-      --query '{name:name,defaultHostName:defaultHostName,state:state}' --output json | ConvertFrom-Json)
+    $apps = @(Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $env:LAB_WEB_APP_NAME)
     if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running') { throw 'The configured Control Center Web App is not running.' }
     if ($Operation -eq 'ramp' -and [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'The ramp target Web App did not report a default host.' }
     $version = $clusters[0].currentKubernetesVersion
@@ -193,8 +193,7 @@ try {
   if ($Operation -eq 'usage') {
     $usageWebAppName = if ($env:LAB_CUSTOMER_WEB_APP_NAME) { $env:LAB_CUSTOMER_WEB_APP_NAME } else { $env:LAB_WEB_APP_NAME }
     $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer web app discovery' -Action {
-      @(az webapp show --resource-group $ResourceGroup --name $usageWebAppName `
-        --query '{name:name,defaultHostName:defaultHostName,state:state}' --output json | ConvertFrom-Json)
+      @(Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $usageWebAppName)
     })
     if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running' -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'The configured customer Web App is not ready.' }
     $customerUrl = "https://$($apps[0].defaultHostName)/customer/"
@@ -204,10 +203,9 @@ try {
       $readiness
     }
   }
-  if ($Operation -eq 'slot-failure') {
+  if ($Operation -in @('slot-failure', 'slot-restore')) {
     $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer deployment slot discovery' -Action {
-      @(az webapp show --resource-group $ResourceGroup --name $env:LAB_CUSTOMER_WEB_APP_NAME `
-        --query '{name:name,defaultHostName:defaultHostName,state:state}' --output json | ConvertFrom-Json)
+      @(Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $env:LAB_CUSTOMER_WEB_APP_NAME)
     })
     if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running' -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) {
       throw 'The configured customer Web App is not running.'
@@ -219,8 +217,13 @@ try {
     }
     $productionStatus = Get-LabWebAppHealthStatus -HostName $apps[0].defaultHostName
     $brokenStatus = Get-LabWebAppHealthStatus -HostName $brokenSlots[0].defaultHostName
-    if ($productionStatus -ne 200 -or $brokenStatus -ne 503) {
+    if ($Operation -eq 'slot-failure' -and ($productionStatus -ne 200 -or $brokenStatus -ne 503)) {
       throw "The customer slot is not armed (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
+    }
+    if ($Operation -eq 'slot-restore' -and -not (
+      ($productionStatus -eq 503 -and $brokenStatus -eq 200) -or
+      ($productionStatus -eq 200 -and $brokenStatus -eq 503))) {
+      throw "The slot state is ambiguous (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
     }
   }
   if ($CheckAccessOnly) {
@@ -244,6 +247,7 @@ try {
     'logs' { $parameters.Count = $Count }
     'annotation' { $parameters.Name = $Name; $parameters.Category = $Category }
     'slot-failure' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
+    'slot-restore' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
   }
   $runnerPhase = 'approved script execution'
   Write-RunnerPhase -Phase $runnerPhase -State started

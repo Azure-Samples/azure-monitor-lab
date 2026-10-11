@@ -3,10 +3,10 @@ import './console.css';
 import { initializeAgentViews } from './agents.js';
 import { initializeBrowserTelemetry } from './telemetry.js';
 import labLogo from '../../../docs/azure-monitor-lab-logo.svg';
-import { createIcons, Activity, ArrowRight, ArrowUpRight, BookOpen, ChartNoAxesCombined, Check, ChevronDown, ChevronUp, CircleHelp, Copy, Cpu, Download, ExternalLink, FlaskConical, HeartPulse, Inbox, Logs, MessagesSquare, Network, PanelsTopLeft, Play, RefreshCw, ScanLine, Send, ShoppingCart, Square, Timer, Trash2, TriangleAlert, X } from 'lucide';
+import { createIcons, Activity, ArrowRight, ArrowUpRight, BookOpen, ChartNoAxesCombined, Check, ChevronDown, ChevronUp, CircleHelp, Copy, Cpu, Download, ExternalLink, FlaskConical, HeartPulse, Inbox, Logs, MessagesSquare, Network, PanelsTopLeft, Play, RefreshCw, Replace, ScanLine, Send, ShoppingCart, Square, Timer, Trash2, TriangleAlert, X } from 'lucide';
 import { Chart, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip } from 'chart.js';
 
-const icons = { Activity, ArrowRight, ArrowUpRight, BookOpen, ChartNoAxesCombined, Check, ChevronDown, ChevronUp, CircleHelp, Copy, Cpu, Download, ExternalLink, FlaskConical, HeartPulse, Inbox, Logs, MessagesSquare, Network, PanelsTopLeft, Play, RefreshCw, ScanLine, Send, ShoppingCart, Square, Timer, Trash2, TriangleAlert, X };
+const icons = { Activity, ArrowRight, ArrowUpRight, BookOpen, ChartNoAxesCombined, Check, ChevronDown, ChevronUp, CircleHelp, Copy, Cpu, Download, ExternalLink, FlaskConical, HeartPulse, Inbox, Logs, MessagesSquare, Network, PanelsTopLeft, Play, RefreshCw, Replace, ScanLine, Send, ShoppingCart, Square, Timer, Trash2, TriangleAlert, X };
 const byId = id => document.getElementById(id);
 const refreshIcons = () => createIcons({ icons, attrs: { 'aria-hidden': 'true' } });
 const actions = {

@@ -19,7 +19,8 @@ public static class LabOperationCatalog
         new LabOperationDefinition("cpu", "Simulate High CPU", "scripts/simulate-high-cpu.ps1", "Runs a self-expiring 10-minute CPU load on both running demo VMs via Run Command. Performance, CPU credits, and telemetry charges are affected.", false),
         new LabOperationDefinition("logs", "Send Custom Logs", "scripts/send-custom-logs.ps1", "Ingests sample audit events into the lab custom table. Ingested events are not undone by cancellation.", false),
         new LabOperationDefinition("annotation", "Add Release Marker", "scripts/send-release-annotation.ps1", "Writes a deployment or incident marker to the lab Application Insights timeline.", false)
-        ,new LabOperationDefinition("slot-failure", "Break Customer App", "scripts/trigger-broken-slot.ps1", "Swaps the preloaded broken slot into the separate customer app. This Control Center remains healthy while the customer app returns HTTP 503 until the SRE Agent automatically swaps the healthy slot back.", false, true)
+        ,new LabOperationDefinition("slot-failure", "Change deployment slot: Broken", "scripts/trigger-broken-slot.ps1", "Swaps the preloaded broken slot into the separate customer app, causing HTTP 503. This Control Center remains available. Restore the working slot to recover; automatic SRE recovery requires a separately configured and verified recovery plan.", false, true)
+        ,new LabOperationDefinition("slot-restore", "Change deployment slot: Working", "scripts/rollback-broken-slot.ps1", "Restores the customer app to HTTP 200 from the healthy slot. If production is already healthy and the broken slot is armed, no swap is needed. Ambiguous slot states are rejected. This Control Center remains available.", false, true)
     });
 
     public static LabOperationParameters Validate(LabOperationRequest request)

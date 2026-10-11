@@ -1,7 +1,8 @@
 export function initializeLabOperations({ refreshIcons }) {
   const byId = id => document.getElementById(id);
   const dialog = byId('operation-dialog');
-  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure']);
+  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure', 'slot-restore']);
+  const isSlotOperation = id => id === 'slot-failure' || id === 'slot-restore';
   const labels = { queued: 'Queued', waiting: 'Awaiting runner', running: 'Running', succeeded: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled', dispatch_unknown: 'Dispatch outcome unknown', skipped: 'Skipped' };
   const terminal = run => ['succeeded', 'failed', 'cancelled'].includes(run.state);
   let actions = [];
@@ -33,6 +34,7 @@ export function initializeLabOperations({ refreshIcons }) {
     byId('operations-connect').disabled = pending || dialog.open;
     byId('operations-refresh').disabled = pending || !available || !runs.some(run => !terminal(run));
     byId('operation-review').disabled = pending;
+    byId('operation-slot').disabled = pending || !isSlotOperation(selected?.id);
     byId('operation-approve').disabled = pending || approvalSent || !proposal || Date.now() >= Date.parse(proposal.expiresAt)
       || !byId('operation-consent').checked || byId('operation-target-confirm').value.trim().toLowerCase() !== proposal.target.resourceGroup.toLowerCase();
     document.querySelectorAll('[data-operation-cancel]').forEach(button => { button.disabled = pending; });
@@ -144,10 +146,14 @@ export function initializeLabOperations({ refreshIcons }) {
     selected = actions.find(action => action.id === button.dataset.operation);
     proposal = null;
     approvalSent = false;
-    byId('operation-heading').textContent = selected.title;
-    byId('operation-impact').textContent = selected.impact;
+    const slotOperation = isSlotOperation(selected.id);
+    byId('operation-heading').textContent = slotOperation ? 'Change deployment slot' : selected.title;
+    byId('operation-impact').textContent = slotOperation ? 'Choose the broken or working slot for the customer app, then review and approve the exact operation. The Control Center stays available.' : selected.impact;
     byId('operation-prepare-form').reset();
     byId('operation-approve-form').reset();
+    byId('operation-slot-field').hidden = !slotOperation;
+    byId('operation-slot').required = slotOperation;
+    for (const option of byId('operation-slot').options) option.disabled = !!option.value && !actions.some(action => action.id === option.value);
     const counted = selected.id === 'logs' || selected.id === 'usage';
     byId('operation-count-field').hidden = !counted;
     byId('operation-count-label').textContent = selected.id === 'usage' ? 'Synthetic users' : 'Event count';
@@ -170,7 +176,9 @@ export function initializeLabOperations({ refreshIcons }) {
     pending = true;
     controls();
     try {
-      const body = { operation: selected.id };
+      const operation = isSlotOperation(selected.id) ? byId('operation-slot').value : selected.id;
+      if (!ids.has(operation) || !actions.some(action => action.id === operation)) throw new Error('Choose an available deployment slot.');
+      const body = { operation };
       if (selected.id === 'logs' || selected.id === 'usage') body.count = Number(byId('operation-count').value);
       if (selected.id === 'usage') {
         body.concurrency = Number(byId('operation-concurrency').value);
@@ -178,10 +186,12 @@ export function initializeLabOperations({ refreshIcons }) {
       }
       if (selected.id === 'annotation') { body.name = byId('operation-name').value.trim(); body.category = byId('operation-category').value; }
       const data = await request('prepare', body);
-      if (!data.proposal || data.proposal.parameters.operation !== selected.id) throw new Error('Operation approval could not be verified.');
+      if (!data.proposal || data.proposal.parameters.operation !== operation) throw new Error('Operation approval could not be verified.');
       proposal = data.proposal;
+      byId('operation-impact').textContent = proposal.action.impact;
       byId('operation-preview').replaceChildren(details({ Script: proposal.action.script, 'Resource group': proposal.target.resourceGroup, Subscription: proposal.target.subscriptionId,
         Tenant: proposal.target.tenantId, 'Azure job': proposal.target.jobResourceId, Image: proposal.target.image,
+        ...(isSlotOperation(operation) ? { 'Requested slot': operation === 'slot-failure' ? 'Broken (HTTP 503)' : 'Working (HTTP 200)' } : {}),
         ...(selected.id === 'logs' ? { Events: proposal.parameters.count } : {}),
         ...(selected.id === 'usage' ? { Users: proposal.parameters.count, Concurrency: proposal.parameters.concurrency, 'Repeat users': proposal.parameters.repeatUsers, Route: '/customer/' } : {}),
         ...(selected.id === 'annotation' ? { Marker: proposal.parameters.name, Category: proposal.parameters.category } : {}) }));

@@ -1,3 +1,19 @@
+function Get-LabWebAppMetadata {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup,
+    [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9-]{2,60}$')] [string] $WebAppName
+  )
+
+  $metadata = az resource show --resource-group $ResourceGroup --name $WebAppName `
+    --resource-type Microsoft.Web/sites --api-version 2023-12-01 `
+    --query '{name:name,state:properties.state,defaultHostName:properties.defaultHostName}' --output json --only-show-errors | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or -not $metadata.name -or -not $metadata.state -or -not $metadata.defaultHostName) {
+    throw 'Could not read the configured Web App metadata.'
+  }
+  return $metadata
+}
+
 function Get-LabWebAppHealthStatus {
   [CmdletBinding()]
   param(

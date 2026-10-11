@@ -68,7 +68,11 @@ for (const width of [1440, 390, 320]) {
   test(`customer journey fits at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width > 720 ? 900 : 740 });
     await page.goto('/customer/?user=demo-user-layout');
-    await expect(page.getByRole('heading', { name: 'Operate with confidence.' })).toBeVisible();
+    await expect(page).toHaveTitle('Azure Monitor Lab | Customer App');
+    await expect(page.getByRole('heading', { name: 'Azure Monitor Lab', exact: true })).toBeVisible();
+    const logo = page.getByRole('img', { name: 'Azure Monitor Lab', exact: true });
+    await expect(logo).toBeVisible();
+    expect(await logo.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

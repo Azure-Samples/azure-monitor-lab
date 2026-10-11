@@ -8,8 +8,7 @@ $ErrorActionPreference = 'Stop'
 if ($ResourceGroup.EndsWith('.')) { throw 'Invalid resource group.' }
 . (Join-Path $PSScriptRoot 'slot-health.ps1')
 
-$production = az webapp show --resource-group $ResourceGroup --name $WebAppName `
-  --query '{state:state,defaultHostName:defaultHostName}' --output json --only-show-errors | ConvertFrom-Json
+$production = Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $WebAppName
 if ($LASTEXITCODE -ne 0 -or $production.state -ne 'Running' -or -not $production.defaultHostName) {
   throw 'The customer production Web App is not running or did not report a hostname. No swap was attempted.'
 }

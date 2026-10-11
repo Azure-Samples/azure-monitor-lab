@@ -53,7 +53,7 @@ public sealed class LabOperationsService(ILabOperationsRunner runner, LabOperati
         catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
         var action = LabOperationCatalog.Actions.Single(item => item.Id == parameters.Operation);
         if (action.RequiresSlotScenario && !SlotScenarioEnabled)
-            return Results.Json(new { error = "The deployment-slot failure scenario is not enabled for this lab." }, statusCode: 409);
+            return Results.Json(new { error = "The deployment-slot scenario is not enabled for this lab." }, statusCode: 409);
         if (!runner.Configured || runner.Target is null) return Disabled();
         if (!await gate.WaitAsync(0, cancellationToken)) return Busy();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
