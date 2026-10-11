@@ -103,7 +103,7 @@ $workspaceAssignment = @(az role assignment list --subscription $SubscriptionId 
 Write-Check 'Issue Contributor' ($workspaceAssignment.Count -gt 0) $workspaceId
 
 $appInsightsId = [string]$appInsightsChildren[0].properties.resourceId
-$monitoringAssignmentsOutput = az role assignment list --subscription $SubscriptionId --assignee-object-id $agent.identity.principalId --scope $appInsightsId --all -o json 2>&1
+$monitoringAssignmentsOutput = az role assignment list --subscription $SubscriptionId --assignee-object-id $agent.identity.principalId --scope $appInsightsId -o json 2>&1
 if ($LASTEXITCODE -ne 0) {
   throw "Could not inspect Monitoring Reader on '$appInsightsId'. Azure CLI returned:`n$($monitoringAssignmentsOutput -join "`n")"
 }

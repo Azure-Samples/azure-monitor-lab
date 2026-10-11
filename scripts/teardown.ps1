@@ -196,7 +196,7 @@ foreach ($observabilityAgent in $observabilityAgents) {
   }
   $appInsightsId = [string]$monitoredResources[0].properties.resourceId
   $componentAssignmentsOutput = az role assignment list --subscription $active.id --assignee-object-id $principalId `
-    --scope $appInsightsId --all -o json 2>&1
+    --scope $appInsightsId -o json 2>&1
   if ($LASTEXITCODE -ne 0) {
     throw "Could not inspect Application Insights RBAC for '$($observabilityAgent.name)':`n$($componentAssignmentsOutput -join "`n")"
   }
