@@ -31,12 +31,16 @@ param tags object = {}
 @description('Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1.')
 param enableSlotFailureScenario bool = false
 
+@description('Slot scenario plan SKU. Defaults to S2 to preserve the current live plan; one worker.')
+@allowed(['S1', 'S2', 'S3'])
+param slotAppServicePlanSku string = 'S2'
+
 resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: planName
   location: location
   tags: tags
   sku: {
-    name: enableSlotFailureScenario ? 'S1' : 'B1'
+    name: enableSlotFailureScenario ? slotAppServicePlanSku : 'B1'
     tier: enableSlotFailureScenario ? 'Standard' : 'Basic'
     capacity: 1
   }

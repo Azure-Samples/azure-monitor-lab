@@ -53,6 +53,9 @@ const stepRoutes = {
   confirmation: '/customer/confirmation'
 };
 let selectedProduct = 'monitoring-starter';
+let realDependencies = false;
+let currentOrder = null;
+let completionTracked = false;
 const initialStep = Object.entries(stepRoutes)
   .sort((left, right) => right[1].length - left[1].length)
   .find(([, route]) => location.pathname === route || (route !== '/customer/' && location.pathname.startsWith(`${route}/`)))?.[0] ?? 'home';
@@ -68,7 +71,50 @@ const telemetryReady = initializeBrowserTelemetry({
   experienceName: 'customer-journey',
   properties: common
 });
-window.amlabCustomerReady = telemetryReady;
+const dependenciesReady = loadDependencyMode();
+window.amlabCustomerReady = Promise.all([telemetryReady, dependenciesReady]);
+
+async function loadDependencyMode() {
+  const response = await fetch('/api/customer/dependencies');
+  if (!response.ok) throw new Error(`Backend mode check failed: HTTP ${response.status}`);
+  const data = await response.json();
+  if (typeof data.enabled !== 'boolean') throw new Error('Backend mode response is invalid.');
+  realDependencies = data.enabled;
+  byId('dependency-status').textContent = realDependencies
+    ? 'Real demo backend: Azure SQL → Service Bus → Azure Functions. No real payment is taken.'
+    : 'Synthetic journey: no database or queue calls.';
+  if (realDependencies && initialStep !== 'home') await loadProducts();
+}
+
+dependenciesReady.catch(error => {
+  byId('dependency-status').textContent = 'Customer backend could not be verified. Reload to retry.';
+  byId('start-journey').disabled = true;
+  byId('complete-purchase').disabled = true;
+  document.querySelectorAll('[data-product]').forEach(button => { button.disabled = true; });
+  trackLabEvent('CustomerBackendUnavailable', { ...common, 'error.type': error?.name || 'Error' });
+});
+
+async function loadProducts() {
+  const response = await fetch('/api/customer/products');
+  if (!response.ok) throw new Error(`Catalogue failed: HTTP ${response.status}`);
+  const products = await response.json();
+  if (!Array.isArray(products) || !products.length) throw new Error('Catalogue is empty or invalid.');
+  for (const button of document.querySelectorAll('[data-product]')) {
+    const product = products.find(item => item.id === button.dataset.product);
+    button.disabled = !product;
+    if (!product) continue;
+    if (typeof product.name !== 'string' || !Number.isFinite(product.price)) throw new Error('Catalogue product is invalid.');
+    const price = `$${product.price.toFixed(2)}`;
+    button.dataset.productName = product.name;
+    button.dataset.productPrice = price;
+    button.querySelector('strong').textContent = product.name;
+    button.lastElementChild.textContent = `SQL catalogue · ${price}`;
+    if (product.id === selectedProduct) {
+      byId('product-name').textContent = product.name;
+      byId('product-price').textContent = price;
+    }
+  }
+}
 
 function render(step) {
   document.querySelectorAll('[data-screen]').forEach(screen => {
@@ -97,9 +143,16 @@ window.addEventListener('popstate', event => {
   }
 });
 
-byId('start-journey').addEventListener('click', () => {
-  trackLabEvent('CustomerJourneyStarted', { ...common, 'journey.step': 'home' });
-  show('browse', 'CatalogViewed');
+byId('start-journey').addEventListener('click', async () => {
+  try {
+    await dependenciesReady;
+    if (realDependencies) await loadProducts();
+    trackLabEvent('CustomerJourneyStarted', { ...common, 'journey.step': 'home' });
+    show('browse', 'CatalogViewed');
+  } catch (error) {
+    byId('dependency-status').textContent = 'The catalogue is unavailable. Retry when the backend is healthy.';
+    trackLabEvent('CatalogueFailed', { ...common, 'error.type': error?.name || 'Error' });
+  }
 });
 
 document.querySelectorAll('[data-product]').forEach(button => {
@@ -146,6 +199,31 @@ byId('complete-purchase').addEventListener('click', async () => {
   button.disabled = true;
   byId('checkout-status').textContent = 'Processing synthetic payment...';
   try {
+    await dependenciesReady;
+    if (realDependencies && checkoutOutcome !== 'declined') {
+      const saved = sessionStorage.getItem('amlab.customer-order');
+      let draft = saved ? JSON.parse(saved) : null;
+      if (!draft || draft.productId !== selectedProduct || typeof draft.id !== 'string') {
+        draft = { id: crypto.randomUUID(), productId: selectedProduct };
+        sessionStorage.setItem('amlab.customer-order', JSON.stringify(draft));
+      }
+      const response = await fetch('/api/customer/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Amlab-Channel': 'customer-journey' },
+        body: JSON.stringify(draft)
+      });
+      const order = await response.json();
+      if (!response.ok) throw new Error(`Order submission failed: HTTP ${response.status}`);
+      validateOrder(order);
+      if (order.id !== draft.id || order.productId !== draft.productId) throw new Error('Order response does not match the submitted order.');
+      currentOrder = order;
+      completionTracked = false;
+      byId('confirmation-order').textContent = order.id;
+      byId('refresh-order').hidden = false;
+      show('confirmation', 'OrderQueued', { 'product.id': selectedProduct, 'customer.order_id': order.id });
+      renderOrder(order);
+      return;
+    }
     const response = await fetch(`/api/checkout?outcome=${encodeURIComponent(checkoutOutcome)}`, {
       headers: { 'X-Amlab-Channel': 'customer-journey' }
     });
@@ -157,6 +235,8 @@ byId('complete-purchase').addEventListener('click', async () => {
       return;
     }
     byId('confirmation-order').textContent = `AM-${Math.floor(100000 + Math.random() * 900000)}`;
+    byId('confirmation-heading').textContent = 'Order confirmed';
+    byId('confirmation-detail').textContent = 'completed the usage funnel.';
     show('confirmation', 'PurchaseCompleted', {
       'product.id': selectedProduct,
       'payment.result': data.payment,
@@ -164,10 +244,58 @@ byId('complete-purchase').addEventListener('click', async () => {
     });
     flushBrowserTelemetry();
   } catch (error) {
-    byId('checkout-status').textContent = 'Checkout is temporarily unavailable.';
+    byId('checkout-status').textContent = realDependencies
+      ? 'Order submission is unavailable or unverified. Retry with the preserved order ID; a failed response does not mean no order was stored.'
+      : 'Checkout is temporarily unavailable.';
     trackLabEvent('CheckoutFailed', { ...common, 'error.type': error?.name || 'Error' });
     button.disabled = false;
   }
 });
 
-byId('restart-journey').addEventListener('click', () => show('home', 'CustomerJourneyRestarted'));
+function validateOrder(order) {
+  if (!order || typeof order.id !== 'string' || typeof order.productId !== 'string' || !['Pending', 'Queued', 'Completed'].includes(order.status))
+    throw new Error('Order status response is invalid.');
+}
+
+function renderOrder(order) {
+  validateOrder(order);
+  byId('confirmation-heading').textContent = order.status === 'Completed' ? 'Order confirmed' : 'Order accepted';
+  byId('confirmation-detail').textContent = order.status === 'Completed'
+    ? 'was processed by Azure Functions and stored in SQL.'
+    : 'is awaiting asynchronous processing. Queue acceptance is not fulfilment.';
+  byId('order-status').textContent = `Processing state: ${order.status}`;
+  if (order.status === 'Completed' && !completionTracked) {
+    completionTracked = true;
+    trackLabEvent('PurchaseCompleted', { ...common, 'product.id': selectedProduct, 'customer.order_id': order.id, 'journey.completed': 'true' });
+    sessionStorage.removeItem('amlab.customer-order');
+    flushBrowserTelemetry();
+  }
+}
+
+byId('refresh-order').addEventListener('click', async () => {
+  if (!currentOrder) return;
+  const button = byId('refresh-order');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/customer/orders/${encodeURIComponent(currentOrder.id)}`);
+    if (!response.ok) throw new Error(`Order lookup failed: HTTP ${response.status}`);
+    const order = await response.json();
+    validateOrder(order);
+    if (order.id !== currentOrder.id || order.productId !== currentOrder.productId) throw new Error('Order lookup returned another order.');
+    currentOrder = order;
+    renderOrder(currentOrder);
+  } catch (error) {
+    byId('order-status').textContent = 'Order processing status could not be verified. Retry later.';
+    trackLabEvent('OrderStatusFailed', { ...common, 'error.type': error?.name || 'Error' });
+  } finally {
+    button.disabled = false;
+  }
+});
+
+byId('restart-journey').addEventListener('click', () => {
+  currentOrder = null;
+  byId('refresh-order').hidden = true;
+  byId('order-status').textContent = '';
+  byId('complete-purchase').disabled = false;
+  show('home', 'CustomerJourneyRestarted');
+});

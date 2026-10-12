@@ -36,6 +36,15 @@ function Invoke-LabStage {
     if ($schema.parameters[$name].type -like 'secure*') { throw 'Supply secure inputs through the private parameters file, not Overrides.' }
     $parameters[$name] = @{ value = $Overrides[$name] }
   }
+  if ($Stage -eq '10-workloads' -and $parameters.enableCustomerDependencies.value -eq $true) {
+    $sqlAdmin = [guid]::Empty
+    if ($parameters.enableSlotFailureScenario.value -isnot [bool] -or $parameters.enableSlotFailureScenario.value -ne $true -or
+        -not [guid]::TryParseExact([string]$parameters.sqlEntraAdminObjectId.value, 'D', [ref]$sqlAdmin) -or
+        $sqlAdmin -eq [guid]::Empty -or [string]::IsNullOrWhiteSpace($parameters.sqlEntraAdminName.value) -or
+        ($parameters.ContainsKey('sqlEntraAdminType') -and $parameters.sqlEntraAdminType.value -notin @('User','Group','Application'))) {
+      throw 'Stage B customer dependencies require the dedicated slot scenario and explicit SQL Entra admin object ID/name/type.'
+    }
+  }
   foreach ($name in $schema.parameters.Keys) {
     if (-not $parameters.ContainsKey($name) -and -not $schema.parameters[$name].ContainsKey('defaultValue')) {
       throw "Missing required parameter '$name' for $Stage."

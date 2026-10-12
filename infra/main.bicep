@@ -81,8 +81,18 @@ param enableAi bool = false
 @description('Deploy Azure SRE Agent in Sweden Central with Azure Monitor, Application Insights, and Log Analytics connectors. Off by default (billable usage).')
 param enableSreAgent bool = false
 
-@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan, upgrading it from B1 to S1 when needed. Off by default.')
+@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan with configurable Standard S2 (one worker) instead of B1. Off by default.')
 param enableSlotFailureScenario bool = false
+
+@description('Opt-in real customer SQL/Service Bus/Functions dependencies. Requires enableSlotFailureScenario and Stage B.')
+param enableCustomerDependencies bool = false
+@description('Explicit Microsoft Entra SQL administrator object ID; required when customer dependencies are enabled.')
+param sqlEntraAdminObjectId string = ''
+param sqlEntraAdminName string = ''
+@allowed(['User', 'Group', 'Application'])
+param sqlEntraAdminType string = 'Group'
+@allowed(['S1', 'S2', 'S3'])
+param slotAppServicePlanSku string = 'S2'
 
 @description('Deploy Azure Copilot Observability Agent with autonomous alert correlation. Off by default (preview and billable agent operations).')
 param enableObservabilityAgent bool = false
@@ -510,8 +520,25 @@ module appService 'modules/appservice.bicep' = {
     diagEventHubAuthRuleId: eventHub.outputs.sendRuleId
     diagEventHubName: eventHub.outputs.hubName
     enableSlotFailureScenario: enableSlotFailureScenario
+    slotAppServicePlanSku: slotAppServicePlanSku
     tags: commonTags
   }
+}
+
+module customerDependencies 'modules/customer-dependencies.bicep' = if (enableCustomerDependencies && enableSlotFailureScenario) {
+  name: 'customer-dependencies'
+  params: {
+    namePrefix: namePrefix
+    suffix: suffix
+    location: appServiceLocation
+    centralLawId: lawCentral.outputs.id
+    appInsightsName: appInsightsName
+    sqlEntraAdminObjectId: sqlEntraAdminObjectId
+    sqlEntraAdminName: sqlEntraAdminName
+    sqlEntraAdminType: sqlEntraAdminType
+    tags: commonTags
+  }
+  dependsOn: [appInsights]
 }
 
 module customerWebApp 'modules/customer-webapp.bicep' = if (enableSlotFailureScenario) {
@@ -523,6 +550,9 @@ module customerWebApp 'modules/customer-webapp.bicep' = if (enableSlotFailureSce
     appInsightsConnectionString: appInsights.outputs.connectionString
     appInsightsInstrumentationKey: appInsights.outputs.instrumentationKey
     centralLawId: lawCentral.outputs.id
+    customerIdentityId: enableCustomerDependencies ? customerDependencies!.outputs.customerIdentityId : ''
+    customerSubnetId: enableCustomerDependencies ? customerDependencies!.outputs.customerSubnetId : ''
+    customerDependencySettings: enableCustomerDependencies ? customerDependencies!.outputs.customerSettings : { CustomerDependencies__Enabled: 'false' }
     tags: commonTags
   }
 }
@@ -989,6 +1019,22 @@ module healthModel 'modules/health-model.bicep' = {
   }
 }
 
+module customerHealthModel 'modules/customer-health-model.bicep' = if (enableCustomerDependencies && enableSlotFailureScenario) {
+  name: 'customer-health-model'
+  params: {
+    namePrefix: namePrefix
+    location: 'swedencentral'
+    customerWebAppId: customerWebApp!.outputs.webAppId
+    customerAppServicePlanId: appService.outputs.planId
+    customerSqlDatabaseId: customerDependencies!.outputs.sqlDatabaseId
+    customerServiceBusId: customerDependencies!.outputs.serviceBusNamespaceId
+    customerWorkerId: customerDependencies!.outputs.workerId
+    customerWorkerStorageId: customerDependencies!.outputs.workerStorageId
+    customerCentralLawId: lawCentral.outputs.id
+    tags: commonTags
+  }
+}
+
 // ---------------------------------------------------------------------------------
 // SLI prerequisites (preview) -- scenario 46
 //
@@ -1049,6 +1095,8 @@ output webAppName string           = webAppName
 output webAppDefaultHost string    = appService.outputs.defaultHost
 output customerWebAppName string   = enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
 output customerWebAppDefaultHost string = enableSlotFailureScenario ? customerWebApp!.outputs.defaultHost : ''
+// Main already has ARM's maximum 64 outputs. The full opt-in contract is emitted
+// by the named customer-dependencies deployment (and Stage B's object output).
 output grafanaEndpoint string      = grafana.outputs.endpoint
 output workbookId string           = workbook.outputs.id
 output appInsightsInvestigationWorkbookId string = appInsightsObservability.outputs.workbookId

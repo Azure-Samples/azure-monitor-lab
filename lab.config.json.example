@@ -17,6 +17,11 @@
   "dailyCapGb":       1,
   "aksNodeCount":     2,
   "grafanaAdminObjectId": "",
+  "slotAppServicePlanSku": "S2",
+  "sqlEntraAdminObjectId": "",
+  "sqlEntraAdminName": "",
+  "sqlEntraAdminType": "Group",
+  "_customerDependenciesDocs": "Bicep/Azure CLI only. Requires Stage B and enableSlotFailureScenario. SQL Basic is Entra-only: supply explicit SQL admin object ID/name/type, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL networking. After provisioning explicitly run deploy-customer-dependencies.ps1 using the SQL Entra admin identity, approving only an exact temporary operator firewall IP if needed. Disabling is not deletion under ARM incremental mode; teardown removes the lab resource group.",
   "_grafanaAdminObjectIdDocs": "Leave empty to grant Grafana Admin to the deploying identity. When a pipeline deploys, set the Microsoft Entra object ID of the human lab operator or group that must access Grafana, not an application client ID.",
   "deployWindowsVm":  true,
   "deployLinuxVm":    true,
@@ -41,6 +46,8 @@
     "enableStageE": true,
     "enableStageAI": false,
     "enableStageSreAgent": false,
-    "enableStageObservabilityAgent": false
+    "enableStageObservabilityAgent": false,
+    "enableSlotFailureScenario": false,
+    "enableCustomerDependencies": false
   }
 }

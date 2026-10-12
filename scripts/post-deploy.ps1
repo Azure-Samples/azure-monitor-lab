@@ -68,7 +68,7 @@ $webAppState = az webapp show --subscription $active.id --resource-group $Resour
   --query '{state:state,usageState:usageState}' --output json --only-show-errors | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or -not $webAppState.state) { throw 'Could not verify the Web App state before publication.' }
 if ($webAppState.state -eq 'QuotaExceeded' -or $webAppState.usageState -eq 'Exceeded') {
-  throw "App Service '$WebAppName' is quota-blocked (state: $($webAppState.state), usageState: $($webAppState.usageState)). Resolve its App Service plan quota before retrying. The lab uses Basic B1 by default and Standard S1 when the slot scenario is enabled. No Web App changes were made."
+  throw "App Service '$WebAppName' is quota-blocked (state: $($webAppState.state), usageState: $($webAppState.usageState)). Resolve its App Service plan quota before retrying. The lab uses Basic B1 by default and configurable Standard S2 (one worker) when the slot scenario is enabled. No Web App changes were made."
 }
 
 # 1. Build + zip-deploy the bundled .NET 8 minimal API (workloads/webapp/AmlabHello)
@@ -187,6 +187,14 @@ if ($CustomerWebAppName) {
   -WebAppName $CustomerWebAppName -ArchivePath $zip -DeploymentId $deploymentId
 } else {
 Write-Host 'No dedicated customer Web App was provisioned; skipping broken-slot publication.'
+}
+if ($CustomerWebAppName) {
+  $dependencyEnabled = az webapp config appsettings list --subscription $active.id --resource-group $ResourceGroup --name $CustomerWebAppName `
+    --query "[?name=='CustomerDependencies__Enabled'].value | [0]" --output tsv --only-show-errors
+  if ($LASTEXITCODE -ne 0) { throw 'Could not resolve customer dependency configuration after publication.' }
+  if ($dependencyEnabled -eq 'true') {
+    Write-Warning 'Customer dependencies require explicit operator SQL bootstrap and worker publication using deploy-customer-dependencies.ps1. Do not claim readiness until test-customer-dependencies.ps1 passes. For staged deployments use DeploymentName stage-10-workloads; for monolithic use the main deployment name. No bootstrap token is acquired automatically.'
+  }
 }
 Write-Step 'Cleaning up local Web App package files'
 Remove-Item -Recurse -Force $pub

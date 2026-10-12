@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("lab-console.json", optional: true, reloadOnChange: false).AddEnvironmentVariables();
 builder.Services.AddApplicationInsightsTelemetry();
+builder.AddCustomerDependencies();
 builder.Services.AddSingleton<AgentPlayground>();
 builder.Services.AddSingleton<IAgentScenarioDelay, AgentScenarioDelay>();
 builder.Services.AddSingleton<AgentObservabilityScenarios>();
@@ -239,6 +240,7 @@ app.MapGet("/api/telemetry/config", (IConfiguration configuration) =>
     });
 });
 app.MapGet("/healthz", () => Results.Text("OK"));
+app.MapCustomerDependencies();
 app.MapGet("/api/slot-warmup", () => Results.Json(new
 {
     ready = true,

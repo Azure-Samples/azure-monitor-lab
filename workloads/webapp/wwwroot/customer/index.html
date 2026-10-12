@@ -18,6 +18,7 @@
       <p class="eyebrow">Customer app / Observability in action</p>
       <h1>Azure Monitor Lab</h1>
       <p class="lede">Explore monitoring products, ask an agent for help, and complete a metadata-only demo purchase. Every step is designed for Application Insights Usage analysis.</p>
+      <p id="dependency-status" class="status" role="status"></p>
       <div class="button-row"><button id="start-journey" class="primary">Explore products</button></div>
       <dl class="identity">
         <div><dt>Synthetic user</dt><dd id="customer-id"></dd></div>
@@ -84,8 +85,10 @@
 
     <section class="screen panel" data-screen="confirmation" hidden>
       <p class="eyebrow">Step 6 · Conversion</p>
-      <h2>Order confirmed</h2>
-      <p>Your synthetic order <strong id="confirmation-order"></strong> completed the usage funnel.</p>
+      <h2 id="confirmation-heading">Order confirmed</h2>
+      <p>Your synthetic order <strong id="confirmation-order"></strong> <span id="confirmation-detail">completed the usage funnel.</span></p>
+      <p id="order-status" class="status" role="status"></p>
+      <div class="button-row"><button id="refresh-order" class="secondary" hidden>Refresh order status</button></div>
       <div class="button-row"><button id="restart-journey" class="secondary">Start another journey</button></div>
     </section>
   </main>

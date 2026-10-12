@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "9362756119691920294"
+      "templateHash": "702570499910960095"
     }
   },
   "parameters": {
@@ -79,6 +79,18 @@
       "metadata": {
         "description": "Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1."
       }
+    },
+    "slotAppServicePlanSku": {
+      "type": "string",
+      "defaultValue": "S2",
+      "allowedValues": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "metadata": {
+        "description": "Slot scenario plan SKU. Defaults to S2 to preserve the current live plan; one worker."
+      }
     }
   },
   "resources": [
@@ -89,7 +101,7 @@
       "location": "[parameters('location')]",
       "tags": "[parameters('tags')]",
       "sku": {
-        "name": "[if(parameters('enableSlotFailureScenario'), 'S1', 'B1')]",
+        "name": "[if(parameters('enableSlotFailureScenario'), parameters('slotAppServicePlanSku'), 'B1')]",
         "tier": "[if(parameters('enableSlotFailureScenario'), 'Standard', 'Basic')]",
         "capacity": 1
       },

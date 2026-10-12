@@ -39,8 +39,16 @@ param grafanaAdminObjectId string = ''
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
-@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the App Service plan, upgrading it to Standard S1 when needed.')
+@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the App Service plan with configurable Standard S2 and one worker.')
 param enableSlotFailureScenario bool = false
+
+param enableCustomerDependencies bool = false
+param sqlEntraAdminObjectId string = ''
+param sqlEntraAdminName string = ''
+@allowed(['User', 'Group', 'Application'])
+param sqlEntraAdminType string = 'Group'
+@allowed(['S1', 'S2', 'S3'])
+param slotAppServicePlanSku string = 'S2'
 
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
@@ -208,6 +216,22 @@ module appService '../modules/appservice.bicep' = {
     diagEventHubAuthRuleId: eventHubAuthRule.id
     diagEventHubName: 'diagstream'
     enableSlotFailureScenario: enableSlotFailureScenario
+    slotAppServicePlanSku: slotAppServicePlanSku
+    tags: commonTags
+  }
+}
+
+module customerDependencies '../modules/customer-dependencies.bicep' = if (enableCustomerDependencies && enableSlotFailureScenario) {
+  name: 'customer-dependencies'
+  params: {
+    namePrefix: namePrefix
+    suffix: suffix
+    location: appServiceLocation
+    centralLawId: lawCentral.id
+    appInsightsName: appInsights.name
+    sqlEntraAdminObjectId: sqlEntraAdminObjectId
+    sqlEntraAdminName: sqlEntraAdminName
+    sqlEntraAdminType: sqlEntraAdminType
     tags: commonTags
   }
 }
@@ -221,6 +245,9 @@ module customerWebApp '../modules/customer-webapp.bicep' = if (enableSlotFailure
     appInsightsConnectionString: appInsights.properties.ConnectionString
     appInsightsInstrumentationKey: appInsights.properties.InstrumentationKey
     centralLawId: lawCentral.id
+    customerIdentityId: enableCustomerDependencies ? customerDependencies!.outputs.customerIdentityId : ''
+    customerSubnetId: enableCustomerDependencies ? customerDependencies!.outputs.customerSubnetId : ''
+    customerDependencySettings: enableCustomerDependencies ? customerDependencies!.outputs.customerSettings : { CustomerDependencies__Enabled: 'false' }
     tags: commonTags
   }
 }
@@ -282,3 +309,4 @@ module flowLogs '../modules/flow-logs.bicep' = {
 output webAppName string = appService.outputs.webAppName
 output customerWebAppName string = enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
 output customerWebAppDefaultHost string = enableSlotFailureScenario ? customerWebApp!.outputs.defaultHost : ''
+output customerDependencies object = enableCustomerDependencies && enableSlotFailureScenario ? customerDependencies!.outputs.customerDependencies : { enabled: false }

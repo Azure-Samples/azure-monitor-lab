@@ -2,6 +2,11 @@
 .SYNOPSIS
   Tear the lab down: remove subscription routing, monitoring dependencies, and the lab's related resource groups.
 
+.NOTES
+  Opt-in customer SQL/Service Bus/Functions/storage, private networking and UAMIs
+  all belong to this exact lab resource group and are removed by group deletion.
+  ARM incremental redeployment with the toggle false does NOT delete their data.
+
 .PARAMETER ResourceGroup
   Lab resource group to remove. Also includes name-matched auxiliary groups and
   managed groups owned by Azure Monitor workspaces in this exact resource group.

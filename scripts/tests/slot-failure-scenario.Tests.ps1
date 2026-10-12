@@ -19,7 +19,8 @@ if ($rollback -notmatch '\$productionStatus -eq 200 -and \$brokenStatus -eq 503'
 if ($runner -notmatch "'slot-failure'\s*=\s*'trigger-broken-slot\.ps1'") {
   throw 'The independent runner must map the approved slot-failure operation to the bounded trigger script.'
 }
-if ($appService -notmatch "enableSlotFailureScenario \? 'S1' : 'B1'" -or
+if ($appService -notmatch "enableSlotFailureScenario \? slotAppServicePlanSku : 'B1'" -or
+    $appService -notmatch "param slotAppServicePlanSku string = 'S2'" -or
     $appService -match 'module\s+brokenSlot') {
   throw 'The slot scenario must upgrade the shared plan while keeping its broken slot off the Control Center.'
 }

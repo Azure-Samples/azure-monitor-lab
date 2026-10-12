@@ -20,6 +20,10 @@ param centralLawId string
 @description('Resource tags.')
 param tags object = {}
 
+param customerIdentityId string = ''
+param customerSubnetId string = ''
+param customerDependencySettings object = { CustomerDependencies__Enabled: 'false' }
+
 module site 'br/public:avm/res/web/site:0.24.0' = {
   name: 'customer-web-app'
   params: {
@@ -32,7 +36,9 @@ module site 'br/public:avm/res/web/site:0.24.0' = {
     publicNetworkAccess: 'Enabled'
     managedIdentities: {
       systemAssigned: true
+      userAssignedResourceIds: empty(customerIdentityId) ? [] : [customerIdentityId]
     }
+    virtualNetworkSubnetResourceId: empty(customerSubnetId) ? '' : customerSubnetId
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|8.0'
       alwaysOn: true
@@ -51,7 +57,7 @@ module appSettings './appservice-settings.bicep' = {
   params: {
     webAppName: site.outputs.name
     existingAppSettings: list('${resourceId('Microsoft.Web/sites', webAppName)}/config/appsettings', '2023-12-01').properties
-    appSettings: {
+    appSettings: union({
       APPLICATIONINSIGHTS_CONNECTION_STRING: appInsightsConnectionString
       APPINSIGHTS_INSTRUMENTATIONKEY: appInsightsInstrumentationKey
       ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
@@ -64,7 +70,7 @@ module appSettings './appservice-settings.bicep' = {
       LabConsole__ForceOutage: 'false'
       WEBSITE_SWAP_WARMUP_PING_PATH: '/api/slot-warmup'
       WEBSITE_SWAP_WARMUP_PING_STATUSES: '200'
-    }
+    }, customerDependencySettings)
   }
 }
 
@@ -78,6 +84,11 @@ module brokenSlot 'br/public:avm/res/web/site/slot:0.5.0' = {
     serverFarmResourceId: serverFarmResourceId
     enabled: true
     httpsOnly: true
+    managedIdentities: {
+      systemAssigned: true
+      userAssignedResourceIds: empty(customerIdentityId) ? [] : [customerIdentityId]
+    }
+    virtualNetworkSubnetResourceId: empty(customerSubnetId) ? '' : customerSubnetId
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|8.0'
       alwaysOn: true

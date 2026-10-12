@@ -341,14 +341,72 @@
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable broken deployment-slot recovery scenario",
             "defaultValue": false,
-            "toolTip": "Upgrades the App Service plan from Basic B1 to Standard S1, provisions a preloaded broken slot, and allows an approved Control Center action to swap it into production."
+            "toolTip": "Uses the configurable Standard S2 plan (one worker by default), provisions a dedicated customer app and broken slot, and allows an approved Control Center action to swap only that customer app."
           },
           {
             "name": "slotFailureScenarioInfo",
             "type": "Microsoft.Common.TextBlock",
             "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
             "options": {
-              "text": "This option increases App Service cost by using Standard S1. Triggering the scenario intentionally makes the customer app and Control Center return HTTP 503. Recovery must be performed externally with Azure SRE Agent in Review mode or the documented GitHub Copilot CLI workflow."
+              "text": "This option increases App Service cost using Standard S2 by default and one worker. The broken slot is isolated to the dedicated customer app; the Control Center stays available. Recovery must be performed externally with Azure SRE Agent in Review mode or the documented GitHub Copilot CLI workflow."
+            }
+          },
+          {
+            "name": "slotAppServicePlanSku",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Customer slot plan SKU (one worker)",
+            "defaultValue": "S2",
+            "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Standard S1", "value": "S1" },
+                { "label": "Standard S2", "value": "S2" },
+                { "label": "Standard S3", "value": "S3" }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "enableCustomerDependencies",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable real customer SQL, orders queue and processor",
+            "defaultValue": false,
+            "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
+            "toolTip": "Requires the dedicated customer app/workload stage. Creates billable SQL Basic (2GB), Service Bus Standard (orders queue 1GB), Flex Consumption worker (40 maximum instances), identity storage and private SQL networking. Explicit operator SQL bootstrap and worker ZIP publication are required afterward."
+          },
+          {
+            "name": "sqlEntraAdminObjectId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SQL Microsoft Entra administrator object ID",
+            "defaultValue": "",
+            "visible": "[equals(steps('advanced').enableCustomerDependencies, true)]",
+            "constraints": {
+              "required": true,
+              "regex": "^(?!00000000-0000-0000-0000-000000000000$)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "Supply the administrator's nonzero Entra object ID, not a client ID."
+            }
+          },
+          {
+            "name": "sqlEntraAdminName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SQL Microsoft Entra administrator display name",
+            "defaultValue": "",
+            "visible": "[equals(steps('advanced').enableCustomerDependencies, true)]",
+            "constraints": { "required": true }
+          },
+          {
+            "name": "sqlEntraAdminType",
+            "type": "Microsoft.Common.DropDown",
+            "label": "SQL Microsoft Entra administrator type",
+            "defaultValue": "Group",
+            "visible": "[equals(steps('advanced').enableCustomerDependencies, true)]",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Group", "value": "Group" },
+                { "label": "User", "value": "User" },
+                { "label": "Application", "value": "Application" }
+              ],
+              "required": true
             }
           },
           {
@@ -432,6 +490,11 @@
       "enableAi": "[steps('advanced').enableAi]",
       "enableSreAgent": "[steps('advanced').enableSreAgent]",
       "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",
+      "slotAppServicePlanSku": "[steps('advanced').slotAppServicePlanSku]",
+      "enableCustomerDependencies": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+      "sqlEntraAdminObjectId": "[steps('advanced').sqlEntraAdminObjectId]",
+      "sqlEntraAdminName": "[steps('advanced').sqlEntraAdminName]",
+      "sqlEntraAdminType": "[steps('advanced').sqlEntraAdminType]",
       "enableObservabilityAgent": "[steps('advanced').enableObservabilityAgent]",
       "observabilityAgentLocation": "[steps('advanced').observabilityAgentLocation]",
       "enableObservabilityAgentAutomaticInvestigation": "[steps('advanced').enableObservabilityAgentAutomaticInvestigation]"

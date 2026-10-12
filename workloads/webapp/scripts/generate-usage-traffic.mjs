@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { customerPurchaseOutcome } from '../../../scripts/customer-journey-outcome.mjs';
 
 function option(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);
@@ -74,7 +75,10 @@ async function runJourney(data) {
     if (data.outcome === 'success') {
       await page.locator('[data-screen="confirmation"]').waitFor();
       await pause(1200);
-      return { ...data, status: 'completed' };
+      const heading = await page.locator('#confirmation-heading').innerText();
+      const orderStatus = page.locator('#order-status');
+      const processingStatus = await orderStatus.count() ? await orderStatus.innerText() : '';
+      return { ...data, status: customerPurchaseOutcome(heading, processingStatus) };
     }
     await page.locator('#checkout-status').getByText(/declined/).waitFor();
     await pause(1200);

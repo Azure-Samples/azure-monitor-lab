@@ -28,6 +28,8 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | **Azure SRE Agent (optional trial)** | <ul><li>[54](#s54) Trial readiness</li><li>[55](#s55) Alert-driven App Service investigation</li><li>[56](#s56) AKS crash-loop diagnosis</li><li>[57](#s57) Change correlation</li><li>[58](#s58) Alert merging and verified recovery</li><li>[59](#s59) Automatic incident command brief</li><li>[71](#s71) Broken-slot rollback</li></ul> |
 | **Azure Copilot Observability Agent (optional preview)** | <ul><li>[61](#s61) Slow tool</li><li>[62](#s62) Wrong tool</li><li>[63](#s63) Partial failure</li><li>[64](#s64) Alert storm correlation</li><li>[65](#s65) Token-cost spike</li><li>[66](#s66) Deployment regression</li><li>[67](#s67) Platform versus application failure</li><li>[69](#s69) End-to-end Application Insights incident</li></ul> |
 | **GitHub Copilot CLI + Azure MCP** | <ul><li>[68](#s68) Evidence-first terminal investigation</li><li>[71](#s71) Broken-slot rollback</li></ul> |
+| **Application incident response (VS Code / Copilot CLI)** | <ul><li>[72](#s72) Application troubleshooting specialist, SRE MCP, and Observability handoff</li></ul> |
+| **Real customer PaaS dependencies (opt-in)** | <ul><li>[73](#s73) SQL catalogue, queued orders, Functions processing and dependency health</li></ul> |
 | **Platform foundations** | <ul><li>[5](#s5) Policy auto-onboard</li><li>[6](#s6) Cross-workspace KQL</li><li>[24](#s24) Custom Logs Ingestion API</li><li>[26](#s26) KQL Functions</li><li>[51](#s51) Platform logs at scale (DCR)</li></ul> |
 
 > **Suggested 25-min "by-workload" demos:** App Service → 3, 22, 28, 29, 33 · AKS → 4, 14, 30, 31 · Cost → 9, 11, 20, 39, 42 · Security → 27, 47, 48 · Workload health → 1 + 45 + 46.
@@ -3320,7 +3322,7 @@ A deployment slot that passed its dedicated warm-up probe is promoted to the sep
 ### Trigger the incident
 
 1. Open **Control Center → Lab Operations**.
-2. Select **Deploy Broken Slot**.
+2. Select **Change deployment slot**, choose **Broken slot (HTTP 503)**, and select **Review operation**.
 3. Review the exact target and warning. Confirm the resource group and approve.
 4. The independent Container Apps job verifies that customer production is healthy, verifies that the customer's `broken` slot is armed, and performs exactly one `broken` → `production` swap.
 5. The Control Center remains available. Open the linked customer app in a separate tab and verify `https://app-amlab-<suffix>-customer.azurewebsites.net/healthz` returns HTTP 503.
@@ -3368,7 +3370,7 @@ If the autonomous plan is unavailable, turn it off and recover in Review mode. O
 From the repository, start GitHub Copilot CLI in an authenticated shell and submit:
 
 ```text
-Investigate the outage of app-amlab-<suffix> in <resource-group>. Use Azure evidence
+Investigate the outage of app-amlab-<suffix>-customer in <resource-group>. Use Azure evidence
 before proposing a change: check the production health endpoint, Application Insights
 request failures, and Azure Activity Log events for the Web App. Determine whether the
 failure began immediately after a deployment-slot swap and establish the current
@@ -3385,7 +3387,7 @@ The bounded recovery command Copilot should propose is:
 ```powershell
 ./scripts/rollback-broken-slot.ps1 `
   -ResourceGroup <resource-group> `
--WebAppName app-amlab-<suffix>-customer
+  -WebAppName app-amlab-<suffix>-customer
 ```
 
 The script is idempotent for an already healthy production state. It refuses ambiguous states, refuses to swap when both sides carry the outage marker, performs no automatic retry, and verifies production health after Azure reports the reverse swap complete.
@@ -3408,6 +3410,284 @@ After the approved reverse swap, prove:
 
 ### Killer line
 > *"The SRE did not guess or redeploy: it correlated the outage with the exact slot change, reversed only that change under approval, and measured recovery."*
+
+---
+
+<a id="s72"></a>
+## 72 · Application incident specialist in VS Code and GitHub Copilot CLI
+
+**Audience:** application owners, developers, SREs, incident responders.
+**Time:** 10–15 min using an existing incident, plus telemetry ingestion and optional specialist investigation time.
+
+### Story
+
+An application is slow, returning errors, or unavailable. Instead of giving a general assistant an unbounded "fix it" request, use the repository's [application-troubleshooter agent](../.github/agents/application-troubleshooter.agent.md). It knows where to look: Application Insights request/dependency spans, exceptions and availability; Azure Monitor site and shared-plan metrics; Azure Activity Logs; and the deployed Azure SRE Agent through MCP. It gathers evidence before proposing one approval-gated mitigation.
+
+The agent is general-purpose within application incident response, not limited to the broken-slot demo. Its configuration contains no fixed subscription, hostname, model, or incident. It discovers the lab targets and distinguishes the Control Center from the customer application.
+
+### Prerequisites and safety
+
+- Use this repository checkout in VS Code or GitHub Copilot CLI. The agent file lives in `.github/agents/` and is shared by both clients. Restart CLI after adding it.
+- Sign in to the correct Azure tenant/subscription and have read access to the affected application, its Application Insights component/linked workspace, metrics, and Activity Logs. Resolve identifiers from local configuration and verify them against Azure; never paste secrets into prompts.
+- Configure Azure Monitor/inventory MCP tools in each client. See [Scenario 68](#s68) for read-only MCP setup. A VS Code MCP connection is not automatically inherited by standalone CLI.
+- For SRE collaboration, deploy Stage SRE Agent and configure Azure MCP Server with its SRE Agent capability. The documented setup requires **Reader** and **SRE Agent Administrator** on the SRE Agent resource; the profile grants neither. Have an administrator review least-privilege access. Do not automatically grant roles.
+- Keep SRE action approvals enabled. Check for an active autonomous response plan or ongoing mitigation before the demo; do not let two agents race a rollback. The new profile does not create or enable such plans.
+- Observability Agent is optional and preview-dependent. Without a documented direct tool in your client, collaboration is **human-mediated through the Azure portal**, not an automatic CLI-to-agent connection.
+- Monitoring queries, SRE investigations and retained services can incur cost. No load generation, fault injection, deployment or Azure configuration change happens merely by adding this profile.
+
+The profile uses the host's available tools rather than a fixed server-name allowlist, because VS Code and CLI expose different tool names. Its instructions guide behavior; client tool approvals and Azure permissions enforce access. Do not run it with blanket tool approval.
+
+### Connect the SRE Agent MCP capability
+
+In **VS Code**, use the Azure MCP Server extension, sign in, and ensure its SRE Agent tools are enabled for this chat.
+
+In **Copilot CLI**, run `/mcp add` and register Azure MCP Server if a suitable connection is not already present:
+
+| Field | Value |
+|---|---|
+| Name | `azure` |
+| Command | `npx` |
+| Args | `-y @azure/mcp@latest server start` |
+
+This is the [official SRE MCP setup](https://learn.microsoft.com/azure/sre-agent/setup-mcp-server). Teams can pin a tested package version instead of `latest`. Do not duplicate an existing server, commit credentials, or register the SRE capability with a read-only filter that removes investigation-thread tools. Retain separate read-only Monitor/inventory connections where appropriate; enabling SRE tools is not permission to execute infrastructure changes.
+
+After restarting the client, ask:
+
+```text
+Show the available Azure Monitor, inventory and SRE Agent MCP capabilities. List the
+SRE Agent resources only in the subscription confirmed for this lab. Do not create
+threads, modify Azure, or change authentication context. Report missing tools or access.
+```
+
+Azure MCP resolves SRE Agent endpoints from resource discovery. It is not necessary to guess an `*.azuresre.ai` URL. The SRE Agent MCP server lets this client call **into** SRE Agent; it is distinct from an outbound MCP connector configured inside SRE Agent.
+
+### Select the application specialist
+
+In **VS Code**, select **application-troubleshooter** in the Chat agent picker.
+
+In **Copilot CLI**, use `/agent` and select **application-troubleshooter**, or invoke it from the repository:
+
+```powershell
+copilot --agent application-troubleshooter --prompt "Investigate the lab customer's application health for the last 30 minutes. Discover and confirm the targets, gather evidence, and propose next steps without changing Azure."
+```
+
+The direct command starts an investigation; it is not approval for remediation. Supply a specific app and incident time when known. If several apps or subscriptions match, the agent must clarify the target.
+
+### Starter prompts
+
+**1. Slow requests or a latency regression**
+
+```text
+The lab customer application has slow requests. Use the last 30 minutes and the prior
+30 minutes as a baseline, and state the UTC windows. Discover its Application Insights
+component and linked workspace. Compare request p50/p95/p99, affected routes, dependency
+latency/failures, exceptions, and representative correlated operation IDs. Check site
+and shared-plan metrics plus recent Activity Log changes. Separate application delay
+from platform saturation. Consult the selected SRE Agent in approval-gated,
+investigation-only mode if available and safe, after confirming thread creation with
+me. Propose the smallest evidence-backed next step; do not restart, resize or deploy.
+```
+
+**2. Many errors or failed dependencies**
+
+```text
+Investigate elevated errors in the lab customer app over the last 30 minutes.
+Show error rates with request counts, status codes, affected routes, exception types
+and failed dependency chains. Compare with the preceding baseline and distinguish
+customer telemetry from Control Center telemetry. Correlate Azure Monitor 5xx and
+availability with deployment/configuration events in Activity Logs. Report sampling
+and ingestion gaps. Use SRE Agent MCP for incident context if available. Do not change
+the app; present hypotheses, supporting evidence and a proposed mitigation for approval.
+```
+
+**3. Customer outage after a slot change**
+
+```text
+The lab customer app is unavailable after a deployment-slot change. Verify the exact
+customer site, production and broken-slot health, recent Activity Log slot swaps,
+Application Insights failures and the customer 5xx alert. Check whether SRE recovery
+is already in progress. Do not touch the Control Center. If production is 503,
+the broken slot's customer health is 200, and the change history proves this controlled
+incident, review the existing guarded rollback script and show its exact command,
+target, impact, abort conditions and verification plan. Wait for my approval before
+executing once. If production is already healthy or state is ambiguous, do not swap.
+```
+
+To create this incident intentionally, use [Scenario 71](#s71), including its separate approval and cost prerequisites. To produce slow/error samples, use the existing **Traffic & Faults** experience under its own consent flow. Do not ask the troubleshooting agent to generate load or break a healthy app as part of diagnosis.
+
+**4. Application failure versus shared-plan pressure**
+
+```text
+Determine whether this lab application's current incident is caused by its code,
+a dependency, startup/deployment, or shared App Service plan pressure. Discover all
+sites sharing its plan and inspect per-site signals plus plan CPU/memory in the
+incident window. Correlate the first failure with completed and failed Activity Log
+changes. Do not infer causation solely from a high CPU sample. Show evidence for and
+against each hypothesis. Disclose the blast radius and cost of any proposed resize;
+make no changes without approval of the exact proposal.
+```
+
+**5. Collaborate with the Observability Agent**
+
+```text
+Check whether a supported direct Observability Agent chat/investigation tool is
+actually available. If it is, explain its scope and use it only for investigation.
+Otherwise give me a sanitized prompt to paste into the affected Application Insights
+resource's Logs -> Observability Agent chat, with the same UTC window, symptom,
+operation IDs and questions about the dependency chain. Label it human-mediated.
+When I return its findings, reconcile them with our telemetry and SRE Agent findings.
+Do not invent a chat endpoint or treat an agent recommendation as mitigation approval.
+```
+
+The documented portal entry point is [Application Insights or Log Analytics -> Logs -> Observability Agent](https://learn.microsoft.com/azure/azure-monitor/aiops/observability-agent-chat). Returning an investigation summary or Azure Monitor issue reference preserves the evidence handoff; the agent must still verify target/time alignment and distinguish claims from measured facts.
+
+**6. Verify an approved mitigation**
+
+```text
+Verify the mitigation we just approved. Check customer-facing health, fresh request
+and dependency outcomes versus the same baseline, the completed Activity Log operation,
+and alert resolution after its evaluation delay. Report the exact before/after
+measurements and any pending telemetry. Do not retry an unknown dispatch, perform a
+second mitigation, or claim recovery based only on a successful command.
+```
+
+### Evidence and expected outcome
+
+- The agent confirms the affected site/slot, subscription, linked telemetry resources and UTC incident/baseline windows.
+- It reports a bounded evidence timeline, measured impact, ranked causes and missing access or telemetry.
+- SRE Agent collaboration is evidenced by the selected resource and returned thread/findings, or explicitly marked unavailable. Standard approval gates remain intact; `investigate_yolo` is never used.
+- Observability collaboration is either a verified tool response or an explicitly human-mediated portal handoff, never a fabricated exchange.
+- A "recommendation only" request produces no Azure mitigation. An ambiguous slot state, missing change history, or active recovery blocks a second swap.
+- Before an approved action, the user sees exact scope, command/tool arguments, blast radius, cost, abort/rollback conditions and verification criteria.
+- Recovery is reported only after measured checks; HTTP recovery with telemetry/alert checks outstanding is labeled partial verification.
+
+### Killer line
+> *"One application specialist knows where to look, consults the operational agents, and earns approval with evidence before changing anything."*
+
+---
+
+<a id="s73"></a>
+## 73 · Real customer dependencies — SQL, Service Bus and Azure Functions
+
+**Audience:** application teams, SREs, Azure Monitor practitioners.
+**Time:** 15–20 min after separate infrastructure deployment and database initialization.
+
+### Story
+
+The customer app reads a real Azure SQL catalogue and persists a synthetic order. It publishes the order ID to Service Bus, and a .NET isolated Azure Function updates the SQL order to `Completed`. This provides real dependency calls instead of merely simulated spans:
+
+```text
+Customer browser -> Customer Web App -> SQL catalogue/orders
+                                    -> Service Bus orders queue
+                                       -> Azure Functions processor -> SQL order update
+```
+
+Functions host/deployment storage is a real infrastructure dependency; it is not product-image storage. No real payment, personal data, external SaaS or live model call is introduced by this extension.
+
+### Opt-in, cost and prerequisites
+
+The extension is disabled by default. Enable `stageToggles.enableCustomerDependencies` only with the dedicated customer app/slot prerequisites. Supply an explicitly chosen SQL Microsoft Entra administrator during deployment. The deploy/post-deploy workflow must initialize schema and least-privilege database users for customer and processor identities before publishing a usable backend.
+
+Configuration requires `enableStageB=true`, `enableSlotFailureScenario=true`, and `sqlEntraAdminObjectId`, `sqlEntraAdminName`, `sqlEntraAdminType` (`User`, `Group`, or `Application`). `slotAppServicePlanSku` defaults to S2 with one worker. Use [the customer lifecycle instructions](../scripts/README.md) for the infrastructure and explicit SQL-admin bootstrap/worker publication sequence; normal post-deploy alone is not backend readiness.
+
+The operator bootstrap requires the `SqlServer` PowerShell module (`Invoke-Sqlcmd`) and access to the selected database as its Entra administrator. SQL uses private networking for application traffic. A private-network operator can bootstrap directly; a public operator must separately approve the exact temporary IPv4 firewall rule. The lifecycle script removes that temporary access in `finally`. No broad Azure-services firewall rule or SQL password is required.
+
+- SQL uses Entra authentication, not SQL passwords. ARM roles alone do not create SQL database users.
+- Service Bus Standard supports stable message IDs and duplicate detection. Functions uses identity-based Service Bus and host storage access.
+- SQL, messaging, Functions, storage and monitoring add cost. Disabling the feature does not prove previously deployed resources were removed or billing stopped; follow explicit lifecycle/teardown guidance.
+- Preserve the deployed App Service capacity deliberately; do not redeploy the lab with a smaller default plan by accident.
+- Grant the operator only required monitoring and controlled-fault permissions. Do not grant broad data access to the troubleshooting agent as a shortcut.
+- Local mock tests prove orchestration and UI behavior, not live SQL permissions, Service Bus delivery, Functions startup or trace ingestion. Validate those separately after approved deployment.
+
+### Run the healthy journey
+
+1. Open the dedicated customer app and check the banner indicates **Real demo backend**.
+2. Select **Explore products**. The three catalogue items come from SQL; a catalogue failure is shown, not silently replaced by static products.
+3. Select a product and complete a synthetic order. `POST /api/customer/orders` stores a stable UUID and publishes the same ID as the Service Bus message ID.
+4. The UI shows **Order accepted**, not confirmed fulfilment, while processing is Pending/Queued.
+5. Select **Refresh order status**. Only SQL `Completed` produces **Order confirmed** and the completed purchase event.
+6. If submission fails or its outcome is unknown, retry using the preserved order ID. Do not create a fresh ID to bypass duplicate detection.
+
+The disabled backend preserves the existing synthetic journey and `/api/checkout`. The enabled backend endpoints are `GET /api/customer/products`, `POST /api/customer/orders`, and `GET /api/customer/orders/{id}`. `GET /api/customer/dependencies` reports the feature mode without exposing credentials or resource configuration.
+
+### Investigate a slow catalogue
+
+After approved deployment, discover exact targets from the selected deployment output before running a fault:
+
+```powershell
+$common = @{
+  SubscriptionId = '<subscription-id>'
+  TenantId = '<tenant-id>'
+  ResourceGroup = '<resource-group>'
+  DeploymentName = '<actual-deployment-name>'
+}
+. .\scripts\customer-dependency-helpers.ps1
+$context = Get-CustomerDependencyContext @common
+.\scripts\set-customer-dependency-fault.ps1 @common -Fault SqlDelay `
+  -SqlDelaySeconds 3 -ConfirmTarget $context.CustomerWebAppId -WhatIf
+```
+
+Remove `-WhatIf` only after reviewing the exact target and confirming the operation. This script is an operator runbook, not an automatic background agent action.
+
+Use the extension's controlled fault runbook to apply a bounded SQL delay only to the dedicated customer app, under explicit operator confirmation. Capture the current state before changing it; never delete rows, pause the SQL server, or change a shared app/plan to simulate latency.
+
+Select **application-troubleshooter** in VS Code or Copilot CLI and start with:
+
+```text
+The customer's SQL catalogue is slow. Discover the exact application, SQL database,
+linked telemetry workspace and associated Health Model. Follow verified entity and
+dependency relationships, checking signal freshness. Compare request and SQL dependency
+duration for the last 30 minutes against the prior baseline. Check database metrics,
+shared-plan metrics and Activity Logs for controlled fault or configuration changes.
+Consult SRE Agent in investigation-only mode where approval gates are verified.
+Explain whether the database is saturated or a bounded demo delay is active. Propose
+an exact fault reset only after showing evidence and impact; wait for approval.
+```
+
+A deliberate SQL wait is visible as dependency latency but need not produce high CPU. Healthy CPU alone does not exclude database delay.
+
+### Investigate queued orders that do not complete
+
+```powershell
+.\scripts\set-customer-dependency-fault.ps1 @common -Fault WorkerFailure `
+  -ConfirmTarget $context.workerId -WhatIf
+```
+
+Apply the processor's controlled failure setting under explicit confirmation, submit one synthetic order, and inspect delivery failures and the bounded retry/dead-letter lifecycle. Queue acceptance does not prove business completion.
+
+```text
+This synthetic order was accepted but never completed: <order-id>. Correlate its SQL
+Pending/Queued state with Service Bus message ID and delivery count, processor request
+and SQL spans, active/dead-letter metrics, and recent configuration Activity Logs.
+Use the application's Health Model to identify the actual queue, Function and host
+storage, not similarly named lab resources. Distinguish a failed worker from a failed
+SQL login or transport. Propose the smallest approved recovery. Do not purge the queue,
+resubmit all orders, replay dead-letter messages or change SRE autonomy without a
+separate exact approval. Verify this specific order after recovery.
+```
+
+Resetting a processor fault permits future delivery; it does **not** automatically replay dead-lettered messages. Replay is a separate operator-approved operation. A completed order is idempotently retained; redelivery must not create another order or overwrite its completion timestamp.
+
+For an approved reset, preview:
+
+```powershell
+.\scripts\set-customer-dependency-fault.ps1 @common -Fault Recover `
+  -ConfirmTarget $context.CustomerWebAppId -WhatIf
+```
+
+Recovery resets the customer production and broken slot SQL delays to zero and the processor failure setting to false. Review that complete scope before removing `-WhatIf`; it does not swap slots or replay messages.
+
+### Evidence and expected outcome
+
+- SQL catalogue/select, order insert/status and processor update are actual calls, using parameterized statements and bounded timeouts.
+- The stable order/message ID connects the user-visible status with dependency telemetry; W3C context travels across the message into the processor.
+- A separate **`hm-<prefix>-customer` Health Model** in Sweden Central represents only the customer architecture: storefront, shared App Service plan, SQL, Service Bus, orders Function and host storage. The existing `hm-<prefix>-workload` model remains independent; do not use its unrelated VM/AKS/AI tiers as customer dependencies. Entities reference actual resource IDs. Health propagation complements telemetry; an incomplete or stale model is explicitly reported.
+- SQL and Functions host/deployment storage use private endpoints. Storage has separate Blob/Queue endpoints and linked private DNS; shared keys and anonymous blob access are disabled. Managed-identity data roles remain required. Private Link and DNS add ongoing charges. When governance disables public SQL access, bootstrap from a connected private operator or use `bootstrap-customer-sql.ps1 -UseCustomerPrivateTunnel -SshPort <port>` through an authenticated Azure CLI customer App Service SSH tunnel; the selected administrator token travels only over encrypted stdin, never through files, logs or command arguments.
+- SRE Agent investigation and optional Observability Agent handoff use the same target/window and sanitized order/operation IDs.
+- Controlled fault recovery is exact-target and confirmation-gated. After recovery verify fresh catalogue latency or the specific order completion, dependency success and queue/alert state after ingestion delay.
+
+### Killer line
+> *"We are not just monitoring a website: we can follow one customer's order through SQL, messaging and a worker, isolate the failing dependency, and measure recovery."*
 
 ---
 

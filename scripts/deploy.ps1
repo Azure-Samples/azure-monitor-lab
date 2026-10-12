@@ -116,6 +116,19 @@ Write-Step "Active subscription"
 az account show --query "{name:name, id:id, tenantId:tenantId, user:user.name}" -o table
 
 # 0b. Pre-flight availability + quota check — fail in ~15s instead of 20min in.
+$deploymentInputs = Get-Content -LiteralPath $ParametersFile -Raw | ConvertFrom-Json
+$pfCustomerDependencies = $deploymentInputs.parameters.enableCustomerDependencies.value -eq $true
+if ($pfCustomerDependencies) {
+  $sqlAdmin = [guid]::Empty
+  if ($deploymentInputs.parameters.enableSlotFailureScenario.value -isnot [bool] -or
+      $deploymentInputs.parameters.enableSlotFailureScenario.value -ne $true -or
+      -not [guid]::TryParseExact([string]$deploymentInputs.parameters.sqlEntraAdminObjectId.value, 'D', [ref]$sqlAdmin) -or
+      $sqlAdmin -eq [guid]::Empty -or [string]::IsNullOrWhiteSpace($deploymentInputs.parameters.sqlEntraAdminName.value) -or
+      ($deploymentInputs.parameters.sqlEntraAdminType -and $deploymentInputs.parameters.sqlEntraAdminType.value -notin @('User','Group','Application'))) {
+    throw 'Customer dependencies require enableSlotFailureScenario=true and explicit SQL Entra administrator GUID/name/type in the selected parameters file.'
+  }
+}
+$pfAppServicePlanTier = if ($deploymentInputs.parameters.enableSlotFailureScenario.value -eq $true) { 'Standard' } else { 'Basic' }
 if ($SkipPreflight) {
   Write-Step "Skipping pre-flight availability/quota check (-SkipPreflight)"
 } else {
@@ -127,6 +140,8 @@ if ($SkipPreflight) {
                -DeployLinuxVm $pfDeployLinuxVm `
                -DeployObservabilityAgent $pfDeployObservabilityAgent `
                -ObservabilityAgentLocation $pfObservabilityAgentLocation `
+               -DeployCustomerDependencies $pfCustomerDependencies `
+               -AppServicePlanTier $pfAppServicePlanTier `
                -ResourceGroup $ResourceGroup
   if ($LASTEXITCODE -ne 0) {
     throw "Pre-flight check failed for region '$Location'. Fix the FAIL rows above (or re-run with -SkipPreflight to bypass) before deploying."
@@ -159,6 +174,11 @@ Write-Step "Ensuring preview resource providers are registered"
 Register-ResourceProvider -Namespace 'Microsoft.CloudHealth'
 Register-ResourceProvider -Namespace 'Microsoft.App'
 Register-ResourceProvider -Namespace 'Microsoft.ContainerRegistry'
+if ($pfCustomerDependencies) {
+  Register-ResourceProvider -Namespace 'Microsoft.Sql'
+  Register-ResourceProvider -Namespace 'Microsoft.ServiceBus'
+  Register-ResourceProvider -Namespace 'Microsoft.App'
+}
 
 # 2. Deploy
 Write-Step "Deploying main.bicep (this takes about 5 minutes: AKS + VMs + Grafana)"
@@ -338,6 +358,9 @@ if (-not [string]::IsNullOrWhiteSpace($customerWebAppName)) {
   $postDeployParameters.CustomerWebAppName = $customerWebAppName
 }
 & $postDeploy @postDeployParameters
+if ($pfCustomerDependencies) {
+  Write-Warning "Customer dependency infrastructure exists but readiness is NOT complete. Run scripts/deploy-customer-dependencies.ps1 explicitly as the configured SQL Entra administrator with DeploymentName '$deploymentName'. Read output contract from the 'customer-dependencies' nested deployment; confirm its exact workerId and, if needed, approve only your exact temporary operator firewall IPv4."
+}
 
 # 4. Service Group (tenant-scoped, preview) + service group member relationship.
 #    Required before SLIs can be attached as extensions on the group.

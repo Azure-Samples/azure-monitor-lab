@@ -55,3 +55,4 @@ if ($LASTEXITCODE -ne 0) { throw "Usage traffic generator failed with exit code 
 
 Write-Host "`nTelemetry can take several minutes to appear in Application Insights Usage views." -ForegroundColor Green
 Write-Host 'All identities, segments, products, orders, and journeys are synthetic.' -ForegroundColor DarkGray
+Write-Host 'Real orders are reported as accepted-pending/accepted-queued until the UI verifies Completed. This generator does not poll or refresh orders automatically.' -ForegroundColor DarkGray

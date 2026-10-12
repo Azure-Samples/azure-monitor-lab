@@ -1,4 +1,5 @@
 targetScope = 'resourceGroup'
+param enableCustomerDependencies bool = false
 
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
@@ -172,6 +173,24 @@ module healthModel '../modules/health-model.bicep' = {
     tags: commonTags
   }
 }
+
+module customerHealthModel '../modules/customer-health-model.bicep' = if (enableCustomerDependencies) {
+  name: 'customer-health-model'
+  params: {
+    namePrefix: namePrefix
+    location: 'swedencentral'
+    customerWebAppId: resourceId('Microsoft.Web/sites', 'app-${namePrefix}-${take(suffix, 5)}-customer')
+    customerAppServicePlanId: resourceId('Microsoft.Web/serverfarms', 'plan-${namePrefix}')
+    customerSqlDatabaseId: resourceId('Microsoft.Sql/servers/databases', 'sql-${namePrefix}-${take(suffix, 8)}', 'customer-orders')
+    customerServiceBusId: resourceId('Microsoft.ServiceBus/namespaces', 'sb-${namePrefix}-${take(suffix, 8)}')
+    customerWorkerId: resourceId('Microsoft.Web/sites', 'func-${namePrefix}-${take(suffix, 8)}-orders')
+    customerWorkerStorageId: resourceId('Microsoft.Storage/storageAccounts', 'storders${namePrefix}${take(suffix, 8)}')
+    customerCentralLawId: lawCentral.id
+    tags: commonTags
+  }
+}
+output customerHealthModelName string = enableCustomerDependencies ? customerHealthModel!.outputs.healthModelName : ''
+output customerHealthModelId string = enableCustomerDependencies ? customerHealthModel!.outputs.healthModelId : ''
 
 module sliIdentity '../modules/sli-identity.bicep' = {
   name: 'sli-identity'
