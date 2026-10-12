@@ -2,6 +2,7 @@ param name string
 param location string
 param webAppName string
 param customerWebAppName string = ''
+param customerWorkerName string = ''
 param environmentId string
 param registryServer string
 param runnerIdentityId string
@@ -66,6 +67,7 @@ module job 'br/public:avm/res/app/job:0.7.2' = {
           { name: 'LAB_RESOURCE_GROUP', value: resourceGroup().name }
           { name: 'LAB_WEB_APP_NAME', value: webAppName }
           { name: 'LAB_CUSTOMER_WEB_APP_NAME', value: customerWebAppName }
+          { name: 'LAB_CUSTOMER_WORKER_NAME', value: customerWorkerName }
           { name: 'LAB_RUNNER_MODE', value: 'ContainerAppsJob' }
           { name: 'AZURE_CLIENT_ID', value: runnerClientId }
         ]

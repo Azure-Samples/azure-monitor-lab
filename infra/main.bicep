@@ -567,6 +567,7 @@ module consolePlatform 'modules/lab-console-platform.bicep' = {
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []
     enableSlotFailureScenario: enableSlotFailureScenario
     customerWebAppName: enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
+    customerWorkerName: enableCustomerDependencies ? customerDependencies!.outputs.workerName : ''
   }
 }
 

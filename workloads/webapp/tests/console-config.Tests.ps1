@@ -1,12 +1,21 @@
 $ErrorActionPreference = 'Stop'
 $helper = Join-Path $PSScriptRoot '../../../scripts/write-webapp-console-config.ps1'
 $output = Join-Path ([IO.Path]::GetTempPath()) "console-config-$([guid]::NewGuid().ToString('N')).json"
-$testState = @{ EmptyInventory = $false; UnsafeGrafana = $false; FailInventory = $false; WorkbookName = 'Azure Monitor Lab - Health Dashboard' }
+$testState = @{ EmptyInventory = $false; UnsafeGrafana = $false; FailInventory = $false; WorkbookName = 'Azure Monitor Lab - Health Dashboard'; CustomerDependencies = $false; WrongWorker = $false; WrongModel = $false }
 $resourceBase = '/subscriptions/test-sub/resourceGroups/test-rg/providers'
 
 function az {
   $global:LASTEXITCODE = 0
   if ($args -notcontains '--subscription' -or $args -notcontains 'test-sub') { throw 'Explicit subscription is missing.' }
+  if ($testState.CustomerDependencies) {
+    if ($args[0] -eq 'deployment' -and $args[1] -eq 'group' -and $args[2] -eq 'show') {
+      return @{ enabled = $true; workerName = 'func-test-orders'; workerId = $(if($testState.WrongWorker) {'/subscriptions/other/providers/Microsoft.Web/sites/other-worker'} else {"$resourceBase/Microsoft.Web/sites/func-test-orders"}) } | ConvertTo-Json
+    }
+    if ($args[0] -eq 'webapp' -and $args[1] -eq 'show') { return 'app-lab-customer.azurewebsites.net' }
+    if ($args[0] -eq 'rest' -and $args -contains 'get') {
+      return $(if($testState.WrongModel) {"$resourceBase/Microsoft.Web/sites/unrelated-app"} else {"$resourceBase/Microsoft.Web/sites/app-lab-customer"})
+    }
+  }
   if ($args[0] -ne 'resource' -or $args[1] -notin @('list', 'show')) { throw 'Only read operations are allowed.' }
   if ($args[1] -eq 'list') {
     if ($testState.FailInventory) { $global:LASTEXITCODE = 1; return '' }
@@ -21,6 +30,11 @@ function az {
       @{ type = 'microsoft.app/agents'; name = 'sre-lab'; id = "$resourceBase/Microsoft.App/agents/sre-lab" },
       @{ type = 'Microsoft.CognitiveServices/accounts/projects'; name = 'foundry/project'; id = "$resourceBase/Microsoft.CognitiveServices/accounts/foundry/projects/project" },
       @{ type = 'Microsoft.Web/sites'; name = 'app-lab'; id = "$resourceBase/Microsoft.Web/sites/app-lab" }
+      if ($testState.CustomerDependencies) {
+        @{ type = 'Microsoft.Web/sites'; name = 'app-lab-customer'; id = "$resourceBase/Microsoft.Web/sites/app-lab-customer" }
+        @{ type = 'Microsoft.Web/sites'; name = 'func-test-orders'; id = "$resourceBase/Microsoft.Web/sites/func-test-orders" }
+        @{ type = 'Microsoft.CloudHealth/healthmodels'; name = 'hm-amlab-customer'; id = "$resourceBase/Microsoft.CloudHealth/healthmodels/hm-amlab-customer" }
+      }
     ) | ConvertTo-Json
   }
   if ($args -contains 'properties.WorkspaceResourceId') {
@@ -79,6 +93,22 @@ try {
   if ((Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Links.Grafana) { throw 'Unsafe Grafana URL accepted.' }
   if ((Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Foundry.ProjectEndpoint) { throw 'Unsafe Foundry endpoint accepted.' }
   if ((Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Health.AppInsightsWorkspaceResourceId) { throw 'Out-of-scope health workspace accepted.' }
+  $testState.EmptyInventory = $true
+  $testState.CustomerDependencies = $true
+  $testState.EmptyInventory = $false
+  & $helper -SubscriptionId test-sub -ResourceGroup test-rg -WebAppName app-lab -CustomerWebAppName app-lab-customer -OutputPath $output
+  $customerConfig = (Get-Content -Raw $output | ConvertFrom-Json).LabConsole
+  if ($customerConfig.Operations.CustomerWorkerName -cne 'func-test-orders' -or
+      $customerConfig.Operations.CustomerDependenciesEnabled -ne $false -or
+      $customerConfig.Links.CustomerHealthModel -notlike '*/hm-amlab-customer/overview') { throw 'Exact dependency worker/model discovery or disabled-until-bootstrap gate failed.' }
+  foreach ($failure in @('WrongWorker', 'WrongModel')) {
+    $testState[$failure] = $true
+    $rejected = $false
+    try { & $helper -SubscriptionId test-sub -ResourceGroup test-rg -WebAppName app-lab -CustomerWebAppName app-lab-customer -OutputPath $output } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Out-of-scope dependency/model target was accepted.' }
+    $testState[$failure] = $false
+  }
+  $testState.CustomerDependencies = $false
   $testState.EmptyInventory = $true
   & $helper -SubscriptionId test-sub -ResourceGroup test-rg -OutputPath $output
   $empty = (Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Links

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure', 'slot-restore')] [string] $Operation = $env:OP_OPERATION,
+  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure', 'slot-restore', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover')] [string] $Operation = $env:OP_OPERATION,
   [ValidatePattern('^[a-f0-9]{32}$')] [string] $RequestId = $env:OP_REQUEST_ID,
   [guid] $SubscriptionId = $env:LAB_SUBSCRIPTION_ID,
   [guid] $TenantId = $env:LAB_TENANT_ID,
@@ -22,6 +22,12 @@ if ($SubscriptionId.ToString() -cne $env:LAB_SUBSCRIPTION_ID -or $TenantId.ToStr
 if ($env:LAB_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The Control Center Web App target is not configured.' }
 if ($env:LAB_CUSTOMER_WEB_APP_NAME -and $env:LAB_CUSTOMER_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The customer Web App target is invalid.' }
 if ($Operation -in @('slot-failure', 'slot-restore') -and -not $env:LAB_CUSTOMER_WEB_APP_NAME) { throw 'The customer Web App slot scenario is not enabled.' }
+$dependencyOperation = $Operation -in @('customer-sql-delay', 'customer-worker-failure', 'customer-recover')
+if ($dependencyOperation -and ($env:LAB_CUSTOMER_WORKER_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$' -or
+    $env:LAB_CUSTOMER_WEB_APP_NAME -cne "$($env:LAB_WEB_APP_NAME)-customer" -or
+    $env:LAB_CUSTOMER_WORKER_NAME -ceq $env:LAB_WEB_APP_NAME -or $env:LAB_CUSTOMER_WORKER_NAME -ceq $env:LAB_CUSTOMER_WEB_APP_NAME)) {
+  throw 'The exact dedicated customer dependency targets are not configured.'
+}
 if ($Operation -eq 'logs') {
   if ($Count -lt 1 -or $Concurrency -ne 0 -or $RepeatUsers -ne 0) { throw 'Custom logs requires 1-100 events and no browser parameters.' }
 } elseif ($Operation -eq 'usage') {
@@ -37,6 +43,9 @@ $scripts = @{
   cpu = 'simulate-high-cpu.ps1'
   'slot-failure' = 'trigger-broken-slot.ps1'
   'slot-restore' = 'rollback-broken-slot.ps1'
+  'customer-sql-delay' = 'set-customer-dependency-fault.ps1'
+  'customer-worker-failure' = 'set-customer-dependency-fault.ps1'
+  'customer-recover' = 'set-customer-dependency-fault.ps1'
 }
 if ($ValidateOnly) { Write-Output 'Approved operation parameters validated. No Azure command executed.'; return }
 
@@ -203,7 +212,7 @@ try {
       $readiness
     }
   }
-  if ($Operation -in @('slot-failure', 'slot-restore')) {
+  if ($Operation -in @('slot-failure', 'slot-restore', 'customer-recover')) {
     $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer deployment slot discovery' -Action {
       @(Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $env:LAB_CUSTOMER_WEB_APP_NAME)
     })
@@ -220,10 +229,18 @@ try {
     if ($Operation -eq 'slot-failure' -and ($productionStatus -ne 200 -or $brokenStatus -ne 503)) {
       throw "The customer slot is not armed (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
     }
-    if ($Operation -eq 'slot-restore' -and -not (
+    if ($Operation -in @('slot-restore', 'customer-recover') -and -not (
       ($productionStatus -eq 503 -and $brokenStatus -eq 200) -or
       ($productionStatus -eq 200 -and $brokenStatus -eq 503))) {
       throw "The slot state is ambiguous (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
+    }
+    if ($dependencyOperation) {
+      $runnerPhase = 'customer dependency preflight'
+      foreach ($site in @($env:LAB_CUSTOMER_WEB_APP_NAME, $env:LAB_CUSTOMER_WORKER_NAME)) {
+        $enabled = @(az webapp config appsettings list --resource-group $ResourceGroup --name $site `
+          --query "[?name=='CustomerDependencies__Enabled'].value" --output json | ConvertFrom-Json)
+        if ($enabled.Count -ne 1 -or $enabled[0] -ine 'true') { throw 'Real customer dependencies are not enabled on both exact targets.' }
+      }
     }
   }
   if ($CheckAccessOnly) {
@@ -249,10 +266,32 @@ try {
     'slot-failure' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
     'slot-restore' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
   }
+  if ($dependencyOperation) {
+    $fault = switch ($Operation) { 'customer-sql-delay' { 'SqlDelay' }; 'customer-worker-failure' { 'WorkerFailure' }; 'customer-recover' { 'Recover' } }
+    $confirmedSite = if ($fault -eq 'WorkerFailure') { $env:LAB_CUSTOMER_WORKER_NAME } else { $env:LAB_CUSTOMER_WEB_APP_NAME }
+    $parameters.SubscriptionId = $SubscriptionId
+    $parameters.TenantId = $TenantId
+    $parameters.CustomerWebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME
+    $parameters.WorkerName = $env:LAB_CUSTOMER_WORKER_NAME
+    $parameters.Fault = $fault
+    $parameters.ConfirmTarget = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Web/sites/$confirmedSite"
+    $parameters.Confirm = $false
+  }
   $runnerPhase = 'approved script execution'
   Write-RunnerPhase -Phase $runnerPhase -State started
   Write-Output "Approved action '$Operation' is starting."
   $null = & (Join-Path $PSScriptRoot $scripts[$Operation]) @parameters *>&1
+  if ($Operation -eq 'customer-recover') {
+    $runnerPhase = 'customer slot recovery'
+    $null = & (Join-Path $PSScriptRoot 'rollback-broken-slot.ps1') -ResourceGroup $ResourceGroup -WebAppName $env:LAB_CUSTOMER_WEB_APP_NAME *>&1
+    $runnerPhase = 'customer recovery verification'
+    $null = Invoke-ReadOnlyPreflight -Phase $runnerPhase -Action {
+      $status = Get-LabWebAppHealthStatus -HostName $apps[0].defaultHostName
+      if ($status -ne 200) { throw 'Recovered customer app does not return HTTP 200.' }
+      $products = @(Invoke-RestMethod -Uri "https://$($apps[0].defaultHostName)/api/customer/products" -MaximumRedirection 0 -TimeoutSec 60)
+      if ($products.Count -ne 3) { throw 'Recovered SQL catalogue does not contain the expected three products.' }
+    }
+  }
   Write-Output "Approved action '$Operation' completed. Azure state and telemetry can take time to settle."
   Write-RunnerPhase -Phase $runnerPhase -State succeeded
 } catch {

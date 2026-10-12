@@ -144,7 +144,20 @@
             <button class="action" data-operation="logs" aria-haspopup="dialog" disabled><i data-lucide="logs"></i><span>Send Custom Logs</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="annotation" aria-haspopup="dialog" disabled><i data-lucide="panels-top-left"></i><span>Add Release Marker</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="slot-failure" aria-haspopup="dialog" disabled hidden><i data-lucide="replace"></i><span>Change deployment slot</span><i data-lucide="arrow-right"></i></button>
+            <button id="customer-fault-menu" class="action danger-accent" aria-haspopup="dialog" disabled hidden><i data-lucide="triangle-alert"></i><span>Break the application</span><i data-lucide="arrow-right"></i></button>
           </div>
+          <section id="customer-incident" hidden aria-labelledby="customer-incident-heading">
+            <h3 id="customer-incident-heading">Customer application investigation</h3>
+            <p id="customer-incident-status" class="history-note" role="status"></p>
+            <label>Symptom-only troubleshooting prompt<textarea id="customer-incident-prompt" rows="8" readonly></textarea></label>
+            <div class="run-buttons">
+              <button id="customer-incident-copy" type="button" class="button secondary"><i data-lucide="copy"></i>Copy troubleshooting prompt</button>
+              <a id="customer-incident-sre" class="button secondary" hidden target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Open SRE Agent</a>
+              <a id="customer-incident-model" class="button secondary" hidden target="_blank" rel="noopener noreferrer"><i data-lucide="heart-pulse"></i>Open customer Health Model</a>
+              <button id="customer-incident-recover" type="button" class="button secondary"><i data-lucide="refresh-cw"></i>Restore application</button>
+            </div>
+            <p class="history-note">Paste the prompt into the application-troubleshooter VS Code/CLI agent or SRE Agent. Opening an agent does not submit a task or grant mitigation approval. Health Model signals can be unknown, stale, or unaffected by application-side delay. Recovery never replays dead-lettered orders.</p>
+          </section>
           <nav class="scenario-links" aria-label="Related scenarios for operations"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s8" target="_blank" rel="noopener noreferrer">8: Break the lab</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s13" target="_blank" rel="noopener noreferrer">13: Smart Detection</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s24" target="_blank" rel="noopener noreferrer">24: Custom Logs</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s33" target="_blank" rel="noopener noreferrer">33: Release annotations</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s70" target="_blank" rel="noopener noreferrer">70: Customer usage</a></nav>
         </section>
         <section class="operations-activity" aria-labelledby="operations-runs-heading"><div class="section-heading"><h2 id="operations-runs-heading">Run activity</h2><div class="tool-actions"><span id="operations-run-count" class="muted">0 runs</span><button id="operations-refresh" class="icon-button" type="button" title="Refresh operation status" aria-label="Refresh operation status" disabled><i data-lucide="refresh-cw"></i></button></div></div>
@@ -293,6 +306,8 @@
   <dialog id="operation-dialog" aria-labelledby="operation-heading" aria-describedby="operation-impact">
     <h2 id="operation-heading">Lab operation</h2><p id="operation-impact"></p>
     <form id="operation-prepare-form">
+      <label id="operation-fault-field" hidden>Application fault or recovery<select id="operation-fault" disabled><option value="">Choose a reversible exercise</option></select></label>
+      <p id="operation-fault-description" class="history-note" hidden></p>
       <label id="operation-slot-field" hidden>Which slot should serve the customer app?<select id="operation-slot" disabled><option value="">Choose broken or working slot</option><option value="slot-failure">Broken slot (HTTP 503)</option><option value="slot-restore">Working slot (HTTP 200)</option></select></label>
       <label id="operation-count-field" hidden><span id="operation-count-label">Event count</span><input id="operation-count" type="number" min="1" max="100" step="1" value="10" required></label>
       <div id="operation-usage-fields" hidden><label>Browser concurrency<input id="operation-concurrency" type="number" min="1" max="10" step="1" value="4"></label><label>Repeat users<input id="operation-repeat-users" type="number" min="0" max="100" step="1" value="6"></label></div>

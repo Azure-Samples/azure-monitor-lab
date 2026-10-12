@@ -35,6 +35,15 @@ foreach ($moduleName in @('sre-agent', 'lab-console-platform')) {
   }
 }
 Write-Output 'PASS: compiled customer slot role assignments retain their Web App scope.'
+$platform = @($mainTemplate.resources | Where-Object name -eq 'lab-console-platform')[0].properties.template
+$faultRoles = @($platform.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and $_.properties.roleName -match 'Customer Fault Settings' })
+$faultAssignments = @($platform.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'customer-fault-role' })
+if ($faultRoles.Count -ne 1 -or $faultAssignments.Count -ne 2 -or
+    @($faultAssignments | Where-Object { $_.scope -notmatch "Microsoft.Web/sites/.+customer(WebApp|Worker)Name" -or $_.condition -notmatch 'customerWorkerName' }).Count -ne 0 -or
+    @($faultRoles[0].properties.permissions.actions | Where-Object { $_ -notmatch '^Microsoft.Web/sites/(slots/)?(config/(list/action|write)|restart/action)$' }).Count -ne 0) {
+  throw 'Customer fault permissions must be conditional and scoped only to the exact customer app and worker, not the resource group or Control Center.'
+}
+Write-Output 'PASS: customer fault setting/restart permissions are restricted to two conditional component scopes.'
 $consoleModule = @($mainTemplate.resources | Where-Object name -eq 'lab-console-platform')
 $consoleSlotAssignment = @($consoleModule.properties.template.resources | Where-Object {
   $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'slot-scenario-role'

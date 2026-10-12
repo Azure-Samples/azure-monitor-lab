@@ -19,6 +19,11 @@ const slotActions = [
   { id: 'slot-failure', title: 'Change deployment slot: Broken', script: 'scripts/trigger-broken-slot.ps1', impact: 'Customer production will return HTTP 503. The Control Center stays available.' },
   { id: 'slot-restore', title: 'Change deployment slot: Working', script: 'scripts/rollback-broken-slot.ps1', impact: 'Customer production will return HTTP 200. Already healthy production requires no swap.' }
 ];
+const dependencyActions = [
+  { id: 'customer-sql-delay', title: 'Slow SQL-backed customer operations', script: 'scripts/set-customer-dependency-fault.ps1', impact: 'Fixed 3-second application-side delay. Simulated latency, not actual SQL degradation. Persists until recovery.' },
+  { id: 'customer-worker-failure', title: 'Fail customer order processing', script: 'scripts/set-customer-dependency-fault.ps1', impact: 'Orders processor failures may dead-letter messages. No automatic replay.' },
+  { id: 'customer-recover', title: 'Restore customer application', script: 'scripts/set-customer-dependency-fault.ps1', impact: 'Reset fault settings and restore the working slot. No automatic replay.' }
+];
 const runId = 'c'.repeat(32);
 const operationRun = (operation = 'start', state = 'queued') => ({ id: runId, parameters: { operation, count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0 }, target,
   submittedAt: now.toISOString(), state, message: state === 'succeeded' ? 'The approved script completed.' : 'The Azure runner is executing the approved operation.', executionName: 'job-labops-demo-execution',
@@ -31,14 +36,18 @@ async function prepare(page, options = {}) {
   await page.route('**/api/agents/context', route => route.fulfill({ json: { resourceGroup: target.resourceGroup, appService: 'app-amlab-demo' } }));
   await page.route('**/api/operations/catalog', route => {
     calls.catalogs++;
-    return route.fulfill({ status: options.status || 200, json: { available: options.available !== false, message: options.message || 'Runner verified.', actions: options.slots ? [...actions, ...slotActions] : actions, target, runs } });
+    return route.fulfill({ status: options.status || 200, json: { available: options.available !== false, message: options.message || 'Runner verified.',
+      actions: options.dependencies ? [...actions, slotActions[0], ...dependencyActions] : options.slots ? [...actions, ...slotActions] : actions, target, runs,
+      customerIncident: options.incident || null, customerApplication: 'https://app-amlab-demo-customer.azurewebsites.net/',
+      customerHealthModel: 'https://portal.azure.com/#resource/subscriptions/demo/resourceGroups/demo/providers/Microsoft.CloudHealth/healthmodels/hm-amlab-customer/overview',
+      sreAgent: options.unsafeSre ? 'https://attacker.example/' : 'https://sre.azure.com/#/agent/demo/demo/sre-demo' } });
   });
   await page.route('**/api/operations/prepare', route => {
     const input = route.request().postDataJSON();
     calls.prepared.push(input);
     calls.referrers.push(route.request().headers().referer);
     expect(route.request().headers()['x-amlab-agent-request']).toBe('true');
-    return route.fulfill({ json: { state: 'approval_required', proposal: { id: proposalId, action: [...actions, ...slotActions].find(action => action.id === input.operation),
+    return route.fulfill({ json: { state: 'approval_required', proposal: { id: proposalId, action: [...actions, ...slotActions, ...dependencyActions].find(action => action.id === input.operation),
       parameters: { count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0, ...input }, target, expiresAt: new Date(now.getTime() + 300000).toISOString() } } });
   });
   await page.route('**/api/operations/approval', route => {
@@ -119,6 +128,82 @@ async function review(page, operation) {
   await expect(page.locator('#operation-approve-form')).toBeVisible();
 }
 
+  for (const action of [slotActions[0], ...dependencyActions]) {
+    test(`Application fault menu requires selection and approval for ${action.id}`, async ({ page }) => {
+      const calls = await prepare(page, { dependencies: true });
+      const button = page.getByRole('button', { name: 'Break the application', exact: true });
+      await expect(button.locator('svg[data-lucide="triangle-alert"]')).toBeVisible();
+      await button.click();
+      const choice = page.getByLabel('Application fault or recovery');
+      await expect(choice).toHaveValue('');
+      await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+      expect(calls.prepared).toEqual([]);
+      await choice.selectOption(action.id);
+      await expect(page.locator('#operation-fault-description')).toHaveText(action.impact);
+      await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+      expect(calls.prepared).toEqual([{ operation: action.id }]);
+      expect(calls.approvals).toEqual([]);
+      await expect(page.locator('#operation-preview')).toContainText(action.script);
+      await page.getByLabel('Confirm resource group').fill(target.resourceGroup);
+      await page.getByLabel('I approve these changes and associated Azure charges.').check();
+      await page.getByRole('button', { name: 'Approve & Run' }).click();
+      expect(calls.approvals).toHaveLength(1);
+      if (action.id !== 'customer-recover') {
+        await expect(page.locator('#customer-incident')).toBeVisible();
+        const prompt = await page.getByLabel('Symptom-only troubleshooting prompt').inputValue();
+        expect(prompt).toContain(now.toISOString());
+        expect(prompt).toContain('app-amlab-demo-customer');
+        expect(prompt).toContain('explicit approval');
+        expect(prompt).not.toMatch(/SqlDelaySeconds|FailProcessing|customer-worker-failure|customer-sql-delay|preloaded broken/);
+        await expect(page.getByRole('link', { name: 'Open SRE Agent', exact: true })).toHaveAttribute('href', /^https:\/\/sre\.azure\.com/);
+        await expect(page.getByRole('link', { name: 'Open customer Health Model', exact: true })).toBeVisible();
+      }
+    });
+  }
+
+  test('Application menu stays hidden without customer slot opt-in', async ({ page }) => {
+    await prepare(page);
+    await expect(page.getByRole('button', { name: 'Break the application', exact: true })).toBeHidden();
+  });
+
+  test('Existing incident blocks stacking, restores all faults, and rejects unsafe agent links', async ({ page }) => {
+    const calls = await prepare(page, { dependencies: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'failed' }, unsafeSre: true });
+    await expect(page.getByRole('link', { name: 'Open SRE Agent', exact: true })).toBeHidden();
+    await page.getByRole('button', { name: 'Break the application', exact: true }).click();
+    for (const id of ['slot-failure', 'customer-sql-delay', 'customer-worker-failure']) {
+      await expect(page.locator(`#operation-fault option[value="${id}"]`)).toHaveJSProperty('disabled', true);
+    }
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(calls.prepared).toEqual([]);
+    await page.getByRole('button', { name: 'Restore application', exact: true }).click();
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    expect(calls.prepared).toEqual([{ operation: 'customer-recover' }]);
+    await page.getByLabel('Confirm resource group').fill(target.resourceGroup);
+    await page.getByLabel('I approve these changes and associated Azure charges.').check();
+    await page.getByRole('button', { name: 'Approve & Run' }).click();
+    await page.getByRole('button', { name: 'Refresh operation status', exact: true }).click();
+    await expect(page.locator('#customer-incident')).toBeHidden();
+  });
+
+  test('Working slot choice uses full dependency recovery when enabled', async ({ page }) => {
+    const calls = await prepare(page, { dependencies: true });
+    await page.getByRole('button', { name: 'Change deployment slot', exact: true }).click();
+    await page.getByLabel('Which slot should serve the customer app?').selectOption('customer-recover');
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    expect(calls.prepared).toEqual([{ operation: 'customer-recover' }]);
+  });
+
+  for (const width of [1440, 390, 320]) {
+    test(`Application investigation menu remains usable at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await prepare(page, { dependencies: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'succeeded' } });
+      await expect(page.getByLabel('Symptom-only troubleshooting prompt')).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.getByRole('button', { name: 'Break the application', exact: true }).click();
+      await expect(page.getByLabel('Application fault or recovery')).toBeVisible();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    });
+  }
 for (const action of actions) {
   test(`Lab Operations reviews ${action.title} with frozen parameters and cancellation never executes`, async ({ page }) => {
     const calls = await prepare(page);

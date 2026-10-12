@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11065549849370722988"
+      "templateHash": "7651526515078629923"
     }
   },
   "parameters": {
@@ -52422,7 +52422,8 @@
           "enableSlotFailureScenario": {
             "value": "[parameters('enableSlotFailureScenario')]"
           },
-          "customerWebAppName": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppName.value), createObject('value', ''))]"
+          "customerWebAppName": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppName.value), createObject('value', ''))]",
+          "customerWorkerName": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.workerName.value), createObject('value', ''))]"
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -52431,7 +52432,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "9057853626985627455"
+              "templateHash": "8160018899608542539"
             }
           },
           "parameters": {
@@ -52484,6 +52485,13 @@
               "defaultValue": "",
               "metadata": {
                 "description": "Customer-facing Web App targeted by the opt-in broken-slot operation."
+              }
+            },
+            "customerWorkerName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Exact customer orders worker name. Empty disables dependency fault permissions."
               }
             }
           },
@@ -52574,6 +52582,67 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]",
                 "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, 'lab-console-customer-fault-role')]",
+              "properties": {
+                "roleName": "[format('Lab Console Customer Fault Settings {0}', take(variables('suffix'), 8))]",
+                "description": "App-setting updates and restarts on only the dedicated customer app and orders worker. App settings cannot be property-scoped by Azure RBAC.",
+                "type": "CustomRole",
+                "assignableScopes": [
+                  "[resourceGroup().id]"
+                ],
+                "permissions": [
+                  {
+                    "actions": [
+                      "Microsoft.Web/sites/config/list/action",
+                      "Microsoft.Web/sites/config/write",
+                      "Microsoft.Web/sites/restart/action",
+                      "Microsoft.Web/sites/slots/config/list/action",
+                      "Microsoft.Web/sites/slots/config/write",
+                      "Microsoft.Web/sites/slots/restart/action"
+                    ],
+                    "notActions": [],
+                    "dataActions": [],
+                    "notDataActions": []
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+              "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), variables('identityName'), 'customer-fault-settings')]",
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+                "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWorkerName'))]",
+              "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWorkerName')), variables('identityName'), 'customer-fault-settings')]",
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+                "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
               ]
             },
             {
@@ -59496,6 +59565,7 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'appservice')]",
+        "[resourceId('Microsoft.Resources/deployments', 'customer-dependencies')]",
         "[resourceId('Microsoft.Resources/deployments', 'customer-webapp')]",
         "[resourceId('Microsoft.Resources/deployments', 'law-central')]",
         "[resourceId('Microsoft.Resources/deployments', 'vm-linux')]",

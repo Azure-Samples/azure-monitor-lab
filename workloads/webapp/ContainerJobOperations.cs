@@ -29,6 +29,8 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
     public const string ApiVersion = "2025-07-01";
     private readonly HttpClient http;
     private readonly TokenCredential credential;
+    private readonly string? customerWorkerName;
+    private readonly string? customerWebAppName;
 
     public ContainerJobOperations(IConfiguration configuration, IHttpClientFactory clients)
         : this(configuration, clients.CreateClient("lab-operations"), string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"))
@@ -39,6 +41,8 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
     {
         this.http = http;
         this.credential = credential;
+        customerWorkerName = configuration["LabConsole:Operations:CustomerWorkerName"];
+        customerWebAppName = configuration["LabConsole:AppService"] is { Length: > 0 } appName ? appName + "-customer" : null;
         Target = ContainerJobTarget.FromConfiguration(configuration);
         Configured = Target is not null && configuration.GetValue<bool>("LabConsole:Operations:Enabled");
     }
@@ -82,6 +86,12 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
         container["args"] = new JsonArray();
         var environment = container["env"] as JsonArray ?? new JsonArray();
         if (container["env"] is null) container["env"] = environment;
+        if (run.Parameters.Operation.StartsWith("customer-", StringComparison.Ordinal)
+            && (customerWorkerName is null || !Regex.IsMatch(customerWorkerName, "^[a-zA-Z0-9-]{2,60}$")
+                || customerWebAppName is null || customerWorkerName == customerWebAppName
+                || !EnvironmentMatches(environment, new Dictionary<string, string>
+                    { ["LAB_CUSTOMER_WEB_APP_NAME"] = customerWebAppName, ["LAB_CUSTOMER_WORKER_NAME"] = customerWorkerName })))
+            throw new InvalidOperationException("The runner's exact customer dependency targets do not match the approved configuration.");
         var inputs = OperationInputs(run, false);
         foreach (var entry in environment.Where(entry => inputs.ContainsKey(entry?["name"]?.GetValue<string>() ?? "")).ToArray()) environment.Remove(entry);
         foreach (var input in inputs) environment.Add(new JsonObject { ["name"] = input.Key, ["value"] = input.Value });
@@ -143,6 +153,8 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
         {
             "succeeded" when run.Parameters.Operation == "ramp" => "Ramp job submitted. AKS traffic continues independently for about 60 minutes.",
             "succeeded" when run.Parameters.Operation == "cpu" => "CPU simulation requests submitted to both demo VMs. Each guest load expires after 10 minutes. Verify Percentage CPU in Azure Monitor; guest execution and alert firing are not confirmed. Cancellation does not stop submitted load.",
+            "succeeded" when LabOperationCatalog.IsCustomerFault(run.Parameters.Operation) => "Customer fault configuration applied. Observe the actual symptoms and telemetry; the fault persists until approved recovery. No traffic or orders were generated automatically.",
+            "succeeded" when run.Parameters.Operation == "customer-recover" => "Customer fault settings reset and working slot restored. HTTP health and SQL catalogue verified. Previous order completion, dead-letter recovery, latency and Health Model signal recovery require independent verification; no messages were replayed.",
             "succeeded" => "The approved script completed. Refresh Infra Health after resource startup and telemetry settle.",
             "failed" or "cancelled" => "The runner did not complete successfully. Changes already made are not rolled back. Inspect Azure before another operation.",
             "running" => "The Azure runner is executing the approved operation.", "queued" => "Azure is starting the job execution.",

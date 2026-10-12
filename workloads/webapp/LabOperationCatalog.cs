@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-public sealed record LabOperationDefinition(string Id, string Title, string Script, string Impact, bool RequiresAks, bool RequiresSlotScenario = false);
+public sealed record LabOperationDefinition(string Id, string Title, string Script, string Impact, bool RequiresAks, bool RequiresSlotScenario = false, bool RequiresCustomerDependencies = false);
 public sealed record LabOperationRequest(string Operation, int? Count = null, string? Name = null, string? Category = null,
     int? Concurrency = null, int? RepeatUsers = null);
 public sealed record LabOperationParameters(string Operation, int Count, string Name, string Category, int Concurrency = 0, int RepeatUsers = 0);
@@ -21,7 +21,13 @@ public static class LabOperationCatalog
         new LabOperationDefinition("annotation", "Add Release Marker", "scripts/send-release-annotation.ps1", "Writes a deployment or incident marker to the lab Application Insights timeline.", false)
         ,new LabOperationDefinition("slot-failure", "Change deployment slot: Broken", "scripts/trigger-broken-slot.ps1", "Swaps the preloaded broken slot into the separate customer app, causing HTTP 503. This Control Center remains available. Restore the working slot to recover; automatic SRE recovery requires a separately configured and verified recovery plan.", false, true)
         ,new LabOperationDefinition("slot-restore", "Change deployment slot: Working", "scripts/rollback-broken-slot.ps1", "Restores the customer app to HTTP 200 from the healthy slot. If production is already healthy and the broken slot is armed, no swap is needed. Ambiguous slot states are rejected. This Control Center remains available.", false, true)
+        ,new LabOperationDefinition("customer-sql-delay", "Slow SQL-backed customer operations", "scripts/set-customer-dependency-fault.ps1", "Adds a fixed 3-second application-side delay to catalogue and order SQL paths. This is simulated latency, not SQL database degradation. Persists until recovery; the Control Center stays available. App restart and telemetry charges apply.", false, true, true)
+        ,new LabOperationDefinition("customer-worker-failure", "Fail customer order processing", "scripts/set-customer-dependency-fault.ps1", "Makes the dedicated orders processor throw on delivery. Orders may remain queued or become dead-lettered after bounded retries. Persists until recovery. No messages are created or replayed automatically; the Control Center stays available.", false, true, true)
+        ,new LabOperationDefinition("customer-recover", "Restore customer application", "scripts/set-customer-dependency-fault.ps1", "Resets customer SQL-path delay and processor failure, restarts only the customer apps/worker, and restores the working customer slot. Verifies HTTP health and catalogue access, not fulfilment of previous orders. Dead-lettered messages are never replayed; this is not a rollback of arbitrary changes.", false, true, true)
     });
+
+    public static bool IsCustomerFault(string operation) => operation is "slot-failure" or "customer-sql-delay" or "customer-worker-failure";
+    public static bool IsCustomerRecovery(string operation) => operation is "slot-restore" or "customer-recover";
 
     public static LabOperationParameters Validate(LabOperationRequest request)
     {

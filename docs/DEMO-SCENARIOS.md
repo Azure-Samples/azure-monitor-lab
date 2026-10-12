@@ -3612,6 +3612,12 @@ The disabled backend preserves the existing synthetic journey and `/api/checkout
 
 ### Investigate a slow catalogue
 
+**Preferred Control Center workflow (updated console/runner required):** open **Lab Operations → Break the application** and choose **Slow SQL-backed customer operations**, **Fail customer order processing**, or **Broken deployment slot**. Review the exact target/impact, confirm the resource group and approve. Nothing is automatically injected when opening the menu, and no customer order or traffic is generated. Use an explicitly approved customer journey/traffic run to produce symptoms where necessary.
+
+Use the investigation panel's symptom-only prompt with the `application-troubleshooter` VS Code/Copilot CLI agent or SRE Agent, and open the dedicated customer Health Model. The displayed dispatch time is a starting reference: establish actual onset from telemetry/Activity Logs. Diagnose from evidence rather than the operator's fault selection. A 3-second application-side delay need not change SQL DTU health; an idle worker's error signal can be Unknown.
+
+Only one customer fault exercise is allowed until an approved recovery succeeds. **Restore application** clears both customer slots' delay and worker failure, restarts those exact targets, restores the working slot and verifies health/catalogue. Partial failures remain recoverable and visible; uncertain job dispatch is never retried automatically. There is no dead-letter replay, order resubmission or automatic SRE mitigation. Independently verify previous orders, latency and fresh health/alert signals after recovery. For CLI use, the guarded commands below remain available.
+
 After approved deployment, discover exact targets from the selected deployment output before running a fault:
 
 ```powershell

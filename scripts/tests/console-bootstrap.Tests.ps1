@@ -87,6 +87,9 @@ if ($registryModule.Count -ne 1 -or $registryModule[0].properties.parameters.acr
 }
 $scriptDirectory = Join-Path $root 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
+foreach ($faultFile in @('set-customer-dependency-fault.ps1', 'customer-dependency-helpers.ps1')) {
+  Copy-Item -LiteralPath (Join-Path $source "scripts/$faultFile") -Destination $scriptDirectory
+}
 Copy-Item -LiteralPath (Join-Path $source 'scripts/customer-journey-outcome.mjs') -Destination $scriptDirectory
 Copy-Item -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Destination $scriptDirectory
 Copy-Item -LiteralPath (Join-Path $source 'scripts/slot-health.ps1') -Destination $scriptDirectory
@@ -222,11 +225,14 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 19 -or
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 22 -or
           -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/slot-health.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/trigger-broken-slot.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/rollback-broken-slot.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/set-customer-dependency-fault.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/customer-dependency-helpers.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/generate-usage-traffic.ps1')) -or
           -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/generate-usage-traffic.mjs')) -or
           -not (Test-Path (Join-Path $build 'scripts/customer-journey-outcome.mjs'))) {

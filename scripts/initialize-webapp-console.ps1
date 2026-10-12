@@ -77,6 +77,9 @@ try {
   if ($slotScenarioEnabled -and (-not $CustomerWebAppName -or $CustomerWebAppName -cne "$WebAppName-customer")) {
     throw 'The enabled slot scenario requires its exact dedicated customer Web App name.'
   }
+  $customerWorkerName = [string]$config.LabConsole.Operations.CustomerWorkerName
+  if ($customerWorkerName -and (-not $slotScenarioEnabled -or $customerWorkerName -notmatch '^[a-zA-Z0-9-]{2,60}$' -or
+      $customerWorkerName -in @($WebAppName, $CustomerWebAppName))) { throw 'Invalid customer dependency fault targets.' }
   $settings['LabConsole__Operations__Enabled'] = 'false'
   $settings['LabConsole__Health__Enabled'] = 'false'
   $null = Invoke-ConsoleApi PUT "https://management.azure.com$webId/config/appsettings?api-version=2024-11-01" @{ properties = $settings }
@@ -130,6 +133,7 @@ try {
   $tagParameters.parameters.cpuVmNames = @{ value = $cpuVmNames }
   $tagParameters.parameters.enableSlotFailureScenario = @{ value = $slotScenarioEnabled }
   $tagParameters.parameters.customerWebAppName = @{ value = $CustomerWebAppName }
+  $tagParameters.parameters.customerWorkerName = @{ value = $customerWorkerName }
   $tagParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $platformParametersPath -Encoding utf8
   $platform = Invoke-ConsoleDeployment 'lab-console-platform' (Join-Path $root 'infra/modules/lab-console-platform.json') @(
     "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "centralLawId=$($config.LabConsole.Health.CentralWorkspaceResourceId)", "location=$($web.location)", "@$platformParametersPath"
@@ -167,7 +171,8 @@ try {
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/webapp/scripts') -Force
   $files = @('scripts/invoke-lab-operation.ps1', 'scripts/slot-health.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
     'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1', 'scripts/customer-journey-outcome.mjs',
-    'scripts/trigger-broken-slot.ps1',
+    'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1',
+    'scripts/set-customer-dependency-fault.ps1', 'scripts/customer-dependency-helpers.ps1',
     'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json',
     'workloads/webapp/scripts/generate-usage-traffic.mjs')
   foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $build $file) }
@@ -185,7 +190,7 @@ try {
 
   $phase = 'runner job provisioning'
   $job = Invoke-ConsoleDeployment 'lab-console-job' (Join-Path $root 'infra/modules/lab-console-job.json') @(
-    "name=$($platform.jobName.value)", "location=$($environment.location)", "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "environmentId=$($platform.environmentId.value)",
+    "name=$($platform.jobName.value)", "location=$($environment.location)", "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "customerWorkerName=$customerWorkerName", "environmentId=$($platform.environmentId.value)",
     "registryServer=$server", "runnerIdentityId=$($identity.id)", "runnerClientId=$($identity.clientId)", "image=$image", "@$tagParametersPath"
   )
   if ($LASTEXITCODE -ne 0 -or -not $job.jobId.value) { throw 'Runner job deployment failed.' }
@@ -246,7 +251,8 @@ try {
   $settingsResponse = Invoke-ConsoleApi POST "https://management.azure.com$webId/config/appsettings/list?api-version=2024-11-01"
   $settings = @{}
   foreach ($property in $settingsResponse.properties.PSObject.Properties) { $settings[$property.Name] = $property.Value }
-  $config.LabConsole.Operations = @{ Enabled = $true; JobResourceId = $job.jobId.value; Image = $image; TenantId = $TenantId.ToString(); JournalPath = '/home/data/lab-operations/journal.json' }
+  $config.LabConsole.Operations = @{ Enabled = $true; JobResourceId = $job.jobId.value; Image = $image; TenantId = $TenantId.ToString(); JournalPath = '/home/data/lab-operations/journal.json'
+    CustomerWorkerName = $customerWorkerName; CustomerDependenciesEnabled = [bool]$customerWorkerName }
   $config.LabConsole.Health.Enabled = $true
   $config.LabConsole.Health.TenantId = $TenantId.ToString()
   foreach ($section in @('Operations', 'Health')) {
@@ -261,6 +267,10 @@ try {
   }
   $settings['LabConsole__ResourceGroup'] = $ResourceGroup
   $settings['LabConsole__AppService'] = $WebAppName
+  foreach ($key in @('CustomerApplication', 'CustomerHealthModel')) {
+    if ($config.LabConsole.Links -and $config.LabConsole.Links[$key]) { $settings["LabConsole__Links__$key"] = $config.LabConsole.Links[$key] }
+    else { $settings.Remove("LabConsole__Links__$key") }
+  }
   if ($projects.Count -eq 1 -and $config.LabConsole.Foundry.ProjectEndpoint) { $settings['LabConsole__Foundry__ProjectEndpoint'] = $config.LabConsole.Foundry.ProjectEndpoint }
   $null = Invoke-ConsoleApi PUT "https://management.azure.com$webId/config/appsettings?api-version=2024-11-01" @{ properties = $settings }
   $config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $ConsoleConfigPath -Encoding utf8

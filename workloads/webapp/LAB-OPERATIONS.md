@@ -1,6 +1,6 @@
 # Lab Operations
 
-The **Lab Operations** tab runs ten repository scripts in an independent **Azure Container Apps Job**. Normal lab deployment creates the infrastructure, builds the image in Azure, configures operator sign-in and managed-identity access, and enables the console. No GitHub App, runner repository, manual image publication, or separate enablement command is required.
+The **Lab Operations** tab runs allowlisted repository scripts in an independent **Azure Container Apps Job**. Normal lab deployment creates the infrastructure, builds the image in Azure, configures operator sign-in and managed-identity access, and enables the console. No GitHub App, runner repository, manual image publication, or separate enablement command is required.
 
 The Web App prepares approvals and reads execution status. It does not execute PowerShell, Azure CLI, or Kubernetes commands inside the app process. GitHub Actions is used only for repository tests, not runtime execution.
 
@@ -14,7 +14,8 @@ The Web App prepares approvals and reads execution status. It does not execute P
 | Restore Lab | [restore-the-lab.ps1](../../scripts/restore-the-lab.ps1) | Starts VMs and restores the known demo frontend/load-generator configuration. Adds a release annotation. This is not a rollback of arbitrary changes. |
 | Start Load Ramp | [start-ramp.ps1](../../scripts/start-ramp.ps1) | Replaces the named ramp job/configuration and submits approximately 60 minutes of AKS traffic against the lab app. |
 | Generate Customer Traffic | [generate-usage-traffic.ps1](../../scripts/generate-usage-traffic.ps1) | Runs 1-100 isolated Chromium users through the deployed `/customer/` journey, with concurrency 1-10 and repeat users no greater than total users. |
-| Deploy Broken Slot | [trigger-broken-slot.ps1](../../scripts/trigger-broken-slot.ps1) | When the opt-in scenario is deployed, swaps the customer's armed `broken` slot into the separate customer-facing Web App after verifying production is healthy. The Control Center is not modified; customer `/healthz` should return HTTP 503 afterward. |
+| Change deployment slot | [trigger-broken-slot.ps1](../../scripts/trigger-broken-slot.ps1), [rollback-broken-slot.ps1](../../scripts/rollback-broken-slot.ps1) | Choose the guarded Broken or Working customer slot. When dependency faults are configured, Working uses full customer recovery. The Control Center is not swapped. |
+| Break the application | [set-customer-dependency-fault.ps1](../../scripts/set-customer-dependency-fault.ps1), existing guarded slot scripts | Choose broken customer deployment, fixed application SQL-path delay, orders processor failure, or explicit recovery. No traffic, order submission or dead-letter replay is automatic. |
 | Simulate High CPU | [simulate-high-cpu.ps1](../../scripts/simulate-high-cpu.ps1) | Submits fixed, self-expiring 10-minute CPU loads on both running demo VMs through Azure VM Run Command. No AKS dependency or VM restart. |
 | Send Custom Logs | [send-custom-logs.ps1](../../scripts/send-custom-logs.ps1) | Ingests 1-100 sample audit events into the existing custom table. |
 | Add Release Marker | [send-release-annotation.ps1](../../scripts/send-release-annotation.ps1) | Adds a marker with a 1-80 character name and Deployment or Incident category. |
@@ -29,9 +30,32 @@ The default 24 users, 4 concurrent browsers, and 6 repeat users provide complete
 
 The runner image now includes Node.js dependencies and Chromium, so an existing environment must rebuild the operations image and republish the Web App. Rerun `deploy.ps1`, or use the normal [console upgrade](../../scripts/deploy-webapp.ps1); updating only the browser bundle is insufficient.
 
-### Deploy Broken Slot
+### Break the application
 
-Select **Deploy Broken Slot**, review the customer Web App target and intentional-outage warning, then approve once. The operation requires customer production `/healthz` to return HTTP 200 and the `broken` slot to return HTTP 503 before swapping; afterward it verifies the customer app returns HTTP 503. It never swaps or changes the Control Center. Do not submit it again while the alert or recovery is in progress.
+The **Break the application** button opens a reversible exercise menu. Nothing is preselected or executed by opening it:
+
+| Choice | Effect | Recovery |
+|---|---|---|
+| Broken deployment slot | Swap the armed customer slot into production; HTTP 503. | Restore the working slot. |
+| Slow SQL-backed customer operations | Fixed 3-second application-side delay on catalogue/order SQL paths. This is not actual SQL database degradation; SQL DTU health can stay healthy. | Reset delay to zero. |
+| Fail customer order processing | The dedicated processor throws on delivery. Accepted orders can remain queued and eventually dead-letter after bounded retries. No orders are automatically submitted. | Reset processor failure; independently inspect previous orders and dead letters. |
+| Restore customer application | Reset both customer slots' delay and worker failure, restart those exact targets, restore the working slot, and check production health/catalogue. | Does not replay messages or undo arbitrary changes. |
+
+Slot choices require `enableSlotFailureScenario`. Dependency choices require `enableCustomerDependencies`, an exact worker discovered from the deployment output, and the updated console bootstrap, job image and RBAC. Runtime checks refuse faults if either exact application has real dependencies disabled. An older/slot-only lab shows only available choices. With dependency faults enabled, **Change deployment slot → Working** uses full customer recovery rather than leaving a hidden worker failure behind.
+
+Each choice uses the existing five-minute, single-use approval and resource-group confirmation. Faults are persistent, **not self-expiring**. The shared persistent journal blocks another customer fault until an approved recovery succeeds, including across operators/restarts and after partial failures. A failed/uncertain execution is not automatically retried. Out-of-band SRE/CLI mitigation does not clear this conservative latch: approve the idempotent recovery after checking the current resources. An unresolved job must be reconciled before a new job, including recovery, can start.
+
+The investigation panel records the dispatch reference time (not proven symptom onset), offers a **symptom-only prompt** for `application-troubleshooter` in VS Code/Copilot CLI or SRE Agent, and links to configured SRE/customer Health Model destinations. It neither reveals the injected setting in the prompt nor submits an agent task. The operator's menu and run history are not a secret examination environment. No automatic load, order, fault replay, agent mitigation or Health Model change occurs.
+
+Use Application Insights request/dependency/exception spans, platform metrics, Activity Logs, Functions logs and Service Bus queue/dead-letter counts to establish root cause. Cross-check actual customer model topology and signal freshness. Aggregate Healthy and absent/Unknown signals do not prove application health; an idle worker can have no recent error samples. Recovery's healthy catalogue does not prove historical order fulfilment, recovered latency, listener readiness or alert/model recovery.
+
+The independent runner receives a conditional custom role **only at the customer Web App and worker resource scopes**, for app-setting read/write and restart, with slot operations on the customer site. Azure RBAC cannot restrict these permissions to individual setting keys; trust the pinned allowlisted runner and protect its identity. These permissions can read sensitive settings, although scripts project only the feature flag and suppress diagnostic payloads. The Control Center receives no customer SQL/queue data-plane access and no customer app-setting write role.
+
+Publish the new Control Center and rebuild/bootstrap the independent runner together. Browser-only publication is insufficient. These choices add no service, but app restarts, existing compute, Service Bus retries, diagnostic/telemetry ingestion and optional agent usage can incur charges. Keep separately configured autonomous SRE recovery plans disabled for a manual exercise unless their exact behavior is intended.
+
+### Change deployment slot
+
+Select **Change deployment slot → Broken**, review the customer Web App target and intentional-outage warning, then approve once. The operation requires customer production `/healthz` to return HTTP 200 and the `broken` slot to return HTTP 503 before swapping; afterward it verifies the customer app returns HTTP 503. It never swaps or changes the Control Center. Do not submit it again while the alert or recovery is in progress.
 
 Autonomous recovery is not configured by the deployment itself. Follow [Scenario 71](../../docs/DEMO-SCENARIOS.md#s71) to connect Azure Monitor and create the dedicated, narrowly filtered SRE Agent response plan. Keep that Autonomous plan off when the demo is idle.
 

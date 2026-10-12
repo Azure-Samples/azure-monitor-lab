@@ -186,6 +186,7 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
     if ($command -like 'functionapp function list*') { return '[{"name":"OrdersProcessor"}]' }
     if ($command -like 'functionapp deployment source config-zip*') { return }
     if ($command -like 'sql server firewall-rule*' -or $command -like 'webapp config appsettings set*' -or $command -like 'functionapp config appsettings set*') { return }
+    if ($command -like 'webapp restart*' -or $command -like 'functionapp restart*') { return }
     throw "Unexpected Azure command: $command"
   }
   function Invoke-Sqlcmd {
@@ -234,6 +235,7 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
   Assert-True (@($fixture.Calls | Where-Object {$_ -match 'CustomerDependencies__SqlDelaySeconds=0'}).Count -eq 2 -and @($fixture.Calls | Where-Object {$_ -match 'CustomerDependencies__FailProcessing=false'}).Count -eq 1) 'Recovery must reset both customer slots and worker fault settings.'
   $fixture.Enabled = $false
   Assert-Throws { & (Join-Path $root 'scripts\set-customer-dependency-fault.ps1') @common -Fault Recover -ConfirmTarget "$base/Microsoft.Web/sites/app-test-customer" } 'Disabled deployment must reject stale dependency output authorization.'
-  Assert-True (@($fixture.Calls | Where-Object {$_ -match 'account set|login|stop|restart|delete.*database|0.0.0.0'}).Count -eq 0) 'Dependency lifecycle must not change auth context or stop/delete arbitrary resources.'
+  Assert-True (@($fixture.Calls | Where-Object {$_ -match 'restart.*--name (app-test-customer|func-test-orders)( |$)'}).Count -eq 3) 'Recovery must restart both exact customer slots and the worker to apply environment changes.'
+  Assert-True (@($fixture.Calls | Where-Object {$_ -match 'account set|login|stop|delete.*database|0.0.0.0'}).Count -eq 0) 'Dependency lifecycle must not change auth context or stop/delete arbitrary resources.'
 }
 Write-Output 'PASS: default-off infrastructure/security contracts, SID/schema/bootstrap, SQL-first worker ZIP lifecycle, WhatIf/no-writes, readiness, exact fault recovery and firewall cleanup (mocked; no Azure calls).'

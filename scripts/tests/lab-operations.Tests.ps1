@@ -6,6 +6,7 @@ $environment = @{
   LAB_RUNNER_MODE = 'ContainerAppsJob'
   LAB_SUBSCRIPTION_ID = $subscription; LAB_TENANT_ID = $tenant; LAB_RESOURCE_GROUP = 'test-rg'
   LAB_WEB_APP_NAME = 'app-amlab-test'; LAB_CUSTOMER_WEB_APP_NAME = 'app-amlab-test-customer'
+  LAB_CUSTOMER_WORKER_NAME = 'func-amlab-test-orders'
 }
 $previous = @{}
 foreach ($name in $environment.Keys) { $previous[$name] = [Environment]::GetEnvironmentVariable($name); [Environment]::SetEnvironmentVariable($name, $environment[$name]) }
@@ -21,7 +22,7 @@ function Assert-Rejected([hashtable] $Changes) {
 }
 
 try {
-  foreach ($operation in @('start', 'break', 'restore', 'ramp', 'cpu')) { & $scriptPath @parameters -Operation $operation | Out-Null }
+  foreach ($operation in @('start', 'break', 'restore', 'ramp', 'cpu', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover')) { & $scriptPath @parameters -Operation $operation | Out-Null }
   & $scriptPath @parameters -Operation logs -Count 100 | Out-Null
   & $scriptPath @parameters -Operation annotation -Name 'Release 1.2 (demo)' -Category Deployment | Out-Null
   Assert-Rejected @{ Operation = 'teardown' }
@@ -33,6 +34,11 @@ try {
   Assert-Rejected @{ Operation = 'cpu'; Count = 1 }
   Assert-Rejected @{ Operation = 'cpu'; Name = 'command' }
   Assert-Rejected @{ Operation = 'cpu'; Category = 'Incident' }
+  Assert-Rejected @{ Operation = 'customer-sql-delay'; Count = 1 }
+  Assert-Rejected @{ Operation = 'customer-worker-failure'; Name = 'arbitrary-setting' }
+  $env:LAB_CUSTOMER_WORKER_NAME = $env:LAB_WEB_APP_NAME
+  Assert-Rejected @{ Operation = 'customer-worker-failure' }
+  $env:LAB_CUSTOMER_WORKER_NAME = $environment.LAB_CUSTOMER_WORKER_NAME
   Assert-Rejected @{ Operation = 'logs'; Count = 0 }
   Assert-Rejected @{ Operation = 'logs'; Count = 101 }
   Assert-Rejected @{ Operation = 'annotation'; Name = '$(whoami)'; Category = 'Deployment' }

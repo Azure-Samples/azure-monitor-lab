@@ -15,14 +15,35 @@ public sealed class ContainerJobOperationsTests
     private static readonly string JobId = $"/subscriptions/{Subscription}/resourceGroups/test-rg/providers/Microsoft.App/jobs/test-runner";
     private const string ImagePrefix = "test.azurecr.io/lab-operations@sha256:";
 
-    private static ContainerJobOperations Client(FakeAzure handler, string enabled = "true") => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    private static ContainerJobOperations Client(FakeAzure handler, string enabled = "true", bool customerFaults = false) => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["LabConsole:ResourceGroup"] = "test-rg", ["LabConsole:Operations:JobResourceId"] = JobId,
         ["LabConsole:Operations:TenantId"] = Tenant, ["LabConsole:Operations:Image"] = ImagePrefix + new string('a', 64),
-        ["LabConsole:Operations:Enabled"] = enabled
+        ["LabConsole:Operations:Enabled"] = enabled,
+        ["LabConsole:AppService"] = customerFaults ? "test-app" : null,
+        ["LabConsole:Operations:CustomerWorkerName"] = customerFaults ? "func-test-orders" : null
     }).Build(), new HttpClient(handler), new FakeCredential());
 
     private static LabOperationRun Run(ContainerJobOperations client) => new(new string('b', 32), new("logs", 12, "", ""), client.Target!, DateTimeOffset.UtcNow, "dispatch_unknown", "Pending");
+
+    [Theory]
+    [InlineData("customer-sql-delay")]
+    [InlineData("customer-worker-failure")]
+    [InlineData("customer-recover")]
+    public async Task CustomerFaultDispatchRejectsMissingOrChangedExactTargets(string operation)
+    {
+        using var transport = new FakeAzure { Operation = operation };
+        var client = Client(transport, customerFaults: true);
+        var run = Run(client) with { Parameters = LabOperationCatalog.Validate(new(operation)) };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DispatchAsync(run, default));
+        Assert.Equal(0, transport.Starts);
+        transport.CustomerTargets = true;
+        Assert.Equal("test-runner-execution", await client.DispatchAsync(run, default));
+        Assert.Equal(1, transport.Starts);
+        transport.WrongCustomerTarget = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DispatchAsync(run, default));
+        Assert.Equal(1, transport.Starts);
+    }
 
     [Fact]
     public async Task DispatchPreservesThePinnedImageAndStampsOnlyApprovedInputs()
@@ -252,6 +273,8 @@ public sealed class ContainerJobOperationsTests
         public string Operation { get; set; } = "logs";
         public char ImageHashChar { get; set; } = 'a';
         public string? NextLink { get; set; }
+        public bool CustomerTargets { get; set; }
+        public bool WrongCustomerTarget { get; set; }
 
         private JsonObject Template()
         {
@@ -271,6 +294,12 @@ public sealed class ContainerJobOperationsTests
                     environment.Remove(entry);
             }
             if (IncludeTemplateVolumes) template["volumes"] = new JsonArray();
+            if (CustomerTargets)
+            {
+                var environment = template["containers"]![0]!["env"]!.AsArray();
+                environment.Add(new JsonObject { ["name"] = "LAB_CUSTOMER_WEB_APP_NAME", ["value"] = "test-app-customer" });
+                environment.Add(new JsonObject { ["name"] = "LAB_CUSTOMER_WORKER_NAME", ["value"] = WrongCustomerTarget ? "other-worker" : "func-test-orders" });
+            }
             return template;
         }
 

@@ -259,6 +259,18 @@ connectivity before validation/what-if/deployment instead of bypassing them.
 Fault scripts require confirmation of the exact target and support `-WhatIf`.
 SQL delay is bounded to 0–5 seconds. Recovery resets delay to zero in both customer
 slots and worker failure to false; it does not replay dead-lettered messages.
+The script now explicitly restarts the changed customer app/slot or worker to apply
+environment settings. A restart failure is surfaced after a potentially applied
+setting; no automatic rollback occurs. The Control Center's **Break the application**
+menu wraps the same exact-target faults through the independent runner, fixing SQL
+delay at 3 seconds. Its full recovery also restores the working slot and checks
+HTTP health/catalogue. The menu never submits/replays orders; existing dead letters
+and latency/listener/Health Model recovery need independent verification.
+The runner-only parameter set accepts names solely from its approved environment,
+checks both feature flags live, and cannot be used as an unrestricted local target
+override. Updated bootstrap provisions conditional app-setting/restart rights at
+the customer app and worker scopes, packages both shared fault scripts, and pins
+the rebuilt image. Azure RBAC cannot constrain app-setting access to individual keys.
 The Control Center is never targeted. Disabling the toggle in an incremental
 deployment does **not** delete previously created resources or stop billing:
 use the guarded lab `teardown.ps1` when the lab is no longer needed.
@@ -293,7 +305,7 @@ Offline configuration/UI regression check: `pwsh -NoProfile -File scripts\tests\
 
 ## Lab lifecycle and demo control
 
-The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes ten scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls, bounded customer traffic, and the opt-in isolated customer slot-failure operation. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
+The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes allowlisted scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls, bounded customer traffic, and the opt-in isolated customer slot-failure operation. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
 
 | Script | Purpose | Typical command |
 |---|---|---|

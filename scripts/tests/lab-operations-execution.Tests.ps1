@@ -4,7 +4,7 @@ $repo = Join-Path $root 'repo'
 $scriptDirectory = Join-Path $repo 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 $source = Split-Path $PSScriptRoot -Parent
-foreach ($name in @('invoke-lab-operation.ps1', 'slot-health.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1', 'trigger-broken-slot.ps1', 'rollback-broken-slot.ps1')) {
+foreach ($name in @('invoke-lab-operation.ps1', 'slot-health.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1', 'trigger-broken-slot.ps1', 'rollback-broken-slot.ps1', 'set-customer-dependency-fault.ps1', 'customer-dependency-helpers.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source $name) -Destination $scriptDirectory
 }
 @'
@@ -25,11 +25,13 @@ $fixture = @{
   ProductionStatus = 200; BrokenStatus = 503; SlotSwaps = 0; FailSlotSwap = $false
   CpuMode = $false; CpuMissingWindows = $false; CpuExtraVm = $false; CpuStoppedWindows = $false; CpuAgentUnavailable = $false
   CpuWrongScope = $false; CpuSecondSubmissionFails = $false; CpuCommands = [Collections.Generic.List[object]]::new()
+  DependenciesEnabled = $true; FailFaultRestart = $false
 }
 $envValues = @{
   LAB_RUNNER_MODE = 'ContainerAppsJob'; IDENTITY_ENDPOINT = 'http://localhost/identity'; IDENTITY_HEADER = 'test-header'; AZURE_CLIENT_ID = [guid]::NewGuid().ToString()
   LAB_SUBSCRIPTION_ID = $fixture.Subscription; LAB_TENANT_ID = $fixture.Tenant; LAB_RESOURCE_GROUP = 'test-rg'
   LAB_WEB_APP_NAME = 'app-amlab-test'; LAB_CUSTOMER_WEB_APP_NAME = 'app-amlab-test-customer'
+  LAB_CUSTOMER_WORKER_NAME = 'func-amlab-test-orders'
   RUNNER_TEMP = $root; AZURE_CORE_OUTPUT = 'none'; KUBECONFIG = $env:KUBECONFIG; TEMP = $env:TEMP; TMP = $env:TMP; PATH = $env:PATH
 }
 $previous = @{}
@@ -154,6 +156,17 @@ function Invoke-FakeAzure {
       return @{ name = $name; defaultHostName = "$name.azurewebsites.net"; state = 'Running' } | ConvertTo-Json
     }
     'webapp stop' { return }
+    'webapp config' {
+      if (($args[2..3] -join ' ') -eq 'appsettings list') { return $(if ($fixture.DependenciesEnabled) { '["true"]' } else { '["false"]' }) }
+      if (($args[2..3] -join ' ') -eq 'appsettings set') { return }
+      throw 'Unexpected customer settings command.'
+    }
+    'functionapp config' { return }
+    'webapp restart' { return }
+    'functionapp restart' {
+      if ($fixture.FailFaultRestart) { $global:LASTEXITCODE = 9; return 'private diagnostic output' }
+      return
+    }
     'webapp deployment' {
       if (($args[2..3] -join ' ') -eq 'slot swap') {
         if ($args[[Array]::IndexOf($args, '--name') + 1] -ne $env:LAB_CUSTOMER_WEB_APP_NAME -or
@@ -195,7 +208,8 @@ function Invoke-FakeKubectl {
   return 'ok'
 }
 function Invoke-RestMethod {
-  param($Method, $Uri, $Headers, $Body)
+  param($Method, $Uri, $Headers, $Body, $MaximumRedirection, $TimeoutSec)
+  if ($Uri -eq 'https://app-amlab-test-customer.azurewebsites.net/api/customer/products') { return @(@{id='monitoring-starter'}, @{id='agent-operations'}, @{id='sre-command'}) }
   if (-not $Uri.StartsWith("https://management.azure.com/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg/")) { throw 'Annotation target escaped the lab.' }
   $fixture.Http.Add(@{ Method = $Method; Uri = $Uri; Body = $Body | ConvertFrom-Json })
   return @{}
@@ -219,6 +233,29 @@ function Start-Sleep {
 }
 
 try {
+  $before = $fixture.Calls.Count
+  & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-worker-failure -CheckAccessOnly | Out-Null
+  if (@($fixture.Calls | Select-Object -Skip $before | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' }).Count) { throw 'Fault access-only preflight performed writes.' }
+  foreach ($operation in @('customer-sql-delay', 'customer-worker-failure', 'customer-recover')) {
+    & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation $operation | Out-Null
+  }
+  $faultWrites = @($fixture.Calls | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' })
+  if (@($faultWrites | Where-Object { $_.Arguments -contains 'app-amlab-test' }).Count -or
+      @($faultWrites | Where-Object { ($_.Arguments -join ' ') -match 'CustomerDependencies__SqlDelaySeconds=3' }).Count -ne 1 -or
+      @($faultWrites | Where-Object { ($_.Arguments -join ' ') -match 'CustomerDependencies__FailProcessing=true' }).Count -ne 1) { throw 'Customer fault writes escaped the fixed parameters or dedicated targets.' }
+  $fixture.DependenciesEnabled = $false
+  $before = $faultWrites.Count
+  $rejected = $false
+  try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-sql-delay | Out-Null } catch { $rejected = $true }
+  if (-not $rejected -or @($fixture.Calls | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' }).Count -ne $before) { throw 'Disabled real dependencies did not reject the fault before writes.' }
+  $fixture.DependenciesEnabled = $true
+  $fixture.FailFaultRestart = $true
+  $rejected = $false
+  try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-worker-failure | Out-Null } catch { $rejected = $_.Exception.Message -match 'approved script execution' }
+  if (-not $rejected) { throw 'Partial fault restart failure was reported as success.' }
+  $fixture.FailFaultRestart = $false
+  $fixture.Http.Clear()
+  $fixture.Calls.Clear()
   $fixture.AllResourcesStopped = $true
   $accessOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation start -CheckAccessOnly | Out-String
   $allowedReads = @('login --identity', 'account set', 'account show', 'group exists', 'vm list', 'vmss list', 'vmss list-instances', 'aks list', 'webapp list')
