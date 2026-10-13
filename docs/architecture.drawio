@@ -61,6 +61,21 @@
         <mxCell id="w13" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/networking/Load_Balancers.svg" value="K8s Service" vertex="1">
           <mxGeometry height="52" width="80" x="70" y="510" as="geometry" />
         </mxCell>
+        <mxCell id="customer-app-group" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0078D4;dashed=1;verticalAlign=bottom;fontStyle=1;fontSize=10;align=center;spacingBottom=6" value="Customer application" vertex="1">
+          <mxGeometry height="100" width="245" x="165" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-appservice" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/compute/App_Services.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="180" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-servicebus" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/integration/Service_Bus.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="240" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-function" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/compute/Function_Apps.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="300" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-sql" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/databases/SQL_Database.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="360" y="500" as="geometry" />
+        </mxCell>
         <mxCell id="c1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Input_Output.svg" value="AMA" vertex="1">
           <mxGeometry height="52" width="80" x="465" y="110" as="geometry" />
         </mxCell>
