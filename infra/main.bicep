@@ -128,6 +128,7 @@ var suffix              = uniqueString(resourceGroup().id)
 var lawCentralName      = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName  = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
 var appInsightsName     = 'appi-${namePrefix}-${take(suffix, 5)}'
+var customerAppInsightsName = '${appInsightsName}-customer'
 var amwName             = 'amw-${namePrefix}'
 var grafanaName         = 'amg-${namePrefix}-${take(suffix, 4)}'
 var vnetName            = 'vnet-${namePrefix}'
@@ -214,12 +215,23 @@ module appInsights 'modules/appinsights.bicep' = {
   }
 }
 
+module customerAppInsights 'modules/appinsights.bicep' = if (enableSlotFailureScenario) {
+  name: 'appi-customer'
+  params: {
+    name: customerAppInsightsName
+    location: location
+    workspaceId: lawAppInsights.outputs.id
+    tags: union(commonTags, { 'amlab-component': 'customer-web-app' })
+  }
+}
+
 module appInsightsObservability 'modules/appinsights-observability.bicep' = {
   name: 'appinsights-observability'
   params: {
     location: location
     namePrefix: namePrefix
     appInsightsId: appInsights.outputs.id
+    customerAppInsightsId: enableSlotFailureScenario ? customerAppInsights!.outputs.id : appInsights.outputs.id
     tags: commonTags
   }
 }
@@ -547,8 +559,8 @@ module customerWebApp 'modules/customer-webapp.bicep' = if (enableSlotFailureSce
     webAppName: customerWebAppName
     location: appServiceLocation
     serverFarmResourceId: appService.outputs.planId
-    appInsightsConnectionString: appInsights.outputs.connectionString
-    appInsightsInstrumentationKey: appInsights.outputs.instrumentationKey
+    appInsightsConnectionString: customerAppInsights!.outputs.connectionString
+    appInsightsInstrumentationKey: customerAppInsights!.outputs.instrumentationKey
     centralLawId: lawCentral.outputs.id
     customerIdentityId: enableCustomerDependencies ? customerDependencies!.outputs.customerIdentityId : ''
     customerSubnetId: enableCustomerDependencies ? customerDependencies!.outputs.customerSubnetId : ''

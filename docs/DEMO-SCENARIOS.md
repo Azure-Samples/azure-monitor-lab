@@ -3322,7 +3322,7 @@ A deployment slot that passed its dedicated warm-up probe is promoted to the sep
 ### Trigger the incident
 
 1. Open **Control Center → Lab Operations**.
-2. Select **Change deployment slot**, choose **Broken slot (HTTP 503)**, and select **Review operation**.
+2. Select **Break the customer app**, choose **Broken deployment slot**, and select **Review operation**. If it is disabled, approve the offered recovery first to clear the previous exercise's journal lock.
 3. Review the exact target and warning. Confirm the resource group and approve.
 4. The independent Container Apps job verifies that customer production is healthy, verifies that the customer's `broken` slot is armed, and performs exactly one `broken` → `production` swap.
 5. The Control Center remains available. Open the linked customer app in a separate tab and verify `https://app-amlab-<suffix>-customer.azurewebsites.net/healthz` returns HTTP 503.
@@ -3612,7 +3612,9 @@ The disabled backend preserves the existing synthetic journey and `/api/checkout
 
 ### Investigate a slow catalogue
 
-**Preferred Control Center workflow (updated console/runner required):** open **Lab Operations → Break the application** and choose **Slow SQL-backed customer operations**, **Fail customer order processing**, or **Broken deployment slot**. Review the exact target/impact, confirm the resource group and approve. Nothing is automatically injected when opening the menu, and no customer order or traffic is generated. Use an explicitly approved customer journey/traffic run to produce symptoms where necessary.
+**Preferred Control Center workflow (updated console/runner required):** open **Lab Operations → Break the customer app** and choose **Slow SQL-backed customer operations**, **Fail customer order processing**, or **Broken deployment slot**. Review the exact target/impact, confirm the resource group and approve. If fault choices are disabled, choose and approve **Restore customer application** first; external mitigation alone does not clear the previous exercise's journal lock. Nothing is automatically injected when opening the menu, and no customer order or traffic is generated. Use an explicitly approved customer journey/traffic run to produce symptoms where necessary.
+
+Open the dedicated `appi-<prefix>-<suffix>-customer` Application Insights resource for Live Metrics, request performance, SQL dependencies, failures and Transaction Search. It shares the existing App Insights Log Analytics workspace, but the Application Insights resource scope contains only customer-app telemetry. The Control Center and other workloads remain on `appi-<prefix>-<suffix>`.
 
 Use the investigation panel's symptom-only prompt with the `application-troubleshooter` VS Code/Copilot CLI agent or SRE Agent, and open the dedicated customer Health Model. The displayed dispatch time is a starting reference: establish actual onset from telemetry/Activity Logs. Diagnose from evidence rather than the operator's fault selection. A 3-second application-side delay need not change SQL DTU health; an idle worker's error signal can be Unknown.
 
@@ -3659,7 +3661,7 @@ A deliberate SQL wait is visible as dependency latency but need not produce high
   -ConfirmTarget $context.workerId -WhatIf
 ```
 
-Apply the processor's controlled failure setting under explicit confirmation, submit one synthetic order, and inspect delivery failures and the bounded retry/dead-letter lifecycle. Queue acceptance does not prove business completion.
+Apply the processor's controlled failure setting under explicit confirmation, submit one synthetic order, and inspect delivery failures and the bounded retry/dead-letter lifecycle. Queue acceptance does not prove business completion. The customer page initially shows **Order accepted**, then automatically changes to **Order processing failed** when the fifth and final configured delivery attempt persists the terminal state before Service Bus dead-letters the message.
 
 ```text
 This synthetic order was accepted but never completed: <order-id>. Correlate its SQL

@@ -16,6 +16,7 @@ public interface IOrderStore
     Task<OrderResponse?> CreateOrderAsync(Guid id, string productId, CancellationToken cancellationToken);
     Task MarkQueuedAsync(Guid id, CancellationToken cancellationToken);
     Task CompleteAsync(Guid id, CancellationToken cancellationToken);
+    Task FailAsync(Guid id, CancellationToken cancellationToken);
 }
 
 public sealed class SqlOrderStore(string connectionString, int delaySeconds = 0) : IOrderStore
@@ -87,6 +88,18 @@ public sealed class SqlOrderStore(string connectionString, int delaySeconds = 0)
         await using var command = Command(connection, """
             UPDATE dbo.Orders SET Status = 'Completed', CompletedUtc = COALESCE(CompletedUtc, SYSUTCDATETIME()) WHERE Id = @id;
             IF @@ROWCOUNT = 0 THROW 51000, 'Order does not exist.', 1;
+            """);
+        command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = id;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task FailAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = Command(connection, """
+            UPDATE dbo.Orders SET Status = 'Failed' WHERE Id = @id AND Status = 'Queued';
+            IF @@ROWCOUNT = 0 AND NOT EXISTS (SELECT 1 FROM dbo.Orders WHERE Id = @id AND Status IN ('Failed', 'Completed'))
+                THROW 51000, 'Order does not exist or is not queued.', 1;
             """);
         command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = id;
         await command.ExecuteNonQueryAsync(cancellationToken);

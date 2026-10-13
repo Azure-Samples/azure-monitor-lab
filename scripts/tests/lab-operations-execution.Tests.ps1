@@ -25,7 +25,7 @@ $fixture = @{
   ProductionStatus = 200; BrokenStatus = 503; SlotSwaps = 0; FailSlotSwap = $false
   CpuMode = $false; CpuMissingWindows = $false; CpuExtraVm = $false; CpuStoppedWindows = $false; CpuAgentUnavailable = $false
   CpuWrongScope = $false; CpuSecondSubmissionFails = $false; CpuCommands = [Collections.Generic.List[object]]::new()
-  DependenciesEnabled = $true; FailFaultRestart = $false
+  DependenciesEnabled = $true; FailFaultRestart = $false; CatalogueMode = 'valid'
 }
 $envValues = @{
   LAB_RUNNER_MODE = 'ContainerAppsJob'; IDENTITY_ENDPOINT = 'http://localhost/identity'; IDENTITY_HEADER = 'test-header'; AZURE_CLIENT_ID = [guid]::NewGuid().ToString()
@@ -209,7 +209,17 @@ function Invoke-FakeKubectl {
 }
 function Invoke-RestMethod {
   param($Method, $Uri, $Headers, $Body, $MaximumRedirection, $TimeoutSec)
-  if ($Uri -eq 'https://app-amlab-test-customer.azurewebsites.net/api/customer/products') { return @(@{id='monitoring-starter'}, @{id='agent-operations'}, @{id='sre-command'}) }
+  if ($Uri -eq 'https://app-amlab-test-customer.azurewebsites.net/api/customer/products') {
+    $products = switch ($fixture.CatalogueMode) {
+      'valid' { @(@{id='monitoring-starter'}, @{id='agent-operations'}, @{id='sre-command'}) }
+      'short' { @(@{id='monitoring-starter'}, @{id='agent-operations'}) }
+      'extra' { @(@{id='monitoring-starter'}, @{id='agent-operations'}, @{id='sre-command'}, @{id='unexpected'}) }
+      'object' { @{Count=3} }
+      default { throw 'Unexpected catalogue fixture.' }
+    }
+    Write-Output -NoEnumerate $products
+    return
+  }
   if (-not $Uri.StartsWith("https://management.azure.com/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg/")) { throw 'Annotation target escaped the lab.' }
   $fixture.Http.Add(@{ Method = $Method; Uri = $Uri; Body = $Body | ConvertFrom-Json })
   return @{}
@@ -243,8 +253,21 @@ try {
   if (@($faultWrites | Where-Object { $_.Arguments -contains 'app-amlab-test' }).Count -or
       @($faultWrites | Where-Object { ($_.Arguments -join ' ') -match 'CustomerDependencies__SqlDelaySeconds=3' }).Count -ne 1 -or
       @($faultWrites | Where-Object { ($_.Arguments -join ' ') -match 'CustomerDependencies__FailProcessing=true' }).Count -ne 1) { throw 'Customer fault writes escaped the fixed parameters or dedicated targets.' }
+  $recoveryOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-recover | Out-String
+  if ($recoveryOutput -notmatch 'Customer recovery verified: HTTP 200 and three SQL catalogue products.' -or
+      $recoveryOutput -notmatch "Approved action 'customer-recover' completed") {
+    throw 'Recovery must accept the non-enumerated JSON array returned by native Invoke-RestMethod.'
+  }
+  foreach ($mode in @('short', 'extra', 'object')) {
+    $fixture.CatalogueMode = $mode
+    $rejected = $false
+    try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-recover | Out-Null }
+    catch { $rejected = $_.Exception.Message -match 'customer recovery verification' }
+    if (-not $rejected) { throw "Recovery accepted an invalid $mode catalogue response." }
+  }
+  $fixture.CatalogueMode = 'valid'
   $fixture.DependenciesEnabled = $false
-  $before = $faultWrites.Count
+  $before = @($fixture.Calls | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' }).Count
   $rejected = $false
   try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-sql-delay | Out-Null } catch { $rejected = $true }
   if (-not $rejected -or @($fixture.Calls | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' }).Count -ne $before) { throw 'Disabled real dependencies did not reject the fault before writes.' }

@@ -101,6 +101,7 @@ public sealed class CustomerOrderTests
             return Task.CompletedTask;
         }
         public Task CompleteAsync(Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task FailAsync(Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class Publisher : IOrderPublisher

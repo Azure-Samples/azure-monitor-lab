@@ -174,7 +174,7 @@ try {
     'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1',
     'scripts/set-customer-dependency-fault.ps1', 'scripts/customer-dependency-helpers.ps1',
     'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json',
-    'workloads/webapp/scripts/generate-usage-traffic.mjs')
+    'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/webapp/scripts/usage-traffic-pacing.mjs')
   foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $build $file) }
   Copy-Item -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Destination (Join-Path $build 'Dockerfile')
   $hashes = @(Get-ChildItem $build -File -Recurse | Sort-Object FullName | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash })
@@ -234,7 +234,9 @@ try {
     if ($LASTEXITCODE -ne 0 -or $preferred.Count -ne 1) { throw 'The console model deployment was not uniquely resolved.' }
     $projectName = $projects[0].id.Split('/')[-1]
     $config.LabConsole.Foundry.ProjectEndpoint = "https://$($accountId.Split('/')[-1]).services.ai.azure.com/api/projects/$projectName"
-    $components = @($inventory | Where-Object { $_.type -ieq 'Microsoft.Insights/components' })
+    $components = @($inventory | Where-Object {
+      $_.type -ieq 'Microsoft.Insights/components' -and $_.tags.'amlab-component' -cne 'customer-web-app'
+    })
     if ($components.Count -ne 1) { throw 'The lab Application Insights component was not uniquely resolved.' }
     $component = Invoke-ConsoleApi GET "https://management.azure.com$($components[0].id)?api-version=2020-02-02"
     & (Join-Path $PSScriptRoot 'setup-ai.ps1') -ResourceGroup $ResourceGroup -NamePrefix ($projectName -replace '-ai-proj$', '') `

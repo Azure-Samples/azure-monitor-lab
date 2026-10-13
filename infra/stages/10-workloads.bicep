@@ -54,6 +54,7 @@ var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
 var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
+var customerAppInsightsName = '${appInsightsName}-customer'
 var amwName = 'amw-${namePrefix}'
 var grafanaName = 'amg-${namePrefix}-${take(suffix, 4)}'
 var vnetName = 'vnet-${namePrefix}'
@@ -97,6 +98,10 @@ resource lawAppInsights 'Microsoft.OperationalInsights/workspaces@2023-09-01' ex
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: appInsightsName
+}
+
+resource customerAppInsights 'Microsoft.Insights/components@2020-02-02' existing = if (enableSlotFailureScenario) {
+  name: customerAppInsightsName
 }
 
 resource amw 'Microsoft.Monitor/accounts@2023-04-03' existing = {
@@ -242,8 +247,8 @@ module customerWebApp '../modules/customer-webapp.bicep' = if (enableSlotFailure
     webAppName: customerWebAppName
     location: appServiceLocation
     serverFarmResourceId: appService.outputs.planId
-    appInsightsConnectionString: appInsights.properties.ConnectionString
-    appInsightsInstrumentationKey: appInsights.properties.InstrumentationKey
+    appInsightsConnectionString: customerAppInsights!.properties.ConnectionString
+    appInsightsInstrumentationKey: customerAppInsights!.properties.InstrumentationKey
     centralLawId: lawCentral.id
     customerIdentityId: enableCustomerDependencies ? customerDependencies!.outputs.customerIdentityId : ''
     customerSubnetId: enableCustomerDependencies ? customerDependencies!.outputs.customerSubnetId : ''
@@ -310,4 +315,5 @@ module flowLogs '../modules/flow-logs.bicep' = {
 output webAppName string = appService.outputs.webAppName
 output customerWebAppName string = enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
 output customerWebAppDefaultHost string = enableSlotFailureScenario ? customerWebApp!.outputs.defaultHost : ''
+output customerAppInsightsName string = enableSlotFailureScenario ? customerAppInsightsName : ''
 output customerDependencies object = enableCustomerDependencies && enableSlotFailureScenario ? customerDependencies!.outputs.customerDependencies : { enabled: false }

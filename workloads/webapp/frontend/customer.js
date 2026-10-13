@@ -56,6 +56,10 @@ let selectedProduct = 'monitoring-starter';
 let realDependencies = false;
 let currentOrder = null;
 let completionTracked = false;
+let failureTracked = false;
+let orderStatusPollTimer = null;
+const orderStatusPollIntervalMs = 750;
+const orderStatusPollLimit = 40;
 const initialStep = Object.entries(stepRoutes)
   .sort((left, right) => right[1].length - left[1].length)
   .find(([, route]) => location.pathname === route || (route !== '/customer/' && location.pathname.startsWith(`${route}/`)))?.[0] ?? 'home';
@@ -218,10 +222,12 @@ byId('complete-purchase').addEventListener('click', async () => {
       if (order.id !== draft.id || order.productId !== draft.productId) throw new Error('Order response does not match the submitted order.');
       currentOrder = order;
       completionTracked = false;
+      failureTracked = false;
       byId('confirmation-order').textContent = order.id;
       byId('refresh-order').hidden = false;
       show('confirmation', 'OrderQueued', { 'product.id': selectedProduct, 'customer.order_id': order.id });
       renderOrder(order);
+      startOrderStatusPolling(order.id);
       return;
     }
     const response = await fetch(`/api/checkout?outcome=${encodeURIComponent(checkoutOutcome)}`, {
@@ -253,23 +259,67 @@ byId('complete-purchase').addEventListener('click', async () => {
 });
 
 function validateOrder(order) {
-  if (!order || typeof order.id !== 'string' || typeof order.productId !== 'string' || !['Pending', 'Queued', 'Completed'].includes(order.status))
+  if (!order || typeof order.id !== 'string' || typeof order.productId !== 'string' || !['Pending', 'Queued', 'Completed', 'Failed'].includes(order.status))
     throw new Error('Order status response is invalid.');
 }
 
 function renderOrder(order) {
   validateOrder(order);
-  byId('confirmation-heading').textContent = order.status === 'Completed' ? 'Order confirmed' : 'Order accepted';
-  byId('confirmation-detail').textContent = order.status === 'Completed'
-    ? 'was processed by Azure Functions and stored in SQL.'
-    : 'is awaiting asynchronous processing. Queue acceptance is not fulfilment.';
-  byId('order-status').textContent = `Processing state: ${order.status}`;
+  const completed = order.status === 'Completed';
+  const failed = order.status === 'Failed';
+  byId('confirmation-heading').textContent = failed ? 'Order processing failed' : completed ? 'Order confirmed' : 'Order accepted';
+  byId('confirmation-detail').textContent = failed
+    ? 'was accepted into the queue but failed all processing attempts.'
+    : completed
+      ? 'was processed by Azure Functions and stored in SQL.'
+      : 'is awaiting asynchronous processing. Queue acceptance is not fulfilment.';
+  const status = byId('order-status');
+  status.textContent = `Processing state: ${order.status}`;
+  status.classList.toggle('error', failed);
+  byId('refresh-order').hidden = completed || failed;
   if (order.status === 'Completed' && !completionTracked) {
     completionTracked = true;
     trackLabEvent('PurchaseCompleted', { ...common, 'product.id': selectedProduct, 'customer.order_id': order.id, 'journey.completed': 'true' });
     sessionStorage.removeItem('amlab.customer-order');
     flushBrowserTelemetry();
   }
+  if (failed && !failureTracked) {
+    failureTracked = true;
+    trackLabEvent('OrderProcessingFailed', { ...common, 'product.id': selectedProduct, 'customer.order_id': order.id });
+    sessionStorage.removeItem('amlab.customer-order');
+    flushBrowserTelemetry();
+  }
+}
+
+async function refreshCurrentOrder() {
+  const expected = currentOrder;
+  if (!expected) return;
+  const response = await fetch(`/api/customer/orders/${encodeURIComponent(expected.id)}`);
+  if (!response.ok) throw new Error(`Order lookup failed: HTTP ${response.status}`);
+  const order = await response.json();
+  validateOrder(order);
+  if (order.id !== expected.id || order.productId !== expected.productId) throw new Error('Order lookup returned another order.');
+  if (!currentOrder || currentOrder.id !== expected.id) return;
+  currentOrder = order;
+  renderOrder(currentOrder);
+}
+
+function stopOrderStatusPolling() {
+  if (orderStatusPollTimer !== null) window.clearTimeout(orderStatusPollTimer);
+  orderStatusPollTimer = null;
+}
+
+function startOrderStatusPolling(orderId, remaining = orderStatusPollLimit) {
+  stopOrderStatusPolling();
+  if (remaining <= 0 || !currentOrder || currentOrder.id !== orderId || ['Completed', 'Failed'].includes(currentOrder.status)) return;
+  orderStatusPollTimer = window.setTimeout(async () => {
+    try {
+      await refreshCurrentOrder();
+    } catch (error) {
+      trackLabEvent('OrderStatusPollFailed', { ...common, 'error.type': error?.name || 'Error' });
+    }
+    startOrderStatusPolling(orderId, remaining - 1);
+  }, orderStatusPollIntervalMs);
 }
 
 byId('refresh-order').addEventListener('click', async () => {
@@ -277,13 +327,7 @@ byId('refresh-order').addEventListener('click', async () => {
   const button = byId('refresh-order');
   button.disabled = true;
   try {
-    const response = await fetch(`/api/customer/orders/${encodeURIComponent(currentOrder.id)}`);
-    if (!response.ok) throw new Error(`Order lookup failed: HTTP ${response.status}`);
-    const order = await response.json();
-    validateOrder(order);
-    if (order.id !== currentOrder.id || order.productId !== currentOrder.productId) throw new Error('Order lookup returned another order.');
-    currentOrder = order;
-    renderOrder(currentOrder);
+    await refreshCurrentOrder();
   } catch (error) {
     byId('order-status').textContent = 'Order processing status could not be verified. Retry later.';
     trackLabEvent('OrderStatusFailed', { ...common, 'error.type': error?.name || 'Error' });
@@ -293,6 +337,7 @@ byId('refresh-order').addEventListener('click', async () => {
 });
 
 byId('restart-journey').addEventListener('click', () => {
+  stopOrderStatusPolling();
   currentOrder = null;
   byId('refresh-order').hidden = true;
   byId('order-status').textContent = '';

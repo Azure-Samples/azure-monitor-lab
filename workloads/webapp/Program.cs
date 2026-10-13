@@ -214,7 +214,7 @@ app.UseRateLimiter();
 
 app.MapGet("/api/console/config", (IConfiguration configuration) =>
 {
-    var links = new[] { "ApplicationInsights", "Logs", "Workbook", "Grafana" }
+    var links = new[] { "ApplicationInsights", "Logs", "Workbook", "Grafana", "CustomerApplication" }
         .ToDictionary(name => name, name =>
         {
             var value = configuration[$"LabConsole:Links:{name}"];

@@ -49,6 +49,23 @@ public sealed class CustomerProcessorTests
     }
 
     [Fact]
+    public async Task FinalControlledFailureMarksOrderFailedBeforeDeadLettering()
+    {
+        var store = new Store();
+        using var telemetry = TelemetryConfiguration.CreateDefault();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CustomerDependencies:FailProcessing"] = "true"
+        }).Build();
+        var worker = new OrderProcessor(store, configuration, new TelemetryClient(telemetry), NullLogger<OrderProcessor>.Instance);
+        var id = Guid.NewGuid();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            worker.RunAsync(Message(id, OrderProcessor.TerminalDeliveryCount), CancellationToken.None));
+        Assert.Equal(id, store.Failed);
+        Assert.Equal(1, store.Calls);
+    }
+
+    [Fact]
     public async Task MismatchedMessageIdNeverMutatesSql()
     {
         var store = new Store();
@@ -59,13 +76,15 @@ public sealed class CustomerProcessorTests
         Assert.Equal(0, store.Calls);
     }
 
-    private static ServiceBusReceivedMessage Message(Guid id) =>
+    private static ServiceBusReceivedMessage Message(Guid id, int deliveryCount = 0) =>
         ServiceBusModelFactory.ServiceBusReceivedMessage(BinaryData.FromObjectAsJson(new OrderMessage(id)), messageId: id.ToString(),
+            deliveryCount: deliveryCount,
             properties: new Dictionary<string, object> { ["traceparent"] = "00-12345678901234567890123456789012-1234567890123456-01" });
 
     private sealed class Store : IOrderStore
     {
         public Guid? Completed { get; private set; }
+        public Guid? Failed { get; private set; }
         public int Calls { get; private set; }
         public Task CompleteAsync(Guid id, CancellationToken cancellationToken)
         {
@@ -77,5 +96,11 @@ public sealed class CustomerProcessorTests
         public Task<OrderResponse?> GetOrderAsync(Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderResponse?> CreateOrderAsync(Guid id, string productId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task MarkQueuedAsync(Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task FailAsync(Guid id, CancellationToken cancellationToken)
+        {
+            Calls++;
+            Failed = id;
+            return Task.CompletedTask;
+        }
     }
 }

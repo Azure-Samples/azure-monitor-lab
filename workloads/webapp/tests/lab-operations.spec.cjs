@@ -16,8 +16,8 @@ const actions = [
 ].map(([id, title, file, impact]) => ({ id, title, script: `scripts/${file}`, impact }));
 const proposalId = 'b'.repeat(32);
 const slotActions = [
-  { id: 'slot-failure', title: 'Change deployment slot: Broken', script: 'scripts/trigger-broken-slot.ps1', impact: 'Customer production will return HTTP 503. The Control Center stays available.' },
-  { id: 'slot-restore', title: 'Change deployment slot: Working', script: 'scripts/rollback-broken-slot.ps1', impact: 'Customer production will return HTTP 200. Already healthy production requires no swap.' }
+  { id: 'slot-failure', title: 'Broken deployment slot', script: 'scripts/trigger-broken-slot.ps1', impact: 'Customer production will return HTTP 503. The Control Center stays available.' },
+  { id: 'slot-restore', title: 'Restore working customer slot', script: 'scripts/rollback-broken-slot.ps1', impact: 'Customer production will return HTTP 200. Already healthy production requires no swap.' }
 ];
 const dependencyActions = [
   { id: 'customer-sql-delay', title: 'Slow SQL-backed customer operations', script: 'scripts/set-customer-dependency-fault.ps1', impact: 'Fixed 3-second application-side delay. Simulated latency, not actual SQL degradation. Persists until recovery.' },
@@ -70,13 +70,14 @@ async function prepare(page, options = {}) {
 }
 
 for (const action of slotActions) {
-  test(`Change deployment slot reviews and approves the ${action.id} choice`, async ({ page }) => {
+  test(`Customer app menu reviews and approves the ${action.id} choice in a slot-only lab`, async ({ page }) => {
     const calls = await prepare(page, { slots: true });
-    const button = page.getByRole('button', { name: 'Change deployment slot', exact: true });
-    await expect(button.locator('svg[data-lucide="replace"]')).toBeVisible();
+    const button = page.getByRole('button', { name: 'Break the customer app', exact: true });
+    await expect(button.locator('svg[data-lucide="triangle-alert"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toHaveCount(0);
     await button.click();
-    await expect(page.locator('#operation-heading')).toHaveText('Change deployment slot');
-    const choice = page.getByLabel('Which slot should serve the customer app?');
+    await expect(page.locator('#operation-heading')).toHaveText('Break the customer app');
+    const choice = page.getByLabel('Application fault or recovery');
     await expect(choice).toHaveValue('');
     await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
     expect(calls.prepared).toEqual([]);
@@ -97,17 +98,29 @@ for (const action of slotActions) {
   });
 }
 
-test('Deployment slot chooser is hidden without opt-in', async ({ page }) => {
+test('Customer app menu is hidden without opt-in and the separate slot button is removed', async ({ page }) => {
   await prepare(page);
-  await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Break the customer app', exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toHaveCount(0);
 });
 
 test('Cancelling a deployment slot choice submits nothing', async ({ page }) => {
   const calls = await prepare(page, { slots: true });
-  await page.getByRole('button', { name: 'Change deployment slot', exact: true }).click();
-  await page.getByLabel('Which slot should serve the customer app?').selectOption('slot-restore');
+  await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+  await page.getByLabel('Application fault or recovery').selectOption('slot-restore');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   expect(calls.prepared).toEqual([]);
+  expect(calls.approvals).toEqual([]);
+});
+
+test('Slot-only incident recovery reviews directly without the removed slot chooser', async ({ page }) => {
+  const calls = await prepare(page, { slots: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'succeeded' } });
+  await expect(page.locator('#customer-incident-status')).toContainText('even if an agent or administrator has already restored the app');
+  await page.getByRole('button', { name: 'Restore application', exact: true }).click();
+  await expect(page.locator('#operation-heading')).toHaveText('Restore working customer slot');
+  await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+  expect(calls.prepared).toEqual([{ operation: 'slot-restore' }]);
+  await expect(page.locator('#operation-preview')).toContainText('Working (HTTP 200)');
   expect(calls.approvals).toEqual([]);
 });
 
@@ -131,11 +144,13 @@ async function review(page, operation) {
   for (const action of [slotActions[0], ...dependencyActions]) {
     test(`Application fault menu requires selection and approval for ${action.id}`, async ({ page }) => {
       const calls = await prepare(page, { dependencies: true });
-      const button = page.getByRole('button', { name: 'Break the application', exact: true });
+      const button = page.getByRole('button', { name: 'Break the customer app', exact: true });
       await expect(button.locator('svg[data-lucide="triangle-alert"]')).toBeVisible();
       await button.click();
+      await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toHaveCount(0);
       const choice = page.getByLabel('Application fault or recovery');
       await expect(choice).toHaveValue('');
+      await expect(choice.locator(`option[value="${action.id}"]`)).toHaveJSProperty('disabled', false);
       await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
       expect(calls.prepared).toEqual([]);
       await choice.selectOption(action.id);
@@ -163,15 +178,19 @@ async function review(page, operation) {
 
   test('Application menu stays hidden without customer slot opt-in', async ({ page }) => {
     await prepare(page);
-    await expect(page.getByRole('button', { name: 'Break the application', exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Break the customer app', exact: true })).toBeHidden();
   });
 
   test('Existing incident blocks stacking, restores all faults, and rejects unsafe agent links', async ({ page }) => {
     const calls = await prepare(page, { dependencies: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'failed' }, unsafeSre: true });
     await expect(page.getByRole('link', { name: 'Open SRE Agent', exact: true })).toBeHidden();
-    await page.getByRole('button', { name: 'Break the application', exact: true }).click();
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    await expect(page.locator('#operation-fault-description')).toContainText('previous exercise has no approved recovery');
+    await expect(page.locator('#operation-fault-description')).toContainText('even if the app is already healthy');
+    await expect(page.locator('#operation-fault option[value="customer-recover"]')).toHaveJSProperty('disabled', false);
     for (const id of ['slot-failure', 'customer-sql-delay', 'customer-worker-failure']) {
       await expect(page.locator(`#operation-fault option[value="${id}"]`)).toHaveJSProperty('disabled', true);
+      await expect(page.locator(`#operation-fault option[value="${id}"]`)).toContainText('restore the current exercise first');
     }
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     expect(calls.prepared).toEqual([]);
@@ -183,12 +202,16 @@ async function review(page, operation) {
     await page.getByRole('button', { name: 'Approve & Run' }).click();
     await page.getByRole('button', { name: 'Refresh operation status', exact: true }).click();
     await expect(page.locator('#customer-incident')).toBeHidden();
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    for (const id of ['slot-failure', 'customer-sql-delay', 'customer-worker-failure']) {
+      await expect(page.locator(`#operation-fault option[value="${id}"]`)).toHaveJSProperty('disabled', false);
+    }
   });
 
-  test('Working slot choice uses full dependency recovery when enabled', async ({ page }) => {
+  test('Unified customer app menu uses full dependency recovery when enabled', async ({ page }) => {
     const calls = await prepare(page, { dependencies: true });
-    await page.getByRole('button', { name: 'Change deployment slot', exact: true }).click();
-    await page.getByLabel('Which slot should serve the customer app?').selectOption('customer-recover');
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    await page.getByLabel('Application fault or recovery').selectOption('customer-recover');
     await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
     expect(calls.prepared).toEqual([{ operation: 'customer-recover' }]);
   });
@@ -199,7 +222,7 @@ async function review(page, operation) {
       await prepare(page, { dependencies: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'succeeded' } });
       await expect(page.getByLabel('Symptom-only troubleshooting prompt')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      await page.getByRole('button', { name: 'Break the application', exact: true }).click();
+      await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
       await expect(page.getByLabel('Application fault or recovery')).toBeVisible();
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     });
@@ -399,9 +422,9 @@ for (const width of [1440, 390, 320]) {
     await review(page, 'cpu');
     await page.screenshot({ path: testInfo.outputPath(`lab-operation-review-${width}.png`), fullPage: true });
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await page.getByRole('button', { name: 'Change deployment slot', exact: true }).click();
-    await expect(page.getByLabel('Which slot should serve the customer app?')).toBeVisible();
-    await page.getByLabel('Which slot should serve the customer app?').selectOption('slot-restore');
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    await expect(page.getByLabel('Application fault or recovery')).toBeVisible();
+    await page.getByLabel('Application fault or recovery').selectOption('slot-restore');
     await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
     await expect(page.locator('#operation-preview')).toContainText('Working (HTTP 200)');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

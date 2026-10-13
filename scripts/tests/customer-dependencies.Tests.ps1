@@ -149,7 +149,7 @@ foreach ($entry in @('main','stages\40-optional-advanced','customer-application'
   }
 }
 $bootstrap = Get-CustomerSqlBootstrap -CustomerClientId '11111111-2222-3333-4444-555555555555' -WorkerClientId '66666666-7777-8888-9999-aaaaaaaaaaaa'
-foreach ($required in @('nvarchar(64)','nvarchar(128)','decimal(10,2)','uniqueidentifier','CreatedUtc datetime2','CompletedUtc datetime2 NULL',"'Pending'","'Queued'","'Completed'",'WITH SID=0x','TYPE=E','GRANT SELECT ON OBJECT::dbo.Products','GRANT SELECT, INSERT, UPDATE ON OBJECT::dbo.Orders','GRANT SELECT, UPDATE ON OBJECT::dbo.Orders')) {
+foreach ($required in @('nvarchar(64)','nvarchar(128)','decimal(10,2)','uniqueidentifier','CreatedUtc datetime2','CompletedUtc datetime2 NULL',"'Pending'","'Queued'","'Completed'","'Failed'",'ALTER TABLE dbo.Orders DROP CONSTRAINT CK_Orders_Status','WITH SID=0x','TYPE=E','GRANT SELECT ON OBJECT::dbo.Products','GRANT SELECT, INSERT, UPDATE ON OBJECT::dbo.Orders','GRANT SELECT, UPDATE ON OBJECT::dbo.Orders')) {
   Assert-True ($bootstrap.Contains($required)) "Bootstrap schema/grant mismatch: $required"
 }
 Assert-True ($bootstrap -notmatch 'db_owner|db_datawriter|FROM EXTERNAL PROVIDER' -and $bootstrap -match 'IF DATABASE_PRINCIPAL_ID' -and $bootstrap -match 'MERGE dbo.Products') 'Bootstrap must be idempotent and use explicit SID users/object grants without Graph.'

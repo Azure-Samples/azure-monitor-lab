@@ -7,6 +7,9 @@ param namePrefix string
 @description('Application Insights component resource ID.')
 param appInsightsId string
 
+@description('Customer Application Insights component resource ID.')
+param customerAppInsightsId string
+
 @description('Resource tags.')
 param tags object = {}
 
@@ -64,9 +67,9 @@ resource usageWorkbook 'Microsoft.Insights/workbooks@2023-06-01' = {
   tags: tags
   properties: {
     displayName: 'Application Insights — Customer Usage Journey'
-    serializedData: replace(loadTextContent('appinsights-usage-workbook.json'), '__APPINSIGHTS_ID__', appInsightsId)
+    serializedData: replace(loadTextContent('appinsights-usage-workbook.json'), '__APPINSIGHTS_ID__', customerAppInsightsId)
     category: 'workbook'
-    sourceId: toLower(appInsightsId)
+    sourceId: toLower(customerAppInsightsId)
     version: '1.0'
   }
 }

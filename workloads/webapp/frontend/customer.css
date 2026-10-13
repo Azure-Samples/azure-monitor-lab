@@ -55,6 +55,7 @@ h2 { font-size: clamp(1.8rem, 4vw, 3rem); }
 .summary-row { display: flex; justify-content: space-between; gap: 1rem; }
 .meta { color: #5d6d7c; font-size: .88rem; }
 .status { min-height: 1.5rem; color: #36546e; }
+.status.error { color: #b42318; font-weight: 700; }
 .identity {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

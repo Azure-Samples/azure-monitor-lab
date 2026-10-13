@@ -62,8 +62,14 @@ IF OBJECT_ID(N'dbo.Products', N'U') IS NULL
   CREATE TABLE dbo.Products (Id nvarchar(64) NOT NULL PRIMARY KEY, Name nvarchar(128) NOT NULL, Price decimal(10,2) NOT NULL);
 IF OBJECT_ID(N'dbo.Orders', N'U') IS NULL
   CREATE TABLE dbo.Orders (Id uniqueidentifier NOT NULL PRIMARY KEY, ProductId nvarchar(64) NOT NULL REFERENCES dbo.Products(Id),
-    Status nvarchar(32) NOT NULL CONSTRAINT CK_Orders_Status CHECK (Status IN (N'Pending',N'Queued',N'Completed')),
+    Status nvarchar(32) NOT NULL CONSTRAINT CK_Orders_Status CHECK (Status IN (N'Pending',N'Queued',N'Completed',N'Failed')),
     CreatedUtc datetime2 NOT NULL, CompletedUtc datetime2 NULL);
+IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.Orders') AND name=N'CK_Orders_Status'
+    AND definition NOT LIKE N'%Failed%')
+BEGIN
+  ALTER TABLE dbo.Orders DROP CONSTRAINT CK_Orders_Status;
+  ALTER TABLE dbo.Orders ADD CONSTRAINT CK_Orders_Status CHECK (Status IN (N'Pending',N'Queued',N'Completed',N'Failed'));
+END;
 MERGE dbo.Products WITH (HOLDLOCK) AS target
 USING (VALUES (N'monitoring-starter',N'Monitoring Starter',CAST(49 AS decimal(10,2))),
   (N'agent-operations',N'Agent Operations',CAST(89 AS decimal(10,2))),

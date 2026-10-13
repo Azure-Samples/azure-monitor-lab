@@ -283,13 +283,13 @@
     },
     {
       "type": 1,
-      "content": { "json": "**Cached-input token ratio:** percent of measured input served from prompt cache. Apply the actual model's cached-input rate to calculate savings." },
+      "content": { "json": "**Cached-input token ratio:** percent of measured input served from prompt cache, with estimated realized savings by agent. The estimate uses the 12 October 2026 Global Standard gpt-5-mini list prices of $0.25 regular input and $0.025 cached input per 1M tokens. Approximate USD list-price estimate, not invoice data." },
       "customWidth": "50",
       "name": "desc-cached"
     },
     {
       "type": 1,
-      "content": { "json": "**Routed model distribution:** which model the router picked and its measured token volume. Price each routed model separately." },
+      "content": { "json": "**Routed model distribution:** which model the router picked, measured token volume, and estimated realized savings versus sending the same tokens directly to gpt-5-mini. The estimate uses the 12 October 2026 Global Standard list prices: gpt-5-mini at $0.25 input / $2.00 output and Model Router at $0.14 input / $0 output per 1M tokens. Approximate USD list-price estimate, not invoice data." },
       "customWidth": "50",
       "name": "desc-router"
     },
@@ -297,7 +297,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=toint(customDimensions['gen_ai.usage.input_tokens']), cached=toint(customDimensions['gen_ai.usage.cached_input_tokens']), agent=tostring(customDimensions['gen_ai.agent.name']) | summarize input=sum(inTok), cached=sum(coalesce(cached,0)) by agent | extend cached_pct=round(100.0*todouble(cached)/iff(input>0,input,1),1) | project agent, input, cached, cached_pct | order by cached_pct asc",
+        "query": "dependencies | where isnotempty(tostring(customDimensions['gen_ai.agent.name'])) | extend inTok=coalesce(tolong(customDimensions['gen_ai.usage.input_tokens']),0), cachedRaw=coalesce(tolong(customDimensions['gen_ai.usage.cached_input_tokens']),0), agent=tostring(customDimensions['gen_ai.agent.name']) | extend cachedTok=min_of(inTok,max_of(cachedRaw,0)) | summarize input=sum(inTok), cached=sum(cachedTok) by agent | extend cached_pct=round(100.0*todouble(cached)/iff(input>0,input,1),1), baseline_cost_usd=input*0.25/1000000.0, estimated_savings_usd=cached*(0.25-0.025)/1000000.0 | extend estimated_savings_pct=round(100.0*estimated_savings_usd/iff(baseline_cost_usd>0,baseline_cost_usd,1.0),1) | project agent, input, cached, cached_pct, estimated_savings_usd=round(estimated_savings_usd,4), estimated_savings_pct | order by cached_pct asc",
         "size": 0,
         "title": "Cached-input token ratio by agent",
         "timeContext": { "durationMs": 86400000 },
@@ -316,7 +316,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "dependencies | where tostring(customDimensions['gen_ai.request.model'])=='model-router' | extend routed=tostring(customDimensions['gen_ai.response.model']), inTok=toint(customDimensions['gen_ai.usage.input_tokens']), outTok=toint(customDimensions['gen_ai.usage.output_tokens']) | summarize calls=count(), input=sum(inTok), output=sum(outTok) by routed | as T | extend pct_calls=round(100.0*calls/toscalar(T|summarize sum(calls)),1) | project routed, calls, pct_calls, input, output | order by calls desc",
+        "query": "dependencies | where tostring(customDimensions['gen_ai.request.model'])=='model-router' | extend routed=tostring(customDimensions['gen_ai.response.model']), inTok=coalesce(tolong(customDimensions['gen_ai.usage.input_tokens']),0), outTok=coalesce(tolong(customDimensions['gen_ai.usage.output_tokens']),0) | summarize calls=count(), input=sum(inTok), output=sum(outTok) by routed | as T | extend pct_calls=round(100.0*calls/toscalar(T|summarize sum(calls)),1), baseline_cost_usd=(input*0.25+output*2.00)/1000000.0, estimated_savings_usd=(input*(0.25-0.14)+output*(2.00-0.00))/1000000.0 | extend estimated_savings_pct=round(100.0*estimated_savings_usd/iff(baseline_cost_usd>0,baseline_cost_usd,1.0),1) | project routed, calls, pct_calls, input, output, estimated_savings_usd=round(estimated_savings_usd,4), estimated_savings_pct | order by calls desc",
         "size": 0,
         "title": "Model router - routed model distribution",
         "timeContext": { "durationMs": 86400000 },

@@ -1,5 +1,6 @@
 import { chromium } from '@playwright/test';
 import { customerPurchaseOutcome } from '../../../scripts/customer-journey-outcome.mjs';
+import { createRequestPacer, fetchWithRateLimit, isCustomerApiUrl } from './usage-traffic-pacing.mjs';
 
 function option(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);
@@ -23,6 +24,7 @@ const pause = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 const browser = await chromium.launch({ headless: !headed });
 const results = [];
 let next = 0;
+const paceCustomerRequest = createRequestPacer();
 
 function profile(index, repeat = false) {
   const segments = ['new', 'returning', 'premium'];
@@ -48,6 +50,18 @@ async function click(page, selector) {
 async function runJourney(data) {
   const context = await browser.newContext();
   const page = await context.newPage();
+  await page.route(url => isCustomerApiUrl(url, baseUrl), async route => {
+    const response = await fetchWithRateLimit(route, {
+      pace: paceCustomerRequest,
+      onRetry: ({ attempt, delay }) =>
+        console.warn(`${data.user}: customer API throttled; retry ${attempt} in ${delay} ms`)
+    });
+    try {
+      await route.fulfill({ response });
+    } finally {
+      await response.dispose();
+    }
+  });
   const url = new URL('/customer/', baseUrl);
   url.search = new URLSearchParams({
     user: data.user,
@@ -85,6 +99,7 @@ async function runJourney(data) {
     return { ...data, status: 'declined' };
   } finally {
     await pause(500);
+    await page.unrouteAll({ behavior: 'wait' });
     await context.close();
   }
 }

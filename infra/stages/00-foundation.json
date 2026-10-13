@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "15534389522963930519"
+      "templateHash": "3416173681797789239"
     }
   },
   "parameters": {
@@ -52,6 +52,13 @@
       "metadata": {
         "description": "Secondary region for LAW replication."
       }
+    },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable the isolated customer Web App slot-recovery scenario and its dedicated Application Insights component."
+      }
     }
   },
   "variables": {
@@ -59,6 +66,7 @@
     "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "lawAppInsightsName": "[format('law-{0}-appinsights-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
+    "customerAppInsightsName": "[format('{0}-customer', variables('appInsightsName'))]",
     "amwName": "[format('amw-{0}', parameters('namePrefix'))]",
     "vnetName": "[format('vnet-{0}', parameters('namePrefix'))]",
     "nsgName": "[format('nsg-{0}', parameters('namePrefix'))]",
@@ -552,6 +560,112 @@
       ]
     },
     {
+      "condition": "[parameters('enableSlotFailureScenario')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "appi-customer",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('customerAppInsightsName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "workspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
+          },
+          "tags": {
+            "value": "[union(variables('commonTags'), createObject('amlab-component', 'customer-web-app'))]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "4105218306251594533"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights resource name."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region."
+              }
+            },
+            "workspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace that backs this App Insights."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[parameters('workspaceId')]",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/components', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "appId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('name')), '2020-02-02').AppId]"
+            },
+            "instrumentationKey": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('name')), '2020-02-02').InstrumentationKey]"
+            },
+            "connectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('name')), '2020-02-02').ConnectionString]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'law-appinsights')]"
+      ]
+    },
+    {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
       "name": "appinsights-observability",
@@ -570,6 +684,7 @@
           "appInsightsId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
           },
+          "customerAppInsightsId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2022-09-01').outputs.id.value), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -581,7 +696,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "28355588231161498"
+              "templateHash": "1997488875373789307"
             }
           },
           "parameters": {
@@ -601,6 +716,12 @@
               "type": "string",
               "metadata": {
                 "description": "Application Insights component resource ID."
+              }
+            },
+            "customerAppInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Customer Application Insights component resource ID."
               }
             },
             "tags": {
@@ -734,9 +855,9 @@
               "tags": "[parameters('tags')]",
               "properties": {
                 "displayName": "Application Insights — Customer Usage Journey",
-                "serializedData": "[replace(variables('$fxv#11'), '__APPINSIGHTS_ID__', parameters('appInsightsId'))]",
+                "serializedData": "[replace(variables('$fxv#11'), '__APPINSIGHTS_ID__', parameters('customerAppInsightsId'))]",
                 "category": "workbook",
-                "sourceId": "[toLower(parameters('appInsightsId'))]",
+                "sourceId": "[toLower(parameters('customerAppInsightsId'))]",
                 "version": "1.0"
               }
             }
@@ -758,7 +879,8 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'appi')]"
+        "[resourceId('Microsoft.Resources/deployments', 'appi')]",
+        "[resourceId('Microsoft.Resources/deployments', 'appi-customer')]"
       ]
     },
     {
@@ -2678,5 +2800,15 @@
         "[resourceId('Microsoft.Resources/deployments', 'law-central')]"
       ]
     }
-  ]
+  ],
+  "outputs": {
+    "customerAppInsightsName": {
+      "type": "string",
+      "value": "[if(parameters('enableSlotFailureScenario'), variables('customerAppInsightsName'), '')]"
+    },
+    "customerAppInsightsId": {
+      "type": "string",
+      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2022-09-01').outputs.id.value, '')]"
+    }
+  }
 }

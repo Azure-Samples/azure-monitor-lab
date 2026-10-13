@@ -288,9 +288,13 @@ try {
     $null = Invoke-ReadOnlyPreflight -Phase $runnerPhase -Action {
       $status = Get-LabWebAppHealthStatus -HostName $apps[0].defaultHostName
       if ($status -ne 200) { throw 'Recovered customer app does not return HTTP 200.' }
-      $products = @(Invoke-RestMethod -Uri "https://$($apps[0].defaultHostName)/api/customer/products" -MaximumRedirection 0 -TimeoutSec 60)
-      if ($products.Count -ne 3) { throw 'Recovered SQL catalogue does not contain the expected three products.' }
+      $products = Invoke-RestMethod -Uri "https://$($apps[0].defaultHostName)/api/customer/products" -MaximumRedirection 0 -TimeoutSec 60
+      if ($products -isnot [array] -or $products.Count -ne 3) {
+        Write-Information 'Customer recovery verification requires a JSON array containing exactly three SQL catalogue products.' -InformationAction Continue
+        throw 'Recovered SQL catalogue does not contain the expected three products.'
+      }
     }
+    Write-Output 'Customer recovery verified: HTTP 200 and three SQL catalogue products.'
   }
   Write-Output "Approved action '$Operation' completed. Azure state and telemetry can take time to settle."
   Write-RunnerPhase -Phase $runnerPhase -State succeeded

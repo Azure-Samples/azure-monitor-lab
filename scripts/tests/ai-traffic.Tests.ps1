@@ -25,7 +25,8 @@ function az {
   $global:LASTEXITCODE = 0
   switch ($args[0..1] -join ' ') {
     'account set' {
-      if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Wrong AI setup subscription.' }
+      $subscriptionArgument = $args[[Array]::IndexOf($args, '--subscription') + 1]
+      if ($subscriptionArgument -isnot [string] -or $subscriptionArgument -ne $fixture.Subscription.ToString()) { throw 'Wrong AI setup subscription.' }
     }
     'account show' {
       $subscription = if ($fixture.InvalidAccount -eq 'subscription') { [guid]::NewGuid() } else { $fixture.Subscription }
@@ -60,8 +61,15 @@ function Invoke-TestPython {
 }
 
 try {
+  @{ expectedSubscriptionId = $fixture.Subscription; expectedTenantId = $fixture.Tenant } | ConvertTo-Json | Set-Content (Join-Path $root '.azure-target.json')
+  $fixture.Events.Clear()
+  & (Join-Path $scriptDirectory 'setup-ai.ps1') --subscription $fixture.Subscription -g test-rg -NamePrefix amlab `
+    -ProjectEndpoint $fixture.Endpoint -AppInsightsConnectionString test-telemetry -SkipTraffic | Out-Null
+  if (($fixture.Events -join ',') -ne 'dependencies,create_agents') {
+    throw 'GNU-style --subscription must bind without shifting positional parameters.'
+  }
   $parameters = @{
-    SubscriptionId = $fixture.Subscription; TenantId = $fixture.Tenant; ResourceGroup = 'test-rg'; NamePrefix = 'amlab'
+    subscription = $fixture.Subscription; ResourceGroup = 'test-rg'; NamePrefix = 'amlab'
     ProjectEndpoint = 'https://example.services.ai.azure.com/api/projects/test'; AppInsightsConnectionString = 'test-telemetry'
   }
   foreach ($mode in @(@{}, @{ SkipTraffic = $true }, @{ BackgroundTraffic = $true }, @{ BackgroundTraffic = $false })) {

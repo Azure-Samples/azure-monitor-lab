@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "10269134428033811841"
+      "templateHash": "4201385915273354624"
     }
   },
   "parameters": {
@@ -137,6 +137,7 @@
     "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "lawAppInsightsName": "[format('law-{0}-appinsights-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
+    "customerAppInsightsName": "[format('{0}-customer', variables('appInsightsName'))]",
     "amwName": "[format('amw-{0}', parameters('namePrefix'))]",
     "grafanaName": "[format('amg-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 4))]",
     "vnetName": "[format('vnet-{0}', parameters('namePrefix'))]",
@@ -27760,10 +27761,10 @@
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.planId.value]"
           },
           "appInsightsConnectionString": {
-            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+            "value": "[reference(resourceId('Microsoft.Insights/components', variables('customerAppInsightsName')), '2020-02-02').ConnectionString]"
           },
           "appInsightsInstrumentationKey": {
-            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]"
+            "value": "[reference(resourceId('Microsoft.Insights/components', variables('customerAppInsightsName')), '2020-02-02').InstrumentationKey]"
           },
           "centralLawId": {
             "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('lawCentralName'))]"
@@ -57638,6 +57639,10 @@
     "customerWebAppDefaultHost": {
       "type": "string",
       "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.defaultHost.value, '')]"
+    },
+    "customerAppInsightsName": {
+      "type": "string",
+      "value": "[if(parameters('enableSlotFailureScenario'), variables('customerAppInsightsName'), '')]"
     },
     "customerDependencies": {
       "type": "object",

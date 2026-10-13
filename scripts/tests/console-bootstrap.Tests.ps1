@@ -99,7 +99,7 @@ if ($bootstrapScript -notmatch "'scripts/slot-health\.ps1'" -or
   throw 'The runner build must package the shared slot health verifier.'
 }
 foreach ($directory in @('workloads/k8s', 'workloads/operations', 'workloads/webapp/scripts', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
-foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
+foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/webapp/scripts/usage-traffic-pacing.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
 }
 $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Raw
@@ -216,6 +216,7 @@ function az {
       if ($fixture.WithAi) {
         $resources += @{ type = 'Microsoft.CognitiveServices/accounts/projects'; id = "$scope/providers/Microsoft.CognitiveServices/accounts/testfoundry/projects/amlab-ai-proj" }
         $resources += @{ type = 'Microsoft.Insights/components'; id = "$scope/providers/Microsoft.Insights/components/appi-test" }
+        $resources += @{ type = 'Microsoft.Insights/components'; id = "$scope/providers/Microsoft.Insights/components/appi-test-customer"; tags = @{ 'amlab-component' = 'customer-web-app' } }
       }
       return ConvertTo-Json -InputObject $resources
     }
@@ -225,7 +226,7 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 22 -or
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 23 -or
           -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/slot-health.ps1')) -or
@@ -235,6 +236,7 @@ function az {
           -not (Test-Path (Join-Path $build 'scripts/customer-dependency-helpers.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/generate-usage-traffic.ps1')) -or
           -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/generate-usage-traffic.mjs')) -or
+          -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/usage-traffic-pacing.mjs')) -or
           -not (Test-Path (Join-Path $build 'scripts/customer-journey-outcome.mjs'))) {
         throw 'Unexpected runner build context or missing operation script.'
       }

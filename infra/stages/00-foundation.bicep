@@ -20,10 +20,14 @@ param enableLawReplication bool = false
 @description('Secondary region for LAW replication.')
 param lawReplicationLocation string = ''
 
+@description('Enable the isolated customer Web App slot-recovery scenario and its dedicated Application Insights component.')
+param enableSlotFailureScenario bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
 var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
+var customerAppInsightsName = '${appInsightsName}-customer'
 var amwName = 'amw-${namePrefix}'
 var vnetName = 'vnet-${namePrefix}'
 var nsgName = 'nsg-${namePrefix}'
@@ -84,12 +88,23 @@ module appInsights '../modules/appinsights.bicep' = {
   }
 }
 
+module customerAppInsights '../modules/appinsights.bicep' = if (enableSlotFailureScenario) {
+  name: 'appi-customer'
+  params: {
+    name: customerAppInsightsName
+    location: location
+    workspaceId: lawAppInsights.outputs.id
+    tags: union(commonTags, { 'amlab-component': 'customer-web-app' })
+  }
+}
+
 module appInsightsObservability '../modules/appinsights-observability.bicep' = {
   name: 'appinsights-observability'
   params: {
     location: location
     namePrefix: namePrefix
     appInsightsId: appInsights.outputs.id
+    customerAppInsightsId: enableSlotFailureScenario ? customerAppInsights!.outputs.id : appInsights.outputs.id
     tags: commonTags
   }
 }
@@ -271,3 +286,6 @@ module costWorkbook '../modules/cost-workbook.bicep' = {
     tags: commonTags
   }
 }
+
+output customerAppInsightsName string = enableSlotFailureScenario ? customerAppInsightsName : ''
+output customerAppInsightsId string = enableSlotFailureScenario ? customerAppInsights!.outputs.id : ''

@@ -33,7 +33,6 @@ export function initializeLabOperations({ refreshIcons }) {
     const blocked = !available || pending || runs.some(run => !terminal(run));
     document.querySelectorAll('[data-operation]').forEach(button => {
       const configured = actions.some(action => action.id === button.dataset.operation);
-      if (button.dataset.operation === 'slot-failure') button.hidden = !configured;
       button.disabled = blocked || !configured;
     });
     byId('customer-fault-menu').hidden = !actions.some(action => faultIds.includes(action.id));
@@ -42,7 +41,6 @@ export function initializeLabOperations({ refreshIcons }) {
     byId('operations-connect').disabled = pending || dialog.open;
     byId('operations-refresh').disabled = pending || !available || !runs.some(run => !terminal(run));
     byId('operation-review').disabled = pending;
-    byId('operation-slot').disabled = pending || !isSlotOperation(selected?.id);
     byId('operation-fault').disabled = pending || !faultMenu;
     byId('operation-approve').disabled = pending || approvalSent || !proposal || Date.now() >= Date.parse(proposal.expiresAt)
       || !byId('operation-consent').checked || byId('operation-target-confirm').value.trim().toLowerCase() !== proposal.target.resourceGroup.toLowerCase();
@@ -80,7 +78,7 @@ export function initializeLabOperations({ refreshIcons }) {
     if (!customerIncident) return;
     const date = new Date(customerIncident.submittedAt);
     const started = Number.isFinite(date.getTime()) ? date.toISOString() : 'Unknown: establish onset from Activity Logs';
-    byId('customer-incident-status').textContent = `Exercise requested at ${started}. Dispatch time is not confirmed symptom onset. Check the run outcome and observe the customer app; the fault may persist until approved recovery.`;
+    byId('customer-incident-status').textContent = `Exercise requested at ${started}. Dispatch time is not confirmed symptom onset. New faults are locked until approved recovery succeeds, even if an agent or administrator has already restored the app. Select Restore application to verify recovery and unlock the menu.`;
     byId('customer-incident-prompt').value = `Investigate the customer application incident without making changes.
 Subscription: ${target?.subscriptionId || 'Resolve from Azure inventory'}
 Resource group: ${target?.resourceGroup || 'Resolve from Azure inventory'}
@@ -196,29 +194,26 @@ Use the Azure SRE Agent MCP when available. Rank evidence-backed root-cause hypo
     faultMenu = menu;
     proposal = null;
     approvalSent = false;
-    const slotOperation = isSlotOperation(selected.id);
-    byId('operation-heading').textContent = menu ? 'Break the application' : slotOperation ? 'Change deployment slot' : selected.title;
+    byId('operation-heading').textContent = menu ? 'Break the customer app' : selected.title;
     byId('operation-impact').textContent = menu ? 'Choose one reversible customer application exercise or recovery. Review its impact and approve the exact target before any Azure changes. No traffic or orders are generated automatically.'
-      : slotOperation ? 'Choose the broken or working slot for the customer app, then review and approve the exact operation. The Control Center stays available.' : selected.impact;
+      : selected.impact;
     byId('operation-prepare-form').reset();
     byId('operation-approve-form').reset();
-    byId('operation-slot-field').hidden = menu || !slotOperation;
-    byId('operation-slot').required = !menu && slotOperation;
-    byId('operation-slot').options[2].value = recoveryId();
-    for (const option of byId('operation-slot').options) option.disabled = !!option.value
-      && (!actions.some(action => action.id === option.value) || (customerIncident && faultIds.includes(option.value)));
     byId('operation-fault-field').hidden = !menu;
     byId('operation-fault').required = menu;
     byId('operation-fault').replaceChildren(element('option', 'Choose a reversible exercise'));
     byId('operation-fault').options[0].value = '';
     for (const action of actions.filter(action => faultIds.includes(action.id) || action.id === recoveryId())) {
-      const option = element('option', action.title);
+      const locked = !!customerIncident && faultIds.includes(action.id);
+      const option = element('option', `${action.title}${locked ? ' (restore the current exercise first)' : ''}`);
       option.value = action.id;
-      option.disabled = !!customerIncident && faultIds.includes(action.id);
+      option.disabled = locked;
       byId('operation-fault').append(option);
     }
     byId('operation-fault-description').hidden = !menu;
-    byId('operation-fault-description').textContent = customerIncident ? 'Recover the current exercise before injecting another fault.' : 'Faults persist until recovery; customer data and dead-lettered orders are not automatically reset.';
+    byId('operation-fault-description').textContent = customerIncident
+      ? `New faults are disabled because a previous exercise has no approved recovery. Choose ${actions.find(action => action.id === recoveryId())?.title} and approve it to verify recovery and unlock the choices, even if the app is already healthy.`
+      : 'Faults persist until recovery; customer data and dead-lettered orders are not automatically reset.';
     const counted = selected.id === 'logs' || selected.id === 'usage';
     byId('operation-count-field').hidden = !counted;
     byId('operation-count-label').textContent = selected.id === 'usage' ? 'Synthetic users' : 'Event count';
@@ -263,7 +258,7 @@ Use the Azure SRE Agent MCP when available. Rank evidence-backed root-cause hypo
     pending = true;
     controls();
     try {
-      const operation = faultMenu ? byId('operation-fault').value : isSlotOperation(selected.id) ? byId('operation-slot').value : selected.id;
+      const operation = faultMenu ? byId('operation-fault').value : selected.id;
       if (!ids.has(operation) || !actions.some(action => action.id === operation)) throw new Error('Choose an available operation.');
       const body = { operation };
       if (selected.id === 'logs' || selected.id === 'usage') body.count = Number(byId('operation-count').value);

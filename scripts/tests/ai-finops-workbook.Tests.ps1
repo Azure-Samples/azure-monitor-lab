@@ -33,9 +33,37 @@ foreach ($name in $expectedDefaults.Keys) {
   }
 }
 
+$standaloneSavingsItems = @($workbook.items | Where-Object name -in @(
+  'hdr-optimization-savings',
+  'optimization-savings-parameters',
+  'desc-optimization-savings',
+  'optimization-savings-estimate'
+))
+if ($standaloneSavingsItems.Count -ne 0) {
+  throw 'The AI FinOps workbook must not contain a separate optimization savings section.'
+}
+
+$savingsTables = @{
+  'cached-ratio' = '\|\s*project\s+agent,\s*input,\s*cached,\s*cached_pct,\s*estimated_savings_usd=round\(estimated_savings_usd,4\),\s*estimated_savings_pct'
+  'model-router-distribution' = '\|\s*project\s+routed,\s*calls,\s*pct_calls,\s*input,\s*output,\s*estimated_savings_usd=round\(estimated_savings_usd,4\),\s*estimated_savings_pct'
+}
+foreach ($name in $savingsTables.Keys) {
+  $item = @($workbook.items | Where-Object name -eq $name)
+  if ($item.Count -ne 1 -or $item[0].content.query -notmatch $savingsTables[$name]) {
+    throw "The $name table must expose the estimated_savings_usd and estimated_savings_pct columns."
+  }
+}
+
+foreach ($name in @('desc-cached', 'desc-router')) {
+  $description = @($workbook.items | Where-Object name -eq $name)[0].content.json
+  if ($description -notmatch '12 October 2026' -or $description -notmatch 'not invoice data') {
+    throw "The $name description must state the estimate date and warn that it is not invoice data."
+  }
+}
+
 $header = @($workbook.items | Where-Object name -eq 'hdr-ptu')[0].content.json
 if ($header -notmatch 'illustrative assumptions' -or $header -notmatch 'not current Azure prices') {
   throw 'The PTU section must warn that its populated defaults are illustrative rather than current prices.'
 }
 
-Write-Output 'PASS: the AI FinOps PTU query and illustrative out-of-box defaults are valid and clearly labeled.'
+Write-Output 'PASS: the AI FinOps PTU estimate and inline caching/routing savings columns are valid and clearly labeled.'

@@ -6,7 +6,7 @@ Start with the [Control Center guide](../../docs/LAB-CONTROL-CENTER.md) for the 
 
 ## Customer Usage Journey
 
-`/customer/` is a separate customer-facing experience hosted by the same App Service and exported to the same Application Insights component. It keeps operator activity out of the product funnel while preserving browser-to-server W3C correlation. The six-step journey emits page views and business events for home, catalog, product selection, cart, checkout, and purchase completion, with optional support-agent detours and deterministic payment decline.
+`/customer/` is a separate customer-facing experience hosted by the dedicated customer App Service and exported to `appi-<prefix>-<suffix>-customer`. That workspace-based Application Insights component shares the lab's existing App Insights Log Analytics workspace but gives customer Live Metrics, requests, dependencies, failures, Transaction Search, and usage views their own resource scope. It keeps operator activity out of the product funnel while preserving browser-to-server W3C correlation. The six-step journey emits page views and business events for home, catalog, product selection, cart, checkout, and purchase completion, with optional support-agent detours and deterministic payment decline.
 
 All users, sessions, products, orders, segments, and A/B variants are synthetic. The browser calls `setAuthenticatedUserContext` with a validated `demo-user-*` identifier so the native Users experience can correlate repeat browser contexts without recording a real identity. Prompt/completion content, request/response headers, and payment details are not collected.
 

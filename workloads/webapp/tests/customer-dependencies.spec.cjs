@@ -30,9 +30,27 @@ test('SQL catalogue and queued orders require processor completion before confir
   await expect(page.getByRole('heading', { name: 'Order accepted' })).toBeVisible();
   await expect(page.locator('#confirmation-order')).toHaveText(order.id);
   await expect(page.locator('#confirmation-detail')).toContainText('not fulfilment');
-  await page.getByRole('button', { name: 'Refresh order status' }).click();
   await expect(page.getByRole('heading', { name: 'Order confirmed' })).toBeVisible();
   await expect(page.locator('#order-status')).toHaveText('Processing state: Completed');
+});
+
+test('terminal processor failure becomes a visible customer error', async ({ page }) => {
+  await realBackend(page);
+  let order;
+  let lookups = 0;
+  await page.route('**/api/customer/orders', route => {
+    order = route.request().postDataJSON();
+    route.fulfill({ status: 202, json: { ...order, status: 'Queued' } });
+  });
+  await page.route('**/api/customer/orders/*', route => {
+    lookups++;
+    route.fulfill({ json: { ...order, status: lookups < 2 ? 'Queued' : 'Failed' } });
+  });
+  await checkout(page);
+  await expect(page.getByRole('heading', { name: 'Order processing failed' })).toBeVisible();
+  await expect(page.locator('#confirmation-detail')).toContainText('failed all processing attempts');
+  await expect(page.locator('#order-status')).toHaveText('Processing state: Failed');
+  await expect(page.locator('#order-status')).toHaveClass(/error/);
 });
 
 test('failed dispatch retries the same order ID and never claims success', async ({ page }) => {
