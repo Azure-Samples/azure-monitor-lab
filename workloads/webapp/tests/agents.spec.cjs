@@ -20,6 +20,9 @@ async function approve(page) {
 test('agent API rejects unsafe requests, enforces consent and size, defaults off, and limits requests', async ({ request }) => {
   const data = { agent: 'triage', prompt: 'Test task', consent: true };
   const headers = { 'X-Amlab-Agent-Request': 'true' };
+  for (let index = 0; index < 7; index++) {
+    expect((await request.get('/api/agent-task-availability')).status()).toBe(200);
+  }
   expect((await request.post('/api/agents/run', { data })).status()).toBe(403);
   expect((await request.post('/api/agents/run', { data, headers: { ...headers, Host: 'attacker.example' } })).status()).toBe(401);
   expect((await request.post('/api/agents/run', { data, headers: { ...headers, Origin: 'https://attacker.example' } })).status()).toBe(403);

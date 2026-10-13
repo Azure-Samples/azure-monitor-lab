@@ -99,6 +99,12 @@ builder.Services.AddRateLimiter(options =>
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("agent-task-reads", limiter =>
+    {
+        limiter.PermitLimit = 30;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
     options.AddFixedWindowLimiter("customer-journey", limiter =>
     {
         limiter.PermitLimit = 60;
@@ -248,7 +254,7 @@ app.MapGet("/api/slot-warmup", () => Results.Json(new
 }));
 app.MapGet("/api/agent-task-availability", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
     scenarios.RunAvailabilityAsync(cancellationToken))
-    .RequireRateLimiting("agent-tasks");
+    .RequireRateLimiting("agent-task-reads");
 app.MapPost("/api/customer/support", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
     scenarios.RunAvailabilityAsync(cancellationToken))
     .RequireRateLimiting("customer-journey");
