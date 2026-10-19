@@ -8,10 +8,10 @@
 
 | Group | Resource(s) | Purpose |
 |---|---|---|
-| Linux VM | `vm-amlab-lin` (Standard_B2s) + NIC, public IP, OS disk + `shutdown-computevm-vm-amlab-lin` schedule | AMA-equipped and attached to `dcr-amlab-vminsights`. Automatically shuts down at 23:00 CET/CEST. The Linux Dependency Agent is not deployed, so Service Map is unavailable on this VM. |
-| Windows VM | `vmwin<suffix>` (Standard_B2s) + NIC, public IP, OS disk + `shutdown-computevm-vmwin<suffix>` schedule | AMA and Dependency Agent equipped, attached to `dcr-amlab-vminsights`, and automatically shut down at 23:00 CET/CEST. |
+| Linux VM | `vm-amlab-lin` (`vmSize`) + NIC, public IP, OS disk + `shutdown-computevm-vm-amlab-lin` schedule | AMA-equipped and attached to `dcr-amlab-vminsights`. Automatically shuts down at 23:00 CET/CEST. The Linux Dependency Agent is not deployed, so Service Map is unavailable on this VM. |
+| Windows VM | `vmwin<suffix>` (`vmSize`) + NIC, public IP, OS disk + `shutdown-computevm-vmwin<suffix>` schedule | AMA and Dependency Agent equipped, attached to `dcr-amlab-vminsights`, and automatically shut down at 23:00 CET/CEST. |
 | VM OpenTelemetry metrics | `dcr-<prefix>-vm-otel` + `vm-otel-metrics-association` on each enabled standalone VM | On by default. Adds system metrics to the existing `amw-<prefix>`; keeps classic VM Insights and its associations unchanged. No VMSS association. |
-| AKS cluster | `aks-amlab` (1× Standard_B2s system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
+| AKS cluster | `aks-amlab` (1 configured `aksNodeVmSize` system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
 | Managed Grafana | `amg-amlab-<suffix>` | Connected to `amw-amlab`. Default Azure dashboards (Node Exporter, Kubelet, K8s/Compute resources, etc.) appear automatically. |
 | App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab-<suffix>` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
 | Control Center runner | Basic `acrlabops<suffix>` registry, `cae-labops-<suffix>` Consumption environment, `id-labops-<suffix>` identity, `job-labops-<suffix>` manual job, `console-runner-logs` diagnostic setting, three custom roles, and scoped role assignments | The workload template provisions the platform; completion builds the image, deploys the digest-pinned job and launcher role, and configures operator sign-in and scoped access. Runner logs use the central workspace. |

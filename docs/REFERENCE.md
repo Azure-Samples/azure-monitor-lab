@@ -63,7 +63,7 @@ rg-azure-monitor-lab/
 │   ├─ vmss-amlab                 ← Linux VMSS + Predictive autoscale
 │   ├─ aks-amlab                  ← AKS (Free tier, 1 × B2s by default) + Container Insights + Managed Prom
 │   ├─ amlab-aks-prom-rules        ← Managed Prometheus recording + alerting rule group
-│   ├─ plan-amlab + app-amlab-XX  ← Linux App Service B1 + .NET 8 sample (auto-instrumented), pinned to westeurope
+│   ├─ plan-amlab + app-amlab-XX  ← Linux App Service B1 + .NET 8 sample (auto-instrumented), in appServiceLocation
 │   └─ availability test + alert   ← Standard URL test from 5 global locations
 ├─ Networking
 │   ├─ vnet-amlab + nsg-amlab     ← /16 with workload, AKS, and VMSS subnets
@@ -71,8 +71,8 @@ rg-azure-monitor-lab/
 │   └─ NSG Flow Logs              ← into Storage + Traffic Analytics
 ├─ Platform telemetry sources
 │   ├─ st-amlabXXXX               ← Storage account (NSG flow logs + LAW data export target)
-│   ├─ stapp-amlabXXXX            ← Storage account — App Service archive diag (westeurope, co-located)
-│   ├─ evhns-amlab-XXXX           ← Event Hub namespace — App Service diag stream (westeurope, co-located)
+│   ├─ stapp-amlabXXXX            ← Storage account — App Service archive diag (appServiceLocation, co-located)
+│   ├─ evhns-amlab-XXXX           ← Event Hub namespace — App Service diag stream (appServiceLocation, co-located)
 │   └─ kv-amlab-XXXX              ← Key Vault (RBAC mode)
 ├─ Governance & policy
 │   ├─ amlab-diag-* (×N)          ← Built-in DINE policy assignments → central LAW
@@ -108,7 +108,7 @@ rg-azure-monitor-lab/
 
 > **Optional LAW replication (default off, billable):** cross-region replication on the central LAW. Enable during deployment with `enableLawReplication`, or enable it on an existing workspace with `scripts/enable-law-replication.ps1` without redeploying the complete Bicep template.
 
-> **Region pinning:** the **App Service** (plan + site) and its diagnostic sinks (dedicated storage + Event Hub) are pinned to **`westeurope`**; the **Health Model** preview and the **AI stage** are pinned to **`swedencentral`**. Everything else follows the lab region (default `northeurope`).
+> **Region placement:** the **App Service** (plan + site) and its diagnostic sinks (dedicated storage + Event Hub) use configurable **`appServiceLocation`** (default `westeurope`); the **Health Model** preview and the **AI stage** are pinned to **`swedencentral`**. Everything else follows the lab region (default `northeurope`).
 
 The Control Center provisions four primary runner resources in the Web App's region: a Basic `acrlabops<suffix>` registry, a `cae-labops-<suffix>` Consumption environment, an `id-labops-<suffix>` managed identity, and a manual `job-labops-<suffix>` job. Supporting resources include the `console-runner-logs` diagnostic setting, three custom roles, scoped role assignments, and the Web App's system-assigned identity. Workload publication builds the image and deploys the digest-pinned job and launcher role. The Entra sign-in registration is tenant-level and is not removed by resource-group deletion. Counts vary with selected stages and whether child resources, deployments, RBAC, diagnostics, and tenant objects are included.
 
@@ -122,7 +122,7 @@ Inside the central LAW you also get **12+ saved KQL searches** and **KQL functio
 - `kubectl` (any recent version)
 - Bicep CLI (bundled with `az` ≥ 2.20) — **OR** Terraform ≥ 1.6 if you prefer the Terraform path
 - PowerShell 7+ (the deploy scripts and helpers are `.ps1`)
-- A subscription with quota for: 1 AKS cluster (1 × `Standard_B2s` node), 2 VMs (1 Linux and 1 Windows, both `Standard_B2s`), 1 Linux VMSS (1 × `Standard_B1s`), 1 App Service B1 (in `westeurope`), 1 Managed Grafana Standard instance, 2 Storage accounts, 1 Event Hubs Basic namespace, 1 Key Vault, and the other resources listed in the [cost guide](COST-GUIDE.md).
+- A subscription with quota and SKU eligibility for: 1 AKS cluster (1 configured `aksNodeVmSize` node), 2 VMs (1 Linux and 1 Windows using `vmSize`), 1 Linux VMSS (1 configured `vmssSize` instance), 1 App Service B1 (in `appServiceLocation`), 1 Managed Grafana Standard instance, 2 Storage accounts, 1 Event Hubs Basic namespace, 1 Key Vault, and the other resources listed in the [cost guide](COST-GUIDE.md).
 - *(Optional AI stage only)* Python 3.10+ for `scripts/setup-ai.ps1` (creates the demo agents + traffic simulator in `workloads/ai/`); the Foundry models it deploys are **billable**.
 - Console completion additionally requires the .NET 8 SDK, ACR Tasks availability, Container Apps Consumption capacity, and rights to manage the sign-in registration and scoped roles. See [Lab Operations prerequisites](../workloads/webapp/LAB-OPERATIONS.md#prerequisites).
 
@@ -177,7 +177,7 @@ Two delivery modes — pick whichever fits your audience.
 ./scripts/deploy.ps1
 ```
 
-Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`, parameters in `infra/main.parameters.json` (auto-generated from `lab.config.json` — see Bootstrap above). Some resources auto-pin to their own region regardless of the lab region: the **App Service** tier (plan + site + its diagnostic storage + Event Hub) to **`westeurope`** (no Basic App Service quota in `northeurope` on the sponsored subs), and the **Health Model** preview + optional **AI stage** to **`swedencentral`**.
+Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`, parameters in `infra/main.parameters.json` (auto-generated from `lab.config.json` — see Bootstrap above). The **App Service** tier (plan + site + its diagnostic storage + Event Hub) uses configurable **`appServiceLocation`** (default `westeurope`), while the **Health Model** preview + optional **AI stage** remain pinned to **`swedencentral`**.
 
 End-to-end deployment can take tens of minutes, including AKS/Grafana provisioning, the runner image build, MCP packaging, ZIP upload, and app-version verification. The script prints the App Service URL, the AKS LB IP, the Grafana URL, and the Workbook resource ID. Optional AI traffic starts last as a finite background batch; setup completion does not wait for every conversation.
 

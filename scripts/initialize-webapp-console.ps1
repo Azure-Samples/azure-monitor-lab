@@ -20,6 +20,8 @@ $phase = 'account verification'
 function Invoke-ConsoleApi([string] $Method, [string] $Uri, [object] $Body = $null) {
   $address = [Uri]$Uri
   if ($address.Scheme -ne 'https' -or -not $tokens.ContainsKey($address.Host)) { throw 'Unexpected console setup API.' }
+  $tokens[$address.Host] = az account get-access-token --subscription $SubscriptionId --resource "https://$($address.Host)/" --query accessToken --output tsv --only-show-errors
+  if ($LASTEXITCODE -ne 0 -or -not $tokens[$address.Host]) { throw 'Required setup authentication is unavailable.' }
   $arguments = @{ Method = $Method; Uri = $Uri; Headers = @{ Authorization = "Bearer $($tokens[$address.Host])" }; TimeoutSec = 60; Verbose = $false; Debug = $false }
   if ($null -ne $Body) { $arguments.Body = $Body | ConvertTo-Json -Depth 25 -Compress; $arguments.ContentType = 'application/json' }
   try { Invoke-RestMethod @arguments }

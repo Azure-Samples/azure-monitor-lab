@@ -50,6 +50,10 @@ function Write-Step($msg) {
 $pfAksNodeCount    = 1
 $pfDeployWindowsVm = $true
 $pfDeployLinuxVm   = $true
+$pfVmSize          = 'Standard_B2s'
+$pfAksNodeVmSize   = 'Standard_B2s'
+$pfVmssSize        = 'Standard_B1s'
+$pfAppServiceLocation = 'westeurope'
 $pfDeployObservabilityAgent = $false
 $pfObservabilityAgentLocation = 'westeurope'
 
@@ -79,6 +83,10 @@ if (Test-Path $labConfigPath) {
   if ($null -ne $labCfg.aksNodeCount)    { $pfAksNodeCount    = [int]$labCfg.aksNodeCount }
   if ($null -ne $labCfg.deployWindowsVm) { $pfDeployWindowsVm = [bool]$labCfg.deployWindowsVm }
   if ($null -ne $labCfg.deployLinuxVm)   { $pfDeployLinuxVm   = [bool]$labCfg.deployLinuxVm }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmSize))        { $pfVmSize = [string]$labCfg.vmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.aksNodeVmSize)) { $pfAksNodeVmSize = [string]$labCfg.aksNodeVmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmssSize))      { $pfVmssSize = [string]$labCfg.vmssSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.appServiceLocation)) { $pfAppServiceLocation = [string]$labCfg.appServiceLocation }
   if ($null -ne $labCfg.stageToggles.enableStageObservabilityAgent) {
     $pfDeployObservabilityAgent = [bool]$labCfg.stageToggles.enableStageObservabilityAgent
   }
@@ -135,6 +143,10 @@ if ($SkipPreflight) {
   Write-Step "Pre-flight: validating SKUs + quota + resource availability in $Location"
   $preflight = Join-Path $PSScriptRoot 'preflight-check.ps1'
   & $preflight -Location $Location `
+               -VmSize $pfVmSize `
+               -AksNodeVmSize $pfAksNodeVmSize `
+               -VmssSize $pfVmssSize `
+               -AppServiceLocation $pfAppServiceLocation `
                -AksNodeCount $pfAksNodeCount `
                -DeployWindowsVm $pfDeployWindowsVm `
                -DeployLinuxVm $pfDeployLinuxVm `

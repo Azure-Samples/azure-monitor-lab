@@ -11,6 +11,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region for App Service and its co-located diagnostic Storage and Event Hub dependencies.')
+param appServiceLocation string = 'westeurope'
+
 @description('Short prefix used to build resource names. Lowercase, 3-8 chars.')
 @minLength(3)
 @maxLength(8)
@@ -43,6 +46,9 @@ param vmSize string = 'Standard_B2s'
 
 @description('AKS node VM size.')
 param aksNodeVmSize string = 'Standard_B2s'
+
+@description('Predictive-autoscale VMSS instance size.')
+param vmssSize string = 'Standard_B1s'
 
 @description('AKS node count.')
 param aksNodeCount int = 1
@@ -148,7 +154,7 @@ var dcrPrometheusName   = 'dcr-${namePrefix}-prometheus'
 var dceName             = 'dce-${namePrefix}'
 var vmssName            = 'vmss-${namePrefix}'
 var storageAccountName  = 'st${namePrefix}${take(suffix, 8)}'
-// Dedicated storage co-located with the App Service (westeurope) for its archive diag
+// Dedicated storage co-located with the App Service for its archive diag
 // setting — storage diag destinations must match the source region.
 var appDiagStorageName  = 'stapp${namePrefix}${take(suffix, 8)}'
 var eventHubNsName      = 'evhns-${namePrefix}-${take(suffix, 5)}'
@@ -164,11 +170,6 @@ var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
 // AI feature (Foundry) is pinned to swedencentral, independent of the lab region —
 // the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth preview are region-limited.
 var aiLocation = 'swedencentral'
-
-// App Service is pinned to westeurope, independent of the lab region — the sponsored
-// lab subscriptions have no Basic (B1) App Service quota in northeurope, so the plan
-// would fail ARM preflight there. westeurope has unlimited Basic quota.
-var appServiceLocation = 'westeurope'
 
 var commonTags = {
   owner: ownerTag
@@ -332,7 +333,7 @@ module storageAccount 'modules/storage-account.bicep' = {
 }
 
 // Dedicated storage for the App Service archive-to-blob diag setting, co-located with
-// the App Service in westeurope (storage diag destinations must match the source region).
+// the App Service (storage diag destinations must match the source region).
 module appDiagStorage 'modules/storage-account.bicep' = {
   name: 'app-diag-storage'
   params: {
@@ -345,7 +346,7 @@ module appDiagStorage 'modules/storage-account.bicep' = {
 
 // ---------------------------------------------------------------------------------
 // FEATURE — Event Hub Namespace (diag fan-out destination + data-export option).
-// Pinned to the App Service region (westeurope): its only consumer is the App Service
+// Pinned to the App Service region: its only consumer is the App Service
 // 'stream-to-eventhub' diag setting, and Event Hub diag destinations MUST be in the
 // same region as the monitored resource.
 // ---------------------------------------------------------------------------------
@@ -704,7 +705,7 @@ module vmss 'modules/vmss.bicep' = {
   params: {
     name: vmssName
     location: location
-    vmSize: 'Standard_B1s'
+    vmSize: vmssSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId

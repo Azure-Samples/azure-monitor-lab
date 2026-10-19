@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region of the App Service resources targeted by alerts.')
+param appServiceLocation string = 'westeurope'
+
 @description('Short prefix used to build resource names.')
 @minLength(3)
 @maxLength(8)
@@ -21,6 +24,9 @@ param vmAdminUsername string = 'azureuser'
 @description('Admin password for VMSS.')
 @secure()
 param vmAdminPassword string
+
+@description('Predictive-autoscale VMSS instance size.')
+param vmssSize string = 'Standard_B1s'
 
 @description('Deploy the Windows demo VM.')
 param deployWindowsVm bool = true
@@ -52,10 +58,6 @@ var commonTags = {
   purpose: 'azure-monitor-lab'
   costCenter: 'demo'
 }
-
-// App Service (Stage B) is pinned to westeurope; metric alerts targeting the web app /
-// plan must declare that region as targetResourceRegion.
-var appServiceLocation = 'westeurope'
 
 var workloadSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, 'snet-workload')
 
@@ -167,7 +169,7 @@ module vmss '../modules/vmss.bicep' = {
   params: {
     name: vmssName
     location: location
-    vmSize: 'Standard_B1s'
+    vmSize: vmssSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId

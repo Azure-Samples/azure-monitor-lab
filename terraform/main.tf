@@ -30,6 +30,7 @@ resource "azapi_resource" "stage_a" {
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/00-foundation.json")))
       parameters = {
         location               = { value = var.location }
+        appServiceLocation     = { value = var.app_service_location }
         namePrefix             = { value = var.name_prefix }
         dailyCapGb             = { value = var.daily_cap_gb }
         ownerTag               = { value = var.owner_tag }
@@ -55,6 +56,7 @@ resource "azapi_resource" "stage_b" {
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/10-workloads.json")))
       parameters = {
         location                  = { value = var.location }
+        appServiceLocation        = { value = var.app_service_location }
         namePrefix                = { value = var.name_prefix }
         vmAdminUsername           = { value = var.vm_admin_username }
         vmAdminPassword           = { value = var.vm_admin_password }
@@ -86,15 +88,17 @@ resource "azapi_resource" "stage_c" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/20-alerting.json")))
       parameters = {
-        location        = { value = var.location }
-        namePrefix      = { value = var.name_prefix }
-        alertEmail      = { value = var.alert_email }
-        siemWebhookUrl  = { value = var.siem_webhook_url }
-        vmAdminUsername = { value = var.vm_admin_username }
-        vmAdminPassword = { value = var.vm_admin_password }
-        deployWindowsVm = { value = var.deploy_windows_vm }
-        deployLinuxVm   = { value = var.deploy_linux_vm }
-        ownerTag        = { value = var.owner_tag }
+        location           = { value = var.location }
+        appServiceLocation = { value = var.app_service_location }
+        namePrefix         = { value = var.name_prefix }
+        alertEmail         = { value = var.alert_email }
+        siemWebhookUrl     = { value = var.siem_webhook_url }
+        vmAdminUsername    = { value = var.vm_admin_username }
+        vmAdminPassword    = { value = var.vm_admin_password }
+        vmssSize           = { value = var.vmss_size }
+        deployWindowsVm    = { value = var.deploy_windows_vm }
+        deployLinuxVm      = { value = var.deploy_linux_vm }
+        ownerTag           = { value = var.owner_tag }
       }
     }
   }

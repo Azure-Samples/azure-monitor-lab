@@ -67,6 +67,7 @@ foreach ($required in @('OrdersBus__fullyQualifiedNamespace','OrdersBus__credent
 Assert-True ($source.Contains("CustomerOrdersQueueName: 'orders'") -and
   $source.Contains("CustomerDependencies__QueueName: 'orders'")) 'Worker requires the flat host binding setting alongside the unchanged hierarchical application setting.'
 Assert-True ([regex]::Matches($customerSource, 'userAssignedResourceIds: empty\(customerIdentityId\)').Count -eq 2) 'Customer and broken slot must share the same dependency UAMI.'
+Assert-True ($customerSource -match "module appSettings[\s\S]+?dependsOn:\s*\[site\]") 'Customer app settings must wait for the AVM site deployment to prevent first-deployment ResourceNotFound races.'
 Assert-True ($source -match 'privateEndpointNetworkPolicies' -and $source -notmatch 'startIpAddress.*0\.0\.0\.0') 'SQL runtime access must use private networking, not a blanket Azure firewall.'
 
 foreach ($entry in @('main','10-workloads')) {
@@ -79,10 +80,10 @@ foreach ($entry in @('main','10-workloads')) {
   Assert-ProcessorStorageContract $module[0].properties.template
   $appService = @($template.resources | Where-Object name -eq 'appservice')
   $customerSite = @($template.resources | Where-Object name -eq 'customer-webapp')
-  Assert-True ($template.variables.appServiceLocation -eq 'westeurope' -and
-    $module[0].properties.parameters.location.value -eq "[variables('appServiceLocation')]" -and
+  Assert-True ($template.parameters.appServiceLocation.defaultValue -eq 'westeurope' -and
+    $module[0].properties.parameters.location.value -eq "[parameters('appServiceLocation')]" -and
     $module[0].properties.parameters.location.value -eq $appService[0].properties.parameters.location.value -and
-    $module[0].properties.parameters.location.value -eq $customerSite[0].properties.parameters.location.value) "$entry customer dependencies/VNet must stay co-located with existing App Service in WestEurope, independent of lab location."
+    $module[0].properties.parameters.location.value -eq $customerSite[0].properties.parameters.location.value) "$entry customer dependencies/VNet must stay co-located with the configured App Service region, independent of lab location."
   Assert-True (@($template.resources | Where-Object { $_.type -match 'Microsoft.Sql/servers|Microsoft.ServiceBus/namespaces' }).Count -eq 0) 'Disabled root must not instantiate SQL or Service Bus outside the conditional module.'
   Assert-True (@($template.outputs.PSObject.Properties).Count -le 64) 'ARM output limit exceeded.'
   $compiled = $module[0].properties.template | ConvertTo-Json -Depth 100

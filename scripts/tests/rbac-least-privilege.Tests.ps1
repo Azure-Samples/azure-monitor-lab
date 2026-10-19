@@ -6,6 +6,7 @@ $observabilityRbacSource = Get-Content -Raw (Join-Path $repoRoot 'infra/modules/
 $mainSource = Get-Content -Raw (Join-Path $repoRoot 'infra/main.bicep')
 $observabilityStageSource = Get-Content -Raw (Join-Path $repoRoot 'infra/stages/70-observability-agent.bicep')
 if ($logicModuleSource -notmatch "actions:\s*\[\s*'Microsoft\.Compute/virtualMachines/start/action'\s*\]" -or
+    $logicModuleSource -notmatch "vmStartRoleName = 'Azure Monitor Lab VM Start .+uniqueString\(subscription\(\)\.id, resourceGroup\(\)\.name\)" -or
     $logicModuleSource -notmatch 'scope:\s*linuxVm' -or
     $logicModuleSource -notmatch 'scope:\s*windowsVm' -or
     $observabilityRbacSource -notmatch 'scope:\s*appInsights' -or
@@ -40,7 +41,7 @@ function az {
       if ($args[2] -ne 'list') { throw 'Unexpected role-definition command.' }
       return ConvertTo-Json -Depth 6 -InputObject @(@{
         id = "$resourceGroupId/providers/Microsoft.Authorization/roleDefinitions/$vmStartRoleId"
-        roleName = 'Azure Monitor Lab VM Start'
+        roleName = 'Azure Monitor Lab VM Start abc12345'
       }) -Compress
     }
     'resource list' {

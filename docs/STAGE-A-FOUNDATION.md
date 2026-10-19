@@ -50,7 +50,7 @@ Use these one-liners when guiding a customer through Stage A:
 
 ## 3) Portal walkthrough (UI)
 
-Resource group: **`rg-azure-monitor-lab-terraform-test`** in **North Europe** (the App Service tier auto-pins to West Europe).
+Resource group: **`rg-azure-monitor-lab-terraform-test`** in **North Europe** (the App Service tier uses configurable `appServiceLocation`, West Europe by default).
 
 1. **Resource group overview** — show the resource list, point out the tag column (`owner=demo-lab`). This is the "everything in one box" story.
 2. **`law-amlab-central` → Solutions** — show VMInsights and ContainerInsights pre-installed.

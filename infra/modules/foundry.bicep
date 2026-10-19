@@ -67,6 +67,7 @@ var suffix = uniqueString(resourceGroup().id)
 var accountName = toLower('ai${namePrefix}${take(suffix, 8)}')
 var projectName = '${namePrefix}-ai-proj'
 var metricNamespace = 'Microsoft.CognitiveServices/accounts'
+var foundryUserRole = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
 // Foundry (AI Services) account with project management enabled.
 resource account 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
@@ -94,6 +95,25 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' = {
   }
   // Account allows only one write at a time — order the project after all deployments.
   dependsOn: [ router ]
+}
+
+resource deployerFoundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(project.id, deployer().objectId, foundryUserRole)
+  scope: project
+  properties: {
+    principalId: deployer().objectId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRole)
+  }
+}
+
+resource projectFoundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(account.id, project.id, foundryUserRole)
+  scope: account
+  properties: {
+    principalId: project.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRole)
+  }
 }
 
 // Deployments must be created sequentially (the account serializes deployment writes).

@@ -72,6 +72,7 @@ module appSettings './appservice-settings.bicep' = {
       WEBSITE_SWAP_WARMUP_PING_STATUSES: '200'
     }, customerDependencySettings)
   }
+  dependsOn: [site]
 }
 
 module brokenSlot 'br/public:avm/res/web/site/slot:0.5.0' = {

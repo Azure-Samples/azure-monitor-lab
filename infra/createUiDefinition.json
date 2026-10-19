@@ -152,6 +152,30 @@
             }
           },
           {
+            "name": "vmssSize",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Predictive autoscale VMSS size",
+            "defaultValue": "Standard_B1s",
+            "toolTip": "VM size for the predictive-autoscale scale set.",
+            "constraints": {
+              "required": true,
+              "regex": "^[A-Za-z0-9_]+$",
+              "validationMessage": "Enter a valid VM SKU, e.g. Standard_B1s."
+            }
+          },
+          {
+            "name": "appServiceLocation",
+            "type": "Microsoft.Common.TextBox",
+            "label": "App Service dependency region",
+            "defaultValue": "westeurope",
+            "toolTip": "Region for App Service and its co-located diagnostic Storage and Event Hub dependencies.",
+            "constraints": {
+              "required": true,
+              "regex": "^[a-z0-9]+$",
+              "validationMessage": "Enter an Azure region code, e.g. westeurope."
+            }
+          },
+          {
             "name": "aksNodeCount",
             "type": "Microsoft.Common.Slider",
             "min": 1,
@@ -476,6 +500,8 @@
       "deployWindowsVm": "[steps('workloads').deployWindowsVm]",
       "vmSize": "[steps('workloads').vmSize]",
       "aksNodeVmSize": "[steps('workloads').aksNodeVmSize]",
+      "vmssSize": "[steps('workloads').vmssSize]",
+      "appServiceLocation": "[steps('workloads').appServiceLocation]",
       "aksNodeCount": "[steps('workloads').aksNodeCount]",
       "dailyCapGb": "[steps('monitoring').dailyCapGb]",
       "enableSentinel": "[steps('monitoring').enableSentinel]",

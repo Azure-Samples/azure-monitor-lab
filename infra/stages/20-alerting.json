@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "124075701158141252"
+      "templateHash": "8788356410363448855"
     }
   },
   "parameters": {
@@ -14,6 +14,13 @@
       "defaultValue": "[resourceGroup().location]",
       "metadata": {
         "description": "Azure region for all resources."
+      }
+    },
+    "appServiceLocation": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region of the App Service resources targeted by alerts."
       }
     },
     "namePrefix": {
@@ -49,6 +56,13 @@
       "type": "securestring",
       "metadata": {
         "description": "Admin password for VMSS."
+      }
+    },
+    "vmssSize": {
+      "type": "string",
+      "defaultValue": "Standard_B1s",
+      "metadata": {
+        "description": "Predictive-autoscale VMSS instance size."
       }
     },
     "deployWindowsVm": {
@@ -98,7 +112,6 @@
       "purpose": "azure-monitor-lab",
       "costCenter": "demo"
     },
-    "appServiceLocation": "westeurope",
     "workloadSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'snet-workload')]"
   },
   "resources": [
@@ -131,7 +144,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "16418142127896295886"
+              "templateHash": "17890678230181324105"
             }
           },
           "parameters": {
@@ -170,7 +183,7 @@
             }
           },
           "variables": {
-            "vmStartRoleName": "Azure Monitor Lab VM Start"
+            "vmStartRoleName": "[format('Azure Monitor Lab VM Start {0}', take(uniqueString(subscription().id, resourceGroup().name), 8))]"
           },
           "resources": [
             {
@@ -505,7 +518,7 @@
           },
           "customerWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', resourceId('Microsoft.Web/sites', variables('customerWebAppName'))), createObject('value', ''))]",
           "webAppRegion": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "appInsightsId": {
             "value": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
@@ -933,7 +946,7 @@
             "value": "[parameters('location')]"
           },
           "webAppRegion": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -1694,7 +1707,7 @@
             "value": "[parameters('location')]"
           },
           "vmSize": {
-            "value": "Standard_B1s"
+            "value": "[parameters('vmssSize')]"
           },
           "adminUsername": {
             "value": "[parameters('vmAdminUsername')]"
@@ -1716,7 +1729,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "533414499167899336"
+              "templateHash": "12020505676555017969"
             }
           },
           "parameters": {
@@ -1765,6 +1778,9 @@
               }
             }
           },
+          "variables": {
+            "useConfidentialVm": "[and(startsWith(toLower(parameters('vmSize')), 'standard_ec'), or(endsWith(toLower(parameters('vmSize')), 'as_v5'), endsWith(toLower(parameters('vmSize')), 'ads_v5')))]"
+          },
           "resources": [
             {
               "type": "Microsoft.Compute/virtualMachineScaleSets",
@@ -1785,52 +1801,7 @@
                 "upgradePolicy": {
                   "mode": "Automatic"
                 },
-                "virtualMachineProfile": {
-                  "osProfile": {
-                    "computerNamePrefix": "[take(parameters('name'), 9)]",
-                    "adminUsername": "[parameters('adminUsername')]",
-                    "adminPassword": "[parameters('adminPassword')]",
-                    "linuxConfiguration": {
-                      "disablePasswordAuthentication": false,
-                      "provisionVMAgent": true
-                    }
-                  },
-                  "storageProfile": {
-                    "imageReference": {
-                      "publisher": "Canonical",
-                      "offer": "0001-com-ubuntu-server-jammy",
-                      "sku": "22_04-lts-gen2",
-                      "version": "latest"
-                    },
-                    "osDisk": {
-                      "createOption": "FromImage",
-                      "managedDisk": {
-                        "storageAccountType": "Standard_LRS"
-                      }
-                    }
-                  },
-                  "networkProfile": {
-                    "networkInterfaceConfigurations": [
-                      {
-                        "name": "[format('nic-{0}', parameters('name'))]",
-                        "properties": {
-                          "primary": true,
-                          "ipConfigurations": [
-                            {
-                              "name": "ipconfig1",
-                              "properties": {
-                                "primary": true,
-                                "subnet": {
-                                  "id": "[parameters('subnetId')]"
-                                }
-                              }
-                            }
-                          ]
-                        }
-                      }
-                    ]
-                  }
-                }
+                "virtualMachineProfile": "[union(createObject('osProfile', createObject('computerNamePrefix', take(parameters('name'), 9), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'linuxConfiguration', createObject('disablePasswordAuthentication', false(), 'provisionVMAgent', true())), 'storageProfile', createObject('imageReference', createObject('publisher', 'Canonical', 'offer', if(variables('useConfidentialVm'), '0001-com-ubuntu-confidential-vm-jammy', '0001-com-ubuntu-server-jammy'), 'sku', if(variables('useConfidentialVm'), '22_04-lts-cvm', '22_04-lts-gen2'), 'version', 'latest'), 'osDisk', createObject('createOption', 'FromImage', 'managedDisk', createObject('storageAccountType', 'Standard_LRS', 'securityProfile', if(variables('useConfidentialVm'), createObject('securityEncryptionType', 'VMGuestStateOnly'), null())))), 'networkProfile', createObject('networkInterfaceConfigurations', createArray(createObject('name', format('nic-{0}', parameters('name')), 'properties', createObject('primary', true(), 'ipConfigurations', createArray(createObject('name', 'ipconfig1', 'properties', createObject('primary', true(), 'subnet', createObject('id', parameters('subnetId')))))))))), if(variables('useConfidentialVm'), createObject('securityProfile', createObject('securityType', 'ConfidentialVM', 'uefiSettings', createObject('secureBootEnabled', true(), 'vTpmEnabled', true()))), createObject()))]"
               }
             },
             {

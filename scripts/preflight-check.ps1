@@ -73,6 +73,7 @@ param(
   [bool]   $DeployWindowsVm = $true,
   [bool]   $DeployObservabilityAgent = $false,
   [string] $ObservabilityAgentLocation = 'westeurope',
+  [string] $AppServiceLocation = 'westeurope',
   [string] $ResourceGroup,
   [string] $AppServicePlanTier = 'Basic',
   [bool] $DeployCustomerDependencies = $false,
@@ -94,10 +95,6 @@ function Add-Result($check, $detail, $status) {
 function Get-RegionToken($s) { if ($null -eq $s) { '' } else { ($s -replace '\s','').ToLowerInvariant() } }
 $locToken = Get-RegionToken $Location
 
-# App Service is pinned to westeurope by the templates (northeurope has no Basic quota
-# on the sponsored lab subs), so its availability + quota are validated against that
-# region, not the lab $Location.
-$appServiceLocation = 'westeurope'
 $appServiceLocToken = Get-RegionToken $appServiceLocation
 
 Write-Step "Pre-flight availability + quota check for region '$Location'"

@@ -16,7 +16,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$vmStartRoleName = 'Azure Monitor Lab VM Start'
+$vmStartRoleNamePrefix = 'Azure Monitor Lab VM Start'
 $legacyContributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
 $monitoringReaderRoleId = '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
 $observabilityApiVersion = '2026-05-01-preview'
@@ -85,15 +85,17 @@ if ([string]::IsNullOrWhiteSpace($resourceGroupId)) {
 if ($AutoMitigation) {
   $roleDefinitions = Invoke-AzJson -AzArguments @(
     'role', 'definition', 'list', '--subscription', $SubscriptionId.ToString(),
-    '--scope', $resourceGroupId, '--name', $vmStartRoleName, '--output', 'json', '--only-show-errors'
-  ) -Operation "Checking the '$vmStartRoleName' role"
-  $replacementRole = @($roleDefinitions | Where-Object { $_.roleName -eq $vmStartRoleName })
+    '--scope', $resourceGroupId, '--output', 'json', '--only-show-errors'
+  ) -Operation "Checking the '$vmStartRoleNamePrefix' role"
+  $replacementRole = @($roleDefinitions | Where-Object {
+    $_.roleName -eq $vmStartRoleNamePrefix -or $_.roleName.StartsWith("$vmStartRoleNamePrefix ")
+  })
 
   if ($replacementRole.Count -eq 0) {
-    Write-Host "The '$vmStartRoleName' role is not deployed; retaining any existing Logic App assignment." -ForegroundColor Yellow
+    Write-Host "The '$vmStartRoleNamePrefix' role is not deployed; retaining any existing Logic App assignment." -ForegroundColor Yellow
   } else {
     if ($replacementRole.Count -ne 1) {
-      throw "Expected one '$vmStartRoleName' role definition in '$ResourceGroup'; found $($replacementRole.Count)."
+      throw "Expected one '$vmStartRoleNamePrefix' role definition in '$ResourceGroup'; found $($replacementRole.Count)."
     }
     $logicApps = Invoke-AzJson -AzArguments @(
       'resource', 'list', '--subscription', $SubscriptionId.ToString(), '--resource-group', $ResourceGroup,
@@ -125,7 +127,7 @@ if ($AutoMitigation) {
           (Test-RoleDefinitionId -Actual $_.roleDefinitionId -Expected $replacementRole[0].id.Split('/')[-1])
         })
         if ($vmAssignment.Count -eq 0) {
-          throw "VM-scoped '$vmStartRoleName' access on '$vmId' is missing; retaining the resource-group Contributor assignment."
+          throw "VM-scoped '$vmStartRoleNamePrefix' access on '$vmId' is missing; retaining the resource-group Contributor assignment."
         }
       }
       if ($labVmIds.Count -eq 0) {

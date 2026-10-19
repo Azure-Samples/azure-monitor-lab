@@ -71,6 +71,10 @@ function Coalesce($a, $b) { if ($null -ne $a -and $a -ne '') { $a } else { $b } 
 $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
 $dailyCapGb       = Coalesce $cfg.dailyCapGb       1
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
+$vmSize           = Coalesce $cfg.vmSize           'Standard_B2s'
+$aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_B2s'
+$vmssSize         = Coalesce $cfg.vmssSize         'Standard_B1s'
+$appServiceLocation = Coalesce $cfg.appServiceLocation 'westeurope'
 $deployWindowsVm  = if ($null -eq $cfg.deployWindowsVm) { $true } else { [bool]$cfg.deployWindowsVm }
 $deployLinuxVm    = if ($null -eq $cfg.deployLinuxVm)   { $true } else { [bool]$cfg.deployLinuxVm }
 $enableVmOtelMetrics = $true
@@ -178,6 +182,7 @@ $bicepParams = [ordered]@{
   'contentVersion' = '1.0.0.0'
   'parameters'     = [ordered]@{
     'location'        = @{ value = $cfg.location }
+    'appServiceLocation' = @{ value = $appServiceLocation }
     'namePrefix'      = @{ value = $cfg.namePrefix }
     'alertEmail'      = @{ value = $cfg.alertEmail }
     'vmAdminUsername' = @{ value = $vmAdminUsername }
@@ -186,6 +191,9 @@ $bicepParams = [ordered]@{
     'deployLinuxVm'   = @{ value = $deployLinuxVm }
     'enableVmOtelMetrics' = @{ value = $enableVmOtelMetrics }
     'dailyCapGb'      = @{ value = [int]$dailyCapGb }
+    'vmSize'          = @{ value = $vmSize }
+    'aksNodeVmSize'   = @{ value = $aksNodeVmSize }
+    'vmssSize'        = @{ value = $vmssSize }
     'aksNodeCount'    = @{ value = [int]$aksNodeCount }
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
     'enableAi'        = @{ value = $enableStageAI }
@@ -225,11 +233,15 @@ $tfLines = @(
   "subscription_id     = `"$(Esc $cfg.subscriptionId)`""
   "resource_group_name = `"$(Esc $cfg.resourceGroup)`""
   "location            = `"$(Esc $cfg.location)`""
+  "app_service_location = `"$(Esc $appServiceLocation)`""
   "name_prefix         = `"$(Esc $cfg.namePrefix)`""
   "alert_email         = `"$(Esc $cfg.alertEmail)`""
   "vm_admin_username   = `"$(Esc $vmAdminUsername)`""
   "vm_admin_password   = `"$(Esc $cfg.vmAdminPassword)`""
   "daily_cap_gb        = $([int]$dailyCapGb)"
+  "vm_size             = `"$(Esc $vmSize)`""
+  "aks_node_vm_size    = `"$(Esc $aksNodeVmSize)`""
+  "vmss_size           = `"$(Esc $vmssSize)`""
   "aks_node_count      = $([int]$aksNodeCount)"
   "grafana_admin_object_id = `"$(Esc $grafanaAdminObjectId)`""
   "deploy_windows_vm   = $($deployWindowsVm.ToString().ToLower())"

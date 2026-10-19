@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "3195838373123161482"
+      "templateHash": "8753596764520937347"
     }
   },
   "parameters": {
@@ -14,6 +14,13 @@
       "defaultValue": "[resourceGroup().location]",
       "metadata": {
         "description": "Azure region for all resources."
+      }
+    },
+    "appServiceLocation": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region for App Service and its co-located diagnostic Storage and Event Hub dependencies."
       }
     },
     "namePrefix": {
@@ -84,6 +91,13 @@
       "defaultValue": "Standard_B2s",
       "metadata": {
         "description": "AKS node VM size."
+      }
+    },
+    "vmssSize": {
+      "type": "string",
+      "defaultValue": "Standard_B1s",
+      "metadata": {
+        "description": "Predictive-autoscale VMSS instance size."
       }
     },
     "aksNodeCount": {
@@ -297,7 +311,6 @@
     "observabilityAgentName": "[format('obs-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "observabilityAgentMonitoringAccountName": "[format('amw-{0}-obs', parameters('namePrefix'))]",
     "aiLocation": "swedencentral",
-    "appServiceLocation": "westeurope",
     "commonTags": {
       "owner": "[parameters('ownerTag')]",
       "purpose": "azure-monitor-lab",
@@ -2331,7 +2344,7 @@
             "value": "[variables('appDiagStorageName')]"
           },
           "location": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "centralLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
@@ -2519,7 +2532,7 @@
             "value": "[variables('eventHubNsName')]"
           },
           "location": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "centralLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
@@ -3108,7 +3121,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4665958544144725677"
+              "templateHash": "3721574997013875600"
             }
           },
           "parameters": {
@@ -3170,13 +3183,15 @@
               }
             }
           },
+          "variables": {
+            "useConfidentialVm": "[and(startsWith(toLower(parameters('vmSize')), 'standard_ec'), or(endsWith(toLower(parameters('vmSize')), 'as_v5'), endsWith(toLower(parameters('vmSize')), 'ads_v5')))]"
+          },
           "resources": [
             {
               "type": "Microsoft.Network/publicIPAddresses",
               "apiVersion": "2023-09-01",
               "name": "[format('pip-{0}', parameters('vmName'))]",
               "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
               "sku": {
                 "name": "Standard"
               },
@@ -3220,46 +3235,7 @@
               "identity": {
                 "type": "SystemAssigned"
               },
-              "properties": {
-                "hardwareProfile": {
-                  "vmSize": "[parameters('vmSize')]"
-                },
-                "osProfile": {
-                  "computerName": "[parameters('vmName')]",
-                  "adminUsername": "[parameters('adminUsername')]",
-                  "adminPassword": "[parameters('adminPassword')]",
-                  "linuxConfiguration": {
-                    "disablePasswordAuthentication": false,
-                    "provisionVMAgent": true
-                  }
-                },
-                "storageProfile": {
-                  "imageReference": {
-                    "publisher": "Canonical",
-                    "offer": "0001-com-ubuntu-server-jammy",
-                    "sku": "22_04-lts-gen2",
-                    "version": "latest"
-                  },
-                  "osDisk": {
-                    "createOption": "FromImage",
-                    "managedDisk": {
-                      "storageAccountType": "Standard_LRS"
-                    }
-                  }
-                },
-                "networkProfile": {
-                  "networkInterfaces": [
-                    {
-                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))]"
-                    }
-                  ]
-                },
-                "diagnosticsProfile": {
-                  "bootDiagnostics": {
-                    "enabled": true
-                  }
-                }
-              },
+              "properties": "[union(createObject('hardwareProfile', createObject('vmSize', parameters('vmSize')), 'osProfile', createObject('computerName', parameters('vmName'), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'linuxConfiguration', createObject('disablePasswordAuthentication', false(), 'provisionVMAgent', true())), 'storageProfile', createObject('imageReference', createObject('publisher', 'Canonical', 'offer', if(variables('useConfidentialVm'), '0001-com-ubuntu-confidential-vm-jammy', '0001-com-ubuntu-server-jammy'), 'sku', if(variables('useConfidentialVm'), '22_04-lts-cvm', '22_04-lts-gen2'), 'version', 'latest'), 'osDisk', createObject('createOption', 'FromImage', 'managedDisk', createObject('storageAccountType', 'Standard_LRS', 'securityProfile', if(variables('useConfidentialVm'), createObject('securityEncryptionType', 'VMGuestStateOnly'), null())))), 'networkProfile', createObject('networkInterfaces', createArray(createObject('id', resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))))), 'diagnosticsProfile', createObject('bootDiagnostics', createObject('enabled', true()))), if(variables('useConfidentialVm'), createObject('securityProfile', createObject('securityType', 'ConfidentialVM', 'uefiSettings', createObject('secureBootEnabled', true(), 'vTpmEnabled', true()))), createObject()))]",
               "dependsOn": [
                 "[resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))]"
               ]
@@ -3414,7 +3390,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "15510132197638766692"
+              "templateHash": "4986736003627378185"
             }
           },
           "parameters": {
@@ -3477,13 +3453,15 @@
               }
             }
           },
+          "variables": {
+            "useConfidentialVm": "[and(startsWith(toLower(parameters('vmSize')), 'standard_ec'), or(endsWith(toLower(parameters('vmSize')), 'as_v5'), endsWith(toLower(parameters('vmSize')), 'ads_v5')))]"
+          },
           "resources": [
             {
               "type": "Microsoft.Network/publicIPAddresses",
               "apiVersion": "2023-09-01",
               "name": "[format('pip-{0}', parameters('vmName'))]",
               "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
               "sku": {
                 "name": "Standard"
               },
@@ -3527,49 +3505,7 @@
               "identity": {
                 "type": "SystemAssigned"
               },
-              "properties": {
-                "hardwareProfile": {
-                  "vmSize": "[parameters('vmSize')]"
-                },
-                "osProfile": {
-                  "computerName": "[parameters('vmName')]",
-                  "adminUsername": "[parameters('adminUsername')]",
-                  "adminPassword": "[parameters('adminPassword')]",
-                  "windowsConfiguration": {
-                    "provisionVMAgent": true,
-                    "enableAutomaticUpdates": true,
-                    "patchSettings": {
-                      "patchMode": "AutomaticByOS"
-                    }
-                  }
-                },
-                "storageProfile": {
-                  "imageReference": {
-                    "publisher": "MicrosoftWindowsServer",
-                    "offer": "WindowsServer",
-                    "sku": "2022-datacenter-azure-edition",
-                    "version": "latest"
-                  },
-                  "osDisk": {
-                    "createOption": "FromImage",
-                    "managedDisk": {
-                      "storageAccountType": "Standard_LRS"
-                    }
-                  }
-                },
-                "networkProfile": {
-                  "networkInterfaces": [
-                    {
-                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))]"
-                    }
-                  ]
-                },
-                "diagnosticsProfile": {
-                  "bootDiagnostics": {
-                    "enabled": true
-                  }
-                }
-              },
+              "properties": "[union(createObject('hardwareProfile', createObject('vmSize', parameters('vmSize')), 'osProfile', createObject('computerName', parameters('vmName'), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'windowsConfiguration', createObject('provisionVMAgent', true(), 'enableAutomaticUpdates', true(), 'patchSettings', createObject('patchMode', 'AutomaticByOS'))), 'storageProfile', createObject('imageReference', createObject('publisher', 'MicrosoftWindowsServer', 'offer', 'WindowsServer', 'sku', '2022-datacenter-azure-edition', 'version', 'latest'), 'osDisk', createObject('createOption', 'FromImage', 'managedDisk', createObject('storageAccountType', 'Standard_LRS', 'securityProfile', if(variables('useConfidentialVm'), createObject('securityEncryptionType', 'VMGuestStateOnly'), null())))), 'networkProfile', createObject('networkInterfaces', createArray(createObject('id', resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))))), 'diagnosticsProfile', createObject('bootDiagnostics', createObject('enabled', true()))), if(variables('useConfidentialVm'), createObject('securityProfile', createObject('securityType', 'ConfidentialVM', 'uefiSettings', createObject('secureBootEnabled', true(), 'vTpmEnabled', true()))), createObject()))]",
               "dependsOn": [
                 "[resourceId('Microsoft.Network/networkInterfaces', format('nic-{0}', parameters('vmName')))]"
               ]
@@ -4202,7 +4138,7 @@
             "value": "[variables('webAppName')]"
           },
           "location": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "appInsightsConnectionString": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.connectionString.value]"
@@ -4573,7 +4509,7 @@
             "value": "[variables('suffix')]"
           },
           "location": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "centralLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
@@ -30366,7 +30302,7 @@
             "value": "[variables('customerWebAppName')]"
           },
           "location": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "serverFarmResourceId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.planId.value]"
@@ -52528,7 +52464,7 @@
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
           },
           "location": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -59716,7 +59652,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "16418142127896295886"
+              "templateHash": "17890678230181324105"
             }
           },
           "parameters": {
@@ -59755,7 +59691,7 @@
             }
           },
           "variables": {
-            "vmStartRoleName": "Azure Monitor Lab VM Start"
+            "vmStartRoleName": "[format('Azure Monitor Lab VM Start {0}', take(uniqueString(subscription().id, resourceGroup().name), 8))]"
           },
           "resources": [
             {
@@ -60094,7 +60030,7 @@
           },
           "customerWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppId.value), createObject('value', ''))]",
           "webAppRegion": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "appInsightsId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
@@ -60528,7 +60464,7 @@
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.planId.value]"
           },
           "webAppRegion": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -61876,7 +61812,7 @@
             "value": "[parameters('location')]"
           },
           "vmSize": {
-            "value": "Standard_B1s"
+            "value": "[parameters('vmssSize')]"
           },
           "adminUsername": {
             "value": "[parameters('vmAdminUsername')]"
@@ -61898,7 +61834,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "533414499167899336"
+              "templateHash": "12020505676555017969"
             }
           },
           "parameters": {
@@ -61947,6 +61883,9 @@
               }
             }
           },
+          "variables": {
+            "useConfidentialVm": "[and(startsWith(toLower(parameters('vmSize')), 'standard_ec'), or(endsWith(toLower(parameters('vmSize')), 'as_v5'), endsWith(toLower(parameters('vmSize')), 'ads_v5')))]"
+          },
           "resources": [
             {
               "type": "Microsoft.Compute/virtualMachineScaleSets",
@@ -61967,52 +61906,7 @@
                 "upgradePolicy": {
                   "mode": "Automatic"
                 },
-                "virtualMachineProfile": {
-                  "osProfile": {
-                    "computerNamePrefix": "[take(parameters('name'), 9)]",
-                    "adminUsername": "[parameters('adminUsername')]",
-                    "adminPassword": "[parameters('adminPassword')]",
-                    "linuxConfiguration": {
-                      "disablePasswordAuthentication": false,
-                      "provisionVMAgent": true
-                    }
-                  },
-                  "storageProfile": {
-                    "imageReference": {
-                      "publisher": "Canonical",
-                      "offer": "0001-com-ubuntu-server-jammy",
-                      "sku": "22_04-lts-gen2",
-                      "version": "latest"
-                    },
-                    "osDisk": {
-                      "createOption": "FromImage",
-                      "managedDisk": {
-                        "storageAccountType": "Standard_LRS"
-                      }
-                    }
-                  },
-                  "networkProfile": {
-                    "networkInterfaceConfigurations": [
-                      {
-                        "name": "[format('nic-{0}', parameters('name'))]",
-                        "properties": {
-                          "primary": true,
-                          "ipConfigurations": [
-                            {
-                              "name": "ipconfig1",
-                              "properties": {
-                                "primary": true,
-                                "subnet": {
-                                  "id": "[parameters('subnetId')]"
-                                }
-                              }
-                            }
-                          ]
-                        }
-                      }
-                    ]
-                  }
-                }
+                "virtualMachineProfile": "[union(createObject('osProfile', createObject('computerNamePrefix', take(parameters('name'), 9), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'linuxConfiguration', createObject('disablePasswordAuthentication', false(), 'provisionVMAgent', true())), 'storageProfile', createObject('imageReference', createObject('publisher', 'Canonical', 'offer', if(variables('useConfidentialVm'), '0001-com-ubuntu-confidential-vm-jammy', '0001-com-ubuntu-server-jammy'), 'sku', if(variables('useConfidentialVm'), '22_04-lts-cvm', '22_04-lts-gen2'), 'version', 'latest'), 'osDisk', createObject('createOption', 'FromImage', 'managedDisk', createObject('storageAccountType', 'Standard_LRS', 'securityProfile', if(variables('useConfidentialVm'), createObject('securityEncryptionType', 'VMGuestStateOnly'), null())))), 'networkProfile', createObject('networkInterfaceConfigurations', createArray(createObject('name', format('nic-{0}', parameters('name')), 'properties', createObject('primary', true(), 'ipConfigurations', createArray(createObject('name', 'ipconfig1', 'properties', createObject('primary', true(), 'subnet', createObject('id', parameters('subnetId')))))))))), if(variables('useConfidentialVm'), createObject('securityProfile', createObject('securityType', 'ConfidentialVM', 'uefiSettings', createObject('secureBootEnabled', true(), 'vTpmEnabled', true()))), createObject()))]"
               }
             },
             {
@@ -66929,7 +66823,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "15274544325040974780"
+              "templateHash": "8025420704039908569"
             }
           },
           "parameters": {
@@ -67055,6 +66949,7 @@
             "accountName": "[toLower(format('ai{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8)))]",
             "projectName": "[format('{0}-ai-proj', parameters('namePrefix'))]",
             "metricNamespace": "Microsoft.CognitiveServices/accounts",
+            "foundryUserRole": "53ca6127-db72-4b80-b1b0-d745d6d5456d",
             "actions": "[if(empty(parameters('alertEmail')), createArray(), createArray(createObject('actionGroupId', resourceId('Microsoft.Insights/actionGroups', format('ag-{0}-ai', parameters('namePrefix'))))))]",
             "deploymentDimension": [
               {
@@ -67101,6 +66996,34 @@
               "dependsOn": [
                 "[resourceId('Microsoft.CognitiveServices/accounts', variables('accountName'))]",
                 "[resourceId('Microsoft.CognitiveServices/accounts/deployments', variables('accountName'), 'model-router')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.CognitiveServices/accounts/{0}/projects/{1}', variables('accountName'), variables('projectName'))]",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), deployer().objectId, variables('foundryUserRole'))]",
+              "properties": {
+                "principalId": "[deployer().objectId]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('foundryUserRole'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.CognitiveServices/accounts/{0}', variables('accountName'))]",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('accountName')), resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), variables('foundryUserRole'))]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), '2025-06-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('foundryUserRole'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', variables('accountName'))]",
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName'))]"
               ]
             },
             {

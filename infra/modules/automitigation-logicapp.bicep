@@ -29,7 +29,7 @@ param linuxVmId string = ''
 @description('Resource ID of the optional Windows demo VM.')
 param windowsVmId string = ''
 
-var vmStartRoleName = 'Azure Monitor Lab VM Start'
+var vmStartRoleName = 'Azure Monitor Lab VM Start ${take(uniqueString(subscription().id, resourceGroup().name), 8)}'
 
 resource linuxVm 'Microsoft.Compute/virtualMachines@2024-03-01' existing = if (!empty(linuxVmId)) {
   name: last(split(linuxVmId, '/'))

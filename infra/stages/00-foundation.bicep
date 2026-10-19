@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region for App Service and its co-located diagnostic Event Hub dependency.')
+param appServiceLocation string = 'westeurope'
+
 @description('Short prefix used to build resource names.')
 @minLength(3)
 @maxLength(8)
@@ -44,12 +47,6 @@ var commonTags = {
   purpose: 'azure-monitor-lab'
   costCenter: 'demo'
 }
-
-// App Service (Stage B) is pinned to westeurope (no Basic App Service quota in
-// northeurope on the sponsored subs). The Event Hub below is the App Service's
-// diagnostic fan-out target, and Event Hub diag destinations MUST be in the same
-// region as the monitored resource — so it is co-located in westeurope too.
-var appServiceLocation = 'westeurope'
 
 module lawCentral '../modules/law.bicep' = {
   name: 'law-central'

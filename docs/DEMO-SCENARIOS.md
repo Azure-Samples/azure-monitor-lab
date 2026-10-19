@@ -2,7 +2,7 @@
 
 A curated set of demo scenarios you can run with this lab. Each one has a **story**, a **click-path / commands**, and **what to point at** so the audience walks away with the value.
 
-> **Active subscription:** `<your-subscription-name>` (`<your-subscription-id>`) · **RG:** `rg-azure-monitor-lab` · **Region:** North Europe (App Service pins to West Europe; optional AI stage + Health Model pin to Sweden Central)
+> **Active subscription:** `<your-subscription-name>` (`<your-subscription-id>`) · **RG:** `rg-azure-monitor-lab` · **Region:** North Europe (App Service uses configurable `appServiceLocation`; optional AI stage + Health Model pin to Sweden Central)
 
 ---
 
@@ -773,7 +773,7 @@ The lab includes a live VMSS with predictive autoscale already configured:
 
 | Resource | Value |
 |---|---|
-| VMSS | `vmss-amlab` (1 × Standard_B1s, Ubuntu 22.04, Uniform orchestration) |
+| VMSS | `vmss-amlab` (1 configured `vmssSize` instance, Ubuntu 22.04, Uniform orchestration) |
 | Autoscale setting | `autoscale-vmss-amlab` |
 | Reactive rule | Scale out when CPU > 70% for 10 min; scale in when CPU < 30% |
 | Predictive mode | **ForecastOnly** (shows predictions without acting — safe for demo) |

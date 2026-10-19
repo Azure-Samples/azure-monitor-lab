@@ -4,7 +4,7 @@ This one-pager helps customers decide how far to go in a workshop or pilot. Cost
 
 ## Planning assumptions
 
-- Default regions: North Europe; App Service and its diagnostic Event Hub in West Europe; optional AI, SRE Agent, and Health Model resources in Sweden Central.
+- Default regions: North Europe; App Service and its diagnostic Storage and Event Hub in configurable `appServiceLocation` (West Europe by default); optional AI, SRE Agent, and Health Model resources in Sweden Central.
 - A continuously provisioned month is approximately 730 hours.
 - Stage A is required. Stages B-E are progressive. AI, SRE Agent, and Observability Agent are optional and off by default.
 - The two Log Analytics 1 GB/day caps are ingestion guardrails, not full-cost caps.

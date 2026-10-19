@@ -48,7 +48,7 @@ The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can a
 
 ## Deploy
 
-> Recommended region: `northeurope` (the default), which has the widest feature availability. A few things pin themselves to a fixed region no matter what you pick: the Health Model preview and the optional GenAI / AI stage (Microsoft Foundry and its models) go to `swedencentral` (they aren't available in `northeurope`), and the App Service goes to `westeurope` for quota reasons. Everything else follows the region you choose.
+> Recommended region: `northeurope` (the default), which has the widest feature availability. The Health Model preview and optional GenAI / AI stage (Microsoft Foundry and its models) go to `swedencentral`. App Service and its co-located diagnostic Storage and Event Hub dependencies use configurable `appServiceLocation` (default `westeurope`) so subscriptions closed to new customers in that region can select another supported region.
 
 ### Option 1: Deploy to Azure (portal, no local setup)
 

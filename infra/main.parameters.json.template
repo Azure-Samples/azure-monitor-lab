@@ -3,6 +3,7 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "location": { "value": "northeurope" },
+    "appServiceLocation": { "value": "westeurope" },
     "namePrefix": { "value": "amlab" },
     "alertEmail": { "value": "<YOUR-EMAIL>" },
     "vmAdminUsername": { "value": "azureuser" },
@@ -11,6 +12,9 @@
     "deployLinuxVm": { "value": true },
     "enableVmOtelMetrics": { "value": true },
     "dailyCapGb": { "value": 1 },
+    "vmSize": { "value": "Standard_B2s" },
+    "aksNodeVmSize": { "value": "Standard_B2s" },
+    "vmssSize": { "value": "Standard_B1s" },
     "aksNodeCount": { "value": 2 },
     "grafanaAdminObjectId": { "value": "" },
     "enablePlatformLogsDcr": { "value": false },

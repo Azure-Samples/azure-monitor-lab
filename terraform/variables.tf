@@ -7,6 +7,10 @@ variable "resource_group_name" {
 }
 
 variable "location" { type = string }
+variable "app_service_location" {
+  type    = string
+  default = "westeurope"
+}
 variable "alert_email" { type = string }
 variable "vm_admin_password" {
   type      = string
@@ -68,6 +72,11 @@ variable "vm_size" {
 variable "aks_node_vm_size" {
   type    = string
   default = "Standard_B2s"
+}
+
+variable "vmss_size" {
+  type    = string
+  default = "Standard_B1s"
 }
 
 variable "aks_node_count" {

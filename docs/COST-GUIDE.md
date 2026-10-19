@@ -3,7 +3,7 @@
 This guide maps the resources deployed by the lab to the meters that can appear on an Azure bill. It is a planning aid, not a quote. Public retail prices, negotiated agreements, currencies, taxes, free allowances, preview terms, and regional availability change over time.
 
 **Price check date:** September 27, 2026.  
-**Default regions:** North Europe, with App Service and its diagnostic Event Hub in West Europe; optional AI, SRE Agent, and Health Model resources in Sweden Central; the optional Observability Agent workspace in a supported region selected at deployment.
+**Default regions:** North Europe, with App Service and its diagnostic Storage and Event Hub in configurable `appServiceLocation` (West Europe by default); optional AI, SRE Agent, and Health Model resources in Sweden Central; the optional Observability Agent workspace in a supported region selected at deployment.
 
 Use the [Azure pricing calculator](https://azure.microsoft.com/pricing/calculator/) for a pre-deployment estimate and [Azure Cost Management](https://learn.microsoft.com/azure/cost-management-billing/costs/quick-acm-cost-analysis) for actual and forecast charges. The public [Azure Retail Prices API](https://prices.azure.com/api/retail/prices) is useful for reproducible list-price checks but does not represent a customer-specific quote.
 
@@ -29,9 +29,9 @@ The table reflects the current Bicep defaults. Optional stages are excluded unle
 
 | Area | Current deployment | How it is billed | Lifecycle note |
 |---|---|---|---|
-| AKS | Free-tier control plane; **1 x Standard_B2s** node | Node VM, OS disk, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | `az aks stop` stops node compute, but retained disks, IPs, and telemetry can still bill |
+| AKS | Free-tier control plane; **1 configured node by default** (`aksNodeVmSize`) | Node VM, OS disk, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | `az aks stop` stops node compute, but retained disks, IPs, and telemetry can still bill |
 | Demo VMs | **1 Linux B2s + 1 Windows B2s** | VM hours, managed OS/data disks, public IPs, bandwidth, monitoring | Deallocation stops VM compute; disks, IPs, and monitoring remain |
-| VM scale set | **1 Linux Standard_B1s** instance | VM hours, disk, public IP/load-balancing as applicable, monitoring | Scaling to zero stops instance compute, not retained resources |
+| VM scale set | **1 configured Linux instance** (`vmssSize`) | VM hours, disk, public IP/load-balancing as applicable, monitoring | Scaling to zero stops instance compute, not retained resources |
 | App Service | Linux Basic B1 plan and web app by default; optional broken-slot scenario uses Standard S1 plus one deployment slot | App Service plan instance-hours, even when the web app is stopped. Enabling `enableSlotFailureScenario` raises the plan tier and cost | Delete the plan to stop plan billing; disabling the toggle does not guarantee an automatic downgrade or slot deletion in incremental deployments |
 | Managed Grafana | **Standard**, not Essential | Standard instance/node-hours plus active users | Continues billing while provisioned |
 | Event Hubs | **Basic**, 1 throughput unit | TU-hours, ingress events, retention/operations where applicable | Continues billing while provisioned |
