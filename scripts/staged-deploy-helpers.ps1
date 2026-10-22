@@ -11,6 +11,8 @@
   . ./scripts/staged-deploy-helpers.ps1
 #>
 
+. (Join-Path $PSScriptRoot 'deployment-slot-recovery.ps1')
+
 function Assert-LabAccount {
   az account set --subscription $sub
   if ($LASTEXITCODE -ne 0) { throw 'Could not select the lab subscription.' }
@@ -50,7 +52,9 @@ function Invoke-LabStage {
       throw "Missing required parameter '$name' for $Stage."
     }
   }
-  $parameterFile = New-TemporaryFile
+  $parameterDirectory = Join-Path $PSScriptRoot '..\.artifacts'
+  $null = New-Item -ItemType Directory -Path $parameterDirectory -Force
+  $parameterFile = New-Item -ItemType File -Path (Join-Path $parameterDirectory ("stage-parameters-{0}.json" -f [guid]::NewGuid().ToString('N')))
   try {
     if (-not $IsWindows) {
       [IO.File]::SetUnixFileMode($parameterFile.FullName, [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)
@@ -65,7 +69,12 @@ function Invoke-LabStage {
     if ($LASTEXITCODE -ne 0) { throw "Preview failed for $Stage." }
     if ((Read-Host 'Deploy this stage? Type yes to continue') -ne 'yes') { throw 'Stage deployment cancelled.' }
     Assert-LabAccount
-    az deployment group create @deploymentArguments --output none
+    if ($Stage -eq '10-workloads') {
+      Invoke-LabDeployment -Arguments $deploymentArguments -SubscriptionId $sub.ToString() `
+        -ResourceGroup $rg -DeploymentName "stage-$Stage"
+    } else {
+      az deployment group create @deploymentArguments --output none
+    }
     if ($LASTEXITCODE -ne 0) { throw "Deployment failed for $Stage." }
   } finally {
     Remove-Item -LiteralPath $parameterFile.FullName -Force

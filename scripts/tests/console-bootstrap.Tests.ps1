@@ -93,6 +93,7 @@ foreach ($faultFile in @('set-customer-dependency-fault.ps1', 'customer-dependen
 Copy-Item -LiteralPath (Join-Path $source 'scripts/customer-journey-outcome.mjs') -Destination $scriptDirectory
 Copy-Item -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Destination $scriptDirectory
 Copy-Item -LiteralPath (Join-Path $source 'scripts/slot-health.ps1') -Destination $scriptDirectory
+Copy-Item -LiteralPath (Join-Path $source 'scripts/app-insights-target.ps1') -Destination $scriptDirectory
 $bootstrapScript = Get-Content -LiteralPath (Join-Path $source 'scripts/initialize-webapp-console.ps1') -Raw
 if ($bootstrapScript -notmatch "'scripts/slot-health\.ps1'" -or
     -not (Test-Path -LiteralPath (Join-Path $source 'scripts/slot-health.ps1'))) {
@@ -226,7 +227,8 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 23 -or
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 24 -or
+          -not (Test-Path (Join-Path $build 'scripts/app-insights-target.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/slot-health.ps1')) -or

@@ -21,6 +21,32 @@ The Web App prepares approvals and reads execution status. It does not execute P
 
 No arbitrary commands, script paths, deployment, teardown, permission setup, or AI execution are exposed. Existing SRE MCP approvals and health permissions are unchanged.
 
+### Release marker target
+
+Release markers (including Break Lab and Restore Lab) belong to the **Control Center**
+Application Insights component, not the separate customer component. The runner resolves
+the exact `appi-<suffix>` name from its existing `LAB_WEB_APP_NAME=app-<suffix>`
+configuration. Preflight and the called scripts use the same resolver; missing,
+duplicate, or customer-tagged targets fail before lab changes. `-CheckAccessOnly`
+performs discovery without posting a marker, but does not prove annotation write permission.
+
+For standalone scripts, pass `-WebAppName app-<suffix>` or
+`-AppInsightsName appi-<suffix>` to `send-release-annotation.ps1`,
+`break-the-lab.ps1`, or `restore-the-lab.ps1`. Without an explicit target, only a
+single non-customer component is accepted; multiple candidates fail rather than
+selecting the first or shortest name. Both parameters, when supplied, must agree.
+Customer-tagged and `-customer` components are excluded.
+Break/restore also resolve the exact Control Center Web App metadata before
+changing resources, rather than using the first app in the resource group.
+If only a standard `appi-<suffix>` target is available, they derive `app-<suffix>`.
+
+Existing runners need a rebuilt image containing `app-insights-target.ps1` and the
+updated scripts. This script-only fix does not require new permissions or changes to
+customer/slot/worker configuration. An image-only runner update must also update the
+Control Center's `LabConsole__Operations__Image` digest: approvals use that configured
+digest when dispatching executions. The general `deploy-webapp.ps1` upgrade is broader
+(platform/access bootstrap and app publication); do not use it as an image-only patch.
+
 ### Generate Customer Traffic
 
 Select **Generate Customer Traffic**, set the bounded user, browser-concurrency, and repeat-user values, review the exact target and parameters, then approve. The runner requires exactly one app-prefixed Web App in the resource group and a healthy `/customer/` endpoint before it opens Chromium. Transient managed-identity, Azure discovery, and endpoint-readiness failures receive up to three bounded preflight attempts with safe phase diagnostics. The generator drives real routes and UI interactions; it does not submit fabricated telemetry directly.

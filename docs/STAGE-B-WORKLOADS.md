@@ -6,6 +6,11 @@
 
 ## 1) What gets created
 
+The PowerShell Stage B helper and one-shot `deploy.ps1` include narrowly scoped
+[customer-slot provider recovery](../scripts/README.md#customer-slot-provider-failure-recovery).
+They reconcile terminal deployment and slot state before retrying an isolated slot
+`InternalServerError`; direct CLI deployments do not gain automatic retries.
+
 | Group | Resource(s) | Purpose |
 |---|---|---|
 | Linux VM | `vm-amlab-lin` (`vmSize`) + NIC, public IP, OS disk + `shutdown-computevm-vm-amlab-lin` schedule | AMA-equipped and attached to `dcr-amlab-vminsights`. Automatically shuts down at 23:00 CET/CEST. The Linux Dependency Agent is not deployed, so Service Map is unavailable on this VM. |

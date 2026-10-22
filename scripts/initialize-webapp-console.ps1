@@ -171,7 +171,7 @@ try {
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'scripts') -Force
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/k8s') -Force
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/webapp/scripts') -Force
-  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/slot-health.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
+  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/slot-health.ps1', 'scripts/app-insights-target.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
     'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1', 'scripts/customer-journey-outcome.mjs',
     'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1',
     'scripts/set-customer-dependency-fault.ps1', 'scripts/customer-dependency-helpers.ps1',

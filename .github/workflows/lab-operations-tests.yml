@@ -7,6 +7,7 @@ on:
       - 'workloads/webapp/**'
       - 'workloads/webapp.Tests/**'
       - 'scripts/invoke-lab-operation.ps1'
+      - 'scripts/app-insights-target.ps1'
       - 'scripts/initialize-webapp-console.ps1'
       - 'scripts/deploy.ps1'
       - 'scripts/deploy-webapp.ps1'
@@ -14,6 +15,7 @@ on:
       - 'scripts/post-staged-deploy.ps1'
       - 'scripts/post-cloud-shell-deploy.ps1'
       - 'scripts/staged-deploy-helpers.ps1'
+      - 'scripts/deployment-slot-recovery.ps1'
       - 'scripts/teardown.ps1'
       - 'scripts/remove-lab-entra-identities.ps1'
       - 'scripts/setup-rbac-demo.ps1'
@@ -23,6 +25,7 @@ on:
       - 'scripts/tests/console-deployment.Tests.ps1'
       - 'scripts/tests/ai-traffic.Tests.ps1'
       - 'scripts/tests/staged-guide.Tests.ps1'
+      - 'scripts/tests/deployment-slot-recovery.Tests.ps1'
       - 'scripts/tests/sli-setup.Tests.ps1'
       - 'scripts/tests/service-group.Tests.ps1'
       - 'scripts/tests/teardown.Tests.ps1'
@@ -98,6 +101,7 @@ jobs:
           ./scripts/tests/webapp-publication.Tests.ps1
           ./scripts/tests/ai-traffic.Tests.ps1
           ./scripts/tests/staged-guide.Tests.ps1
+          ./scripts/tests/deployment-slot-recovery.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
           ./scripts/tests/service-group.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1

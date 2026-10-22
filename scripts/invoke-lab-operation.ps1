@@ -51,6 +51,7 @@ if ($ValidateOnly) { Write-Output 'Approved operation parameters validated. No A
 
 $repository = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'slot-health.ps1')
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
 $azureExecutable = (Get-Command az -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $kubernetesExecutable = $null
 $kubeloginExecutable = $null
@@ -189,8 +190,7 @@ try {
   }
   if ($Operation -in @('annotation', 'break', 'restore')) {
     $runnerPhase = 'annotation preflight'
-    $components = @(az resource list --resource-group $ResourceGroup --resource-type Microsoft.Insights/components --output json | ConvertFrom-Json)
-    if ($components.Count -ne 1) { throw 'Exactly one Application Insights component is required.' }
+    $annotationTarget = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $env:LAB_WEB_APP_NAME
   }
   if ($Operation -eq 'logs') {
     $runnerPhase = 'custom-log preflight'
@@ -252,6 +252,10 @@ try {
     return
   }
   $parameters = if ($Operation -eq 'usage') { @{} } else { @{ ResourceGroup = $ResourceGroup } }
+  if ($Operation -in @('annotation', 'break', 'restore')) {
+    $parameters.WebAppName = $env:LAB_WEB_APP_NAME
+    $parameters.AppInsightsName = $annotationTarget
+  }
   switch ($Operation) {
     'start' { $parameters.Wait = $true; $parameters.TimeoutMinutes = 20 }
     'ramp' { $parameters.WebAppName = $apps[0].name; $parameters.WebAppHost = $apps[0].defaultHostName }

@@ -196,6 +196,9 @@ if ($pfCustomerDependencies) {
 Write-Step "Deploying main.bicep (this takes about 5 minutes: AKS + VMs + Grafana)"
 $deploymentName = "amlab-$(Get-Date -Format 'yyyyMMddHHmmss')"
 $mainBicep = Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'
+. (Join-Path $PSScriptRoot 'deployment-slot-recovery.ps1')
+$deploymentSubscription = az account show --query id -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $deploymentSubscription) { throw 'Cannot resolve the pinned deployment subscription.' }
 
 # Transient allocation/capacity error codes. These are region-wide, service-side, and
 # NOT knowable ahead of time via any quota/SKU/availability API (see preflight-check.ps1) —
@@ -229,13 +232,11 @@ while ($true) {
     Write-Host "   Retry $($attempt - 1)/$MaxDeployRetries — capacity is often reclaimed as others delete clusters..." -ForegroundColor Yellow
   }
 
-  az deployment group create `
-    --resource-group $ResourceGroup `
-    --name $deploymentName `
-    --template-file $mainBicep `
-    --parameters "@$ParametersFile" `
-    --parameters location=$Location `
-    --output none
+  $deploymentArguments = @('--subscription', $deploymentSubscription, '--resource-group', $ResourceGroup,
+    '--name', $deploymentName, '--template-file', $mainBicep,
+    '--parameters', "@$ParametersFile", '--parameters', "location=$Location", '--mode', 'Incremental')
+  Invoke-LabDeployment -Arguments $deploymentArguments -SubscriptionId $deploymentSubscription `
+    -ResourceGroup $ResourceGroup -DeploymentName $deploymentName
 
   if ($LASTEXITCODE -eq 0) { break }
 

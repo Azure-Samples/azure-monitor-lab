@@ -10,6 +10,51 @@ Most scripts use the Azure CLI and require `az login`. Scripts that work with AK
 
 ## Deployment and configuration
 
+### Customer-slot provider failure recovery
+
+`deploy.ps1` and `Invoke-LabStage 10-workloads` share `deployment-slot-recovery.ps1`.
+Recovery is deliberately limited to an isolated failed
+`customer-webapp` → `customer-broken-slot` → `Microsoft.Web/sites/slots` **Create**
+whose structured leaf error is `InternalServerError`. An outer HTTP 400/`BadRequest`
+is not itself retryable. Generic `DeploymentFailed`, permissions, quotas, validation
+errors, mixed failures, and other resources do not qualify for this recovery.
+Existing capacity/metric-readiness policies in `deploy.ps1` remain separate.
+
+Before writing, the helper verifies the original deployments are terminal and reads
+the actual `broken` slot. Pending/unknown states are polled at five-second intervals
+for up to a 60-second polling window (13 reads); unreadable or failed reads stop
+recovery. A missing or terminal-failed slot gets at most **two additional leaf
+attempts**, delayed **30 then 90 seconds plus 0–10 seconds jitter**. Every failed
+attempt must again meet the same narrow error gate. A running, already-created
+slot skips leaf writes only after checking its nonsecret plan, region, subnet,
+identity, tags, HTTPS and runtime metadata against the submitted parameters.
+No app settings, connection strings, or tokens are read or printed.
+
+The helper replays the leaf's exported deployment-history template and nonsecure
+parameters with the same subscription, resource group, name and resource target.
+ARM cannot resume a terminal failed parent. Therefore, **only after slot
+reconciliation**, it performs one guarded incremental parent reconciliation using
+the original exported parent template and unchanged original parameter arguments
+(local input files are hash-checked). This necessarily re-evaluates the parent's
+other resources; it is not an unclassified full-deployment retry. Parent success
+is mandatory before capturing outputs or continuing post-deployment steps.
+Slot existence alone never counts as overall success. Recovery scratch templates
+under `.artifacts` are removed in `finally`.
+
+This does not add retry behavior to direct `az deployment` commands, Cloud Shell
+templates, Terraform, or other stages. Do not run competing deployment writers
+against the same deployment names. The polling window bounds reconciliation
+polls, not Azure CLI transport timeouts. The observed provider failure may be
+transient; this handling does not claim to establish its root cause.
+
+Local regression checks (mocked Azure CLI, no Azure access):
+
+```powershell
+& .\scripts\tests\deployment-slot-recovery.Tests.ps1
+& .\scripts\tests\staged-guide.Tests.ps1
+& .\scripts\tests\slot-failure-scenario.Tests.ps1
+```
+
 | Script | Purpose | Typical command |
 |---|---|---|
 | `sync-config.ps1` | Reads `lab.config.json` and generates the gitignored deployment inputs: `.azure-target.json`, `infra/main.parameters.json`, and `terraform/stages.tfvars`. | `./scripts/sync-config.ps1` |
