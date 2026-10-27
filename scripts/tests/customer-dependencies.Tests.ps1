@@ -204,7 +204,8 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
   }
   function dotnet {
     $fixture.PublishCalls++
-    Assert-True ($args[0] -eq 'publish' -and $args[1] -like '*customer-processor\CustomerProcessor.csproj') 'Lifecycle must publish the approved isolated processor project.'
+    Assert-True ($args[0] -eq 'publish' -and [IO.Path]::GetFileName($args[1]) -eq 'CustomerProcessor.csproj' -and
+      [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($args[1])) -eq 'customer-processor') 'Lifecycle must publish the approved isolated processor project.'
     $output = $args[[array]::IndexOf($args, '--output') + 1]
     '{}' | Set-Content (Join-Path $output 'host.json')
     '[]' | Set-Content (Join-Path $output 'functions.metadata')
