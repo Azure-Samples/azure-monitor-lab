@@ -19,9 +19,11 @@ $fixture = @{
   PublicationMode = ''; AksCredentialRequests = 0
   Packages = [Collections.Generic.List[string]]::new()
 }
-foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1')) {
+foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1', 'deployment-slot-recovery.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source "scripts/$name") -Destination $directory
 }
+$null = New-Item -ItemType Directory -Path (Join-Path $root 'infra') -Force
+'{"parameters":{}}' | Set-Content (Join-Path $root 'infra\main.parameters.json')
 @{ expectedSubscriptionId = [guid]::NewGuid(); expectedTenantId = [guid]::NewGuid() } | ConvertTo-Json | Set-Content (Join-Path $root '.azure-target.json')
 @'
 param($PublishDirectory, $ResourceGroup, $SubscriptionId, $TenantId, $CentralLawName, $SreModelEndpoint, $SreModelDeployment, $CustomerWebAppName, [switch]$BundleSreMcp)
@@ -41,10 +43,20 @@ param($SubscriptionId, $ResourceGroup, $WebAppName, $ArchivePath, $DeploymentId)
 if ($SubscriptionId -ne $fixture.Subscription -or -not (Test-Path -LiteralPath $ArchivePath) -or $DeploymentId -ne $fixture.DeploymentId) { throw 'Wrong broken-slot publication inputs.' }
 '@ | Set-Content (Join-Path $directory 'prepare-broken-slot.ps1')
 @'
-param([guid]$SubscriptionId, [guid]$TenantId, $ResourceGroup, $WebAppName, $CustomerWebAppName, $AksName, $WebAppHost, $CentralLawName, $ConsoleOperatorObjectIds, $AppInsightsConnectionString)
+param([guid]$SubscriptionId, [guid]$TenantId, $ResourceGroup, $WebAppName, $CustomerWebAppName, $AksName, $WebAppHost, $CentralLawName, $ConsoleOperatorObjectIds, $AppInsightsConnectionString,
+  $CustomerDependencyDeploymentName, [switch]$ApproveCustomerDependencies)
 if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or $ConsoleOperatorObjectIds[0] -ne $fixture.Operator -or $CustomerWebAppName -ne 'app-amlab-test-customer') { throw 'Deployment wrapper lost the verified target, customer app, or operator inputs.' }
 $fixture.Events.Add('post-deploy')
+$fixture.CustomerApproval = $ApproveCustomerDependencies.IsPresent
+$fixture.CustomerDeploymentName = $CustomerDependencyDeploymentName
 '@ | Set-Content (Join-Path $directory 'post-deploy.ps1')
+@'
+param($SubscriptionId,$TenantId,$ResourceGroup,$CustomerWebAppName,$DeploymentName,[switch]$ApproveCustomerDependencies)
+if ($CustomerWebAppName -ne 'app-amlab-test-customer') { throw 'Customer completion lost the dedicated storefront.' }
+if ($DeploymentName -eq 'test-customer-deployment' -and -not $ApproveCustomerDependencies) { throw 'Customer completion lost its explicit approval.' }
+$fixture.Events.Add('customer-completion')
+if ($fixture.CustomerCompletionFails) { throw 'Customer backend readiness failed.' }
+'@ | Set-Content (Join-Path $directory 'complete-customer-dependencies.ps1')
 @'
 param([guid]$SubscriptionId, $ResourceGroup)
 if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') { throw 'SRE setup lost the verified target.' }
@@ -252,7 +264,9 @@ try {
     $fixture.Events.Clear()
     $fixture.ServiceGroupCalls = 0
     $wrapperArguments = if ($name -eq 'post-cloud-shell-deploy.ps1') { @{ TenantId = $fixture.Tenant } } else { @{} }
-    & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) @wrapperArguments | Out-Null
+    & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) `
+      -CustomerDependencyDeploymentName test-customer-deployment -ApproveCustomerDependencies @wrapperArguments | Out-Null
+    if (-not $fixture.CustomerApproval -or $fixture.CustomerDeploymentName -ne 'test-customer-deployment') { throw 'Staged/Cloud Shell wrapper lost customer completion approval or the selected deployment.' }
     $expectedEvents = if ($name -eq 'post-cloud-shell-deploy.ps1') { 'login,post-deploy' } else { 'post-deploy' }
     if (($fixture.Events -join ',') -ne $expectedEvents) { throw 'Deployment completion did not invoke the expected login and shared console path.' }
     $expectedServiceGroups = if ($name -eq 'post-staged-deploy.ps1') { 0 } else { 1 }
@@ -353,8 +367,9 @@ if ($SubscriptionId -ne $fixture.Subscription) { throw 'One-shot SLI setup lost 
     $active = $inheritedAccount
     $fixture.Events.Clear()
     $fixture.DeploymentWrites = 0
-    & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) | Out-Null
+    & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) -ApproveCustomerDependencies | Out-Null
     if (($fixture.Events -join ',') -ne 'post-deploy' -or $fixture.DeploymentWrites -ne 3) { throw 'One-shot deployment did not complete its verified account handoff.' }
+    if (-not $fixture.CustomerApproval -or $fixture.CustomerDeploymentName -notlike 'amlab-*') { throw 'One-shot deployment must forward approval and its exact successful deployment name.' }
   }
   $fixture.BadTenant = $true
   $fixture.Events.Clear()
@@ -532,6 +547,23 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
   catch { $rejected = $_.Exception.Message -eq 'Specify console operator IDs for a noninteractive deployment.' }
   if (-not $rejected -or $fixture.OperatorRoles -or $fixture.CurrentUserLookups -ne 1) { throw 'Failed user discovery must stop without assigning custom-log access.' }
   Write-Output 'PASS: omitted, null, and empty one-shot operator lists resolve the signed-in user; existing roles are reused; failed user discovery stops without role writes.'
+  $fixture.CurrentUserUnavailable = $false
+  $fixture.DefaultOperator = $false
+  foreach ($failCompletion in @($false, $true)) {
+    $fixture.CustomerCompletionFails = $failCompletion
+    $fixture.Events.Clear()
+    $aksBefore = $fixture.AksCredentialRequests
+    $caught = $null
+    try {
+      & (Join-Path $directory 'post-deploy.ps1') @parameters -AksName aks-amlab -WebAppHost app-amlab-test.azurewebsites.net `
+        -CentralLawName law-amlab-central-test -CustomerWebAppName app-amlab-test-customer `
+        -CustomerDependencyDeploymentName test-customer-deployment -ApproveCustomerDependencies | Out-Null
+    } catch { $caught = $_ }
+    if (($null -ne $caught) -ne $failCompletion -or ($caught -and $caught.Exception.Message -ne 'Customer backend readiness failed.')) { throw 'Customer completion failure did not propagate through shared post-deployment.' }
+    if (($fixture.Events -join ',') -ne 'publish,package,initialize,customer-completion') { throw 'Customer backend completion must follow storefront/slot publication.' }
+    if (($fixture.AksCredentialRequests - $aksBefore) -ne [int](-not $failCompletion)) { throw 'Failed customer readiness must stop before subsequent post-deploy work.' }
+  }
+  Write-Output 'PASS: one-shot/staged/Cloud Shell approval forwarding and shared customer completion after publication, with readiness failures stopping deployment.'
   Write-Output 'PASS: one-shot, app, staged, and Cloud Shell handoffs preserve account/operator inputs, bootstrap before publication, and stop on setup failures. No Azure calls.'
 } finally {
   foreach ($package in $fixture.Packages) {

@@ -11,6 +11,14 @@
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
 
+.PARAMETER CustomerDependencyDeploymentName
+  Exact portal/Bicep customer deployment. If omitted, completion discovers the
+  latest successful deployment for the customer app.
+
+.PARAMETER ApproveCustomerDependencies
+  Explicit approval for enabled customer SQL initialization and worker publication.
+  Otherwise completion prompts before changing the backend.
+
 .PARAMETER EnableStageObservabilityAgent
   Validate Azure Copilot Observability Agent when true. When omitted, detect the
   deployed resource. Explicit false skips validation without changing it.
@@ -25,6 +33,8 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [string] $NamePrefix = 'amlab',
   [guid[]] $ConsoleOperatorObjectIds,
+  [string] $CustomerDependencyDeploymentName,
+  [switch] $ApproveCustomerDependencies,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false
 )
@@ -117,6 +127,8 @@ Write-Step "Running App Service and AKS post-deployment setup"
   -AksName $aks.name `
   -WebAppHost $webAppHost `
   -CustomerWebAppName $customerWebAppName `
+  -CustomerDependencyDeploymentName $CustomerDependencyDeploymentName `
+  -ApproveCustomerDependencies:$ApproveCustomerDependencies `
   -CentralLawName $centralLaw.name `
   -AppInsightsConnectionString $appInsightsConnectionString `
   -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds

@@ -16,6 +16,14 @@
   Run the optional Service Group and SLI setup. Explicit values override the
   central config; when omitted, use stageToggles.enableStageE or default false.
 
+.PARAMETER CustomerDependencyDeploymentName
+  Exact Bicep customer deployment, for example stage-10-workloads. If omitted,
+  completion discovers the latest successful deployment for the customer app.
+
+.PARAMETER ApproveCustomerDependencies
+  Explicit approval for enabled customer SQL initialization and worker publication.
+  Otherwise completion prompts before changing the backend.
+
 .PARAMETER EnableStageSreAgent
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
@@ -36,6 +44,8 @@ param(
   [string] $NamePrefix = 'amlab',
   [string] $SubscriptionId,
   [guid[]] $ConsoleOperatorObjectIds,
+  [string] $CustomerDependencyDeploymentName,
+  [switch] $ApproveCustomerDependencies,
   [bool] $EnableStageE = $false,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false
@@ -129,6 +139,8 @@ $postDeploy = Join-Path $PSScriptRoot 'post-deploy.ps1'
   -AksName $aks.name `
   -WebAppHost $webAppHost `
   -CustomerWebAppName $customerWebAppName `
+  -CustomerDependencyDeploymentName $CustomerDependencyDeploymentName `
+  -ApproveCustomerDependencies:$ApproveCustomerDependencies `
   -CentralLawName $centralLaw.name `
   -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
 

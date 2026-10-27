@@ -100,9 +100,37 @@ ARM 64-output limit, so its object is in the nested `customer-dependencies`
 deployment. The guarded helper resolves both formats and rejects a deployment
 whose selected `enableCustomerDependencies` parameter is not `true`.
 
-After infrastructure and customer storefront publication, run the **explicit**
-SQL-admin lifecycle below. These commands are examples, not automatically executed
-by post-deployment. The operator must reach SQL through the private network;
+After infrastructure and customer storefront publication, `deploy.ps1`,
+`post-staged-deploy.ps1`, and `post-cloud-shell-deploy.ps1` automatically invoke
+[customer backend completion](complete-customer-dependencies.ps1) when the feature
+is enabled. It shows the exact database and worker targets and asks for approval
+before acquiring a SQL administrator token, changing database objects, or publishing
+the worker. Declining approval or failing bootstrap/publication/readiness stops
+deployment; infrastructure success alone is not reported as backend readiness.
+Disabled backends do not prompt or run completion.
+
+Run as the configured SQL Entra administrator, with the .NET 8 SDK, Python and
+`paramiko` available. Completion opens an authenticated customer App Service SSH
+tunnel on an allocated loopback port, verifies an SSH response, and closes its
+owned tunnel after SQL initialization or on failure. It does not change public
+network access or firewall rules. Unattended callers must explicitly approve this
+scope with `-ApproveCustomerDependencies`; the switch does not grant administrator
+access or bypass target checks. Staged/Cloud Shell completion discovers the latest
+successful deployment whose output matches the exact customer app, then validates
+its enabled feature/context. Use `-CustomerDependencyDeploymentName <name>` to
+select the intended deployment explicitly. The one-shot driver passes its exact
+successful deployment name automatically.
+
+```powershell
+.\scripts\deploy.ps1 -ApproveCustomerDependencies
+# After a staged Bicep deployment:
+.\scripts\post-staged-deploy.ps1 -SubscriptionId '<subscription-guid>' `
+  -ResourceGroup '<lab-resource-group>' -CustomerDependencyDeploymentName stage-10-workloads `
+  -ApproveCustomerDependencies
+```
+
+For targeted repair without reapplying infrastructure or publishing the storefront,
+use the SQL-admin lifecycle below. The operator must reach SQL through the private network;
 temporary public-IP firewall rules cannot bypass disabled public networking or
 the lab's modifying policy. Do not use `-ApproveTemporaryFirewall` for this
 deployment. Neither script changes the selected Azure subscription/tenant or
@@ -119,6 +147,8 @@ $common = @{
 . .\scripts\customer-dependency-helpers.ps1
 $context = Get-CustomerDependencyContext @common # Read-only account/output checks.
 .\scripts\deploy-customer-dependencies.ps1 @common -ConfirmTarget $context.workerId -WhatIf
+# Manage a temporary private tunnel automatically (recommended for laptop operators):
+.\scripts\deploy-customer-dependencies.ps1 @common -ConfirmTarget $context.workerId -StartCustomerPrivateTunnel
 # Private-network operator:
 .\scripts\deploy-customer-dependencies.ps1 @common -ConfirmTarget $context.workerId
 ```
@@ -137,8 +167,10 @@ SELECT/UPDATE Orders. No SQL control-plane role substitutes for these grants.
 
 #### Private SQL bootstrap through the customer App Service
 
-For an operator whose laptop cannot reach the SQL private endpoint, use
-`-UseCustomerPrivateTunnel -SshPort 22446`. Prerequisites:
+Automatic completion uses `-StartCustomerPrivateTunnel` and manages its own
+tunnel; no separate terminal or `SqlServer` PowerShell module is needed.
+For an operator-managed existing tunnel, use `-UseCustomerPrivateTunnel -SshPort
+22446` instead. Prerequisites for both private tunnel modes:
 
 - Azure CLI authenticated as the current selected/configured Entra SQL
   administrator, in the subscription/tenant checked by the guarded helper.
@@ -148,7 +180,7 @@ For an operator whose laptop cannot reach the SQL private endpoint, use
   Install `paramiko` in the Python environment resolved by that `python` command.
   The SDK publishes `scripts\customer-sql-bootstrap\CustomerSqlBootstrap.csproj`
   (.NET 8, Microsoft.Data.SqlClient 6.1.3); initial restore needs NuGet access.
-- A separate terminal for the official authenticated Azure CLI TCP tunnel. Port
+- Only for `-UseCustomerPrivateTunnel`: a separate terminal for the official authenticated Azure CLI TCP tunnel. Port
   `22446` must be free; another port is allowed if both commands use the same one.
 
 In **terminal 1**, substitute the exact selected subscription/resource group and
@@ -172,16 +204,18 @@ SQL-only command or the complete SQL-first worker-publication lifecycle:
   -UseCustomerPrivateTunnel -SshPort 22446
 ```
 
-`-SshPort` defaults to `22446` and requires `-UseCustomerPrivateTunnel`; the tunnel
-mode is mutually exclusive with `-ApproveTemporaryFirewall` and `-OperatorIpv4`.
-It never opens the tunnel automatically. The Python `paramiko` bridge sends the
+For `-UseCustomerPrivateTunnel`, `-SshPort` defaults to `22446`; for
+`-StartCustomerPrivateTunnel`, an available port is allocated unless explicitly
+specified. The modes are mutually exclusive. Managed-tunnel mode cannot be
+combined with `-ApproveTemporaryFirewall` or `-OperatorIpv4`.
+The Python `paramiko` bridge sends the
 current selected admin token/query only over encrypted SSH stdin to the temporary
 .NET console; SFTP uploads contain only token-free binaries. No token
 files/logs/command-line arguments, admin identity changes, new roles, firewall
 rules, VMs or credentials are introduced. Exact temporary remote bootstrap
 artifacts are removed by the bridge.
 
-After bootstrap/lifecycle finishes, **close terminal 1 with Ctrl+C** to stop the
+After an operator-managed bootstrap/lifecycle finishes, **close terminal 1 with Ctrl+C** to stop the
 foreground tunnel; do not leave it open beyond the operator task. Its configured
 timeout is 1200 seconds. A private-network-connected operator may instead use
 the direct `Invoke-Sqlcmd` path without either tunnel argument.

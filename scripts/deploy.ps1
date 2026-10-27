@@ -22,6 +22,10 @@
 .PARAMETER ParametersFile
   Bicep parameters file. Defaults to infra/main.parameters.json.
 
+.PARAMETER ApproveCustomerDependencies
+  Approve SQL schema/users/seed initialization and orders worker publication for
+  the enabled customer backend. Otherwise post-deployment requests confirmation.
+
 .EXAMPLE
   ./scripts/deploy.ps1
 
@@ -36,7 +40,8 @@ param(
   [string] $ParametersFile = (Join-Path $PSScriptRoot '..' 'infra' 'main.parameters.json'),
   [switch] $SkipPreflight,
   [int]    $MaxDeployRetries = 0,
-  [guid[]] $ConsoleOperatorObjectIds
+  [guid[]] $ConsoleOperatorObjectIds,
+  [switch] $ApproveCustomerDependencies
 )
 
 $ErrorActionPreference = 'Stop'
@@ -366,14 +371,13 @@ $postDeployParameters = @{
   WebAppHost = $webAppHost
   CentralLawName = $centralLawName
   ConsoleOperatorObjectIds = $ConsoleOperatorObjectIds
+  CustomerDependencyDeploymentName = $deploymentName
+  ApproveCustomerDependencies = $ApproveCustomerDependencies
 }
 if (-not [string]::IsNullOrWhiteSpace($customerWebAppName)) {
   $postDeployParameters.CustomerWebAppName = $customerWebAppName
 }
 & $postDeploy @postDeployParameters
-if ($pfCustomerDependencies) {
-  Write-Warning "Customer dependency infrastructure exists but readiness is NOT complete. Run scripts/deploy-customer-dependencies.ps1 explicitly as the configured SQL Entra administrator with DeploymentName '$deploymentName'. Read output contract from the 'customer-dependencies' nested deployment; confirm its exact workerId and, if needed, approve only your exact temporary operator firewall IPv4."
-}
 
 # 4. Service Group (tenant-scoped, preview) + service group member relationship.
 #    Required before SLIs can be attached as extensions on the group.

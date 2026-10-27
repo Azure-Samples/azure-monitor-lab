@@ -179,6 +179,19 @@ az deployment group create `
 
 Completion publishes and verifies the App Service, initializes the Control Center and approved operator access, applies AKS workloads, and creates the summary rule. It prepares available AI agents without traffic and validates any deployed SRE Agent. Stage E is explicitly off here because it has not been deployed yet. For noninteractive setup, pass approved user IDs through `-ConsoleOperatorObjectIds`; otherwise existing operators or the signed-in user are used.
 
+When `enableCustomerDependencies=true`, completion also requests approval to
+initialize the SQL schema, seed products and least-privilege users through a
+temporary private App Service tunnel, publish the orders worker, and verify
+readiness. Run as the configured SQL Entra administrator with .NET 8 SDK, Python
+and `paramiko` installed. For an explicitly preapproved run, pass
+`-ApproveCustomerDependencies` to the completion wrapper. Use
+`-CustomerDependencyDeploymentName stage-10-workloads` to select this deployment
+explicitly; otherwise the wrapper discovers the latest successful deployment for
+the exact customer app and validates its enabled context. Declined approval or
+failed readiness stops completion rather than leaving a successful-looking,
+uninitialized catalogue. SQL public access and firewall rules remain unchanged.
+See [customer backend lifecycle](../scripts/README.md#opt-in-customer-dependencies-bicep-only).
+
 ### Stage C deploy
 
 ```powershell

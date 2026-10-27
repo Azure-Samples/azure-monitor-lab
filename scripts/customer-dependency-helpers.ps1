@@ -47,6 +47,31 @@ function Get-CustomerDependencyContext {
   return $context
 }
 
+function Test-CustomerSqlTunnel {
+  param([Parameter(Mandatory)][int] $Port)
+  $client = [Net.Sockets.TcpClient]::new()
+  try {
+    $connection = $client.ConnectAsync('127.0.0.1', $Port)
+    if (-not $connection.Wait(1000)) { return $false }
+    $connection.GetAwaiter().GetResult()
+    $stream = $client.GetStream()
+    $stream.ReadTimeout = 2000
+    $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::ASCII)
+    try {
+      $banner = $reader.ReadLine()
+      return $null -ne $banner -and $banner.StartsWith('SSH-', [StringComparison]::Ordinal)
+    }
+    finally { $reader.Dispose() }
+  } catch [AggregateException] {
+    if ($_.Exception.InnerException -isnot [Net.Sockets.SocketException]) { throw }
+    return $false
+  } catch [Net.Sockets.SocketException] {
+    return $false
+  } catch [IO.IOException] {
+    return $false
+  } finally { $client.Dispose() }
+}
+
 function Get-CustomerSqlBootstrap {
   param([Parameter(Mandatory)][guid] $CustomerClientId, [Parameter(Mandatory)][guid] $WorkerClientId)
   if ($CustomerClientId -eq [guid]::Empty -or $WorkerClientId -eq [guid]::Empty -or $CustomerClientId -eq $WorkerClientId) {

@@ -5,12 +5,22 @@
 .PARAMETER AppInsightsConnectionString
   Optional pre-resolved connection string. The Cloud Shell wrapper supplies this
   through the core ARM CLI surface to avoid installing the App Insights extension.
+
+.PARAMETER CustomerDependencyDeploymentName
+  Exact customer infrastructure deployment. If omitted, resolve the latest
+  successful deployment whose customer app output matches this storefront.
+
+.PARAMETER ApproveCustomerDependencies
+  Explicitly approve enabled customer SQL initialization and worker publication.
+  Otherwise completion requests confirmation and fails if approval is declined.
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [Parameter(Mandatory)] [string] $WebAppName,
   [string] $CustomerWebAppName,
+  [string] $CustomerDependencyDeploymentName,
+  [switch] $ApproveCustomerDependencies,
   [Parameter(Mandatory)] [string] $AksName,
   [Parameter(Mandatory)] [string] $WebAppHost,
   [string] $CentralLawName,
@@ -188,17 +198,16 @@ if ($CustomerWebAppName) {
 } else {
 Write-Host 'No dedicated customer Web App was provisioned; skipping broken-slot publication.'
 }
-if ($CustomerWebAppName) {
-  $dependencyEnabled = az webapp config appsettings list --subscription $active.id --resource-group $ResourceGroup --name $CustomerWebAppName `
-    --query "[?name=='CustomerDependencies__Enabled'].value | [0]" --output tsv --only-show-errors
-  if ($LASTEXITCODE -ne 0) { throw 'Could not resolve customer dependency configuration after publication.' }
-  if ($dependencyEnabled -eq 'true') {
-    Write-Warning 'Customer dependencies require explicit operator SQL bootstrap and worker publication using deploy-customer-dependencies.ps1. Do not claim readiness until test-customer-dependencies.ps1 passes. For staged deployments use DeploymentName stage-10-workloads; for monolithic use the main deployment name. No bootstrap token is acquired automatically.'
-  }
-}
 Write-Step 'Cleaning up local Web App package files'
 Remove-Item -Recurse -Force $pub
 Remove-Item -Force $zip
+if ($CustomerWebAppName) {
+  Write-Step 'Completing the enabled customer backend with operator approval'
+  & (Join-Path $PSScriptRoot 'complete-customer-dependencies.ps1') `
+    -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup `
+    -CustomerWebAppName $CustomerWebAppName -DeploymentName $CustomerDependencyDeploymentName `
+    -ApproveCustomerDependencies:$ApproveCustomerDependencies
+}
 
 # 2. Get AKS credentials and apply the workload + k6 load generator
 Write-Step "Getting AKS credentials"

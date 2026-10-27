@@ -14,6 +14,14 @@ on:
       - 'scripts/post-deploy.ps1'
       - 'scripts/post-staged-deploy.ps1'
       - 'scripts/post-cloud-shell-deploy.ps1'
+      - 'scripts/complete-customer-dependencies.ps1'
+      - 'scripts/deploy-customer-dependencies.ps1'
+      - 'scripts/bootstrap-customer-sql.ps1'
+      - 'scripts/customer-dependency-helpers.ps1'
+      - 'scripts/customer-sql-bootstrap/**'
+      - 'scripts/test-customer-dependencies.ps1'
+      - 'scripts/tests/customer-completion.Tests.ps1'
+      - 'scripts/tests/customer-dependencies.Tests.ps1'
       - 'scripts/staged-deploy-helpers.ps1'
       - 'scripts/deployment-slot-recovery.ps1'
       - 'scripts/teardown.ps1'
@@ -98,6 +106,8 @@ jobs:
           ./scripts/tests/lab-operations-execution.Tests.ps1
           ./scripts/tests/console-bootstrap.Tests.ps1
           ./scripts/tests/console-deployment.Tests.ps1
+          ./scripts/tests/customer-completion.Tests.ps1
+          ./scripts/tests/customer-dependencies.Tests.ps1
           ./scripts/tests/webapp-publication.Tests.ps1
           ./scripts/tests/ai-traffic.Tests.ps1
           ./scripts/tests/staged-guide.Tests.ps1
