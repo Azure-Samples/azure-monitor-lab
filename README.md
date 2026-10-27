@@ -36,7 +36,7 @@ The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can a
 | Layer | Azure Monitor operational path | Optional Fabric analytics path |
 |---|---|---|
 | Workloads and collection | VMs, AKS, the Control Center, and the customer application emit logs, metrics, and traces through agents, SDKs, and diagnostic settings. | App Service and AKS diagnostics fan out to Azure Event Hubs. |
-| Telemetry and analytics | Log Analytics, Application Insights, and Azure Monitor workspaces retain operational telemetry. | Event Hubs → Fabric Eventstream → Eventhouse / KQL database. |
+| Telemetry and analytics | Log Analytics, Application Insights, and Azure Monitor workspaces retain operational telemetry. | Streaming: Event Hubs → Eventstream → Eventhouse / KQL. Mirroring (preview): central Log Analytics Delta tables → read-only OneLake shortcuts → Eventhouse / KQL, without a data copy. |
 | Consumption and response | Grafana, Workbooks, alerts, Health Models, and agents support investigation and approved response. | KQL exploration and a guided Real-Time Dashboard correlate operational events with business data. |
 
 The F2 **capacity is an Azure resource** in `swedencentral`; its **workspace, Eventstream, Eventhouse, and KQL database are tenant-scoped Fabric items**, outside the resource group. The Azure workbook and Health Model report capacity health; stream and item health are inspected in Fabric. Setup creates the items and attempts the Event Hubs connection and topology. A one-time portal connection may be needed where the public Fabric API rejects connection creation; dashboard creation and Azure Monitor mirroring remain guided portal steps. See [Stage Fabric](docs/STAGE-FABRIC.md) and [scenarios 74–80](docs/DEMO-SCENARIOS.md#s74).

@@ -169,7 +169,7 @@ if ($mainTemplate.outputs.Count -gt 64 -or $capacityDeployments.Count -ne 1 -or
 $elements = @{}
 foreach ($element in $architecture.SelectNodes('//*[@id]')) { $elements[$element.id] = $element }
 foreach ($id in @('node-CUSTOMER', 'node-OBS', 'node-OAMW', 'node-OTEL', 'node-COPILOT',
-    'node-FAB', 'node-EVSTR', 'node-EH', 'node-RTD', 'edge-PLAT-EVSTR', 'edge-EVSTR-EH', 'edge-EH-RTD')) {
+    'node-FAB', 'node-EVSTR', 'node-EH', 'node-RTD', 'node-DELTA', 'edge-PLAT-EVSTR', 'edge-EVSTR-EH', 'edge-EH-RTD', 'edge-LAW-DELTA', 'edge-DELTA-EH')) {
   if (-not $elements.ContainsKey($id)) { throw "Shared architecture is missing '$id'." }
 }
 $azureBoundary = $elements['azure-resource-group-boundary']
@@ -179,10 +179,32 @@ if ([double]$fabricBoundary.y -le $azureBottom -or
     [double]$elements['node-FAB'].rect.y -ge $azureBottom) {
   throw 'The Fabric capacity must be inside Azure and tenant-scoped items outside the resource group.'
 }
-foreach ($id in @('node-EVSTR', 'node-EH', 'node-RTD')) {
+foreach ($id in @('node-EVSTR', 'node-EH', 'node-RTD', 'node-DELTA')) {
   if ([double]$elements[$id].rect.y -lt [double]$fabricBoundary.y -or
       [double]$elements[$id].rect.y + [double]$elements[$id].rect.height -gt [double]$fabricBoundary.y + [double]$fabricBoundary.height) {
     throw "Fabric item '$id' is outside the tenant-scoped workspace boundary."
+  }
+  if ($elements['fabric-workspace-title'].InnerText -match '(?i)optional' -or
+      $elements['fabric-mirroring-storage-note'].InnerText -notmatch 'Azure Monitor Delta storage.*no data copy') {
+    throw 'Fabric title must omit optional and mirroring must describe shared Azure Monitor storage without a data copy.'
+  }
+  $customerImages = @($elements['node-CUSTOMER'].GetElementsByTagName('image'))
+  $customerIcons = @('Customer_App_Service.svg', 'Customer_Service_Bus.svg', 'Customer_Function_App.svg', 'Customer_SQL_Database.svg')
+  if ($customerImages.Count -ne 4) { throw 'Customer application must retain all four original service icons.' }
+  for ($i = 0; $i -lt $customerIcons.Count; $i++) {
+    $expected = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $source "docs/icons/azure/$($customerIcons[$i])")))
+    if ($customerImages[$i].href -cne "data:image/svg+xml;base64,$expected" -or $customerImages[$i].width -ne '28') {
+      throw "Customer service icon '$($customerIcons[$i])' was replaced or resized."
+    }
+  }
+  foreach ($icon in @{ 'node-EH' = 'Fabric_Eventhouse.svg'; 'node-RTD' = 'Fabric_Real_Time_Dashboard.svg' }.GetEnumerator()) {
+    $expected = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $source "docs/icons/azure/$($icon.Value)")))
+    if ($elements[$icon.Key].image.href -cne "data:image/svg+xml;base64,$expected") {
+      throw "Fabric item '$($icon.Key)' must use its service-specific icon."
+    }
+  }
+  if ($elements['node-DELTA'].image.href -cne $elements['node-FAB'].image.href) {
+    throw 'The mirrored Delta Lake access node must have its own Fabric logo.'
   }
 }
 $scenarioText = Get-Content -LiteralPath (Join-Path $source 'docs/DEMO-SCENARIOS.md') -Raw
