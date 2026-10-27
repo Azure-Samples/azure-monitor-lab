@@ -8,7 +8,7 @@
 //   3. Resource graph query           -> the Foundry projects.
 //   4. Resource graph query           -> the observability services (App Insights + LAW).
 // Plus one explicit entity per agent persona, each carrying custom Log Analytics
-// signals for error-rate and estimated cost (high cost -> unhealthy).
+// signals for error-rate and token volume.
 //
 // Region-pinned (aiLocation, swedencentral) like the workload health model — the
 // CloudHealth preview is region-limited. Discovery + signals run under the model's
@@ -171,7 +171,7 @@ resource logAnalyticsReaderAssignment 'Microsoft.Authorization/roleAssignments@2
 // One explicit entity per agent persona, each carrying two custom Log Analytics
 // signals from the workspace-based App Insights `AppDependencies` table:
 //   - error-rate : failed runs %      -> health of the agent
-//   - cost-cents : estimated $/hour   -> high cost drives the entity unhealthy
+//   - token-volume : total tokens/hour -> anomalous volume drives the entity unhealthy
 resource agentEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-05-01-preview' = [for a in agents: {
   parent: healthModel
   name: 'agent-${a.key}'
@@ -199,16 +199,16 @@ resource agentEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-05-01-p
             }
           }
           {
-            name: 'cost-cents'
+            name: 'token-volume'
             signalKind: 'LogAnalyticsQuery'
-            displayName: 'Estimated cost (US cents/hour)'
+            displayName: 'Total tokens/hour'
             dataUnit: 'Count'
             refreshInterval: 'PT5M'
-            valueColumnName: 'CostCents'
-            queryText: 'AppDependencies | where TimeGenerated > ago(1h) | where tostring(Properties[\'gen_ai.agent.name\']) == \'${a.display}\' | extend inTok=toint(Properties[\'gen_ai.usage.input_tokens\']), outTok=toint(Properties[\'gen_ai.usage.output_tokens\']), cachedTok=toint(Properties[\'gen_ai.usage.cached_input_tokens\']) | extend freshIn=inTok-coalesce(cachedTok, 0) | summarize c=round((sum(freshIn)*0.25 + sum(coalesce(cachedTok, 0))*0.025 + sum(outTok)*2.0)/1000000.0*100, 2) | project CostCents=coalesce(c, 0.0)'
+            valueColumnName: 'TotalTokens'
+            queryText: 'AppDependencies | where TimeGenerated > ago(1h) | where tostring(Properties[\'gen_ai.agent.name\']) == \'${a.display}\' | extend inTok=toint(Properties[\'gen_ai.usage.input_tokens\']), outTok=toint(Properties[\'gen_ai.usage.output_tokens\']) | summarize TotalTokens=coalesce(sum(inTok), 0)+coalesce(sum(outTok), 0)'
             evaluationRules: {
-              degradedRule: { operator: 'GreaterThan', threshold: 10 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 30 }
+              degradedRule: { operator: 'GreaterThan', threshold: 100000 }
+              unhealthyRule: { operator: 'GreaterThan', threshold: 200000 }
             }
           }
         ]

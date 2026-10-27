@@ -5,16 +5,27 @@ const now = new Date('2026-09-11T12:00:00Z');
 const target = { jobResourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-azure-monitor-lab/providers/Microsoft.App/jobs/job-labops-demo', image: 'acrlabopsdemo.azurecr.io/lab-operations@sha256:' + 'a'.repeat(64), subscriptionId: '00000000-0000-0000-0000-000000000000', tenantId: '00000000-0000-0000-0000-000000000000', resourceGroup: 'rg-azure-monitor-lab' };
 const actions = [
   ['start', 'Start Lab', 'start-the-lab.ps1', 'Starts stopped lab resources. Running resources incur charges.'],
+  ['stop', 'Stop Lab', 'stop-the-lab.ps1', 'Deallocates VMs and VMSS instances, stops AKS, then stops the Web App hosting this Control Center.'],
   ['break', 'Break Lab', 'break-the-lab.ps1', 'Deallocates lab VMs, disrupts the AKS frontend, and increases application failures.'],
   ['restore', 'Restore Lab', 'restore-the-lab.ps1', 'Starts VMs and restores the demo frontend and load generator.'],
   ['ramp', 'Start Load Ramp', 'start-ramp.ps1', 'Replaces the previous ramp job and starts 60 minutes of traffic.'],
+  ['usage', 'Generate Customer Traffic', 'generate-usage-traffic.ps1', 'Runs isolated Chromium users through customer pages, abandonment, support, checkout, and repeat sessions.'],
   ['cpu', 'Simulate High CPU', 'simulate-high-cpu.ps1', 'Runs a self-expiring 10-minute CPU load on both running demo VMs via Run Command. Performance, CPU credits, and telemetry charges are affected.'],
   ['logs', 'Send Custom Logs', 'send-custom-logs.ps1', 'Ingests sample audit events into the lab custom table.'],
   ['annotation', 'Add Release Marker', 'send-release-annotation.ps1', 'Writes a deployment or incident marker.']
 ].map(([id, title, file, impact]) => ({ id, title, script: `scripts/${file}`, impact }));
 const proposalId = 'b'.repeat(32);
+const slotActions = [
+  { id: 'slot-failure', title: 'Broken deployment slot', script: 'scripts/trigger-broken-slot.ps1', impact: 'Customer production will return HTTP 503. The Control Center stays available.' },
+  { id: 'slot-restore', title: 'Restore working customer slot', script: 'scripts/rollback-broken-slot.ps1', impact: 'Customer production will return HTTP 200. Already healthy production requires no swap.' }
+];
+const dependencyActions = [
+  { id: 'customer-sql-delay', title: 'Slow SQL-backed customer operations', script: 'scripts/set-customer-dependency-fault.ps1', impact: 'Fixed 3-second application-side delay. Simulated latency, not actual SQL degradation. Persists until recovery.' },
+  { id: 'customer-worker-failure', title: 'Fail customer order processing', script: 'scripts/set-customer-dependency-fault.ps1', impact: 'Orders processor failures may dead-letter messages. No automatic replay.' },
+  { id: 'customer-recover', title: 'Restore customer application', script: 'scripts/set-customer-dependency-fault.ps1', impact: 'Reset fault settings and restore the working slot. No automatic replay.' }
+];
 const runId = 'c'.repeat(32);
-const operationRun = (operation = 'start', state = 'queued') => ({ id: runId, parameters: { operation, count: 0, name: '', category: '' }, target,
+const operationRun = (operation = 'start', state = 'queued') => ({ id: runId, parameters: { operation, count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0 }, target,
   submittedAt: now.toISOString(), state, message: state === 'succeeded' ? 'The approved script completed.' : 'The Azure runner is executing the approved operation.', executionName: 'job-labops-demo-execution',
   url: 'https://portal.azure.com/#resource' + target.jobResourceId + '/overview', steps: [{ name: 'Job accepted', state: 'succeeded' }, { name: 'Run approved operation', state: state === 'succeeded' ? 'succeeded' : 'running' }] });
 
@@ -25,15 +36,19 @@ async function prepare(page, options = {}) {
   await page.route('**/api/agents/context', route => route.fulfill({ json: { resourceGroup: target.resourceGroup, appService: 'app-amlab-demo' } }));
   await page.route('**/api/operations/catalog', route => {
     calls.catalogs++;
-    return route.fulfill({ status: options.status || 200, json: { available: options.available !== false, message: options.message || 'Runner verified.', actions, target, runs } });
+    return route.fulfill({ status: options.status || 200, json: { available: options.available !== false, message: options.message || 'Runner verified.',
+      actions: options.dependencies ? [...actions, slotActions[0], ...dependencyActions] : options.slots ? [...actions, ...slotActions] : actions, target, runs,
+      customerIncident: options.incident || null, customerApplication: 'https://app-amlab-demo-customer.azurewebsites.net/',
+      customerHealthModel: 'https://portal.azure.com/#resource/subscriptions/demo/resourceGroups/demo/providers/Microsoft.CloudHealth/healthmodels/hm-amlab-customer/overview',
+      sreAgent: options.unsafeSre ? 'https://attacker.example/' : 'https://sre.azure.com/#/agent/demo/demo/sre-demo' } });
   });
   await page.route('**/api/operations/prepare', route => {
     const input = route.request().postDataJSON();
     calls.prepared.push(input);
     calls.referrers.push(route.request().headers().referer);
     expect(route.request().headers()['x-amlab-agent-request']).toBe('true');
-    return route.fulfill({ json: { state: 'approval_required', proposal: { id: proposalId, action: actions.find(action => action.id === input.operation),
-      parameters: { count: 0, name: '', category: '', ...input }, target, expiresAt: new Date(now.getTime() + 300000).toISOString() } } });
+    return route.fulfill({ json: { state: 'approval_required', proposal: { id: proposalId, action: [...actions, ...slotActions, ...dependencyActions].find(action => action.id === input.operation),
+      parameters: { count: 0, name: '', category: '', concurrency: 0, repeatUsers: 0, ...input }, target, expiresAt: new Date(now.getTime() + 300000).toISOString() } } });
   });
   await page.route('**/api/operations/approval', route => {
     const input = route.request().postDataJSON();
@@ -54,10 +69,70 @@ async function prepare(page, options = {}) {
   return calls;
 }
 
+for (const action of slotActions) {
+  test(`Customer app menu reviews and approves the ${action.id} choice in a slot-only lab`, async ({ page }) => {
+    const calls = await prepare(page, { slots: true });
+    const button = page.getByRole('button', { name: 'Break the customer app', exact: true });
+    await expect(button.locator('svg[data-lucide="triangle-alert"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toHaveCount(0);
+    await button.click();
+    await expect(page.locator('#operation-heading')).toHaveText('Break the customer app');
+    const choice = page.getByLabel('Application fault or recovery');
+    await expect(choice).toHaveValue('');
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    expect(calls.prepared).toEqual([]);
+    await choice.selectOption(action.id);
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    await expect(page.locator('#operation-approve-form')).toBeVisible();
+    expect(calls.prepared).toEqual([{ operation: action.id }]);
+    expect(calls.approvals).toEqual([]);
+    await expect(page.locator('#operation-preview')).toContainText(action.script);
+    await expect(page.locator('#operation-preview')).toContainText(action.id === 'slot-failure' ? 'Broken (HTTP 503)' : 'Working (HTTP 200)');
+    await expect(page.locator('#operation-impact')).toHaveText(action.impact);
+    await page.getByLabel('Confirm resource group').fill(target.resourceGroup);
+    await page.getByLabel('I approve these changes and associated Azure charges.').check();
+    await page.getByRole('button', { name: 'Approve & Run' }).click();
+    await expect(page.locator('#operation-dialog')).toBeHidden();
+    expect(calls.approvals).toEqual([{ proposalId, resourceGroup: target.resourceGroup, approve: true }]);
+    await expect(page.locator('#operations-runs')).toContainText(action.title);
+  });
+}
+
+test('Customer app menu is hidden without opt-in and the separate slot button is removed', async ({ page }) => {
+  await prepare(page);
+  await expect(page.getByRole('button', { name: 'Break the customer app', exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toHaveCount(0);
+});
+
+test('Cancelling a deployment slot choice submits nothing', async ({ page }) => {
+  const calls = await prepare(page, { slots: true });
+  await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+  await page.getByLabel('Application fault or recovery').selectOption('slot-restore');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect(calls.prepared).toEqual([]);
+  expect(calls.approvals).toEqual([]);
+});
+
+test('Slot-only incident recovery reviews directly without the removed slot chooser', async ({ page }) => {
+  const calls = await prepare(page, { slots: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'succeeded' } });
+  await expect(page.locator('#customer-incident-status')).toContainText('even if an agent or administrator has already restored the app');
+  await page.getByRole('button', { name: 'Restore application', exact: true }).click();
+  await expect(page.locator('#operation-heading')).toHaveText('Restore working customer slot');
+  await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+  expect(calls.prepared).toEqual([{ operation: 'slot-restore' }]);
+  await expect(page.locator('#operation-preview')).toContainText('Working (HTTP 200)');
+  expect(calls.approvals).toEqual([]);
+});
+
 async function review(page, operation) {
   await page.getByRole('button', { name: actions.find(action => action.id === operation).title, exact: true }).click();
   await expect(page.locator('#operation-dialog')).toBeVisible();
   if (operation === 'logs') await page.getByLabel('Event count', { exact: true }).fill('25');
+  if (operation === 'usage') {
+    await page.getByLabel('Synthetic users').fill('24');
+    await page.getByLabel('Browser concurrency').fill('4');
+    await page.getByLabel('Repeat users').fill('6');
+  }
   if (operation === 'annotation') {
     await page.getByLabel('Marker name', { exact: true }).fill('Release 1.2 (demo)');
     await page.getByLabel('Marker category').selectOption('Incident');
@@ -66,11 +141,99 @@ async function review(page, operation) {
   await expect(page.locator('#operation-approve-form')).toBeVisible();
 }
 
+  for (const action of [slotActions[0], ...dependencyActions]) {
+    test(`Application fault menu requires selection and approval for ${action.id}`, async ({ page }) => {
+      const calls = await prepare(page, { dependencies: true });
+      const button = page.getByRole('button', { name: 'Break the customer app', exact: true });
+      await expect(button.locator('svg[data-lucide="triangle-alert"]')).toBeVisible();
+      await button.click();
+      await expect(page.getByRole('button', { name: 'Change deployment slot', exact: true })).toHaveCount(0);
+      const choice = page.getByLabel('Application fault or recovery');
+      await expect(choice).toHaveValue('');
+      await expect(choice.locator(`option[value="${action.id}"]`)).toHaveJSProperty('disabled', false);
+      await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+      expect(calls.prepared).toEqual([]);
+      await choice.selectOption(action.id);
+      await expect(page.locator('#operation-fault-description')).toHaveText(action.impact);
+      await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+      expect(calls.prepared).toEqual([{ operation: action.id }]);
+      expect(calls.approvals).toEqual([]);
+      await expect(page.locator('#operation-preview')).toContainText(action.script);
+      await page.getByLabel('Confirm resource group').fill(target.resourceGroup);
+      await page.getByLabel('I approve these changes and associated Azure charges.').check();
+      await page.getByRole('button', { name: 'Approve & Run' }).click();
+      expect(calls.approvals).toHaveLength(1);
+      if (action.id !== 'customer-recover') {
+        await expect(page.locator('#customer-incident')).toBeVisible();
+        const prompt = await page.getByLabel('Symptom-only troubleshooting prompt').inputValue();
+        expect(prompt).toContain(now.toISOString());
+        expect(prompt).toContain('app-amlab-demo-customer');
+        expect(prompt).toContain('explicit approval');
+        expect(prompt).not.toMatch(/SqlDelaySeconds|FailProcessing|customer-worker-failure|customer-sql-delay|preloaded broken/);
+        await expect(page.getByRole('link', { name: 'Open SRE Agent', exact: true })).toHaveAttribute('href', /^https:\/\/sre\.azure\.com/);
+        await expect(page.getByRole('link', { name: 'Open customer Health Model', exact: true })).toBeVisible();
+      }
+    });
+  }
+
+  test('Application menu stays hidden without customer slot opt-in', async ({ page }) => {
+    await prepare(page);
+    await expect(page.getByRole('button', { name: 'Break the customer app', exact: true })).toBeHidden();
+  });
+
+  test('Existing incident blocks stacking, restores all faults, and rejects unsafe agent links', async ({ page }) => {
+    const calls = await prepare(page, { dependencies: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'failed' }, unsafeSre: true });
+    await expect(page.getByRole('link', { name: 'Open SRE Agent', exact: true })).toBeHidden();
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    await expect(page.locator('#operation-fault-description')).toContainText('previous exercise has no approved recovery');
+    await expect(page.locator('#operation-fault-description')).toContainText('even if the app is already healthy');
+    await expect(page.locator('#operation-fault option[value="customer-recover"]')).toHaveJSProperty('disabled', false);
+    for (const id of ['slot-failure', 'customer-sql-delay', 'customer-worker-failure']) {
+      await expect(page.locator(`#operation-fault option[value="${id}"]`)).toHaveJSProperty('disabled', true);
+      await expect(page.locator(`#operation-fault option[value="${id}"]`)).toContainText('restore the current exercise first');
+    }
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(calls.prepared).toEqual([]);
+    await page.getByRole('button', { name: 'Restore application', exact: true }).click();
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    expect(calls.prepared).toEqual([{ operation: 'customer-recover' }]);
+    await page.getByLabel('Confirm resource group').fill(target.resourceGroup);
+    await page.getByLabel('I approve these changes and associated Azure charges.').check();
+    await page.getByRole('button', { name: 'Approve & Run' }).click();
+    await page.getByRole('button', { name: 'Refresh operation status', exact: true }).click();
+    await expect(page.locator('#customer-incident')).toBeHidden();
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    for (const id of ['slot-failure', 'customer-sql-delay', 'customer-worker-failure']) {
+      await expect(page.locator(`#operation-fault option[value="${id}"]`)).toHaveJSProperty('disabled', false);
+    }
+  });
+
+  test('Unified customer app menu uses full dependency recovery when enabled', async ({ page }) => {
+    const calls = await prepare(page, { dependencies: true });
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    await page.getByLabel('Application fault or recovery').selectOption('customer-recover');
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    expect(calls.prepared).toEqual([{ operation: 'customer-recover' }]);
+  });
+
+  for (const width of [1440, 390, 320]) {
+    test(`Application investigation menu remains usable at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await prepare(page, { dependencies: true, incident: { id: runId, submittedAt: now.toISOString(), state: 'succeeded' } });
+      await expect(page.getByLabel('Symptom-only troubleshooting prompt')).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+      await expect(page.getByLabel('Application fault or recovery')).toBeVisible();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    });
+  }
 for (const action of actions) {
   test(`Lab Operations reviews ${action.title} with frozen parameters and cancellation never executes`, async ({ page }) => {
     const calls = await prepare(page);
     await review(page, action.id);
-    const expected = { operation: action.id, ...(action.id === 'logs' ? { count: 25 } : {}), ...(action.id === 'annotation' ? { name: 'Release 1.2 (demo)', category: 'Incident' } : {}) };
+    const expected = { operation: action.id, ...(action.id === 'logs' ? { count: 25 } : {}),
+      ...(action.id === 'usage' ? { count: 24, concurrency: 4, repeatUsers: 6 } : {}),
+      ...(action.id === 'annotation' ? { name: 'Release 1.2 (demo)', category: 'Incident' } : {}) };
     expect(calls.prepared).toEqual([expected]);
     expect(calls.approvals).toEqual([]);
     await expect(page.locator('#operation-preview')).toContainText(action.script);
@@ -190,7 +353,7 @@ test('Lab Operations API is disabled by default and enforces operator and same-o
   const catalog = await request.get('/api/operations/catalog');
   expect(catalog.status()).toBe(200);
   expect((await catalog.json()).available).toBe(false);
-  expect((await catalog.json()).actions).toHaveLength(7);
+  expect((await catalog.json()).actions).toHaveLength(9);
   expect(catalog.headers()['cache-control']).toBe('no-store');
   expect((await request.post('/api/operations/prepare', { data: { operation: 'start' } })).status()).toBe(403);
   expect((await request.post('/api/operations/prepare', { headers: { ...headers, Host: 'attacker.example' }, data: { operation: 'start' } })).status()).toBe(401);
@@ -250,7 +413,7 @@ for (const width of [1440, 390, 320]) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.setViewportSize({ width, height: width > 760 ? 1000 : 740 });
-    await prepare(page, { runs: [operationRun('annotation', 'succeeded')] });
+    await prepare(page, { slots: true, runs: [operationRun('annotation', 'succeeded')] });
     await page.evaluate(() => document.fonts.ready);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.locator('.mobile-feedback')).toBeHidden();
@@ -258,6 +421,13 @@ for (const width of [1440, 390, 320]) {
     if (process.env.UPDATE_CONTROL_CENTER_SCREENSHOT === '1' && width === 1440) await page.screenshot({ path: path.resolve(__dirname, '../../../docs/images/lab-operations.png'), fullPage: true });
     await review(page, 'cpu');
     await page.screenshot({ path: testInfo.outputPath(`lab-operation-review-${width}.png`), fullPage: true });
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Break the customer app', exact: true }).click();
+    await expect(page.getByLabel('Application fault or recovery')).toBeVisible();
+    await page.getByLabel('Application fault or recovery').selectOption('slot-restore');
+    await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+    await expect(page.locator('#operation-preview')).toContainText('Working (HTTP 200)');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const clipped = await page.locator('button, input, h1, h2, .operation-details dd').evaluateAll(items => items.filter(item => item.clientWidth > 0 && item.scrollWidth > item.clientWidth + 2).map(item => item.textContent));
     expect(clipped).toEqual([]);
     expect(errors).toEqual([]);

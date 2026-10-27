@@ -4,7 +4,9 @@
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory)] [string] $ResourceGroup
+  [Parameter(Mandatory)] [string] $ResourceGroup,
+  [string] $WebAppName = $env:LAB_WEB_APP_NAME,
+  [string] $AppInsightsName
 )
 $ErrorActionPreference = 'Stop'
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Green }
@@ -20,6 +22,15 @@ if (Test-Path $targetFile) {
   }
 }
 
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
+$AppInsightsName = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $WebAppName -AppInsightsName $AppInsightsName
+if (-not $WebAppName) {
+  if ($AppInsightsName -cnotmatch '^appi-.+$') { throw 'Specify -WebAppName for a nonstandard Application Insights name.' }
+  $WebAppName = 'app-' + $AppInsightsName.Substring(5)
+}
+. (Join-Path $PSScriptRoot 'slot-health.ps1')
+$webAppHost = (Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $WebAppName).defaultHostName
+
 Write-Step "Starting all VMs in $ResourceGroup"
 $vms = az vm list -g $ResourceGroup --query "[].name" -o tsv
 foreach ($vm in $vms) {
@@ -32,7 +43,6 @@ kubectl -n demo set image deployment/hello-frontend hello=mcr.microsoft.com/azur
 
 Write-Step "Restoring healthy load-gen ConfigMap"
 $loadgenYaml = Join-Path $PSScriptRoot '..' 'workloads' 'k8s' '02-loadgen.yaml'
-$webAppHost  = az webapp list -g $ResourceGroup --query "[?starts_with(name,'app-')] | [0].defaultHostName" -o tsv
 $webAppUrl   = "https://$webAppHost"
 $rendered    = Join-Path $env:TEMP "amlab-restore-$([guid]::NewGuid().ToString('N')).yaml"
 (Get-Content -Raw $loadgenYaml).Replace('__APP_SERVICE_URL__', "'$webAppUrl'") | Set-Content -Encoding UTF8 $rendered
@@ -44,5 +54,5 @@ Write-Host "`n✅ Lab restored. Workbook should return to Green within ~3 minute
 # Drop an App Insights release annotation so the recovery is visible on charts.
 $annot = Join-Path $PSScriptRoot 'send-release-annotation.ps1'
 if (Test-Path $annot) {
-  & $annot -ResourceGroup $ResourceGroup -Name "restore-$(Get-Date -Format yyyyMMdd-HHmmss)" -Category 'Deployment'
+  & $annot -ResourceGroup $ResourceGroup -WebAppName $WebAppName -AppInsightsName $AppInsightsName -Name "restore-$(Get-Date -Format yyyyMMdd-HHmmss)" -Category 'Deployment'
 }

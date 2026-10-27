@@ -15,14 +15,35 @@ public sealed class ContainerJobOperationsTests
     private static readonly string JobId = $"/subscriptions/{Subscription}/resourceGroups/test-rg/providers/Microsoft.App/jobs/test-runner";
     private const string ImagePrefix = "test.azurecr.io/lab-operations@sha256:";
 
-    private static ContainerJobOperations Client(FakeAzure handler, string enabled = "true") => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    private static ContainerJobOperations Client(FakeAzure handler, string enabled = "true", bool customerFaults = false) => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["LabConsole:ResourceGroup"] = "test-rg", ["LabConsole:Operations:JobResourceId"] = JobId,
         ["LabConsole:Operations:TenantId"] = Tenant, ["LabConsole:Operations:Image"] = ImagePrefix + new string('a', 64),
-        ["LabConsole:Operations:Enabled"] = enabled
+        ["LabConsole:Operations:Enabled"] = enabled,
+        ["LabConsole:AppService"] = customerFaults ? "test-app" : null,
+        ["LabConsole:Operations:CustomerWorkerName"] = customerFaults ? "func-test-orders" : null
     }).Build(), new HttpClient(handler), new FakeCredential());
 
     private static LabOperationRun Run(ContainerJobOperations client) => new(new string('b', 32), new("logs", 12, "", ""), client.Target!, DateTimeOffset.UtcNow, "dispatch_unknown", "Pending");
+
+    [Theory]
+    [InlineData("customer-sql-delay")]
+    [InlineData("customer-worker-failure")]
+    [InlineData("customer-recover")]
+    public async Task CustomerFaultDispatchRejectsMissingOrChangedExactTargets(string operation)
+    {
+        using var transport = new FakeAzure { Operation = operation };
+        var client = Client(transport, customerFaults: true);
+        var run = Run(client) with { Parameters = LabOperationCatalog.Validate(new(operation)) };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DispatchAsync(run, default));
+        Assert.Equal(0, transport.Starts);
+        transport.CustomerTargets = true;
+        Assert.Equal("test-runner-execution", await client.DispatchAsync(run, default));
+        Assert.Equal(1, transport.Starts);
+        transport.WrongCustomerTarget = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DispatchAsync(run, default));
+        Assert.Equal(1, transport.Starts);
+    }
 
     [Fact]
     public async Task DispatchPreservesThePinnedImageAndStampsOnlyApprovedInputs()
@@ -36,7 +57,22 @@ public sealed class ContainerJobOperationsTests
         Assert.Equal(client.Target!.Image, container["image"]!.GetValue<string>());
         Assert.Equal("/runner/scripts/invoke-lab-operation.ps1", container["command"]![4]!.GetValue<string>());
         Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "OP_COUNT" && item["value"]!.GetValue<string>() == "12");
+        Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "OP_CONCURRENCY" && item["value"]!.GetValue<string>() == "0");
+        Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "OP_REPEAT_USERS" && item["value"]!.GetValue<string>() == "0");
         Assert.Contains(container["env"]!.AsArray(), item => item!["name"]!.GetValue<string>() == "LAB_RESOURCE_GROUP" && item["value"]!.GetValue<string>() == "test-rg");
+    }
+
+    [Fact]
+    public async Task CustomerTrafficDispatchFreezesBrowserLimits()
+    {
+        using var transport = new FakeAzure { Operation = "usage" };
+        var client = Client(transport);
+        var request = Run(client) with { Parameters = LabOperationCatalog.Validate(new("usage", Count: 24, Concurrency: 4, RepeatUsers: 6)) };
+        await client.DispatchAsync(request, default);
+        var environment = transport.Sent!["containers"]![0]!["env"]!.AsArray();
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_COUNT" && item["value"]!.GetValue<string>() == "24");
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_CONCURRENCY" && item["value"]!.GetValue<string>() == "4");
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_REPEAT_USERS" && item["value"]!.GetValue<string>() == "6");
     }
 
     [Fact]
@@ -88,6 +124,25 @@ public sealed class ContainerJobOperationsTests
         Assert.Equal("test-runner-execution", run.ExecutionName);
         Assert.Equal($"https://portal.azure.com/#resource{JobId}/overview", run.Url);
         Assert.Equal(1, transport.Starts);
+    }
+
+    [Fact]
+    public async Task APreUpgradeExecutionWithoutBrowserInputsStillReconciles()
+    {
+        using var transport = new FakeAzure { ImageHashChar = 'b', LegacyMissingBrowserInputs = true, Operation = "ramp", State = "Failed" };
+        var client = Client(transport);
+        var oldTarget = client.Target! with { Image = ImagePrefix + new string('b', 64) };
+        var run = Run(client) with { Parameters = new("ramp", 0, "", "", 0, 0), Target = oldTarget, ExecutionName = "test-runner-execution" };
+        var result = await client.ReadAsync(run, default);
+        Assert.Equal("failed", result.State);
+    }
+
+    [Fact]
+    public async Task CurrentExecutionWithoutBrowserInputsIsRejected()
+    {
+        using var transport = new FakeAzure { LegacyMissingBrowserInputs = true };
+        var client = Client(transport);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadAsync(Run(client) with { ExecutionName = "test-runner-execution" }, default));
     }
 
     [Theory]
@@ -210,23 +265,41 @@ public sealed class ContainerJobOperationsTests
         public bool WrongScope { get; set; }
         public bool WrongIdentity { get; set; }
         public bool WrongCount { get; set; }
+        public bool LegacyMissingBrowserInputs { get; set; }
         public bool IncludeTemplateVolumes { get; set; }
         public HttpStatusCode? StartStatus { get; set; }
         public int RetryLimit { get; set; }
         public string State { get; set; } = "Succeeded";
         public string Operation { get; set; } = "logs";
+        public char ImageHashChar { get; set; } = 'a';
         public string? NextLink { get; set; }
+        public bool CustomerTargets { get; set; }
+        public bool WrongCustomerTarget { get; set; }
 
         private JsonObject Template()
         {
-            var template = System.Text.Json.JsonSerializer.SerializeToNode(new { containers = new[] { new { name = "runner", image = ImagePrefix + new string(WrongImage ? 'c' : 'a', 64), env = new[]
+            var template = System.Text.Json.JsonSerializer.SerializeToNode(new { containers = new[] { new { name = "runner", image = ImagePrefix + new string(WrongImage ? 'c' : ImageHashChar, 64), env = new[]
         {
             new { name = "LAB_RESOURCE_GROUP", value = WrongScope ? "another-rg" : "test-rg" }, new { name = "LAB_SUBSCRIPTION_ID", value = Subscription }, new { name = "LAB_TENANT_ID", value = Tenant },
             new { name = "LAB_RUNNER_MODE", value = "ContainerAppsJob" }, new { name = "AZURE_CLIENT_ID", value = WrongIdentity ? Guid.NewGuid().ToString() : IdentityClient },
             new { name = "OP_REQUEST_ID", value = new string(WrongRequest ? 'd' : 'b', 32) }, new { name = "OP_OPERATION", value = Operation },
-            new { name = "OP_COUNT", value = WrongCount ? "99" : Operation == "logs" ? "12" : "0" }, new { name = "OP_ANNOTATION_NAME", value = "" }, new { name = "OP_ANNOTATION_CATEGORY", value = "" }
+            new { name = "OP_COUNT", value = WrongCount ? "99" : Operation == "logs" ? "12" : Operation == "usage" ? "24" : "0" },
+            new { name = "OP_CONCURRENCY", value = Operation == "usage" ? "4" : "0" }, new { name = "OP_REPEAT_USERS", value = Operation == "usage" ? "6" : "0" },
+            new { name = "OP_ANNOTATION_NAME", value = "" }, new { name = "OP_ANNOTATION_CATEGORY", value = "" }
         }, resources = new { cpu = 1, memory = "2Gi" } } } })!.AsObject();
+            if (LegacyMissingBrowserInputs)
+            {
+                var environment = template["containers"]![0]!["env"]!.AsArray();
+                foreach (var entry in environment.Where(item => item?["name"]?.GetValue<string>() is "OP_CONCURRENCY" or "OP_REPEAT_USERS").ToArray())
+                    environment.Remove(entry);
+            }
             if (IncludeTemplateVolumes) template["volumes"] = new JsonArray();
+            if (CustomerTargets)
+            {
+                var environment = template["containers"]![0]!["env"]!.AsArray();
+                environment.Add(new JsonObject { ["name"] = "LAB_CUSTOMER_WEB_APP_NAME", ["value"] = "test-app-customer" });
+                environment.Add(new JsonObject { ["name"] = "LAB_CUSTOMER_WORKER_NAME", ["value"] = WrongCustomerTarget ? "other-worker" : "func-test-orders" });
+            }
             return template;
         }
 

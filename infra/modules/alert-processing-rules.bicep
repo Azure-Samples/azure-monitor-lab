@@ -13,6 +13,9 @@ param resourceGroupId string = resourceGroup().id
 @description('Primary Action Group ID (on-call / high severity).')
 param primaryActionGroupId string
 
+@description('Lab VM resource IDs whose alert notifications are suppressed during automatic shutdown hours.')
+param vmIds array = []
+
 @description('Resource tags.')
 param tags object = {}
 
@@ -79,30 +82,37 @@ resource suppressLowSev 'Microsoft.AlertsManagement/actionRules@2021-08-08' = {
 }
 
 // ---------------------------------------------------------------------------------
-// Rule 3 — Nightly patch window suppression
-//   Mutes all alerts every night 02:00–04:00 local (UTC here for simplicity).
-//   Shows daily-recurring suppression — the typical "patch window" pattern.
+// Rule 3 — Automatic VM shutdown suppression
+//   Mutes notifications for the lab VMs from 23:00 until 07:00 Central European
+//   local time. Romance Standard Time applies CET/CEST daylight-saving changes.
 // ---------------------------------------------------------------------------------
-resource nightlyMaintenance 'Microsoft.AlertsManagement/actionRules@2021-08-08' = {
-  name: 'apr-${namePrefix}-nightly-patch-window'
+resource nightlyVmShutdown 'Microsoft.AlertsManagement/actionRules@2021-08-08' = if (!empty(vmIds)) {
+  name: 'apr-${namePrefix}-vm-auto-shutdown'
   location: 'global'
   tags: tags
   properties: {
-    description: 'Suppress all alerts during the nightly patch window (02:00–04:00 UTC, daily).'
+    description: 'Suppress alert actions for lab VMs during automatic shutdown hours (23:00–07:00 CET/CEST, daily).'
     enabled: true
-    scopes: [ resourceGroupId ]
+    scopes: vmIds
     actions: [
       { actionType: 'RemoveAllActionGroups' }
     ]
+    conditions: [
+      {
+        field: 'TargetResourceType'
+        operator: 'Equals'
+        values: [ 'Microsoft.Compute/virtualMachines' ]
+      }
+    ]
     schedule: {
-      effectiveFrom:  '2025-01-01T02:00:00'
-      effectiveUntil: '2030-12-31T04:00:00'
-      timeZone: 'UTC'
+      effectiveFrom: '2025-01-01T23:00:00'
+      effectiveUntil: '2035-12-31T07:00:00'
+      timeZone: 'Romance Standard Time'
       recurrences: [
         {
           recurrenceType: 'Daily'
-          startTime: '02:00:00'
-          endTime:   '04:00:00'
+          startTime: '23:00:00'
+          endTime: '07:00:00'
         }
       ]
     }
@@ -111,4 +121,4 @@ resource nightlyMaintenance 'Microsoft.AlertsManagement/actionRules@2021-08-08' 
 
 output maintenanceRuleName string = maintenanceSuppress.name
 output suppressLowSevRuleName string = suppressLowSev.name
-output nightlyMaintenanceRuleName string = nightlyMaintenance.name
+output nightlyMaintenanceRuleName string = !empty(vmIds) ? nightlyVmShutdown.name : ''

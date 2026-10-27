@@ -1,5 +1,5 @@
 # Generates docs/architecture-overview-sre.svg, the self-contained README architecture
-# diagram with Azure service icons from the draw.io azure2 library.
+# diagram with a light card layout and Azure service icons from the draw.io azure2 library.
 # Keep the corresponding overview in docs/architecture.drawio in sync.
 #
 # Icons are downloaded from the jgraph/drawio public library and base64-embedded into a
@@ -20,11 +20,13 @@ $iconPaths = @{
   job      = 'other/Worker_Container_App.svg'
   net      = 'networking/Virtual_Networks.svg'
   ama      = 'general/Input_Output.svg'
+  otel     = 'local:OpenTelemetry.png'
   flow     = 'networking/Network_Watcher.svg'
   pol      = 'management_governance/Policy.svg'
   law      = 'management_governance/Log_Analytics_Workspaces.svg'
   ai       = 'management_governance/Application_Insights.svg'
-  amw      = 'management_governance/Monitor.svg'
+  # Azure Portal resource icon, pinned to the portal-icon catalog revision.
+  amw      = 'https://raw.githubusercontent.com/maskati/azure-icons/9ced4c629a4edfd2a31946e320ed0c309381787e/svg/Microsoft_Azure_Monitoring/MonitoringAccount.svg'
   storage  = 'storage/Storage_Accounts.svg'
   eventhub = 'iot/Event_Hubs.svg'
   keyvault = 'security/Key_Vaults.svg'
@@ -38,14 +40,12 @@ $iconPaths = @{
   foundry  = 'ai_machine_learning/AI_Foundry.svg'
   agents   = 'ai_machine_learning/Bot_Services.svg'
   router   = 'general/Gear.svg'
-  fabric   = 'Fabric.png'
-  eventstream = 'Eventstream.svg'
   sre      = 'https://sre.azure.com/SreAgent.svg'
-}
-
-$iconUrls = @{
-  fabric = 'https://learn.microsoft.com/en-us/fabric/media/fabric-icon.png'
-  eventstream = 'https://raw.githubusercontent.com/FabricTools/fabric-icons/main/node_modules/@fabric-msft/svg-icons/svg/eventstream_48_item.svg'
+  # Azure Portal resource icon, pinned to the portal-icon catalog revision.
+  obs      = 'https://raw.githubusercontent.com/maskati/azure-icons/9ced4c629a4edfd2a31946e320ed0c309381787e/svg/Microsoft_Azure_Monitoring_Alerts/ObservabilityAgent.svg'
+  copilot  = 'local:github/GitHubCopilotCLI.png'
+  fabric   = 'local:azure/Fabric.png'
+  eventstream = 'local:azure/Eventstream.svg'
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -55,23 +55,28 @@ New-Item -ItemType Directory -Force -Path $iconDir | Out-Null
 # --- download + base64-embed ----------------------------------------------------------
 $dataUri = @{}
 foreach ($k in $iconPaths.Keys) {
-  $name = Split-Path $iconPaths[$k] -Leaf
-  $dest = Join-Path $iconDir $name
-  if (-not (Test-Path $dest)) {
-    $source = if ($iconUrls.ContainsKey($k)) { $iconUrls[$k] } elseif ($iconPaths[$k] -match '^https://') { $iconPaths[$k] } else { "$base/$($iconPaths[$k])" }
-    Invoke-WebRequest $source -UseBasicParsing -OutFile $dest
+  if ($iconPaths[$k] -match '^local:(.+)$') {
+    $dest = Join-Path $repoRoot "docs/icons/$($Matches[1])"
+    if (-not (Test-Path $dest)) { throw "Required local architecture icon not found: $dest" }
+  } else {
+    $name = Split-Path $iconPaths[$k] -Leaf
+    $dest = Join-Path $iconDir $name
+    if (-not (Test-Path $dest)) {
+      $source = if ($iconPaths[$k] -match '^https://') { $iconPaths[$k] } else { "$base/$($iconPaths[$k])" }
+      Invoke-WebRequest $source -UseBasicParsing -OutFile $dest
+    }
   }
   $bytes = [IO.File]::ReadAllBytes($dest)
-  $mediaType = if ([IO.Path]::GetExtension($dest) -eq '.png') { 'image/png' } else { 'image/svg+xml' }
+  $mediaType = if ([IO.Path]::GetExtension($dest) -ieq '.png') { 'image/png' } else { 'image/svg+xml' }
   $dataUri[$k] = "data:$mediaType;base64," + [Convert]::ToBase64String($bytes)
 }
 
 # --- tiers (columns) ------------------------------------------------------------------
 $cols = [ordered]@{
-  WL   = @{ x = 30;   w = 250; title = 'Workloads';                fill = '#0E2438'; stroke = '#4AA3E0'; text = '#D6EBFB' }
-  COL  = @{ x = 330;  w = 250; title = 'Collection & lab operations'; fill = '#0E2615'; stroke = '#57B96A'; text = '#D8F3DE' }
-  DATA = @{ x = 630;  w = 310; title = 'Telemetry backplane';      fill = '#2A1E08'; stroke = '#D9A441'; text = '#F7E6C4' }
-  USE  = @{ x = 990;  w = 300; title = 'Consumption & response';   fill = '#1F1430'; stroke = '#A877D6'; text = '#EADDF7' }
+  WL   = @{ x = 30;   w = 300; title = 'Workloads';                  fill = '#EAF0F7' }
+  COL  = @{ x = 380;  w = 300; title = 'Collection & lab operations'; fill = '#E8F2F2' }
+  DATA = @{ x = 730;  w = 350; title = 'Telemetry backplane';        fill = '#EAF0F7' }
+  USE  = @{ x = 1130; w = 340; title = 'Consumption & response';     fill = '#EEEDF5' }
 }
 
 # --- nodes (id, column, label lines, icon key(s)) -------------------------------------
@@ -82,70 +87,89 @@ $nodes = [ordered]@{
   APP   = @{ col = 'WL';   i = 3; lines = @('.NET 8 App Service','Control Center + telemetry'); icons = @('app') }
   NET   = @{ col = 'WL';   i = 4; lines = @('VNet / NSG','Connection Monitor'); icons = @('net') }
   FDRY  = @{ col = 'WL';   i = 5; lines = @('GenAI · Foundry + agents','chat/embed/router · optional'); icons = @('foundry','agents','router') }
-  FAB   = @{ col = 'WL';   i = 6; lines = @('Microsoft Fabric F2','Real-Time Intelligence · optional'); icons = @('fabric') }
+  CUSTOMER = @{ col = 'WL'; i = 6; lines = @('Customer application','App Service · Bus · Function · SQL'); icons = @('app') }
+  FAB   = @{ col = 'WL'; i = 7; lines = @('Fabric F2 capacity','swedencentral · opt-in / billable'); icons = @('fabric') }
 
   AMA   = @{ col = 'COL';  i = 0; lines = @('Azure Monitor Agent','DCRs · DCE'); icons = @('ama') }
-  FLOW  = @{ col = 'COL';  i = 1; lines = @('NSG Flow Logs');                   icons = @('flow') }
-  POL   = @{ col = 'COL';  i = 2; lines = @('Diag Settings via','Policy (DINE)'); icons = @('pol') }
-  ACR   = @{ col = 'COL';  i = 3; lines = @('Container Registry (ACR)','digest-pinned runner image'); icons = @('acr') }
-  JOB   = @{ col = 'COL';  i = 4; lines = @('Container Apps Job','approved lab operations'); icons = @('job') }
+  OTEL  = @{ col = 'COL';  i = 1; lines = @('OpenTelemetry','Standalone VM metrics via AMA'); icons = @('otel') }
+  FLOW  = @{ col = 'COL';  i = 2; lines = @('NSG Flow Logs');                   icons = @('flow') }
+  POL   = @{ col = 'COL';  i = 3; lines = @('Diag Settings via','Policy (DINE)'); icons = @('pol') }
+  ACR   = @{ col = 'COL';  i = 4; lines = @('Container Registry (ACR)','digest-pinned runner image'); icons = @('acr') }
+  JOB   = @{ col = 'COL';  i = 5; lines = @('Container Apps Job','approved lab operations'); icons = @('job') }
 
   LAW   = @{ col = 'DATA'; i = 0; lines = @('Log Analytics','central');         icons = @('law') }
   LAWAI  = @{ col = 'DATA'; i = 1; lines = @('Log Analytics','App Insights');     icons = @('law') }
   QUERY  = @{ col = 'DATA'; i = 2; lines = @('Log Analytics Query Pack');        icons = @('querypack') }
   AI     = @{ col = 'DATA'; i = 3; lines = @('Application Insights');             icons = @('ai') }
   AMW    = @{ col = 'DATA'; i = 4; lines = @('Azure Monitor Workspace','Managed Prometheus'); icons = @('amw') }
-  PLAT   = @{ col = 'DATA'; i = 5; lines = @('Storage · Event Hub · Key Vault');  icons = @('storage','eventhub','keyvault') }
-  EVSTR  = @{ col = 'DATA'; i = 6; lines = @('Fabric Eventstream','stream processing · optional'); icons = @('eventstream') }
+  OAMW   = @{ col = 'DATA'; i = 5; lines = @('Dedicated Monitor Workspace','Observability Agent issues'); icons = @('amw') }
+  PLAT   = @{ col = 'DATA'; i = 6; lines = @('Storage · Event Hub · Key Vault');  icons = @('storage','eventhub','keyvault') }
 
   GRAF  = @{ col = 'USE';  i = 0; lines = @('Managed Grafana');                  icons = @('graf') }
   WB    = @{ col = 'USE';  i = 1; lines = @('Workbooks','Traffic Lights · Cost · AI FinOps'); icons = @('wb') }
   AG    = @{ col = 'USE';  i = 2; lines = @('Action Group','Alerts · AMBA · token spikes');     icons = @('ag') }
-  SRE   = @{ col = 'USE';  i = 3; lines = @('Azure SRE Agent','incident response · optional'); icons = @('sre') }
-  LOGIC = @{ col = 'USE';  i = 4; lines = @('Logic App','auto-mitigation');      icons = @('logic') }
-  SENT  = @{ col = 'USE';  i = 5; lines = @('Microsoft Sentinel');               icons = @('sent') }
-  HEALTH = @{ col = 'USE'; i = 6; lines = @('Health Models','workload health');  icons = @('health') }
+  OBS   = @{ col = 'USE';  i = 3; lines = @('Observability Agent','correlation · investigation'); icons = @('obs') }
+  SRE   = @{ col = 'USE';  i = 4; lines = @('Azure SRE Agent','incident response · optional'); icons = @('sre') }
+  LOGIC = @{ col = 'USE';  i = 5; lines = @('Logic App','auto-mitigation');      icons = @('logic') }
+  SENT  = @{ col = 'USE';  i = 6; lines = @('Microsoft Sentinel');               icons = @('sent') }
+  HEALTH = @{ col = 'USE'; i = 7; lines = @('Health Models','workload health');  icons = @('health') }
+  COPILOT = @{ col = 'USE'; i = 8; lines = @('GitHub Copilot CLI','guided investigation'); icons = @('copilot') }
+
+  EVSTR = @{ col = 'COL'; top = 1180; lines = @('Fabric Eventstream','Event Hubs source · optional'); icons = @('eventstream') }
+  EH = @{ col = 'DATA'; top = 1180; lines = @('Eventhouse / KQL database','streamed operational analytics'); icons = @('fabric') }
+  RTD = @{ col = 'USE'; top = 1180; lines = @('Real-Time Dashboard','guided portal setup'); icons = @('fabric') }
 }
 
 # --- edges (source -> target) ---------------------------------------------------------
 $edges = @(
   @('VM','AMA'), @('VMSS','AMA'), @('AKS','AMA'), @('NET','FLOW'),
-  @('AMA','LAW'), @('AMA','AMW'), @('FLOW','PLAT'), @('POL','LAW'), @('LAW','QUERY'), @('AI','LAWAI'), @('PLAT','LAW'),
-  @('LAW','WB'), @('LAWAI','WB'), @('AMW','GRAF'), @('LAW','AG'), @('AI','AG'), @('AG','SRE'), @('AG','LOGIC'), @('LAW','SENT'), @('LAW','HEALTH'),
-  @('ACR','JOB'), @('FAB','EVSTR'), @('PLAT','EVSTR'), @('EVSTR','HEALTH')
+  @('AMA','LAW'), @('AMA','AMW'), @('AMA','OTEL'), @('OTEL','AMW'), @('FLOW','PLAT'), @('POL','LAW'), @('LAW','QUERY'), @('AI','LAWAI'), @('PLAT','LAW'),
+  @('LAW','WB'), @('LAWAI','WB'), @('AMW','GRAF'), @('LAW','AG'), @('AI','AG'), @('AI','OBS'), @('AG','OBS'), @('OAMW','OBS'), @('AG','SRE'), @('AG','LOGIC'), @('LAW','SENT'), @('LAW','HEALTH'), @('LAW','COPILOT'),
+  @('ACR','JOB'), @('CUSTOMER','AI'), @('PLAT','EVSTR'), @('EVSTR','EH'), @('EH','RTD')
 )
 
 # --- geometry -------------------------------------------------------------------------
-$W = 1320; $H = 720
-$grpY = 60; $grpH = 644
-$cellH = 66; $cellStep = 84; $firstTop = 108
-function NodeTop($n) { $firstTop + ($n.i * $cellStep) }
+$W = 1500; $H = 1320
+$grpY = 130; $grpH = 940
+$cellH = 82; $cellStep = 100; $firstTop = 168
+function NodeTop($n) { if ($n.ContainsKey('top')) { $n.top } else { $firstTop + ($n.i * $cellStep) } }
 function ColOf($n)   { $cols[$n.col] }
 function Esc($s)     { $s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' }
 
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 $W $H' font-family='Segoe UI, Helvetica, Arial, sans-serif' role='img' aria-labelledby='architecture-title architecture-description'>")
 [void]$sb.AppendLine("<title id='architecture-title'>Azure Monitor Lab architecture</title>")
-[void]$sb.AppendLine("<desc id='architecture-description'>Workloads, telemetry collection, dashboards, and response. Azure Container Registry supplies a digest-pinned image to the Container Apps Job used for approved lab operations.</desc>")
-[void]$sb.AppendLine("<rect x='0' y='0' width='$W' height='$H' rx='10' fill='#0D1117'/>")
-[void]$sb.AppendLine("<text x='$($W/2)' y='34' fill='#E6EDF3' font-size='20' font-weight='700' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
-[void]$sb.AppendLine("<text x='$($W/2)' y='52' fill='#9DA7B3' font-size='11' text-anchor='middle'>optional Microsoft Foundry and Fabric F2 workloads pinned to swedencentral</text>")
-[void]$sb.AppendLine("<defs><marker id='arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='#7D8590'/></marker></defs>")
+[void]$sb.AppendLine("<desc id='architecture-description'>Azure Monitor retains operational logs, metrics, and traces from VMs, AKS, the Control Center, and the customer application. OpenTelemetry VM metrics, Observability Agent issues, SRE Agent, and Copilot CLI share this operational monitoring architecture. ACR supplies the approved Container Apps Job image. The optional Fabric F2 capacity is an Azure resource; outside the resource group, tenant-scoped Eventstream consumes the diagnostic Event Hub into Eventhouse and a KQL database for a guided Real-Time Dashboard. Azure Monitor remains the operational monitoring system.</desc>")
+[void]$sb.AppendLine("<rect x='0' y='0' width='$W' height='$H' rx='18' fill='#F1F3F8'/>")
+[void]$sb.AppendLine("<text x='$($W/2)' y='50' fill='#2D4770' font-size='32' font-weight='600' text-anchor='middle'>Azure Monitor Lab</text>")
+[void]$sb.AppendLine("<text x='$($W/2)' y='77' fill='#52627A' font-size='14' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
+[void]$sb.AppendLine("<text x='$($W/2)' y='98' fill='#52627A' font-size='12' text-anchor='middle'>Optional Foundry and agent stages use their documented supported regions</text>")
+[void]$sb.AppendLine("<defs>")
+[void]$sb.AppendLine("<linearGradient id='tier-accent' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#0F7774'/><stop offset='1' stop-color='#0079BA'/></linearGradient>")
+[void]$sb.AppendLine("<filter id='card-shadow' x='-15%' y='-25%' width='130%' height='160%'><feDropShadow dx='0' dy='4' stdDeviation='5' flood-color='#203553' flood-opacity='0.13'/></filter>")
+[void]$sb.AppendLine("<marker id='arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='#71859C'/></marker>")
+[void]$sb.AppendLine("</defs>")
+[void]$sb.AppendLine("<rect id='azure-resource-group-boundary' x='14' y='116' width='$($W-28)' height='970' rx='20' fill='#FAFBFD' stroke='#FFFFFF' stroke-width='2'/>")
+[void]$sb.AppendLine("<rect id='fabric-workspace-boundary' x='30' y='1110' width='1440' height='190' rx='20' fill='#E8F2F2' stroke='#0F7774' stroke-dasharray='8 6'/>")
+[void]$sb.AppendLine("<text x='54' y='1144' fill='#2D4770' font-size='18' font-weight='600'>Optional Microsoft Fabric workspace · tenant-scoped items, outside the resource group</text>")
+[void]$sb.AppendLine("<text x='54' y='1198' fill='#52627A' font-size='13'>Hosted on F2 capacity</text>")
+[void]$sb.AppendLine("<text x='54' y='1220' fill='#52627A' font-size='13'>Suspend when idle</text>")
 
 # group boxes
 foreach ($key in $cols.Keys) {
   $c = $cols[$key]
-  [void]$sb.AppendLine("<rect x='$($c.x)' y='$grpY' width='$($c.w)' height='$grpH' rx='12' fill='$($c.fill)' stroke='$($c.stroke)' stroke-width='1.5'/>")
-  [void]$sb.AppendLine("<text x='$($c.x + $c.w/2)' y='$($grpY+28)' fill='$($c.text)' font-size='15' font-weight='700' text-anchor='middle'>$(Esc $c.title)</text>")
+  [void]$sb.AppendLine("<rect x='$($c.x)' y='$grpY' width='$($c.w)' height='$grpH' rx='22' fill='$($c.fill)'/>")
+  [void]$sb.AppendLine("<rect x='$($c.x+14)' y='$($grpY-12)' width='$($c.w-28)' height='36' rx='18' fill='url(#tier-accent)'/>")
+  [void]$sb.AppendLine("<text x='$($c.x + $c.w/2)' y='$($grpY+11)' fill='#FFFFFF' font-size='16' font-weight='600' text-anchor='middle'>$(Esc $c.title)</text>")
 }
 
 # edges first (under nodes)
-function AnchorRight($n) { $c = ColOf $n; @(($c.x + $c.w), ((NodeTop $n) + $cellH/2)) }
-function AnchorLeft($n)  { $c = ColOf $n; @($c.x, ((NodeTop $n) + $cellH/2)) }
+function AnchorRight($n) { $c = ColOf $n; @(($c.x + $c.w - 12), ((NodeTop $n) + $cellH/2)) }
+function AnchorLeft($n)  { $c = ColOf $n; @(($c.x + 12), ((NodeTop $n) + $cellH/2)) }
 function AnchorTop($n)   { $c = ColOf $n; @(($c.x + $c.w/2), (NodeTop $n)) }
 function AnchorBottom($n){ $c = ColOf $n; @(($c.x + $c.w/2), ((NodeTop $n) + $cellH)) }
 
-$lineStyle = "stroke='#7D8590' marker-end='url(#arrow)'"
+$lineStyle = "stroke='#71859C' marker-end='url(#arrow)'"
 foreach ($e in $edges) {
   $s = $nodes[$e[0]]; $t = $nodes[$e[1]]
   if ($s.col -eq $t.col) {
@@ -163,24 +187,27 @@ foreach ($e in $edges) {
 foreach ($id in $nodes.Keys) {
   $n = $nodes[$id]; $c = ColOf $n; $top = NodeTop $n
   [void]$sb.AppendLine("<g id='node-$id'>")
-  [void]$sb.AppendLine("<rect x='$($c.x+8)' y='$top' width='$($c.w-16)' height='$cellH' rx='8' fill='#161B22' stroke='$($c.stroke)' stroke-opacity='0.5' stroke-width='1'/>")
+  [void]$sb.AppendLine("<rect x='$($c.x+12)' y='$top' width='$($c.w-24)' height='$cellH' rx='14' fill='#FFFFFF' filter='url(#card-shadow)'/>")
   $ic = $n.icons
   if ($ic.Count -eq 1) {
-    [void]$sb.AppendLine("<image x='$($c.x+16)' y='$($top+13)' width='40' height='40' href='$($dataUri[$ic[0]])'/>")
-    $lx = $c.x + 64
+    [void]$sb.AppendLine("<image x='$($c.x+24)' y='$($top+19)' width='44' height='44' href='$($dataUri[$ic[0]])'/>")
+    $lx = $c.x + 80
   } else {
-    $ix = $c.x + 16
-    foreach ($k in $ic) { [void]$sb.AppendLine("<image x='$ix' y='$($top+8)' width='30' height='30' href='$($dataUri[$k])'/>"); $ix += 34 }
-    $lx = $c.x + 16
+    $ix = $c.x + 24
+    foreach ($k in $ic) { [void]$sb.AppendLine("<image x='$ix' y='$($top+10)' width='30' height='30' href='$($dataUri[$k])'/>"); $ix += 38 }
+    $lx = $c.x + 24
   }
   $lines = $n.lines
   if ($ic.Count -gt 1) {
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+52)' fill='$($c.text)' font-size='11.5' font-weight='600'>$(Esc $lines[0])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+57)' fill='#182B45' font-size='14' font-weight='600'>$(Esc $lines[0])</text>")
+    if ($lines.Count -gt 1) {
+      [void]$sb.AppendLine("<text x='$lx' y='$($top+73)' fill='#52627A' font-size='12'>$(Esc $lines[1])</text>")
+    }
   } elseif ($lines.Count -eq 1) {
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+38)' fill='$($c.text)' font-size='12.5' font-weight='600'>$(Esc $lines[0])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+46)' fill='#182B45' font-size='14' font-weight='600'>$(Esc $lines[0])</text>")
   } else {
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+28)' fill='$($c.text)' font-size='12.5' font-weight='600'>$(Esc $lines[0])</text>")
-    [void]$sb.AppendLine("<text x='$lx' y='$($top+44)' fill='$($c.text)' font-size='10.5' opacity='0.85'>$(Esc $lines[1])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+35)' fill='#182B45' font-size='14' font-weight='600'>$(Esc $lines[0])</text>")
+    [void]$sb.AppendLine("<text x='$lx' y='$($top+55)' fill='#52627A' font-size='12'>$(Esc $lines[1])</text>")
   }
   [void]$sb.AppendLine('</g>')
 }

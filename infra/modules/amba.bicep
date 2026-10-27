@@ -155,6 +155,7 @@ resource amba_app_4xx 'Microsoft.Insights/metricAlerts@2018-03-01' = {
           threshold: 100
           timeAggregation: 'Total'
           criterionType: 'StaticThresholdCriterion'
+          skipMetricValidation: true
         }
       ]
     }

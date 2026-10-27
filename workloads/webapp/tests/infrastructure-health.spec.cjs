@@ -181,7 +181,15 @@ test('Infrastructure Health supports empty, unavailable, loading, and sign-in st
 });
 
 test('Infrastructure Health endpoint remains scoped, no-store, disabled by default, and rejects unsafe hosts', async ({ request }) => {
-  const response = await request.get('/api/infra/health?resourceGroup=other-rg');
+  test.setTimeout(90000);
+  let response = await request.get('/api/infra/health?resourceGroup=other-rg');
+  if (response.status() === 429) {
+    const retryAfter = Number(response.headers()['retry-after']);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
+    await new Promise(resolve => setTimeout(resolve, (retryAfter + 1) * 1000));
+    response = await request.get('/api/infra/health?resourceGroup=other-rg');
+  }
   expect(response.status()).toBe(200);
   expect((await response.json()).state).toBe('not_configured');
   expect(response.headers()['cache-control']).toBe('no-store');

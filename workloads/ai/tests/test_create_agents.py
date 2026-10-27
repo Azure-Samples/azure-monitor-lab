@@ -28,7 +28,7 @@ class AgentSetupTests(unittest.TestCase):
 
         client.create_agent.side_effect = create_agent
         modules["azure.ai.agents"].AgentsClient = Mock(return_value=client)
-        modules["azure.identity"].DefaultAzureCredential = Mock()
+        modules["azure.identity"].AzureCliCredential = Mock()
         source = Path(__file__).resolve().parents[1] / "create_agents.py"
         spec = importlib.util.spec_from_file_location("agent_setup", source)
         module = importlib.util.module_from_spec(spec)
@@ -41,6 +41,7 @@ class AgentSetupTests(unittest.TestCase):
             output = Path(directory) / "agents.json"
             path.return_value.with_name.return_value = output
             module.main()
+            modules["azure.identity"].AzureCliCredential.assert_called_once_with(process_timeout=60)
             original = json.loads(output.read_text(encoding="utf-8"))
             module.main()
             self.assertEqual(4, client.create_agent.call_count)

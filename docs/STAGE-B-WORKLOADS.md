@@ -6,20 +6,63 @@
 
 ## 1) What gets created
 
+The PowerShell Stage B helper and one-shot `deploy.ps1` include narrowly scoped
+[customer-slot provider recovery](../scripts/README.md#customer-slot-provider-failure-recovery).
+They reconcile terminal deployment and slot state before retrying an isolated slot
+`InternalServerError`; direct CLI deployments do not gain automatic retries.
+
 | Group | Resource(s) | Purpose |
 |---|---|---|
-| Linux VM | `vm-amlab-lin` (Standard_B2s) + NIC, public IP, OS disk | AMA-equipped, attached to `dcr-amlab-vminsights`. Source of `Heartbeat`, `InsightsMetrics`, `VMConnection`, perf counters. |
-| Windows VM | `vmwin<suffix>` (Standard_B2s) + NIC, public IP, OS disk | Same telemetry pattern as Linux VM. |
-| AKS cluster | `aks-amlab` (1× Standard_B2s system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
+| Linux VM | `vm-amlab-lin` (`vmSize`) + NIC, public IP, OS disk + `shutdown-computevm-vm-amlab-lin` schedule | AMA-equipped and attached to `dcr-amlab-vminsights`. Automatically shuts down at 23:00 CET/CEST. The Linux Dependency Agent is not deployed, so Service Map is unavailable on this VM. |
+| Windows VM | `vmwin<suffix>` (`vmSize`) + NIC, public IP, OS disk + `shutdown-computevm-vmwin<suffix>` schedule | AMA and Dependency Agent equipped, attached to `dcr-amlab-vminsights`, and automatically shut down at 23:00 CET/CEST. |
+| VM OpenTelemetry metrics | `dcr-<prefix>-vm-otel` + `vm-otel-metrics-association` on each enabled standalone VM | On by default. Adds system metrics to the existing `amw-<prefix>`; keeps classic VM Insights and its associations unchanged. No VMSS association. |
+| AKS cluster | `aks-amlab` (1 configured `aksNodeVmSize` system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
 | Managed Grafana | `amg-amlab-<suffix>` | Connected to `amw-amlab`. Default Azure dashboards (Node Exporter, Kubelet, K8s/Compute resources, etc.) appear automatically. |
-| App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
-| Control Center runner | Basic `acrlabops<suffix>` registry, `cae-labops-<suffix>` Consumption environment, `id-labops-<suffix>` identity, and `job-labops-<suffix>` manual job | The workload template provisions the platform; completion builds the image, creates the digest-pinned job, and configures operator sign-in and scoped roles. Runner logs use the central workspace. Resources follow the Web App region. |
+| App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab-<suffix>` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
+| Control Center runner | Basic `acrlabops<suffix>` registry, `cae-labops-<suffix>` Consumption environment, `id-labops-<suffix>` identity, `job-labops-<suffix>` manual job, `console-runner-logs` diagnostic setting, three custom roles, and scoped role assignments | The workload template provisions the platform; completion builds the image, deploys the digest-pinned job and launcher role, and configures operator sign-in and scoped access. Runner logs use the central workspace. |
 | Connection Monitor | `cm-amlab-*` (in `NetworkWatcherRG`) | Probes between the two VMs and the web app's default hostname. Populates `NetworkMonitoring` table. |
 | Flow Logs + Traffic Analytics | `fl-amlab` against `vnet-amlab`; flow logs storage = `st<amlab><suffix>`; analytics workspace = `law-amlab-central` | Network-layer telemetry for security/exfil scenarios in Stage D and reliability scenarios in Stage E. |
 
-> Cross-stage references (no module-to-module wiring): `law-amlab-central`, `law-amlab-appinsights`, `appi-amlab`, `amw-amlab`, `dce-amlab`, `dcr-amlab-vminsights`, `vnet-amlab`/`snet-workload`, `st<amlab><suffix>`, `evhns-amlab-<suffix>` are all `existing` references from Stage A.
+> Cross-stage references (no module-to-module wiring): `law-amlab-central`, `law-amlab-appinsights`, `appi-amlab-<suffix>`, `amw-amlab`, `dce-amlab`, `dcr-amlab-vminsights`, `vnet-amlab`/`snet-workload`, `st<amlab><suffix>`, `evhns-amlab-<suffix>` are all `existing` references from Stage A.
 
-Console completion requires permission to manage its Entra sign-in registration and scoped Azure roles, plus ACR Tasks availability. The registry has ongoing charges; image builds, job execution, and logs add usage charges. Stage B does not enable the optional Stage E Service Group or SLI setup. See [deployment prerequisites and rerun checks](POST-DEPLOYMENT.md#redeployment-checks).
+Console completion requires permission to manage its Entra sign-in registration and scoped Azure roles, plus ACR Tasks availability. The registry has ongoing charges; image builds, job execution, and logs add usage charges. Stage B does not enable the optional Stage E Service Group or SLI setup. See [deployment prerequisites and upgrade behavior](../workloads/webapp/LAB-OPERATIONS.md#automatic-deployment).
+
+Web App publication verifies the exact deployment ID through `/api/console/version`; a healthy older version does not count as a successful publication. Progress and timeout messages include the expected version and the last reported version or request error. If verification times out, inspect App Service deployment and container startup logs before uploading again: a successful ZIP upload does not prove the new application is serving. A targeted app restart can interrupt users and should be performed only after reviewing the evidence.
+
+The Control Center, customer app, and slots share plan capacity. Check plan CPU and memory when container warm-up fails; increasing capacity requires approval for the higher ongoing cost. Direct Azure capacity changes are not preserved by a full template redeployment: the current Bicep App Service module selects S1 with the slot scenario enabled, or B1 otherwise.
+
+The templates grant **Grafana Admin** at the Managed Grafana instance scope to the deploying identity by default. For service-principal deployments, set `grafanaAdminObjectId` in Bicep or `grafana_admin_object_id` in Terraform to the intended operator or group object ID. New role assignments can take time to propagate. Azure resource ownership and Monitoring Reader on the Grafana managed identity do not grant a user Grafana data-plane access.
+
+<a id="optional-vm-opentelemetry-metrics"></a>
+### VM OpenTelemetry metrics (enabled by default)
+
+**Both experiences are enabled by default.** Classic VM Insights stays on, preserving its `InsightsMetrics` queries, alerts, and workbooks. OpenTelemetry adds the metrics-based experience alongside it, not a migration or replacement. No explicit `true` is required. Existing configurations that omit the setting also enable both on their next deployment; an explicit `false` is respected.
+
+| Deployment path | Default and opt-out setting |
+|---|---|
+| Central configuration | `enableVmOtelMetrics` defaults to `true` when omitted from `lab.config.json`. Set it to the JSON Boolean `false` to opt out, then run `scripts/sync-config.ps1` and regenerate deployment inputs. |
+| One-shot Bicep / ARM | The main template parameter `enableVmOtelMetrics` defaults to `true`; explicitly pass `false` to opt out. |
+| Staged Bicep | `enableVmOtelMetrics` defaults to `true` in `10-workloads.bicep` (Stage B). Regenerate filtered stage parameter files after syncing configuration. Stage A is unchanged. |
+| Terraform | `enable_vm_otel_metrics` defaults to `true` and is passed only to Stage B. Set it to `false` to opt out; it does not enable Stage B itself. |
+| Portal custom deployment | **Add OpenTelemetry VM metrics** in **Workloads** defaults to **Yes**. Select **No** to opt out. |
+
+The separate DCR `dcr-<prefix>-vm-otel` is configured to send `Microsoft-OtelPerfMetrics` to the existing Azure Monitor workspace `amw-<prefix>`. No new workspace or AMW configuration change is required by this lab's documented onboarding path. Each enabled standalone Linux or Windows VM receives a `vm-otel-metrics-association` in addition to its classic association. It uses the same Azure Monitor Agent (AMA), not a second agent installation. Disabled VMs receive no association. VM Scale Sets are unchanged: this option does **not** apply to VMSS. Metrics-based collection does **not** support private link.
+
+The [Microsoft onboarding DCR](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/vm-enable-monitoring) supplies these **10 default system metrics at 60-second intervals**: `system.filesystem.usage`, `system.disk.io`, `system.disk.operation_time`, `system.disk.operations`, `system.memory.usage`, `system.network.io`, `system.cpu.time`, `system.network.dropped`, `system.network.errors`, and `system.uptime`. These are DCR counter specifiers, not copy-and-paste PromQL queries. No per-process metrics are enabled.
+
+Keep the existing AMA automatic upgrades enabled. The cited onboarding guidance does not specify an additional minimum AMA version for this configuration; the lab does not invent a version prerequisite or install a separate collector.
+
+**Validate both views:** check that the OTel DCR's **Resources** lists the enabled standalone VMs and its destination is `amw-<prefix>`. Open a VM's metrics-based monitoring view or the Azure Monitor workspace's Prometheus explorer; use **PromQL** to explore the received system metrics. Separately, keep using classic VM Insights and **KQL** against `InsightsMetrics` in `law-<prefix>-central`. Existing workbooks are unchanged and are not rewritten for OTel; the workspaces require separate queries. Allow time for AMA to download the DCR and telemetry to arrive.
+
+**Validation scope:** repository tests check configuration and deployment wiring offline. They do not verify live ingestion. A successful template deployment alone does not prove that guest metrics are arriving; verify both destinations in your deployed environment before demonstrating this option.
+
+Microsoft documents **default OpenTelemetry metrics as free**, but this is not a free-lab switch: classic Log Analytics ingestion/retention, VM compute, Grafana, AKS metrics, and other services retain their existing charges. See [metrics-based versus classic monitoring, costs, and limitations](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/metrics-opentelemetry-guest) and the [lab cost guide](COST-GUIDE.md).
+
+#### Targeted opt-out and cleanup
+
+An **incremental redeployment with the flag set to `false` does not delete an already-deployed OTel DCR or its VM associations**. To stop only the additional metrics, remove the association named **`vm-otel-metrics-association`** from each affected standalone VM (for example, remove those VM associations through **`dcr-<prefix>-vm-otel` → Resources**), then set the configuration flag to `false` and regenerate deployment inputs to prevent it being re-added. Verify the association is gone on those VMs.
+
+**Do not delete the classic `dcr-<prefix>-vminsights` associations or uninstall AMA.** Classic VM Insights must keep working. The now-unused OTel DCR can remain until normal cleanup. The existing full lab resource-group teardown removes the RG-scoped DCR and the associations along with their VMs; no subscription-scoped OTel cleanup is needed.
 
 ## 2) Speaker notes
 
@@ -51,7 +94,7 @@ Console completion requires permission to manage its Entra sign-in registration 
 6. **`aks-amlab` → Monitoring → Workbooks** — built-in Container Insights workbooks.
 7. **`amw-amlab` → Prometheus explorer** — try `up{}` or `kube_node_info{}`.
 8. **`amg-amlab-<suffix>` → Endpoint** — click the Grafana URL. Default Azure dashboards are ready to demo (e.g., *Kubernetes / Compute Resources / Cluster*).
-9. **`app-amlab-<suffix>` → Application Insights** (via *Settings → Application Insights*) — confirm it's linked to `appi-amlab`. Then *App Insights → Live Metrics*.
+9. **`app-amlab-<suffix>` → Application Insights** (via *Settings → Application Insights*) — confirm it's linked to `appi-amlab-<suffix>`. Then *App Insights → Live Metrics*.
 10. **`NetworkWatcherRG → Connection monitors`** — open the connection monitor and show test groups (VM→Web, VM→VM).
 11. **Network Watcher → Traffic Analytics** — flow data appears after ~15 min; helpful to leave running before the session.
 12. **`wb-amlab-trafficlights`** — re-open from Stage A and call out filled cells. "Same workbook, new world."

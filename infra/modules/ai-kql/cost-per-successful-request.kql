@@ -1,13 +1,11 @@
-// Cost per successful request, by agent (last 24h)
+// Tokens per successful request, by agent (last 24h)
 // -------------------------------------------------------------------
-// Purpose:  Unit economics that join COST + RELIABILITY. Failed/retried
-//           calls still burn tokens, so this divides estimated spend by the
-//           number of *successful* requests — the true price of a good answer.
+// Purpose:  Efficiency metric joining usage and reliability. Failed/retried
+//           calls still burn tokens, so this divides measured tokens by the
+//           number of successful requests.
 // Source:   Application Insights `dependencies` (GenAI spans). Uses the
 //           native `success` column for pass/fail.
-// Pricing:  gpt-5-mini GlobalStandard list price (input $0.25/1M,
-//           output $2.00/1M). Replace with your per-model rates.
-// Caveat:   Token-derived ESTIMATE; reconcile with Azure Cost Management.
+// Pricing:  Apply the actual model-specific rates separately.
 
 dependencies
 | where timestamp > ago(1d)
@@ -17,8 +15,7 @@ dependencies
          agent  = tostring(customDimensions["gen_ai.agent.name"])
 | summarize prompt=sum(inTok), completion=sum(outTok),
             total=count(), ok=countif(success == true) by agent
-| extend est_usd        = round(prompt/1000000.0*0.25 + completion/1000000.0*2.00, 4),
-         success_rate   = round(100.0 * ok / total, 1)
-| extend usd_per_success = round(iff(ok > 0, est_usd / ok, real(null)), 6)
-| project agent, total, ok, success_rate, est_usd, usd_per_success
-| order by usd_per_success desc
+| extend success_rate=round(100.0 * ok / total, 1),
+         tokens_per_success=round(iff(ok > 0, todouble(prompt+completion) / ok, real(null)), 1)
+| project agent, total, ok, success_rate, prompt, completion, tokens_per_success
+| order by tokens_per_success desc

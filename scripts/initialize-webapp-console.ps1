@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory)] [guid] $TenantId,
   [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup,
   [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9-]+$')] [string] $WebAppName,
+  [ValidatePattern('^[a-zA-Z0-9-]+$')] [string] $CustomerWebAppName = '',
   [Parameter(Mandatory)] [string] $ConsoleConfigPath,
   [guid[]] $AllowedUserObjectIds
 )
@@ -12,17 +13,25 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $root = Split-Path $PSScriptRoot -Parent
 $tokens = @{}
-$temporary = Join-Path ([IO.Path]::GetTempPath()) ('amlab-console-bootstrap-' + [guid]::NewGuid().ToString('N'))
+$temporary = Join-Path $root ('.artifacts\amlab-console-bootstrap-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary
 $phase = 'account verification'
 
 function Invoke-ConsoleApi([string] $Method, [string] $Uri, [object] $Body = $null) {
   $address = [Uri]$Uri
   if ($address.Scheme -ne 'https' -or -not $tokens.ContainsKey($address.Host)) { throw 'Unexpected console setup API.' }
+  $tokens[$address.Host] = az account get-access-token --subscription $SubscriptionId --resource "https://$($address.Host)/" --query accessToken --output tsv --only-show-errors
+  if ($LASTEXITCODE -ne 0 -or -not $tokens[$address.Host]) { throw 'Required setup authentication is unavailable.' }
   $arguments = @{ Method = $Method; Uri = $Uri; Headers = @{ Authorization = "Bearer $($tokens[$address.Host])" }; TimeoutSec = 60; Verbose = $false; Debug = $false }
   if ($null -ne $Body) { $arguments.Body = $Body | ConvertTo-Json -Depth 25 -Compress; $arguments.ContentType = 'application/json' }
   try { Invoke-RestMethod @arguments }
-  catch { throw "Console setup API failed (HTTP $([int]$_.Exception.Response.StatusCode)). Protected response details were suppressed." }
+  catch {
+    $statusCode = [int]$_.Exception.Response.StatusCode
+    if ($address.Host -eq 'graph.microsoft.com' -and $statusCode -eq 401) {
+      throw "Microsoft Graph rejected the cached Azure CLI session. Run 'az logout', then 'az login --tenant $TenantId', select subscription $SubscriptionId, and retry the deployment."
+    }
+    throw "Console setup API failed (HTTP $statusCode). Protected response details were suppressed."
+  }
 }
 
 function Grant-ConsoleRole([string] $PrincipalId, [string] $Scope, [string] $Name) {
@@ -56,6 +65,7 @@ try {
     $tokens[$hostName] = az account get-access-token --subscription $SubscriptionId --resource "https://$hostName/" --query accessToken --output tsv --only-show-errors
     if ($LASTEXITCODE -ne 0 -or -not $tokens[$hostName]) { throw 'Required setup authentication is unavailable.' }
   }
+  $null = Invoke-ConsoleApi GET 'https://graph.microsoft.com/v1.0/me?$select=id'
   $config = Get-Content -LiteralPath $ConsoleConfigPath -Raw | ConvertFrom-Json -AsHashtable
   if (-not $config.LabConsole -or $config.LabConsole.ResourceGroup -ne $ResourceGroup) { throw 'Generated console configuration does not match this deployment.' }
   $resourceBase = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
@@ -65,6 +75,13 @@ try {
   $settingsResponse = Invoke-ConsoleApi POST "https://management.azure.com$webId/config/appsettings/list?api-version=2024-11-01"
   $settings = @{}
   foreach ($property in $settingsResponse.properties.PSObject.Properties) { $settings[$property.Name] = $property.Value }
+  $slotScenarioEnabled = $settings['LabConsole__SlotScenarioEnabled'] -ieq 'true'
+  if ($slotScenarioEnabled -and (-not $CustomerWebAppName -or $CustomerWebAppName -cne "$WebAppName-customer")) {
+    throw 'The enabled slot scenario requires its exact dedicated customer Web App name.'
+  }
+  $customerWorkerName = [string]$config.LabConsole.Operations.CustomerWorkerName
+  if ($customerWorkerName -and (-not $slotScenarioEnabled -or $customerWorkerName -notmatch '^[a-zA-Z0-9-]{2,60}$' -or
+      $customerWorkerName -in @($WebAppName, $CustomerWebAppName))) { throw 'Invalid customer dependency fault targets.' }
   $settings['LabConsole__Operations__Enabled'] = 'false'
   $settings['LabConsole__Health__Enabled'] = 'false'
   $null = Invoke-ConsoleApi PUT "https://management.azure.com$webId/config/appsettings?api-version=2024-11-01" @{ properties = $settings }
@@ -116,9 +133,12 @@ try {
   $tagParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $tagParametersPath -Encoding utf8
   $platformParametersPath = Join-Path $temporary 'runner-platform.parameters.json'
   $tagParameters.parameters.cpuVmNames = @{ value = $cpuVmNames }
+  $tagParameters.parameters.enableSlotFailureScenario = @{ value = $slotScenarioEnabled }
+  $tagParameters.parameters.customerWebAppName = @{ value = $CustomerWebAppName }
+  $tagParameters.parameters.customerWorkerName = @{ value = $customerWorkerName }
   $tagParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $platformParametersPath -Encoding utf8
   $platform = Invoke-ConsoleDeployment 'lab-console-platform' (Join-Path $root 'infra/modules/lab-console-platform.json') @(
-    "webAppName=$WebAppName", "centralLawId=$($config.LabConsole.Health.CentralWorkspaceResourceId)", "location=$($web.location)", "@$platformParametersPath"
+    "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "centralLawId=$($config.LabConsole.Health.CentralWorkspaceResourceId)", "location=$($web.location)", "@$platformParametersPath"
   )
   if ($LASTEXITCODE -ne 0 -or -not $platform.registryName.value -or -not $platform.environmentId.value -or -not $platform.runnerIdentityId.value) { throw 'The workload template did not provision the console runner platform.' }
   foreach ($id in @($platform.registryId.value, $platform.environmentId.value, $platform.runnerIdentityId.value)) {
@@ -129,12 +149,34 @@ try {
   $environment = az resource show --ids $platform.environmentId.value --subscription $SubscriptionId --api-version 2025-07-01 --output json --only-show-errors | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or -not $environment.location) { throw 'Runner environment is unavailable.' }
 
+  $phase = 'runner AcrPull role propagation'
+  $acrPullConfirmed = $false
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    $roleNames = az role assignment list --scope $platform.registryId.value --assignee-object-id $identity.principalId `
+      --subscription $SubscriptionId --query "[?roleDefinitionName=='AcrPull'].roleDefinitionName" --output tsv --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not verify the console runner AcrPull assignment.' }
+    if (@($roleNames | Where-Object { $_ -eq 'AcrPull' }).Count -gt 0) {
+      $acrPullConfirmed = $true
+      break
+    }
+    if ($attempt -lt 5) {
+      Write-Host "Waiting for runner AcrPull RBAC propagation (attempt $attempt/5, waiting 60s)..."
+      Start-Sleep -Seconds 60
+    }
+  }
+  if (-not $acrPullConfirmed) { throw 'The runner identity AcrPull assignment was not visible on its registry after five attempts.' }
+
   $phase = 'runner image build'
   $build = Join-Path $temporary 'build'
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'scripts') -Force
   $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/k8s') -Force
-  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
-    'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml')
+  $null = New-Item -ItemType Directory -Path (Join-Path $build 'workloads/webapp/scripts') -Force
+  $files = @('scripts/invoke-lab-operation.ps1', 'scripts/slot-health.ps1', 'scripts/app-insights-target.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1',
+    'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1', 'scripts/customer-journey-outcome.mjs',
+    'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1',
+    'scripts/set-customer-dependency-fault.ps1', 'scripts/customer-dependency-helpers.ps1',
+    'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json',
+    'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/webapp/scripts/usage-traffic-pacing.mjs')
   foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $build $file) }
   Copy-Item -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Destination (Join-Path $build 'Dockerfile')
   $hashes = @(Get-ChildItem $build -File -Recurse | Sort-Object FullName | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash })
@@ -150,7 +192,7 @@ try {
 
   $phase = 'runner job provisioning'
   $job = Invoke-ConsoleDeployment 'lab-console-job' (Join-Path $root 'infra/modules/lab-console-job.json') @(
-    "name=$($platform.jobName.value)", "location=$($environment.location)", "webAppName=$WebAppName", "environmentId=$($platform.environmentId.value)",
+    "name=$($platform.jobName.value)", "location=$($environment.location)", "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "customerWorkerName=$customerWorkerName", "environmentId=$($platform.environmentId.value)",
     "registryServer=$server", "runnerIdentityId=$($identity.id)", "runnerClientId=$($identity.clientId)", "image=$image", "@$tagParametersPath"
   )
   if ($LASTEXITCODE -ne 0 -or -not $job.jobId.value) { throw 'Runner job deployment failed.' }
@@ -181,8 +223,9 @@ try {
   }
   if (-not $config.LabConsole.Health.CentralWorkspaceResourceId) { throw 'The lab central health workspace was not found.' }
   $sreAgents = @($inventory | Where-Object { $_.type -ieq 'Microsoft.App/agents' })
+  $observabilityAgents = @($inventory | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' })
   $projects = @($inventory | Where-Object { $_.type -ieq 'Microsoft.CognitiveServices/accounts/projects' })
-  if ($projects.Count -gt 1 -or $sreAgents.Count -gt 1) { throw 'Multiple optional agent targets were found. Deployment cannot select an arbitrary target.' }
+  if ($projects.Count -gt 1 -or $sreAgents.Count -gt 1 -or $observabilityAgents.Count -gt 1) { throw 'Multiple optional agent targets were found. Deployment cannot select an arbitrary target.' }
   if ($projects.Count -eq 1) {
     $phase = 'optional demo agent provisioning'
     if (-not $projects[0].id.StartsWith("$resourceBase/providers/Microsoft.CognitiveServices/accounts/", [StringComparison]::OrdinalIgnoreCase)) { throw 'The Foundry project is outside the selected lab.' }
@@ -193,7 +236,9 @@ try {
     if ($LASTEXITCODE -ne 0 -or $preferred.Count -ne 1) { throw 'The console model deployment was not uniquely resolved.' }
     $projectName = $projects[0].id.Split('/')[-1]
     $config.LabConsole.Foundry.ProjectEndpoint = "https://$($accountId.Split('/')[-1]).services.ai.azure.com/api/projects/$projectName"
-    $components = @($inventory | Where-Object { $_.type -ieq 'Microsoft.Insights/components' })
+    $components = @($inventory | Where-Object {
+      $_.type -ieq 'Microsoft.Insights/components' -and $_.tags.'amlab-component' -cne 'customer-web-app'
+    })
     if ($components.Count -ne 1) { throw 'The lab Application Insights component was not uniquely resolved.' }
     $component = Invoke-ConsoleApi GET "https://management.azure.com$($components[0].id)?api-version=2020-02-02"
     & (Join-Path $PSScriptRoot 'setup-ai.ps1') -ResourceGroup $ResourceGroup -NamePrefix ($projectName -replace '-ai-proj$', '') `
@@ -210,7 +255,8 @@ try {
   $settingsResponse = Invoke-ConsoleApi POST "https://management.azure.com$webId/config/appsettings/list?api-version=2024-11-01"
   $settings = @{}
   foreach ($property in $settingsResponse.properties.PSObject.Properties) { $settings[$property.Name] = $property.Value }
-  $config.LabConsole.Operations = @{ Enabled = $true; JobResourceId = $job.jobId.value; Image = $image; TenantId = $TenantId.ToString(); JournalPath = '/home/data/lab-operations/journal.json' }
+  $config.LabConsole.Operations = @{ Enabled = $true; JobResourceId = $job.jobId.value; Image = $image; TenantId = $TenantId.ToString(); JournalPath = '/home/data/lab-operations/journal.json'
+    CustomerWorkerName = $customerWorkerName; CustomerDependenciesEnabled = [bool]$customerWorkerName }
   $config.LabConsole.Health.Enabled = $true
   $config.LabConsole.Health.TenantId = $TenantId.ToString()
   foreach ($section in @('Operations', 'Health')) {
@@ -218,8 +264,17 @@ try {
   }
   $settings['LabConsole__Foundry__Enabled'] = [string]($projects.Count -eq 1)
   $settings['LabConsole__Sre__Enabled'] = [string]($projects.Count -eq 1 -and $sreAgents.Count -eq 1)
+  if ($observabilityAgents.Count -eq 1) {
+    $settings['LabConsole__Links__ObservabilityAgent'] = "https://portal.azure.com/#resource$($observabilityAgents[0].id)"
+  } else {
+    $settings.Remove('LabConsole__Links__ObservabilityAgent')
+  }
   $settings['LabConsole__ResourceGroup'] = $ResourceGroup
   $settings['LabConsole__AppService'] = $WebAppName
+  foreach ($key in @('CustomerApplication', 'CustomerHealthModel')) {
+    if ($config.LabConsole.Links -and $config.LabConsole.Links[$key]) { $settings["LabConsole__Links__$key"] = $config.LabConsole.Links[$key] }
+    else { $settings.Remove("LabConsole__Links__$key") }
+  }
   if ($projects.Count -eq 1 -and $config.LabConsole.Foundry.ProjectEndpoint) { $settings['LabConsole__Foundry__ProjectEndpoint'] = $config.LabConsole.Foundry.ProjectEndpoint }
   $null = Invoke-ConsoleApi PUT "https://management.azure.com$webId/config/appsettings?api-version=2024-11-01" @{ properties = $settings }
   $config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $ConsoleConfigPath -Encoding utf8

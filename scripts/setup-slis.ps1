@@ -21,7 +21,8 @@
   Expected Azure subscription. Required when .azure-target.json is absent.
 
 .PARAMETER ServiceGroupId
-  Service group that owns the portal-created SLIs.
+  Service group that owns the portal-created SLIs. Defaults to the existing RG
+  membership target, or the same subscription/RG-derived ID used by setup-health-model.ps1.
 
 .PARAMETER Teardown
   Delete the documented sample SLIs if they were created in the portal.
@@ -33,7 +34,7 @@
 param(
   [string] $ResourceGroup  = 'rg-azure-monitor-lab',
   [string] $SubscriptionId,
-  [string] $ServiceGroupId = 'amlab-workload',
+  [string] $ServiceGroupId,
   [ValidateRange(0, 60)]
   [int] $MetricWaitMinutes = 10,
   [switch] $Teardown
@@ -68,24 +69,24 @@ if ($target -and $active.tenantId -ne $target.expectedTenantId) {
 }
 Write-Info "Sub: $($active.id)"
 Write-Info "RG : $ResourceGroup"
+$ServiceGroupId = & (Join-Path $PSScriptRoot 'resolve-service-group-id.ps1') `
+  -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup -ServiceGroupId $ServiceGroupId
 Write-Info "SG : $ServiceGroupId"
 
 $sliApi = '2025-03-01-preview'
 $sgApi = '2024-02-01-preview'
 $sgUrl = "https://management.azure.com/providers/Microsoft.Management/serviceGroups/$ServiceGroupId" + "?api-version=$sgApi"
 
-function Get-SliUrl {
-  param([string] $SliName)
-  return "https://management.azure.com/providers/Microsoft.Management/serviceGroups/$ServiceGroupId/providers/Microsoft.Monitor/slis/$SliName" + "?api-version=$sliApi"
-}
-
 if ($Teardown) {
   Write-Step 'Removing documented sample SLIs'
   foreach ($sliName in @('sli-aks-pods-running', 'sli-aks-pod-start-latency')) {
-    az rest --method delete --url (Get-SliUrl -SliName $sliName) --only-show-errors 2>$null | Out-Null
-    Write-Info "Delete submitted: $sliName"
+    $sliResourceId = "/providers/Microsoft.Management/serviceGroups/$ServiceGroupId/providers/Microsoft.Monitor/slis/$sliName"
+    $submitted = & (Join-Path $PSScriptRoot 'remove-arm-resource.ps1') `
+      -SubscriptionId $SubscriptionId -ResourceId $sliResourceId -ApiVersion $sliApi
+    if ($submitted) { Write-Info "Delete submitted: $sliName" }
+    else { Write-Info "Already absent: $sliName" }
   }
-  Write-Host "`nTeardown submitted. DELETE is idempotent." -ForegroundColor Green
+  Write-Host "`nSLI cleanup finished: deletes submitted or resources already absent." -ForegroundColor Green
   return
 }
 
@@ -159,18 +160,10 @@ function Get-PrometheusQueryToken {
   $tokenExitCode = $LASTEXITCODE
   if ($tokenExitCode -ne 0) {
     if (($tokenOutput -join "`n") -match 'Audience\s+https://prometheus[.]monitor[.]azure[.]com/?\s+is not a supported MSI token audience') {
-      $retryResourceGroup = $ResourceGroup.Replace("'", "''")
-      $retryServiceGroup = $ServiceGroupId.Replace("'", "''")
       throw @"
 Cloud Shell's built-in credential cannot request the Azure Monitor Prometheus token audience. Source metrics have not been verified.
 
-Sign in interactively in this Cloud Shell session, verify the lab account, then retry only the SLI helper from the repository root:
-  az login --tenant $($active.tenantId) --use-device-code
-  az account set --subscription $SubscriptionId
-  az account show --query '{id:id,tenantId:tenantId}' -o table
-  ./scripts/setup-slis.ps1 -SubscriptionId $SubscriptionId -ResourceGroup '$retryResourceGroup' -ServiceGroupId '$retryServiceGroup' -MetricWaitMinutes $MetricWaitMinutes
-
-No logout, token-audience change, or workload redeployment is required. Resume remaining post-deployment steps after SLI verification succeeds.
+The Cloud Shell post-deployment wrapper handles this limitation automatically and continues after preparing SLI permissions. To verify source series separately, run this helper from a host whose user or workload credential supports the Prometheus audience. No workload redeployment is required.
 "@
     }
     throw "Could not acquire an Azure Monitor Prometheus query token (Azure CLI exit code $tokenExitCode). Source metrics have not been verified; check your sign-in for the selected tenant and subscription."

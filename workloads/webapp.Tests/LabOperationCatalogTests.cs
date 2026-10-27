@@ -7,7 +7,7 @@ public sealed class LabOperationCatalogTests
     [Fact]
     public void OnlyTheApprovedScriptsAreAvailable()
     {
-        Assert.Equal(new[] { "start", "break", "restore", "ramp", "cpu", "logs", "annotation" }, LabOperationCatalog.Actions.Select(action => action.Id));
+        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "usage", "cpu", "logs", "annotation", "slot-failure", "slot-restore", "customer-sql-delay", "customer-worker-failure", "customer-recover" }, LabOperationCatalog.Actions.Select(action => action.Id));
         Assert.All(LabOperationCatalog.Actions, action => Assert.StartsWith("scripts/", action.Script));
         Assert.All(LabOperationCatalog.Actions, action => Assert.NotEmpty(action.Impact));
         foreach (var operation in new[] { "teardown", "deploy", "setup-rbac-demo", "../script.ps1", "start;whoami" })
@@ -16,15 +16,57 @@ public sealed class LabOperationCatalogTests
 
     [Theory]
     [InlineData("start")]
+    [InlineData("stop")]
     [InlineData("break")]
     [InlineData("restore")]
     [InlineData("ramp")]
     [InlineData("cpu")]
+    [InlineData("slot-failure")]
+    [InlineData("slot-restore")]
+    [InlineData("customer-sql-delay")]
+    [InlineData("customer-worker-failure")]
+    [InlineData("customer-recover")]
     public void LifecycleActionsRejectExtraParameters(string operation)
     {
         Assert.Equal(new(operation, 0, "", ""), LabOperationCatalog.Validate(new(operation)));
         Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new(operation, Count: 1)));
         Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new(operation, Name: "marker")));
+    }
+
+    [Fact]
+    public void SlotFailureUsesTheBoundedTrigger()
+    {
+        var action = Assert.Single(LabOperationCatalog.Actions, action => action.Id == "slot-failure");
+        Assert.True(action.RequiresSlotScenario);
+        Assert.False(action.RequiresAks);
+        Assert.Equal("scripts/trigger-broken-slot.ps1", action.Script);
+        Assert.Contains("HTTP 503", action.Impact);
+        Assert.Equal(new("slot-failure", 0, "", ""), LabOperationCatalog.Validate(new("slot-failure")));
+    }
+
+    [Fact]
+    public void WorkingSlotUsesTheBoundedRollbackAndRequiresOptIn()
+    {
+        var action = Assert.Single(LabOperationCatalog.Actions, action => action.Id == "slot-restore");
+        Assert.True(action.RequiresSlotScenario);
+        Assert.False(action.RequiresAks);
+        Assert.Equal("scripts/rollback-broken-slot.ps1", action.Script);
+        Assert.Contains("HTTP 200", action.Impact);
+        Assert.Contains("no swap", action.Impact);
+    }
+
+    [Theory]
+    [InlineData("customer-sql-delay")]
+    [InlineData("customer-worker-failure")]
+    [InlineData("customer-recover")]
+    public void DependencyFaultsRequireBothFeaturesAndCannotAcceptArbitrarySettings(string operation)
+    {
+        var action = Assert.Single(LabOperationCatalog.Actions, action => action.Id == operation);
+        Assert.True(action.RequiresSlotScenario);
+        Assert.True(action.RequiresCustomerDependencies);
+        Assert.False(action.RequiresAks);
+        Assert.Equal("scripts/set-customer-dependency-fault.ps1", action.Script);
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new(operation, Concurrency: 1)));
     }
 
     [Fact]
@@ -42,6 +84,19 @@ public sealed class LabOperationCatalogTests
     [InlineData(-1)]
     [InlineData(101)]
     public void CustomLogCountIsBounded(int count) => Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("logs", Count: count)));
+
+    [Fact]
+    public void CustomerTrafficParametersAreBoundedAndFrozen()
+    {
+        Assert.Equal(new("usage", 24, "", "", 4, 6), LabOperationCatalog.Validate(new("usage")));
+        Assert.Equal(new("usage", 80, "", "", 8, 20), LabOperationCatalog.Validate(new("usage", Count: 80, Concurrency: 8, RepeatUsers: 20)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Count: 0)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Count: 101)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Concurrency: 0)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Concurrency: 11)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Count: 5, RepeatUsers: 6)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("start", Concurrency: 2)));
+    }
 
     [Fact]
     public void ValidParametersAreNormalized()

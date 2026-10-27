@@ -50,6 +50,9 @@ function Invoke-RestMethod {
   if ($Uri -match '/applications\?') { return @{ value = $fixture.Applications } }
   if ($Uri.EndsWith('/applications') -and $Method -eq 'POST') {
     if ($payload.signInAudience -ne 'AzureADMyOrg' -or $payload.web.redirectUris[0] -ne 'https://test-webapp.azurewebsites.net/.auth/login/aad/callback') { throw 'Unsafe Entra audience or redirect.' }
+    foreach ($tag in @('azure-monitor-lab:managed:v1', "azure-monitor-lab:tenant:$($fixture.Tenant)", "azure-monitor-lab:resource-group:/subscriptions/$($fixture.Subscription)/resourcegroups/test-rg", 'azure-monitor-lab:kind:console', 'azure-monitor-lab:web-app:test-webapp')) {
+      if ($payload.tags -notcontains $tag) { throw 'New console registrations must record exact lab ownership for teardown.' }
+    }
     if ($payload.web.implicitGrantSettings.enableIdTokenIssuance -ne $true -or $payload.web.implicitGrantSettings.enableAccessTokenIssuance) { throw 'App Service requires hybrid ID tokens, not implicit access tokens.' }
     $payload.id = $fixture.Registration.ToString(); $payload.appId = $fixture.Client.ToString()
     $fixture.Applications = @($payload)
@@ -64,7 +67,10 @@ function Invoke-RestMethod {
     return @{}
   }
   if ($Uri -match '/servicePrincipals\?') { return @{ value = $fixture.Principals } }
-  if ($Uri.EndsWith('/servicePrincipals')) { $fixture.Principals = @(@{ appId = $fixture.Client.ToString() }); return @{} }
+  if ($Uri.EndsWith('/servicePrincipals')) {
+    if (($payload.tags -join ',') -ne ($fixture.Applications[0].tags -join ',')) { throw 'New service principals must retain the registration ownership tags.' }
+    $fixture.Principals = @(@{ appId = $fixture.Client.ToString(); tags = $payload.tags }); return @{}
+  }
   if ($Uri.EndsWith('/addPassword')) { $fixture.AddedCredentials++; return @{ secretText = $fixture.Credential } }
   if ($Uri -match '/config/appsettings/list') { return (@{ properties = $fixture.Settings } | ConvertTo-Json -Depth 10 | ConvertFrom-Json) }
   if ($Uri -match '/config/appsettings\?' -and $Method -eq 'PUT') {
@@ -120,6 +126,17 @@ $fixture.Settings['LabConsole__SignInCredentialExpiresAt'] = [DateTimeOffset]::U
 if ($fixture.AddedCredentials -ne 2 -or [DateTimeOffset]$fixture.Settings['LabConsole__SignInCredentialExpiresAt'] -le [DateTimeOffset]::UtcNow.AddDays(30)) { throw 'Redeployment did not renew the near-expiry sign-in credential.' }
 & $helper @parameters | Out-Null
 if ($fixture.AddedCredentials -ne 2) { throw 'Credential renewal is not idempotent.' }
+$ownedTags = $fixture.Applications[0].tags
+$fixture.Applications[0].tags = @()
+$output = & $helper @parameters 3>&1 | Out-String
+if ($fixture.Applications[0].tags.Count -or $output -notmatch 'Teardown will preserve it for manual review') { throw 'Existing untracked registrations must not be silently adopted for deletion.' }
+$fixture.Applications[0].tags = $ownedTags
+$fixture.Applications[0].tags += "azure-monitor-lab:resource-group:/subscriptions/$($fixture.Subscription)/resourcegroups/another-lab"
+$credentialCount = $fixture.AddedCredentials
+$caught = $false
+try { & $helper @parameters | Out-Null } catch { $caught = $_.Exception.Message -like '*ownership does not match*' }
+if (-not $caught -or $fixture.AddedCredentials -ne $credentialCount) { throw 'A shared registration must not be claimed by setup.' }
+$fixture.Applications[0].tags = $ownedTags
 $fixture.Roles = @(); $fixture.FailRole = $true
  $beforeAgentRequests = @($fixture.Requests | Where-Object { $_ -match '/agents/|/accounts/' }).Count
  $authOnly = $parameters.Clone()

@@ -42,8 +42,8 @@
 5. **"Granular RBAC = workspace governance."**
    Show the LAW *Access control* + *Tables* views. Explain how a workspace-reader role + table-level constraints lets a team see *their* logs without seeing everyone else's. This is the "we can give Security a read-only seat without granting them subscription Reader" story.
 
-6. **"This stage costs €0–€15/month."**
-   No new compute, three scheduled queries, light egress. Easy yes from the cost steward.
+6. **"No new compute does not mean zero cost."**
+   Price the three scheduled-query evaluations plus their diagnostic ingestion, retention, notifications, and any action execution. Use the [cost guide](COST-GUIDE.md) and measured volume instead of a flat range.
 
 ## 3) Portal walkthrough (UI)
 

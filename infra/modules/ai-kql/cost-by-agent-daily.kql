@@ -1,20 +1,12 @@
-// Estimated cost per agent (last 24h)
+// Token usage per agent (last 24h)
 // -------------------------------------------------------------------
-// Purpose:  Chargeback / showback view. Converts per-agent token usage
-//           into an estimated USD cost so you can see which agent drives
-//           spend. This is the "cost dashboard + chargeback" tile.
+// Purpose:  Chargeback input showing which agent drives token volume.
 // Source:   Application Insights `dependencies` table (GenAI spans).
 // Filter:   isnotempty(gen_ai.agent.name) — keeps only attributable spans
 //           and drops the untagged auto-instrumentation bucket.
-// Pricing:  Placeholder rates are gpt-5-mini GlobalStandard list price:
-//             input  $0.25 / 1M tokens
-//             output $2.00 / 1M tokens
-//           Replace with your negotiated / current per-model rates. At
-//           these rates completion tokens are ~97% of the bill, so output
-//           verbosity is the main cost lever.
-// Caveat:   Token-derived ESTIMATE only — excludes EA/CSP discounts, PTU/
-//           reservations and cached-input pricing. Reconcile monthly with
-//           Azure Cost Management for the billed figure.
+// Pricing:  Join these measurements to the actual request/response model
+//           and current customer-specific rates. Do not apply one rate to
+//           every lab deployment or Model Router response.
 
 dependencies
 | where timestamp > ago(1d)
@@ -23,5 +15,5 @@ dependencies
          outTok = toint(customDimensions["gen_ai.usage.output_tokens"]),
          agent  = tostring(customDimensions["gen_ai.agent.name"])
 | summarize prompt=sum(inTok), completion=sum(outTok), calls=count() by agent
-| extend est_usd = round(prompt/1000000.0*0.25 + completion/1000000.0*2.00, 4)
-| order by est_usd desc
+| extend total_tokens=prompt+completion
+| order by total_tokens desc

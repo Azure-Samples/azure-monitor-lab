@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 180" role="img" aria-labelledby="logo-title logo-description">
+  <title id="logo-title">Azure Monitor Lab</title>
+  <desc id="logo-description">Azure Monitor Lab logo with a telemetry signal and connected observability nodes.</desc>
+  <defs>
+    <linearGradient id="ring-gradient" x1="25" y1="25" x2="155" y2="155" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#50E6FF"/>
+      <stop offset="0.55" stop-color="#0078D4"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <style>
+      .wordmark { fill: #172033; }
+      @media (prefers-color-scheme: dark) {
+        .wordmark { fill: #F0F6FC; }
+      }
+    </style>
+  </defs>
+
+  <circle cx="90" cy="90" r="61" fill="none" stroke="url(#ring-gradient)" stroke-width="9"/>
+  <path d="M31 99h25l15-28 22 53 18-38h38"
+        fill="none" stroke="#0078D4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="56" cy="99" r="7" fill="#50E6FF"/>
+  <circle cx="71" cy="71" r="7" fill="#0078D4"/>
+  <circle cx="93" cy="124" r="7" fill="#8B5CF6"/>
+  <circle cx="111" cy="86" r="7" fill="#50E6FF"/>
+  <circle cx="90" cy="90" r="5" fill="#FFFFFF"/>
+
+  <text class="wordmark" x="184" y="108" font-family="Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="50" font-weight="650" letter-spacing="-1">Azure Monitor</text>
+  <rect x="551" y="62" width="132" height="60" rx="15" fill="#0078D4"/>
+  <text x="617" y="104" fill="#FFFFFF" font-family="Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle">LAB</text>
+</svg>

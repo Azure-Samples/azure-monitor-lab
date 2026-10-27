@@ -11,6 +11,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region for App Service and its co-located diagnostic Storage and Event Hub dependencies.')
+param appServiceLocation string = 'westeurope'
+
 @description('Short prefix used to build resource names. Lowercase, 3-8 chars.')
 @minLength(3)
 @maxLength(8)
@@ -32,6 +35,9 @@ param deployWindowsVm bool = true
 @description('Deploy the Ubuntu 22.04 demo VM.')
 param deployLinuxVm bool = true
 
+@description('Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets.')
+param enableVmOtelMetrics bool = true
+
 @description('Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable.')
 param dailyCapGb int = 1
 
@@ -40,6 +46,9 @@ param vmSize string = 'Standard_B2s'
 
 @description('AKS node VM size.')
 param aksNodeVmSize string = 'Standard_B2s'
+
+@description('Predictive-autoscale VMSS instance size.')
+param vmssSize string = 'Standard_B1s'
 
 @description('AKS node count.')
 param aksNodeCount int = 1
@@ -78,6 +87,43 @@ param enableAi bool = false
 @description('Deploy Azure SRE Agent in Sweden Central with Azure Monitor, Application Insights, and Log Analytics connectors. Off by default (billable usage).')
 param enableSreAgent bool = false
 
+@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan with configurable Standard S2 (one worker) instead of B1. Off by default.')
+param enableSlotFailureScenario bool = false
+
+@description('Opt-in real customer SQL/Service Bus/Functions dependencies. Requires enableSlotFailureScenario and Stage B.')
+param enableCustomerDependencies bool = false
+@description('Explicit Microsoft Entra SQL administrator object ID; required when customer dependencies are enabled.')
+param sqlEntraAdminObjectId string = ''
+param sqlEntraAdminName string = ''
+@allowed(['User', 'Group', 'Application'])
+param sqlEntraAdminType string = 'Group'
+@allowed(['S1', 'S2', 'S3'])
+param slotAppServicePlanSku string = 'S2'
+
+@description('Deploy Azure Copilot Observability Agent with autonomous alert correlation. Off by default (preview and billable agent operations).')
+param enableObservabilityAgent bool = false
+
+@description('Supported region for Azure Copilot Observability Agent and its dedicated Azure Monitor workspace.')
+@allowed([
+  'australiaeast'
+  'canadacentral'
+  'centralus'
+  'eastasia'
+  'eastus'
+  'southcentralus'
+  'uksouth'
+  'westcentralus'
+  'westeurope'
+])
+param observabilityAgentLocation string = 'westeurope'
+
+@description('Run billable deep investigations automatically for Observability Agent-created issues.')
+param enableObservabilityAgentAutomaticInvestigation bool = false
+
+@description('Natural-language guidance for Observability Agent alert correlation and issue creation.')
+@maxLength(8192)
+param observabilityAgentInstructions string = 'Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact and keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task or efficiency failures and add [OPS-REVIEW] to the title. Reconstruct the Application Insights request, agent, model, handoff, and tool hierarchy; report technical, task, performance, and trace health separately. Produce an SRE handoff packet with customer impact, likely fault domain and confidence, three timestamped evidence points with sources, the smallest safe correction, rollback conditions, missing evidence, and fixed-run verification criteria. Do not claim remediation or incident closure.'
+
 @description('Model Router deployment version for the AI feature. VERIFY for your region with "az cognitiveservices account list-models".')
 param routerModelVersion string = '2025-08-07'
 
@@ -97,7 +143,8 @@ var validatedFabricAdminEmail = !enableFabric || (!empty(fabricAdminEmail) && co
 var suffix              = uniqueString(resourceGroup().id)
 var lawCentralName      = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName  = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
-var appInsightsName     = 'appi-${namePrefix}'
+var appInsightsName     = 'appi-${namePrefix}-${take(suffix, 5)}'
+var customerAppInsightsName = '${appInsightsName}-customer'
 var amwName             = 'amw-${namePrefix}'
 var grafanaName         = 'amg-${namePrefix}-${take(suffix, 4)}'
 var vnetName            = 'vnet-${namePrefix}'
@@ -108,14 +155,16 @@ var aksName             = 'aks-${namePrefix}'
 var aksDnsPrefix        = '${namePrefix}-${take(suffix, 6)}'
 var appPlanName         = 'plan-${namePrefix}'
 var webAppName          = 'app-${namePrefix}-${take(suffix, 5)}'
+var customerWebAppName  = 'app-${namePrefix}-${take(suffix, 5)}-customer'
 var actionGroupName     = 'ag-${namePrefix}-email'
 var workbookName        = 'wb-${namePrefix}-trafficlights'
 var dcrVmInsightsName   = 'dcr-${namePrefix}-vminsights'
+var deployVmOtelMetrics = enableVmOtelMetrics && (deployLinuxVm || deployWindowsVm)
 var dcrPrometheusName   = 'dcr-${namePrefix}-prometheus'
 var dceName             = 'dce-${namePrefix}'
 var vmssName            = 'vmss-${namePrefix}'
 var storageAccountName  = 'st${namePrefix}${take(suffix, 8)}'
-// Dedicated storage co-located with the App Service (westeurope) for its archive diag
+// Dedicated storage co-located with the App Service for its archive diag
 // setting — storage diag destinations must match the source region.
 var appDiagStorageName  = 'stapp${namePrefix}${take(suffix, 8)}'
 var eventHubNsName      = 'evhns-${namePrefix}-${take(suffix, 5)}'
@@ -126,6 +175,8 @@ var platformLogsDcrName = 'dcr-${namePrefix}-platformlogs'
 var metricsExportDcrName = 'dcr-${namePrefix}-metricsexport'
 var fabricCapacityName  = toLower('fab${namePrefix}${take(suffix, 8)}')
 var sreAgentName         = 'sre-${namePrefix}-${take(suffix, 5)}'
+var observabilityAgentName = 'obs-${namePrefix}-${take(suffix, 5)}'
+var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
 
 // AI feature (Foundry) is pinned to swedencentral, independent of the lab region —
 // the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth preview are region-limited.
@@ -134,11 +185,6 @@ var aiLocation = 'swedencentral'
 // Fabric F2 is pinned independently from the main lab region. The capacity is
 // expensive while active, so it is opt-in and can be suspended after demos.
 var fabricLocation = 'swedencentral'
-
-// App Service is pinned to westeurope, independent of the lab region — the sponsored
-// lab subscriptions have no Basic (B1) App Service quota in northeurope, so the plan
-// would fail ARM preflight there. westeurope has unlimited Basic quota.
-var appServiceLocation = 'westeurope'
 
 var commonTags = {
   owner: ownerTag
@@ -185,6 +231,48 @@ module appInsights 'modules/appinsights.bicep' = {
   }
 }
 
+module customerAppInsights 'modules/appinsights.bicep' = if (enableSlotFailureScenario) {
+  name: 'appi-customer'
+  params: {
+    name: customerAppInsightsName
+    location: location
+    workspaceId: lawAppInsights.outputs.id
+    tags: union(commonTags, { 'amlab-component': 'customer-web-app' })
+  }
+}
+
+module appInsightsObservability 'modules/appinsights-observability.bicep' = {
+  name: 'appinsights-observability'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    appInsightsId: appInsights.outputs.id
+    customerAppInsightsId: enableSlotFailureScenario ? customerAppInsights!.outputs.id : appInsights.outputs.id
+    tags: commonTags
+  }
+}
+
+module observabilityAgent 'modules/observability-agent.bicep' = if (enableObservabilityAgent) {
+  name: 'observability-agent'
+  params: {
+    name: observabilityAgentName
+    monitoringAccountName: observabilityAgentMonitoringAccountName
+    location: observabilityAgentLocation
+    appInsightsId: appInsights.outputs.id
+    issueCreationInstructions: observabilityAgentInstructions
+    enableAutomaticInvestigation: enableObservabilityAgentAutomaticInvestigation
+    tags: commonTags
+  }
+}
+
+module observabilityAgentResourceRbac 'modules/observability-agent-resource-rbac.bicep' = if (enableObservabilityAgent) {
+  name: 'observability-agent-resource-rbac'
+  params: {
+    principalId: observabilityAgent!.outputs.principalId
+    appInsightsName: appInsightsName
+  }
+}
+
 module sreAgent 'modules/sre-agent.bicep' = if (enableSreAgent) {
   name: 'sre-agent'
   params: {
@@ -194,6 +282,8 @@ module sreAgent 'modules/sre-agent.bicep' = if (enableSreAgent) {
     appInsightsConnectionString: appInsights.outputs.connectionString
     logAnalyticsId: lawCentral.outputs.id
     managedResourceGroupId: resourceGroup().id
+    slotWebAppId: enableSlotFailureScenario ? customerWebApp!.outputs.webAppId : ''
+    enableSlotFailureScenario: enableSlotFailureScenario
     tags: commonTags
   }
 }
@@ -258,7 +348,7 @@ module storageAccount 'modules/storage-account.bicep' = {
 }
 
 // Dedicated storage for the App Service archive-to-blob diag setting, co-located with
-// the App Service in westeurope (storage diag destinations must match the source region).
+// the App Service (storage diag destinations must match the source region).
 module appDiagStorage 'modules/storage-account.bicep' = {
   name: 'app-diag-storage'
   params: {
@@ -271,7 +361,7 @@ module appDiagStorage 'modules/storage-account.bicep' = {
 
 // ---------------------------------------------------------------------------------
 // FEATURE — Event Hub Namespace (diag fan-out destination + data-export option).
-// Pinned to the App Service region (westeurope): its only consumer is the App Service
+// Pinned to the App Service region: its only consumer is the App Service
 // 'stream-to-eventhub' diag setting, and Event Hub diag destinations MUST be in the
 // same region as the monitored resource.
 // ---------------------------------------------------------------------------------
@@ -362,8 +452,18 @@ module workspaceTransforms 'modules/dcr-workspace-transforms.bicep' = {
   }
 }
 
+module vmOtelMetrics 'modules/vm-otel-metrics.bicep' = if (deployVmOtelMetrics) {
+  name: 'vm-otel-metrics'
+  params: {
+    name: 'dcr-${namePrefix}-vm-otel'
+    location: location
+    monitoringAccountId: amw.outputs.id
+    tags: commonTags
+  }
+}
+
 // ---------------------------------------------------------------------------------
-// Linux VM (Ubuntu 22.04) with AMA + Dependency Agent + DCR association
+// Linux VM (Ubuntu 22.04) with AMA + DCR associations
 // ---------------------------------------------------------------------------------
 module vmLinux 'modules/vm-linux.bicep' = if (deployLinuxVm) {
   name: 'vm-linux'
@@ -375,6 +475,7 @@ module vmLinux 'modules/vm-linux.bicep' = if (deployLinuxVm) {
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }
@@ -392,6 +493,7 @@ module vmWindows 'modules/vm-windows.bicep' = if (deployWindowsVm) {
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }
@@ -445,6 +547,40 @@ module appService 'modules/appservice.bicep' = {
     diagStorageAccountId: appDiagStorage.outputs.id
     diagEventHubAuthRuleId: eventHub.outputs.sendRuleId
     diagEventHubName: eventHub.outputs.hubName
+    enableSlotFailureScenario: enableSlotFailureScenario
+    slotAppServicePlanSku: slotAppServicePlanSku
+    tags: commonTags
+  }
+}
+
+module customerDependencies 'modules/customer-dependencies.bicep' = if (enableCustomerDependencies && enableSlotFailureScenario) {
+  name: 'customer-dependencies'
+  params: {
+    namePrefix: namePrefix
+    suffix: suffix
+    location: appServiceLocation
+    centralLawId: lawCentral.outputs.id
+    appInsightsName: appInsightsName
+    sqlEntraAdminObjectId: sqlEntraAdminObjectId
+    sqlEntraAdminName: sqlEntraAdminName
+    sqlEntraAdminType: sqlEntraAdminType
+    tags: commonTags
+  }
+  dependsOn: [appInsights]
+}
+
+module customerWebApp 'modules/customer-webapp.bicep' = if (enableSlotFailureScenario) {
+  name: 'customer-webapp'
+  params: {
+    webAppName: customerWebAppName
+    location: appServiceLocation
+    serverFarmResourceId: appService.outputs.planId
+    appInsightsConnectionString: customerAppInsights!.outputs.connectionString
+    appInsightsInstrumentationKey: customerAppInsights!.outputs.instrumentationKey
+    centralLawId: lawCentral.outputs.id
+    customerIdentityId: enableCustomerDependencies ? customerDependencies!.outputs.customerIdentityId : ''
+    customerSubnetId: enableCustomerDependencies ? customerDependencies!.outputs.customerSubnetId : ''
+    customerDependencySettings: enableCustomerDependencies ? customerDependencies!.outputs.customerSettings : { CustomerDependencies__Enabled: 'false' }
     tags: commonTags
   }
 }
@@ -457,6 +593,9 @@ module consolePlatform 'modules/lab-console-platform.bicep' = {
     location: appServiceLocation
     tags: commonTags
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []
+    enableSlotFailureScenario: enableSlotFailureScenario
+    customerWebAppName: enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
+    customerWorkerName: enableCustomerDependencies ? customerDependencies!.outputs.workerName : ''
   }
 }
 
@@ -472,6 +611,8 @@ module automitigation 'modules/automitigation-logicapp.bicep' = {
   params: {
     name: 'la-${namePrefix}-automitigation'
     location: location
+    linuxVmId: deployLinuxVm ? vmLinux!.outputs.vmId : ''
+    windowsVmId: deployWindowsVm ? vmWindows!.outputs.vmId : ''
     tags: commonTags
   }
 }
@@ -494,6 +635,7 @@ module alerts 'modules/alerts.bicep' = {
     actionGroupId: actionGroup.outputs.id
     aksId: aks.outputs.id
     webAppId: appService.outputs.webAppId
+    customerWebAppId: enableSlotFailureScenario ? customerWebApp!.outputs.webAppId : ''
     webAppRegion: appServiceLocation
     appInsightsId: appInsights.outputs.id
     linuxVmId: deployLinuxVm ? vmLinux!.outputs.vmId : ''
@@ -578,7 +720,7 @@ module vmss 'modules/vmss.bicep' = {
   params: {
     name: vmssName
     location: location
-    vmSize: 'Standard_B1s'
+    vmSize: vmssSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
@@ -646,6 +788,18 @@ module availabilityTest 'modules/availability-test.bicep' = {
   }
 }
 
+module agentTaskAvailabilityTest 'modules/availability-test.bicep' = {
+  name: 'agent-task-availability-test'
+  params: {
+    name: 'avail-${namePrefix}-agent-task'
+    location: location
+    appInsightsId: appInsights.outputs.id
+    testUrl: 'https://${appService.outputs.defaultHost}/api/agent-task-availability'
+    actionGroupId: actionGroup.outputs.id
+    tags: commonTags
+  }
+}
+
 // ---------------------------------------------------------------------------------
 // FEATURE 7 — Alert Processing Rules (maintenance window + severity suppression)
 // ---------------------------------------------------------------------------------
@@ -654,6 +808,10 @@ module alertProcessingRules 'modules/alert-processing-rules.bicep' = {
   params: {
     namePrefix: namePrefix
     primaryActionGroupId: actionGroup.outputs.id
+    vmIds: filter([
+      deployLinuxVm ? vmLinux!.outputs.vmId : ''
+      deployWindowsVm ? vmWindows!.outputs.vmId : ''
+    ], id => !empty(id))
     tags: commonTags
   }
 }
@@ -852,6 +1010,7 @@ module costWorkbook 'modules/cost-workbook.bicep' = {
     name: guid(resourceGroup().id, costWorkbookName)
     location: location
     centralLawId: lawCentral.outputs.id
+    dailyCapGb: dailyCapGb
     tags: commonTags
   }
 }
@@ -889,6 +1048,22 @@ module healthModel 'modules/health-model.bicep' = {
     // Fold the Fabric F2 capacity into a Real-Time Intelligence tier when enabled.
     enableFabric: enableFabric
     fabricCapacityId: enableFabric ? fabricCapacity!.outputs.id : ''
+  }
+}
+
+module customerHealthModel 'modules/customer-health-model.bicep' = if (enableCustomerDependencies && enableSlotFailureScenario) {
+  name: 'customer-health-model'
+  params: {
+    namePrefix: namePrefix
+    location: 'swedencentral'
+    customerWebAppId: customerWebApp!.outputs.webAppId
+    customerAppServicePlanId: appService.outputs.planId
+    customerSqlDatabaseId: customerDependencies!.outputs.sqlDatabaseId
+    customerServiceBusId: customerDependencies!.outputs.serviceBusNamespaceId
+    customerWorkerId: customerDependencies!.outputs.workerId
+    customerWorkerStorageId: customerDependencies!.outputs.workerStorageId
+    customerCentralLawId: lawCentral.outputs.id
+    tags: commonTags
   }
 }
 
@@ -966,8 +1141,15 @@ output appInsightsConnString string = appInsights.outputs.connectionString
 output aksName string              = aks.outputs.name
 output webAppName string           = webAppName
 output webAppDefaultHost string    = appService.outputs.defaultHost
+output customerWebAppName string   = enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
+output customerWebAppDefaultHost string = enableSlotFailureScenario ? customerWebApp!.outputs.defaultHost : ''
+// Main already has ARM's maximum 64 outputs. The full opt-in contract is emitted
+// by the named customer-dependencies deployment (and Stage B's object output).
 output grafanaEndpoint string      = grafana.outputs.endpoint
 output workbookId string           = workbook.outputs.id
+output appInsightsInvestigationWorkbookId string = appInsightsObservability.outputs.workbookId
+output appInsightsUsageWorkbookId string = appInsightsObservability.outputs.usageWorkbookId
+output appInsightsQueryPackName string = appInsightsObservability.outputs.queryPackName
 output linuxVmNameOut string       = deployLinuxVm ? linuxVmName : ''
 output windowsVmNameOut string     = deployWindowsVm ? windowsVmName : ''
 output autoMitigationLogicAppName string = automitigation.outputs.name
@@ -980,6 +1162,7 @@ output vmssAutoscaleName string    = vmss.outputs.autoscaleSettingName
 
 // FEATURE 6 — Availability Test
 output availabilityTestName string = availabilityTest.outputs.testName
+output agentTaskAvailabilityTestName string = agentTaskAvailabilityTest.outputs.testName
 
 // FEATURE 7 — Alert Processing Rules
 output maintenanceRuleName string  = alertProcessingRules.outputs.maintenanceRuleName
@@ -1021,17 +1204,22 @@ output aiProjectEndpoint string        = enableAi ? foundry!.outputs.projectEndp
 output aiChatDeployment string         = enableAi ? foundry!.outputs.chatDeployment : ''
 output aiRouterDeployment string       = enableAi ? foundry!.outputs.routerDeployment : ''
 
-// Optional Fabric capacity (empty unless enableFabric = true)
-output fabricEnabled bool            = enableFabric
-output fabricCapacityId string       = enableFabric ? fabricCapacity!.outputs.id : ''
-output fabricCapacityName string     = enableFabric ? fabricCapacity!.outputs.name : ''
-output fabricCapacityLocation string = enableFabric ? fabricCapacity!.outputs.location : ''
+// Fabric setup discovers the ARM capacity by resource type. Keep capacity outputs
+// on the fabric-capacity nested deployment and Stage Fabric: main is at 64 outputs.
 
 // Optional SRE Agent stage (empty unless enableSreAgent = true)
 output sreAgentEnabled bool            = enableSreAgent
 output sreAgentName string             = enableSreAgent ? sreAgent!.outputs.name : ''
 output sreAgentEndpoint string         = enableSreAgent ? sreAgent!.outputs.endpoint : ''
 output sreAgentPortalUrl string        = enableSreAgent ? sreAgent!.outputs.portalUrl : ''
+
+// Optional Azure Copilot Observability Agent stage (empty unless enabled)
+output observabilityAgentEnabled bool = enableObservabilityAgent
+output observabilityAgentName string = enableObservabilityAgent ? observabilityAgent!.outputs.name : ''
+output observabilityAgentId string = enableObservabilityAgent ? observabilityAgent!.outputs.id : ''
+output observabilityAgentPortalUrl string = enableObservabilityAgent ? observabilityAgent!.outputs.portalUrl : ''
+output observabilityAgentMonitoringAccountName string = enableObservabilityAgent ? observabilityAgent!.outputs.monitoringAccountName : ''
+output observabilityAgentAutomaticInvestigationEnabled bool = enableObservabilityAgent && enableObservabilityAgentAutomaticInvestigation
 
 // NEW — Alert Processing Rules nightly window
 output nightlyMaintenanceRuleName string = alertProcessingRules.outputs.nightlyMaintenanceRuleName

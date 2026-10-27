@@ -14,7 +14,7 @@ The deployment is pinned to **F2 in Sweden Central**. Indicative Microsoft PAYG 
 
 Actual pricing varies by agreement, currency, and region. OneLake storage and other Fabric meters can add charges. Suspend the capacity whenever the demo is idle.
 
-> Microsoft currently recommends at least four capacity units (F4) for Eventstreams. This lab intentionally pins to F2 to limit demo cost. F2 is suitable for light, short-lived sample traffic but can throttle under sustained ingestion; use the Capacity Metrics app in scenario 64 to show that tradeoff.
+> Microsoft currently recommends at least four capacity units (F4) for Eventstreams. This lab intentionally pins to F2 to limit demo cost. F2 is suitable for light, short-lived sample traffic but can throttle under sustained ingestion; use the Capacity Metrics app in scenario 78 to show that tradeoff.
 
 ## Architecture
 
@@ -92,13 +92,13 @@ Fabric item creation is asynchronous and can be slower on F2. The setup script w
 
 ```powershell
 az deployment group create `
-  --subscription <subscription-id> `
-  --resource-group <resource-group> `
+  --subscription '<subscription-id>' `
+  --resource-group '<resource-group>' `
   --name stage-fabric-capacity `
   --template-file infra/stages/60-fabric.bicep `
-          --parameters namePrefix=amlab fabricAdminEmail=admin@example.com
+  --parameters namePrefix=amlab fabricAdminEmail=admin@example.com
 
-./scripts/setup-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group>
+./scripts/setup-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>'
 ```
 
 ## Terraform deployment
@@ -108,7 +108,7 @@ Set `enable_stage_fabric = true` in `terraform/stages.tfvars`, then run:
 ```powershell
 terraform -chdir=terraform plan -var-file stages.tfvars
 terraform -chdir=terraform apply -var-file stages.tfvars
-./scripts/setup-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group>
+./scripts/setup-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>'
 ```
 
 ## Complete the Eventstream in Fabric
@@ -137,7 +137,7 @@ If the terminal says `Eventstream source and Eventhouse destination configured`,
 If connection creation was rejected, follow the connection-only steps above. Cancel before adding or publishing topology, then rerun:
 
 ```powershell
-./scripts/setup-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group>
+./scripts/setup-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>'
 ```
 
 ### 3. Verify the stream
@@ -182,8 +182,8 @@ Use the suspend command below. Resume F2 before the next Fabric session.
 ## Suspend and resume
 
 ```powershell
-./scripts/suspend-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group>
-./scripts/resume-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group>
+./scripts/suspend-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>'
+./scripts/resume-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>'
 ```
 
 Both commands require confirmation by default and verify the explicit subscription before changing the capacity.
@@ -191,7 +191,7 @@ Both commands require confirmation by default and verify the explicit subscripti
 Full lab teardown also removes the tenant-scoped workspace and its contained Eventhouse, KQL database, and Eventstream before deleting the resource group. To run only that cleanup:
 
 ```powershell
-./scripts/setup-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group> -Teardown
+./scripts/setup-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>' -Teardown
 ```
 
 ## Authorization troubleshooting
@@ -206,6 +206,6 @@ Use your deployment tenant's actual Microsoft Entra user UPN, not the fictitious
 
 ## Demo scenarios
 
-See scenarios 60 through 66 in [DEMO-SCENARIOS.md](DEMO-SCENARIOS.md), including the guided [Mirror Azure Monitor data](DEMO-SCENARIOS.md#s66) preview scenario.
+See scenarios [74 through 80](DEMO-SCENARIOS.md#s74), including the guided [Mirror Azure Monitor data](DEMO-SCENARIOS.md#s80) preview scenario. The [README architecture](../README.md#architecture) shows Fabric alongside the shared Azure Monitor operational path and distinguishes Azure capacity from tenant-scoped items.
 
 For staged Bicep deployment, deploy Stage Fabric before Stage E, or rerun `40-optional-advanced.bicep` with `enableFabric=true` afterward so the Real-Time Intelligence tier is added to the Health Model. Terraform enforces this dependency automatically.

@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" pages="6">
   <diagram name="Overview" id="oGyG7RZ47djuLZ_NcZOz">
-    <mxGraphModel dx="1683" dy="1175" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1683" dy="1175" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1400" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -61,8 +61,37 @@
         <mxCell id="w13" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/networking/Load_Balancers.svg" value="K8s Service" vertex="1">
           <mxGeometry height="52" width="80" x="70" y="510" as="geometry" />
         </mxCell>
+        <mxCell id="customer-app-group" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0078D4;dashed=1;verticalAlign=bottom;fontStyle=1;fontSize=10;align=center;spacingBottom=6" value="Customer application" vertex="1">
+          <mxGeometry height="100" width="245" x="165" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-appservice" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/compute/App_Services.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="180" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-servicebus" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/integration/Service_Bus.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="240" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-function" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/compute/Function_Apps.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="300" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="customer-sql" parent="1" style="image;aspect=fixed;html=1;points=[];image=img/lib/azure2/databases/SQL_Database.svg" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="360" y="500" as="geometry" />
+        </mxCell>
         <mxCell id="c1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Input_Output.svg" value="AMA" vertex="1">
           <mxGeometry height="52" width="80" x="465" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="otel" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/OpenTelemetry.png" value="OpenTelemetry&lt;br&gt;Standalone VM metrics via AMA" vertex="1">
+          <mxGeometry height="52" width="80" x="465" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ama-otel" edge="1" parent="1" source="c1" target="otel" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;exitX=0.5;exitY=1;entryX=0.5;entryY=0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="otel-amw" edge="1" parent="1" source="otel" target="b4" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=orthogonalEdgeStyle">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="555" y="190" />
+              <mxPoint x="770" y="190" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="c2" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Module.svg" value="Dep Agent" vertex="1">
           <mxGeometry height="52" width="80" x="565" y="110" as="geometry" />
@@ -71,7 +100,7 @@
           <mxGeometry height="52" width="80" x="665" y="110" as="geometry" />
         </mxCell>
         <mxCell id="c4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Gear.svg" value="DCR · VMI" vertex="1">
-          <mxGeometry height="52" width="80" x="465" y="210" as="geometry" />
+          <mxGeometry height="52" width="80" x="465" y="410" as="geometry" />
         </mxCell>
         <mxCell id="c5" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Gear.svg" value="DCR · Prom" vertex="1">
           <mxGeometry height="52" width="80" x="565" y="210" as="geometry" />
@@ -109,7 +138,7 @@
         <mxCell id="b3" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Application_Insights.svg" value="App Insights" vertex="1">
           <mxGeometry height="52" width="80" x="1070" y="110" as="geometry" />
         </mxCell>
-        <mxCell id="b4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="b4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="810" y="210" as="geometry" />
         </mxCell>
         <mxCell id="b5" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/storage/Storage_Accounts.svg" value="Storage" vertex="1">
@@ -135,6 +164,9 @@
         </mxCell>
         <mxCell id="b12" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/ai_machine_learning/Anomaly_Detector.svg" value="Smart Detect" vertex="1">
           <mxGeometry height="52" width="80" x="1070" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="b13" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="Agent issue AMW" vertex="1">
+          <mxGeometry height="52" width="80" x="810" y="510" as="geometry" />
         </mxCell>
         <mxCell id="k1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Workbooks.svg" value="Workbooks" vertex="1">
           <mxGeometry height="52" width="80" x="1230" y="110" as="geometry" />
@@ -171,6 +203,12 @@
         </mxCell>
         <mxCell id="k12" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Cost_Management.svg" value="Cost wb" vertex="1">
           <mxGeometry height="52" width="80" x="1490" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="k13" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/ObservabilityAgent.svg" value="Observability Agent" vertex="1">
+          <mxGeometry height="52" width="100" x="1230" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="k14" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/github/GitHubCopilotCLI.png" value="GitHub Copilot CLI" vertex="1">
+          <mxGeometry height="52" width="100" x="1360" y="510" as="geometry" />
         </mxCell>
         <mxCell id="g1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Policy.svg" value="Policy DINE" vertex="1">
           <mxGeometry height="52" width="80" x="80" y="670" as="geometry" />
@@ -238,6 +276,30 @@
         <mxCell id="fa1" edge="1" parent="1" source="zwl" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" target="zcol">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="fabric-capacity" parent="1" value="Microsoft Fabric F2 capacity&lt;br&gt;swedencentral · opt-in / billable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F2F2;strokeColor=#0F7774" vertex="1">
+          <mxGeometry x="1240" y="920" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="fabric-workspace" parent="1" value="Optional Microsoft Fabric workspace · tenant-scoped items, outside the resource group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F2F2;strokeColor=#0F7774;dashed=1;verticalAlign=top;spacingTop=14;fontStyle=1" vertex="1">
+          <mxGeometry x="40" y="1130" width="1600" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="fabric-eventstream" parent="fabric-workspace" value="Fabric Eventstream&lt;br&gt;Azure Event Hubs source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F7774" vertex="1">
+          <mxGeometry x="70" y="90" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="fabric-eventhouse" parent="fabric-workspace" value="Eventhouse / KQL database&lt;br&gt;streamed operational analytics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F7774" vertex="1">
+          <mxGeometry x="570" y="90" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="fabric-dashboard" parent="fabric-workspace" value="Real-Time Dashboard&lt;br&gt;guided portal setup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F7774" vertex="1">
+          <mxGeometry x="1070" y="90" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="eventhub-fabric" parent="1" edge="1" source="b6" target="fabric-eventstream" style="edgeStyle=orthogonalEdgeStyle;endArrow=classic;html=1;strokeColor=#0F7774">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fabric-ingestion" parent="1" edge="1" source="fabric-eventstream" target="fabric-eventhouse" style="endArrow=classic;html=1;strokeColor=#0F7774">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fabric-consumption" parent="1" edge="1" source="fabric-eventhouse" target="fabric-dashboard" style="endArrow=classic;html=1;strokeColor=#0F7774">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="fa2" edge="1" parent="1" source="zcol" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" target="zbp">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
@@ -282,7 +344,7 @@
         <mxCell id="a3" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Application_Insights.svg" value="App Insights" vertex="1">
           <mxGeometry height="52" width="80" x="460" y="140" as="geometry" />
         </mxCell>
-        <mxCell id="a4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="a4" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="650" y="140" as="geometry" />
         </mxCell>
         <mxCell id="a5" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Location.svg" value="DCE" vertex="1">
@@ -449,7 +511,7 @@
         <mxCell id="lawShared" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Log_Analytics_Workspaces.svg" value="LAW Central" vertex="1">
           <mxGeometry height="52" width="80" x="1100" y="240" as="geometry" />
         </mxCell>
-        <mxCell id="amwShared" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="amwShared" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="1280" y="240" as="geometry" />
         </mxCell>
         <mxCell id="aks1" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/compute/Kubernetes_Services.svg" value="AKS" vertex="1">
@@ -908,7 +970,7 @@
         <mxCell id="t9" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Log_Analytics_Workspaces.svg" value="LAW Central" vertex="1">
           <mxGeometry height="52" width="80" x="1540" y="140" as="geometry" />
         </mxCell>
-        <mxCell id="t10" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/management_governance/Monitor.svg" value="AMW" vertex="1">
+        <mxCell id="t10" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=icons/azure/MonitoringAccount.svg" value="AMW" vertex="1">
           <mxGeometry height="52" width="80" x="100" y="240" as="geometry" />
         </mxCell>
         <mxCell id="t11" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=10;verticalLabelPosition=bottom;verticalAlign=top;image=img/lib/azure2/general/Cubes.svg" value="Prom Rules" vertex="1">

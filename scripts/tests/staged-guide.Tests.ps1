@@ -2,9 +2,16 @@ $ErrorActionPreference = 'Stop'
 $previousExitCode = $global:LASTEXITCODE
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $guide = Get-Content -LiteralPath (Join-Path $source 'docs/DEPLOY-BICEP-STEP-BY-STEP.md') -Raw
+$guideStageE = $guide.IndexOf('--template-file ./infra/stages/40-optional-advanced.bicep')
+$guideSentinelContent = $guide.IndexOf('--template-file ./infra/stages/41-sentinel-content.bicep')
+if ($guideStageE -lt 0 -or $guideSentinelContent -le $guideStageE -or
+    $guide -notmatch 'Run `41-sentinel-content` only when Sentinel is enabled' -or
+    $guide -notmatch 'analytics-rule provider cannot preview a rule until the workspace is already onboarded') {
+  throw 'The Bicep guide must document the ordered staged Sentinel deployment and its onboarding dependency.'
+}
 $blocks = [regex]::Matches($guide, '(?ms)^```powershell\r?\n(.*?)^```')
-$definitions = @()
-foreach ($relativePath in @('docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'scripts/README.md')) {
+$helperImport = '. ./scripts/staged-deploy-helpers.ps1'
+foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-FABRIC.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
   $text = Get-Content -LiteralPath (Join-Path $source $relativePath) -Raw
   foreach ($example in [regex]::Matches($text, '(?ms)^```powershell\r?\n(.*?)^```')) {
     $errors = $null
@@ -16,16 +23,33 @@ foreach ($block in $blocks) {
   $parseErrors = $null
   $ast = [Management.Automation.Language.Parser]::ParseInput($block.Groups[1].Value, [ref]$null, [ref]$parseErrors)
   if ($parseErrors.Count) { throw "Invalid PowerShell in the Bicep guide: $($parseErrors.Message -join '; ')" }
-  $definitions += $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)
+  if ($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false).Count) {
+    throw 'Load the versioned helper instead of embedding functions in the guide.'
+  }
 }
-if (($definitions.Name | Sort-Object) -join ',' -ne 'Assert-LabAccount,Invoke-LabStage') { throw 'The stage guide must expose its account guard and stage helper.' }
-. ([scriptblock]::Create(($definitions.Extent.Text -join "`n")))
 
 $sub = [guid]::NewGuid()
 $tenant = [guid]::NewGuid()
 $rg = 'test-rg'
 $sourceParameters = (Get-Content -LiteralPath (Join-Path $source 'infra/main.parameters.json.template') -Raw | ConvertFrom-Json -AsHashtable).parameters
 $sourceParameters.vmAdminPassword = @{ reference = @{ keyVault = @{ id = "/subscriptions/$sub/resourceGroups/test-rg/providers/Microsoft.KeyVault/vaults/test-vault" }; secretName = 'vm-password' } }
+$observabilityStage = Get-Content -LiteralPath (Join-Path $source 'infra/stages/70-observability-agent.json') -Raw | ConvertFrom-Json -AsHashtable
+foreach ($name in @('enableObservabilityAgentAutomaticInvestigation', 'observabilityAgentInstructions')) {
+  if (-not $observabilityStage.parameters.ContainsKey($name) -or -not $sourceParameters.ContainsKey($name)) {
+    throw "Stage 70 must preserve shared Observability Agent parameter '$name'."
+  }
+}
+foreach ($legacyName in @('enableAutomaticInvestigation', 'issueCreationInstructions')) {
+  if ($observabilityStage.parameters.ContainsKey($legacyName)) {
+    throw "Stage 70 must not use legacy parameter '$legacyName' because staged projection would drop its configured value."
+  }
+}
+$stageE = Get-Content -LiteralPath (Join-Path $source 'infra/stages/40-optional-advanced.json') -Raw
+$sentinelContent = Get-Content -LiteralPath (Join-Path $source 'infra/stages/41-sentinel-content.json') -Raw
+if ($stageE -match 'Microsoft.SecurityInsights/alertRules' -or $stageE -notmatch 'Microsoft.SecurityInsights/onboardingStates' -or
+    $sentinelContent -notmatch 'Microsoft.SecurityInsights/alertRules' -or $sentinelContent -match 'Microsoft.SecurityInsights/onboardingStates') {
+  throw 'Staged Sentinel onboarding and analytics content must remain separate deployments.'
+}
 $fixture = @{
   Stage = ''; Overrides = @{}; Events = [Collections.Generic.List[string]]::new()
   Files = [Collections.Generic.List[string]]::new(); Confirm = 'yes'; Failure = ''; AccountChecks = 0
@@ -80,13 +104,52 @@ function az {
 
 Push-Location $source
 try {
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '50-ai', '60-sre-agent', '60-fabric')) {
-    if ($guide -notmatch "Invoke-LabStage -Stage '$stage'") { throw "The guide is missing the $stage deployment." }
+  function Assert-LabAccount { throw 'The stale account guard was not replaced.' }
+  function Invoke-LabStage {
+    param(
+      [ValidateSet('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '50-ai', '60-sre-agent')]
+      [string] $Stage
+    )
+    throw 'The stale stage helper was not replaced.'
+  }
+  $originalInputs = @($sub, $tenant, $rg, $sourceParameters) | ConvertTo-Json -Depth 30 -Compress
+  . ([scriptblock]::Create($helperImport))
+  $recoveryImplementation = ${function:Invoke-LabDeployment}
+  function Invoke-LabDeployment {
+    param($Arguments, $SubscriptionId, $ResourceGroup, $DeploymentName)
+    $fixture.RecoveryCalls++
+    & $recoveryImplementation -Arguments $Arguments -SubscriptionId $SubscriptionId `
+      -ResourceGroup $ResourceGroup -DeploymentName $DeploymentName
+  }
+  if ($fixture.AccountChecks -ne 0 -or $fixture.Events.Count -ne 0 -or
+      (@($sub, $tenant, $rg, $sourceParameters) | ConvertTo-Json -Depth 30 -Compress) -cne $originalInputs) {
+    throw 'Reloading stage helpers must not make Azure calls or change existing deployment inputs.'
+  }
+  $allowedStages = (Get-Command Invoke-LabStage).Parameters['Stage'].Attributes |
+    Where-Object { $_ -is [Management.Automation.ValidateSetAttribute] } |
+    ForEach-Object { $_.ValidValues }
+  if ($allowedStages -notcontains '41-sentinel-content') { throw 'Reloading must replace the stale Stage ValidateSet.' }
+  if ($allowedStages -notcontains '60-fabric') { throw 'Reloading must add the optional Fabric stage.' }
+  Write-Output 'PASS: dot-sourcing replaces stale stage helpers, accepts Stage 41, and preserves inputs without Azure calls.'
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
+    $templateReference = "--template-file ./infra/stages/$stage.bicep"
+    $parameterReference = '--parameters "@$($stageParameterFiles[''{0}''])"' -f $stage
+    if (-not $guide.Contains($templateReference) -or -not $guide.Contains($parameterReference)) {
+      throw "The guide must deploy $stage with its native Azure CLI command and projected parameter file."
+    }
+  }
+  if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 10) {
+    throw 'Every staged deployment command must include a what-if confirmation.'
+  }
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
     $fixture.Stage = $stage
     $fixture.Events.Clear()
     $fixture.AccountChecks = 0
+    $fixture.RecoveryCalls = 0
     Invoke-LabStage -Stage $stage
     if (($fixture.Events -join ',') -ne 'what-if,create' -or $fixture.AccountChecks -ne 2) { throw 'Every stage must preview, confirm, and reverify account before deployment.' }
+    $expectedRecoveryCalls = if ($stage -eq '10-workloads') { 1 } else { 0 }
+    if ($fixture.RecoveryCalls -ne $expectedRecoveryCalls) { throw 'Only Stage B must use customer-slot deployment recovery.' }
   }
   $fixture.Stage = '50-ai'
   $fixture.Overrides = @{ enableHealthModel = $true; routerModelVersion = 'offline-version' }
@@ -112,17 +175,18 @@ try {
   foreach ($path in $fixture.Files) {
     if (Test-Path -LiteralPath $path) { throw 'A temporary parameters file survived completion or failure.' }
   }
-  foreach ($stage in @('AI', 'SRE Agent')) {
+  foreach ($stage in @('AI', 'SRE Agent', 'Observability Agent')) {
     $section = [regex]::Match($guide, "(?ms)^### Stage $stage deploy.*?(?=^### |^## |\z)").Value
     if ($section -notmatch 'if \(\$webApp\)' -or $section -notmatch './scripts/deploy-webapp.ps1' -or $section -match './scripts/post-staged-deploy.ps1') {
       throw "$stage must refresh an existing console without requiring Stage B for standalone deployment."
     }
     if ($stage -eq 'AI' -and $section.IndexOf('./scripts/deploy-webapp.ps1') -gt $section.IndexOf('./scripts/setup-ai.ps1')) { throw 'Late AI traffic must follow console publication.' }
     if ($stage -eq 'SRE Agent' -and $section.IndexOf('./scripts/setup-sre-agent.ps1') -gt $section.IndexOf('./scripts/deploy-webapp.ps1')) { throw 'SRE validation must precede console publication.' }
+    if ($stage -eq 'Observability Agent' -and $section.IndexOf('./scripts/setup-observability-agent.ps1') -gt $section.IndexOf('./scripts/deploy-webapp.ps1')) { throw 'Observability Agent validation must precede console publication.' }
   }
   if ($guide -match '--template-file infra/main.bicep') { throw 'A staged guide must not deploy the full-lab template.' }
-  Write-Output 'PASS: all eight Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
-  Write-Output 'PASS: late AI/SRE instructions refresh existing consoles and preserve standalone A-only scenarios.'
+  Write-Output 'PASS: all ten Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
+  Write-Output 'PASS: late AI/SRE/Observability Agent instructions refresh existing consoles and preserve standalone A-only scenarios.'
 } finally {
   Pop-Location
   foreach ($path in $fixture.Files | Select-Object -Unique) {

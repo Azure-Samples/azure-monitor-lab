@@ -2,49 +2,84 @@ name: Lab Operations Tests
 
 on:
   push:
-    branches: [dev, integration, master]
+    branches: [dev, integration, main]
     paths:
       - 'workloads/webapp/**'
       - 'workloads/webapp.Tests/**'
       - 'scripts/invoke-lab-operation.ps1'
+      - 'scripts/app-insights-target.ps1'
       - 'scripts/initialize-webapp-console.ps1'
       - 'scripts/deploy.ps1'
       - 'scripts/deploy-webapp.ps1'
       - 'scripts/post-deploy.ps1'
       - 'scripts/post-staged-deploy.ps1'
       - 'scripts/post-cloud-shell-deploy.ps1'
+      - 'scripts/complete-customer-dependencies.ps1'
+      - 'scripts/deploy-customer-dependencies.ps1'
+      - 'scripts/bootstrap-customer-sql.ps1'
+      - 'scripts/customer-dependency-helpers.ps1'
+      - 'scripts/customer-sql-bootstrap/**'
+      - 'scripts/test-customer-dependencies.ps1'
+      - 'scripts/tests/customer-completion.Tests.ps1'
+      - 'scripts/tests/customer-dependencies.Tests.ps1'
+      - 'scripts/staged-deploy-helpers.ps1'
+      - 'scripts/deployment-slot-recovery.ps1'
+      - 'scripts/teardown.ps1'
+      - 'scripts/remove-lab-entra-identities.ps1'
+      - 'scripts/setup-rbac-demo.ps1'
       - 'scripts/wait-webapp-publication.ps1'
       - 'scripts/setup-webapp-agent-access.ps1'
       - 'scripts/tests/console-bootstrap.Tests.ps1'
       - 'scripts/tests/console-deployment.Tests.ps1'
       - 'scripts/tests/ai-traffic.Tests.ps1'
       - 'scripts/tests/staged-guide.Tests.ps1'
+      - 'scripts/tests/deployment-slot-recovery.Tests.ps1'
       - 'scripts/tests/sli-setup.Tests.ps1'
       - 'scripts/tests/fabric-setup.Tests.ps1'
+      - 'scripts/tests/service-group.Tests.ps1'
+      - 'scripts/tests/teardown.Tests.ps1'
+      - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
+      - 'scripts/tests/customer-appinsights.Tests.ps1'
+      - 'scripts/tests/vm-otel-metrics.Tests.ps1'
+      - 'scripts/tests/vm-otel-config.Tests.ps1'
+      - 'scripts/sync-config.ps1'
+      - 'lab.config.json.example'
+      - 'scripts/tests/observability-agent-config.Tests.ps1'
+      - 'scripts/tests/amba.Tests.ps1'
       - 'scripts/tests/webapp-publication.Tests.ps1'
       - 'scripts/setup-ai.ps1'
       - 'scripts/setup-ai-cloud-shell.ps1'
       - 'scripts/setup-sre-agent.ps1'
+      - 'scripts/setup-observability-agent.ps1'
       - 'scripts/setup-slis.ps1'
       - 'scripts/setup-fabric.ps1'
+      - 'scripts/setup-health-model.ps1'
+      - 'scripts/resolve-service-group-id.ps1'
+      - 'scripts/remove-arm-resource.ps1'
       - 'workloads/ai/*.py'
       - 'workloads/ai/tests/**'
       - 'workloads/operations/**'
       - 'infra/modules/lab-console*'
       - 'infra/modules/appservice*'
+      - 'infra/modules/observability-agent*'
+      - 'infra/modules/vm-*.bicep'
+      - 'infra/createUiDefinition.json'
       - 'infra/main.*'
       - 'infra/stages/*'
       - 'docs/DEPLOY-*-STEP-BY-STEP.md'
       - 'docs/POST-DEPLOYMENT.md'
       - 'docs/STAGE-AI.md'
+      - 'docs/STAGE-OBSERVABILITY-AGENT.md'
       - 'scripts/README.md'
       - 'terraform/**'
       - 'scripts/tests/lab-operations*.Tests.ps1'
       - 'scripts/start-the-lab.ps1'
+      - 'scripts/stop-the-lab.ps1'
       - 'scripts/break-the-lab.ps1'
       - 'scripts/restore-the-lab.ps1'
       - 'scripts/start-ramp.ps1'
+      - 'scripts/generate-usage-traffic.ps1'
       - 'scripts/simulate-high-cpu.ps1'
       - 'scripts/send-custom-logs.ps1'
       - 'scripts/send-release-annotation.ps1'
@@ -73,11 +108,18 @@ jobs:
           ./scripts/tests/lab-operations-execution.Tests.ps1
           ./scripts/tests/console-bootstrap.Tests.ps1
           ./scripts/tests/console-deployment.Tests.ps1
+          ./scripts/tests/customer-completion.Tests.ps1
+          ./scripts/tests/customer-dependencies.Tests.ps1
           ./scripts/tests/webapp-publication.Tests.ps1
           ./scripts/tests/ai-traffic.Tests.ps1
           ./scripts/tests/staged-guide.Tests.ps1
+          ./scripts/tests/deployment-slot-recovery.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
           ./scripts/tests/fabric-setup.Tests.ps1
+          ./scripts/tests/service-group.Tests.ps1
+          ./scripts/tests/teardown.Tests.ps1
+          ./scripts/tests/observability-agent-config.Tests.ps1
+          ./scripts/tests/entra-cleanup.Tests.ps1
           ./workloads/webapp/tests/webapp-access.Tests.ps1
       - name: Agent provisioning and background traffic without Azure
         run: python -B -m unittest discover -s workloads/ai/tests -p 'test_*.py' -v
@@ -107,8 +149,12 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/tests/compiled-templates.Tests.ps1
+          ./scripts/tests/customer-appinsights.Tests.ps1
+          ./scripts/tests/amba.Tests.ps1
           ./scripts/tests/grafana-access.Tests.ps1
           ./scripts/tests/grafana-config.Tests.ps1
+          ./scripts/tests/vm-otel-metrics.Tests.ps1
+          ./scripts/tests/vm-otel-config.Tests.ps1
       - name: Validate console completion with mocked Azure providers
         working-directory: terraform
         run: |

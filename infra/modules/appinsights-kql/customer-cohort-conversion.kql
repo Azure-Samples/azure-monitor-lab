@@ -1,0 +1,24 @@
+let starts =
+    customEvents
+    | where timestamp > ago(7d)
+    | where name == "CustomerJourneyStarted"
+    | extend Segment = tostring(customDimensions["customer.segment"]),
+             Variant = tostring(customDimensions["journey.variant"]),
+             User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)
+    | summarize StartedUsers = dcount(User), StartedSessions = dcount(session_Id) by Segment, Variant;
+let purchases =
+    customEvents
+    | where timestamp > ago(7d)
+    | where name == "PurchaseCompleted"
+    | extend Segment = tostring(customDimensions["customer.segment"]),
+             Variant = tostring(customDimensions["journey.variant"]),
+             User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)
+    | summarize ConvertedUsers = dcount(User), ConvertedSessions = dcount(session_Id) by Segment, Variant;
+starts
+| join kind=leftouter purchases on Segment, Variant
+| extend ConvertedUsers = coalesce(ConvertedUsers, 0),
+         ConvertedSessions = coalesce(ConvertedSessions, 0)
+| extend UserConversionPct = round(100.0 * ConvertedUsers / StartedUsers, 1),
+         SessionConversionPct = round(100.0 * ConvertedSessions / StartedSessions, 1)
+| project Segment, Variant, StartedUsers, ConvertedUsers, UserConversionPct, StartedSessions, ConvertedSessions, SessionConversionPct
+| order by Segment asc, Variant asc

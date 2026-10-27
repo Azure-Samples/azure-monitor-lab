@@ -62,6 +62,11 @@ run "workloads_include_console" {
   }
 
   assert {
+    condition     = alltrue([for name in ["setup-health-model.ps1", "setup-slis.ps1", "resolve-service-group-id.ps1"] : contains(local.console_sources, "scripts/${name}")])
+    error_message = "Service Group and SLI setup changes must refresh post-deployment completion."
+  }
+
+  assert {
     condition     = terraform_data.console_ready[0].triggers_replace.resource_group == data.azurerm_resource_group.lab.id
     error_message = "Console completion must target the selected lab resource group."
   }
@@ -83,6 +88,11 @@ run "stage_e_refreshes_optional_completion" {
   assert {
     condition     = jsondecode(terraform_data.console_ready[0].triggers_replace.integrations).stage_e
     error_message = "Changing Stage E must refresh the selected optional completion work."
+  }
+
+  assert {
+    condition     = length(azapi_resource.stage_sentinel_content) == 1
+    error_message = "Stage E with Sentinel enabled must deploy analytics content after onboarding."
   }
 }
 

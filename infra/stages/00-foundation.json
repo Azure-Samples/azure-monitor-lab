@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "5133479670281576829"
+      "templateHash": "14126307012893042170"
     }
   },
   "parameters": {
@@ -14,6 +14,13 @@
       "defaultValue": "[resourceGroup().location]",
       "metadata": {
         "description": "Azure region for all resources."
+      }
+    },
+    "appServiceLocation": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region for App Service and its co-located diagnostic Event Hub dependency."
       }
     },
     "namePrefix": {
@@ -52,13 +59,21 @@
       "metadata": {
         "description": "Secondary region for LAW replication."
       }
+    },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable the isolated customer Web App slot-recovery scenario and its dedicated Application Insights component."
+      }
     }
   },
   "variables": {
     "suffix": "[uniqueString(resourceGroup().id)]",
     "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "lawAppInsightsName": "[format('law-{0}-appinsights-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
+    "customerAppInsightsName": "[format('{0}-customer', variables('appInsightsName'))]",
     "amwName": "[format('amw-{0}', parameters('namePrefix'))]",
     "vnetName": "[format('vnet-{0}', parameters('namePrefix'))]",
     "nsgName": "[format('nsg-{0}', parameters('namePrefix'))]",
@@ -73,8 +88,7 @@
       "owner": "[parameters('ownerTag')]",
       "purpose": "azure-monitor-lab",
       "costCenter": "demo"
-    },
-    "appServiceLocation": "westeurope"
+    }
   },
   "resources": [
     {
@@ -552,6 +566,330 @@
       ]
     },
     {
+      "condition": "[parameters('enableSlotFailureScenario')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "appi-customer",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('customerAppInsightsName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "workspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
+          },
+          "tags": {
+            "value": "[union(variables('commonTags'), createObject('amlab-component', 'customer-web-app'))]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "4105218306251594533"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights resource name."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region."
+              }
+            },
+            "workspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace that backs this App Insights."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[parameters('workspaceId')]",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/components', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "appId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('name')), '2020-02-02').AppId]"
+            },
+            "instrumentationKey": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('name')), '2020-02-02').InstrumentationKey]"
+            },
+            "connectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('name')), '2020-02-02').ConnectionString]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'law-appinsights')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "appinsights-observability",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "namePrefix": {
+            "value": "[parameters('namePrefix')]"
+          },
+          "appInsightsId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+          },
+          "customerAppInsightsId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2022-09-01').outputs.id.value), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value))]",
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "17421047562906600699"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for the query pack and workbook."
+              }
+            },
+            "namePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Short lab name prefix."
+              }
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights component resource ID."
+              }
+            },
+            "customerAppInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Customer Application Insights component resource ID."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "variables": {
+            "$fxv#0": "dependencies\n| where timestamp > ago(24h)\n| where type == \"GenAI\" and name == \"customer_support_agent\"\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\n         Mode = tostring(customDimensions[\"demo.mode\"]),\n         TechnicalSuccess = tostring(customDimensions[\"technical.success\"]),\n         TaskSuccess = tostring(customDimensions[\"task.success\"]),\n         PerformanceSuccess = tostring(customDimensions[\"performance.success\"]),\n         TraceComplete = tostring(customDimensions[\"trace.complete\"])\n| summarize Runs = count(),\n            TechnicalFailures = countif(TechnicalSuccess == \"false\"),\n            TaskFailures = countif(TaskSuccess == \"false\"),\n            PerformanceFailures = countif(PerformanceSuccess == \"false\"),\n            IncompleteTraces = countif(TraceComplete == \"false\"),\n            P95DurationMs = percentile(duration, 95)\n    by Scenario, Mode\n| order by Scenario asc, Mode asc\n",
+            "$fxv#1": "let TraceId = \"<paste-operation-id>\";\nunion\n    (pageViews | project timestamp, operation_Id, itemType = \"pageView\", name, duration, success = true, resultCode = \"\", customDimensions),\n    (requests | project timestamp, operation_Id, itemType = \"request\", name, duration, success, resultCode, customDimensions),\n    (dependencies | project timestamp, operation_Id, itemType = strcat(\"dependency:\", type), name, duration, success, resultCode, customDimensions),\n    (customEvents | project timestamp, operation_Id, itemType = \"event\", name, duration = 0.0, success = true, resultCode = \"\", customDimensions)\n| where operation_Id == TraceId\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\n         Mode = tostring(customDimensions[\"demo.mode\"]),\n         Agent = tostring(customDimensions[\"gen_ai.agent.name\"]),\n         Tool = tostring(customDimensions[\"gen_ai.tool.name\"]),\n         TaskSuccess = tostring(customDimensions[\"task.success\"])\n| project timestamp, itemType, name, duration, success, resultCode, Agent, Tool, Scenario, Mode, TaskSuccess\n| order by timestamp asc\n",
+            "$fxv#10": "{\n  \"version\": \"Notebook/1.0\",\n  \"items\": [\n    {\n      \"type\": 1,\n      \"content\": {\n        \"json\": \"# Application Insights — End-to-End Agent Investigation\\nFollow customer impact from browser and request telemetry through agent, model, handoff, tool, retry, and semantic task outcomes. All lab data is synthetic and prompt/completion content recording remains disabled.\"\n      },\n      \"name\": \"title\"\n    },\n    {\n      \"type\": 9,\n      \"content\": {\n        \"version\": \"KqlParameterItem/1.0\",\n        \"parameters\": [\n          {\n            \"id\": \"p-timerange\",\n            \"version\": \"KqlParameterItem/1.0\",\n            \"name\": \"TimeRange\",\n            \"label\": \"Time range\",\n            \"type\": 4,\n            \"isRequired\": true,\n            \"value\": { \"durationMs\": 86400000 },\n            \"typeSettings\": {\n              \"selectableValues\": [\n                { \"durationMs\": 3600000 },\n                { \"durationMs\": 14400000 },\n                { \"durationMs\": 86400000 },\n                { \"durationMs\": 604800000 }\n              ],\n              \"allowCustom\": true\n            }\n          },\n          {\n            \"id\": \"p-appinsights\",\n            \"version\": \"KqlParameterItem/1.0\",\n            \"name\": \"AppInsights\",\n            \"label\": \"Application Insights\",\n            \"type\": 5,\n            \"isRequired\": true,\n            \"multiSelect\": false,\n            \"quote\": \"'\",\n            \"resourceType\": \"microsoft.insights/components\",\n            \"typeSettings\": {\n              \"resourceTypeFilter\": { \"microsoft.insights/components\": true }\n            },\n            \"value\": \"__APPINSIGHTS_ID__\"\n          }\n        ],\n        \"style\": \"pills\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\"\n      },\n      \"name\": \"parameters\"\n    },\n    {\n      \"type\": 1,\n      \"content\": { \"json\": \"## Detect and scope\\nTechnical success, task correctness, performance budgets, and trace completeness are independent health dimensions.\" },\n      \"name\": \"detect-heading\"\n    },\n    {\n      \"type\": 3,\n      \"content\": {\n        \"version\": \"KqlItem/1.0\",\n        \"query\": \"dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Technical=tostring(customDimensions['technical.success']), Task=tostring(customDimensions['task.success']), Performance=tostring(customDimensions['performance.success']), Trace=tostring(customDimensions['trace.complete']) | summarize Runs=count(), TechnicalFailures=countif(Technical=='false'), TaskFailures=countif(Task=='false'), PerformanceFailures=countif(Performance=='false'), IncompleteTraces=countif(Trace=='false'), P95DurationMs=percentile(duration,95) by Scenario, Mode | order by Scenario asc, Mode asc\",\n        \"size\": 0,\n        \"title\": \"Agent task health\",\n        \"timeContextFromParameter\": \"TimeRange\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\",\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\n        \"visualization\": \"table\"\n      },\n      \"name\": \"agent-task-health\"\n    },\n    {\n      \"type\": 1,\n      \"content\": { \"json\": \"## Compare broken and fixed profiles\\nA fix is proven only when the same outcome, latency, retry, token, and trace-quality measurements recover.\" },\n      \"name\": \"compare-heading\"\n    },\n    {\n      \"type\": 3,\n      \"content\": {\n        \"version\": \"KqlItem/1.0\",\n        \"query\": \"dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Task=tostring(customDimensions['task.success'])=='true', Performance=tostring(customDimensions['performance.success'])=='true', Retries=toint(customDimensions['retry.count']), InputTokens=toint(customDimensions['gen_ai.usage.input_tokens']) | summarize Runs=count(), TaskSuccessRate=100.0*countif(Task)/count(), PerformanceSuccessRate=100.0*countif(Performance)/count(), P95DurationMs=percentile(duration,95), AvgRetries=avg(Retries), AvgInputTokens=avg(InputTokens) by Scenario, Mode | order by Scenario asc, Mode asc\",\n        \"size\": 0,\n        \"title\": \"Broken versus fixed evidence\",\n        \"timeContextFromParameter\": \"TimeRange\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\",\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\n        \"visualization\": \"table\"\n      },\n      \"name\": \"broken-fixed\"\n    },\n    {\n      \"type\": 3,\n      \"content\": {\n        \"version\": \"KqlItem/1.0\",\n        \"query\": \"dependencies | where type == 'GenAI' and name == 'customer_support_agent' | extend Scenario=tostring(customDimensions['scenario']), Mode=tostring(customDimensions['demo.mode']), Retries=toint(customDimensions['retry.count']), InputTokens=toint(customDimensions['gen_ai.usage.input_tokens']), OutputTokens=toint(customDimensions['gen_ai.usage.output_tokens']), Task=tostring(customDimensions['task.success']) | summarize Runs=count(), SuccessfulRuns=countif(Task=='true'), Retries=sum(Retries), Tokens=sum(InputTokens)+sum(OutputTokens) by Scenario, Mode | extend TokensPerSuccessfulTask=iff(SuccessfulRuns>0,todouble(Tokens)/SuccessfulRuns,real(null)) | order by TokensPerSuccessfulTask desc nulls last\",\n        \"size\": 0,\n        \"title\": \"Retry and token efficiency\",\n        \"timeContextFromParameter\": \"TimeRange\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\",\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\n        \"visualization\": \"table\"\n      },\n      \"name\": \"retry-token-efficiency\"\n    },\n    {\n      \"type\": 1,\n      \"content\": { \"json\": \"## Validate the customer function\\nThe task-level availability test checks the deterministic fixed agent path, not only the web server root.\" },\n      \"name\": \"availability-heading\"\n    },\n    {\n      \"type\": 3,\n      \"content\": {\n        \"version\": \"KqlItem/1.0\",\n        \"query\": \"availabilityResults | summarize Runs=count(), Failures=countif(success==false), AvailabilityPct=100.0*countif(success==true)/count(), P95DurationMs=percentile(duration,95) by name, location | order by name asc, location asc\",\n        \"size\": 0,\n        \"title\": \"Root and agent-task availability\",\n        \"timeContextFromParameter\": \"TimeRange\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\",\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\n        \"visualization\": \"table\"\n      },\n      \"name\": \"task-availability\"\n    }\n  ],\n  \"styleSettings\": {},\n  \"$schema\": \"https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json\"\n}\n",
+            "$fxv#11": "{\n  \"version\": \"Notebook/1.0\",\n  \"items\": [\n    {\n      \"type\": 1,\n      \"content\": {\n        \"json\": \"# Application Insights — Customer Usage Journey\\nAnalyze synthetic customers across page views, business events, funnel conversion, support escalation, A/B variants, and repeat sessions. Use the native **Users**, **Sessions**, **Events**, **Funnels**, **User Flows**, and **Cohorts** panes for the full portal experience.\"\n      },\n      \"name\": \"title\"\n    },\n    {\n      \"type\": 9,\n      \"content\": {\n        \"version\": \"KqlParameterItem/1.0\",\n        \"parameters\": [\n          {\n            \"id\": \"p-timerange\",\n            \"version\": \"KqlParameterItem/1.0\",\n            \"name\": \"TimeRange\",\n            \"label\": \"Time range\",\n            \"type\": 4,\n            \"isRequired\": true,\n            \"value\": { \"durationMs\": 604800000 },\n            \"typeSettings\": {\n              \"selectableValues\": [\n                { \"durationMs\": 3600000 },\n                { \"durationMs\": 86400000 },\n                { \"durationMs\": 604800000 },\n                { \"durationMs\": 2592000000 }\n              ],\n              \"allowCustom\": true\n            }\n          },\n          {\n            \"id\": \"p-appinsights\",\n            \"version\": \"KqlParameterItem/1.0\",\n            \"name\": \"AppInsights\",\n            \"label\": \"Application Insights\",\n            \"type\": 5,\n            \"isRequired\": true,\n            \"multiSelect\": false,\n            \"quote\": \"'\",\n            \"resourceType\": \"microsoft.insights/components\",\n            \"typeSettings\": {\n              \"resourceTypeFilter\": { \"microsoft.insights/components\": true }\n            },\n            \"value\": \"__APPINSIGHTS_ID__\"\n          }\n        ],\n        \"style\": \"pills\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\"\n      },\n      \"name\": \"parameters\"\n    },\n    {\n      \"type\": 1,\n      \"content\": { \"json\": \"## Six-step conversion funnel\\nThe generator intentionally mixes completion, abandonment, payment decline, support escalation, and repeat visits.\" },\n      \"name\": \"funnel-heading\"\n    },\n    {\n      \"type\": 3,\n      \"content\": {\n        \"version\": \"KqlItem/1.0\",\n        \"query\": \"let steps=datatable(Step:int,EventName:string)[1,'CustomerJourneyStarted',2,'CatalogViewed',3,'ProductSelected',4,'CartUpdated',5,'CheckoutStarted',6,'PurchaseCompleted']; let observations=customEvents | where name in ('CustomerJourneyStarted','CatalogViewed','ProductSelected','CartUpdated','CheckoutStarted','PurchaseCompleted') | extend User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | summarize Users=dcount(User),Sessions=dcount(session_Id),Events=count() by EventName=name; steps | join kind=leftouter observations on EventName | project Step,EventName,Users=coalesce(Users,0),Sessions=coalesce(Sessions,0),Events=coalesce(Events,0) | order by Step asc\",\n        \"size\": 0,\n        \"title\": \"Customer conversion funnel\",\n        \"timeContextFromParameter\": \"TimeRange\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\",\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\n        \"visualization\": \"table\"\n      },\n      \"name\": \"usage-funnel\"\n    },\n    {\n      \"type\": 1,\n      \"content\": { \"json\": \"## Cohort and experiment conversion\\nCompare new, returning, and premium synthetic users across experience variants A and B.\" },\n      \"name\": \"cohort-heading\"\n    },\n    {\n      \"type\": 3,\n      \"content\": {\n        \"version\": \"KqlItem/1.0\",\n        \"query\": \"let starts=customEvents | where name=='CustomerJourneyStarted' | extend Segment=tostring(customDimensions['customer.segment']),Variant=tostring(customDimensions['journey.variant']),User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | summarize StartedUsers=dcount(User),StartedSessions=dcount(session_Id) by Segment,Variant; let purchases=customEvents | where name=='PurchaseCompleted' | extend Segment=tostring(customDimensions['customer.segment']),Variant=tostring(customDimensions['journey.variant']),User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | summarize ConvertedUsers=dcount(User),ConvertedSessions=dcount(session_Id) by Segment,Variant; starts | join kind=leftouter purchases on Segment,Variant | extend ConvertedUsers=coalesce(ConvertedUsers,0),ConvertedSessions=coalesce(ConvertedSessions,0) | extend UserConversionPct=round(100.0*ConvertedUsers/StartedUsers,1),SessionConversionPct=round(100.0*ConvertedSessions/StartedSessions,1) | project Segment,Variant,StartedUsers,ConvertedUsers,UserConversionPct,StartedSessions,ConvertedSessions,SessionConversionPct | order by Segment asc,Variant asc\",\n        \"size\": 0,\n        \"title\": \"Conversion by segment and A/B variant\",\n        \"timeContextFromParameter\": \"TimeRange\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\",\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\n        \"visualization\": \"table\"\n      },\n      \"name\": \"usage-cohorts\"\n    },\n    {\n      \"type\": 1,\n      \"content\": { \"json\": \"## Observed flow transitions\\nUse this table to corroborate the native User Flows visualization and identify support detours or abandonment points.\" },\n      \"name\": \"flow-heading\"\n    },\n    {\n      \"type\": 3,\n      \"content\": {\n        \"version\": \"KqlItem/1.0\",\n        \"query\": \"let journey=union (pageViews | where name startswith 'Customer /' | project timestamp,session_Id,user_Id,user_AuthenticatedId,Event=name,ItemType='pageView'),(customEvents | where name in ('CustomerJourneyStarted','CatalogViewed','ProductSelected','CartUpdated','SupportRequested','AgentResolutionViewed','CheckoutStarted','PaymentDeclined','PurchaseCompleted') | project timestamp,session_Id,user_Id,user_AuthenticatedId,Event=name,ItemType='customEvent'); journey | extend User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | order by session_Id asc,timestamp asc | serialize | extend NextSession=next(session_Id),NextEvent=next(Event),NextItemType=next(ItemType) | where session_Id==NextSession | summarize Transitions=count(),Users=dcount(User) by Event,ItemType,NextEvent,NextItemType | order by Transitions desc\",\n        \"size\": 0,\n        \"title\": \"Customer journey transitions\",\n        \"timeContextFromParameter\": \"TimeRange\",\n        \"queryType\": 0,\n        \"resourceType\": \"microsoft.insights/components\",\n        \"crossComponentResources\": [ \"{AppInsights}\" ],\n        \"visualization\": \"table\"\n      },\n      \"name\": \"usage-flows\"\n    }\n  ],\n  \"styleSettings\": {},\n  \"$schema\": \"https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json\"\n}\n",
+            "$fxv#2": "dependencies\n| where timestamp > ago(24h)\n| where type == \"GenAI\" and name == \"customer_support_agent\"\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\n         Mode = tostring(customDimensions[\"demo.mode\"]),\n         TaskSuccess = tostring(customDimensions[\"task.success\"]) == \"true\",\n         PerformanceSuccess = tostring(customDimensions[\"performance.success\"]) == \"true\",\n         RetryCount = toint(customDimensions[\"retry.count\"]),\n         InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]),\n         OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"])\n| summarize Runs = count(),\n            TaskSuccessRate = 100.0 * countif(TaskSuccess) / count(),\n            PerformanceSuccessRate = 100.0 * countif(PerformanceSuccess) / count(),\n            P50DurationMs = percentile(duration, 50),\n            P95DurationMs = percentile(duration, 95),\n            AvgRetries = avg(RetryCount),\n            AvgInputTokens = avg(InputTokens),\n            AvgOutputTokens = avg(OutputTokens)\n    by Scenario, Mode\n| order by Scenario asc, Mode asc\n",
+            "$fxv#3": "dependencies\n| where timestamp > ago(24h)\n| where type == \"GenAI\" and name == \"customer_support_agent\"\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\n         Mode = tostring(customDimensions[\"demo.mode\"]),\n         RetryCount = toint(customDimensions[\"retry.count\"]),\n         InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]),\n         OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"]),\n         TaskSuccess = tostring(customDimensions[\"task.success\"])\n| summarize Runs = count(),\n            SuccessfulRuns = countif(TaskSuccess == \"true\"),\n            Retries = sum(RetryCount),\n            InputTokens = sum(InputTokens),\n            OutputTokens = sum(OutputTokens)\n    by Scenario, Mode\n| extend TokensPerSuccessfulTask = iff(SuccessfulRuns > 0, todouble(InputTokens + OutputTokens) / SuccessfulRuns, real(null))\n| order by TokensPerSuccessfulTask desc nulls last\n",
+            "$fxv#4": "dependencies\n| where timestamp > ago(24h)\n| where type == \"GenAI\" and name == \"customer_support_agent\"\n| extend Scenario = tostring(customDimensions[\"scenario\"]),\n         Mode = tostring(customDimensions[\"demo.mode\"]),\n         TraceComplete = tostring(customDimensions[\"trace.complete\"])\n| summarize Runs = count(),\n            Incomplete = countif(TraceComplete == \"false\"),\n            Complete = countif(TraceComplete == \"true\")\n    by Scenario, Mode\n| extend CompletenessRate = 100.0 * Complete / Runs\n| order by CompletenessRate asc\n",
+            "$fxv#5": "dependencies\n| where timestamp > ago(24h)\n| where type == \"GenAI\" and name == \"customer_support_agent\"\n| extend Cohort = tostring(customDimensions[\"synthetic.cohort\"]),\n         AgentVersion = tostring(customDimensions[\"agent.version\"]),\n         WorkflowVersion = tostring(customDimensions[\"workflow.version\"]),\n         TaskSuccess = tostring(customDimensions[\"task.success\"]),\n         PerformanceSuccess = tostring(customDimensions[\"performance.success\"])\n| summarize Runs = count(),\n            TaskFailureRate = 100.0 * countif(TaskSuccess == \"false\") / count(),\n            PerformanceFailureRate = 100.0 * countif(PerformanceSuccess == \"false\") / count(),\n            P95DurationMs = percentile(duration, 95)\n    by Cohort, AgentVersion, WorkflowVersion\n| order by TaskFailureRate desc, PerformanceFailureRate desc\n",
+            "$fxv#6": "let BrowserCalls =\n    dependencies\n    | where timestamp > ago(24h)\n    | extend SyntheticSession = tostring(customDimensions[\"synthetic.session_id\"])\n    | where isnotempty(SyntheticSession)\n    | project operation_Id, SyntheticSession, BrowserTimestamp = timestamp, BrowserCall = name;\nlet AgentRuns =\n    dependencies\n    | where timestamp > ago(24h)\n    | where type == \"GenAI\" and name == \"customer_support_agent\"\n    | extend Scenario = tostring(customDimensions[\"scenario\"]),\n             Mode = tostring(customDimensions[\"demo.mode\"]),\n             TaskSuccess = tostring(customDimensions[\"task.success\"])\n    | project operation_Id, AgentTimestamp = timestamp, Scenario, Mode, TaskSuccess, AgentDuration = duration;\nBrowserCalls\n| join kind=inner AgentRuns on operation_Id\n| project BrowserTimestamp, AgentTimestamp, SyntheticSession, BrowserCall, Scenario, Mode, TaskSuccess, AgentDuration, operation_Id\n| order by AgentTimestamp desc\n",
+            "$fxv#7": "let steps = datatable(Step:int, EventName:string)\n[\n    1, \"CustomerJourneyStarted\",\n    2, \"CatalogViewed\",\n    3, \"ProductSelected\",\n    4, \"CartUpdated\",\n    5, \"CheckoutStarted\",\n    6, \"PurchaseCompleted\"\n];\nlet observations =\n    customEvents\n    | where timestamp > ago(7d)\n    | where name in (\"CustomerJourneyStarted\", \"CatalogViewed\", \"ProductSelected\", \"CartUpdated\", \"CheckoutStarted\", \"PurchaseCompleted\")\n    | extend User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)\n    | summarize Users = dcount(User), Sessions = dcount(session_Id), Events = count() by EventName = name;\nsteps\n| join kind=leftouter observations on EventName\n| project Step, EventName, Users = coalesce(Users, 0), Sessions = coalesce(Sessions, 0), Events = coalesce(Events, 0)\n| order by Step asc\n",
+            "$fxv#8": "let journey =\n    union\n        (pageViews\n        | where timestamp > ago(7d)\n        | where name startswith \"Customer /\"\n        | project timestamp, session_Id, user_Id, user_AuthenticatedId, Event = name, ItemType = \"pageView\"),\n        (customEvents\n        | where timestamp > ago(7d)\n        | where name in (\"CustomerJourneyStarted\", \"CatalogViewed\", \"ProductSelected\", \"CartUpdated\", \"SupportRequested\", \"AgentResolutionViewed\", \"CheckoutStarted\", \"PaymentDeclined\", \"PurchaseCompleted\")\n        | project timestamp, session_Id, user_Id, user_AuthenticatedId, Event = name, ItemType = \"customEvent\");\njourney\n| extend User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)\n| order by session_Id asc, timestamp asc\n| serialize\n| extend NextSession = next(session_Id), NextEvent = next(Event), NextItemType = next(ItemType)\n| where session_Id == NextSession\n| summarize Transitions = count(), Users = dcount(User) by Event, ItemType, NextEvent, NextItemType\n| order by Transitions desc\n",
+            "$fxv#9": "let starts =\n    customEvents\n    | where timestamp > ago(7d)\n    | where name == \"CustomerJourneyStarted\"\n    | extend Segment = tostring(customDimensions[\"customer.segment\"]),\n             Variant = tostring(customDimensions[\"journey.variant\"]),\n             User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)\n    | summarize StartedUsers = dcount(User), StartedSessions = dcount(session_Id) by Segment, Variant;\nlet purchases =\n    customEvents\n    | where timestamp > ago(7d)\n    | where name == \"PurchaseCompleted\"\n    | extend Segment = tostring(customDimensions[\"customer.segment\"]),\n             Variant = tostring(customDimensions[\"journey.variant\"]),\n             User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)\n    | summarize ConvertedUsers = dcount(User), ConvertedSessions = dcount(session_Id) by Segment, Variant;\nstarts\n| join kind=leftouter purchases on Segment, Variant\n| extend ConvertedUsers = coalesce(ConvertedUsers, 0),\n         ConvertedSessions = coalesce(ConvertedSessions, 0)\n| extend UserConversionPct = round(100.0 * ConvertedUsers / StartedUsers, 1),\n         SessionConversionPct = round(100.0 * ConvertedSessions / StartedSessions, 1)\n| project Segment, Variant, StartedUsers, ConvertedUsers, UserConversionPct, StartedSessions, ConvertedSessions, SessionConversionPct\n| order by Segment asc, Variant asc\n",
+            "queries": [
+              {
+                "key": "agent-task-health",
+                "display": "Agent task health",
+                "body": "[variables('$fxv#0')]"
+              },
+              {
+                "key": "trace-timeline",
+                "display": "End-to-end trace timeline",
+                "body": "[variables('$fxv#1')]"
+              },
+              {
+                "key": "broken-fixed-comparison",
+                "display": "Broken versus fixed comparison",
+                "body": "[variables('$fxv#2')]"
+              },
+              {
+                "key": "retry-token-efficiency",
+                "display": "Retry and token efficiency",
+                "body": "[variables('$fxv#3')]"
+              },
+              {
+                "key": "trace-quality",
+                "display": "Agent trace quality",
+                "body": "[variables('$fxv#4')]"
+              },
+              {
+                "key": "version-cohort-impact",
+                "display": "Version and cohort impact",
+                "body": "[variables('$fxv#5')]"
+              },
+              {
+                "key": "browser-to-agent",
+                "display": "Browser-to-agent correlation",
+                "body": "[variables('$fxv#6')]"
+              },
+              {
+                "key": "customer-usage-funnel",
+                "display": "Customer usage funnel",
+                "body": "[variables('$fxv#7')]"
+              },
+              {
+                "key": "customer-user-flows",
+                "display": "Customer user flows",
+                "body": "[variables('$fxv#8')]"
+              },
+              {
+                "key": "customer-cohort-conversion",
+                "display": "Customer cohort conversion",
+                "body": "[variables('$fxv#9')]"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/queryPacks",
+              "apiVersion": "2019-09-01",
+              "name": "[format('qp-{0}-appinsights', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {}
+            },
+            {
+              "copy": {
+                "name": "packQueries",
+                "count": "[length(variables('queries'))]"
+              },
+              "type": "Microsoft.OperationalInsights/queryPacks/queries",
+              "apiVersion": "2019-09-01",
+              "name": "[format('{0}/{1}', format('qp-{0}-appinsights', parameters('namePrefix')), guid(resourceId('Microsoft.OperationalInsights/queryPacks', format('qp-{0}-appinsights', parameters('namePrefix'))), variables('queries')[copyIndex()].key))]",
+              "properties": {
+                "displayName": "[variables('queries')[copyIndex()].display]",
+                "body": "[variables('queries')[copyIndex()].body]",
+                "related": {
+                  "categories": [
+                    "applications"
+                  ],
+                  "resourceTypes": [
+                    "microsoft.insights/components"
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/queryPacks', format('qp-{0}-appinsights', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/workbooks",
+              "apiVersion": "2023-06-01",
+              "name": "[guid(resourceGroup().id, 'appinsights-investigation-workbook')]",
+              "location": "[parameters('location')]",
+              "kind": "shared",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "displayName": "Application Insights — End-to-End Agent Investigation",
+                "serializedData": "[replace(variables('$fxv#10'), '__APPINSIGHTS_ID__', parameters('appInsightsId'))]",
+                "category": "workbook",
+                "sourceId": "[toLower(parameters('appInsightsId'))]",
+                "version": "1.0"
+              }
+            },
+            {
+              "type": "Microsoft.Insights/workbooks",
+              "apiVersion": "2023-06-01",
+              "name": "[guid(resourceGroup().id, 'appinsights-customer-usage-workbook')]",
+              "location": "[parameters('location')]",
+              "kind": "shared",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "displayName": "Application Insights — Customer Usage Journey",
+                "serializedData": "[replace(variables('$fxv#11'), '__APPINSIGHTS_ID__', parameters('customerAppInsightsId'))]",
+                "category": "workbook",
+                "sourceId": "[toLower(parameters('customerAppInsightsId'))]",
+                "version": "1.0"
+              }
+            }
+          ],
+          "outputs": {
+            "queryPackName": {
+              "type": "string",
+              "value": "[format('qp-{0}-appinsights', parameters('namePrefix'))]"
+            },
+            "workbookId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/workbooks', guid(resourceGroup().id, 'appinsights-investigation-workbook'))]"
+            },
+            "usageWorkbookId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/workbooks', guid(resourceGroup().id, 'appinsights-customer-usage-workbook'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'appi')]",
+        "[resourceId('Microsoft.Resources/deployments', 'appi-customer')]"
+      ]
+    },
+    {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
       "name": "amw",
@@ -993,7 +1331,7 @@
             "value": "[variables('eventHubNsName')]"
           },
           "location": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "centralLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
@@ -2343,6 +2681,9 @@
           "centralLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
           },
+          "dailyCapGb": {
+            "value": "[parameters('dailyCapGb')]"
+          },
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -2354,7 +2695,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "1630570870174900578"
+              "templateHash": "4309548182300101190"
             }
           },
           "parameters": {
@@ -2376,6 +2717,13 @@
                 "description": "Central LAW resource ID (workbook scope)."
               }
             },
+            "dailyCapGb": {
+              "type": "int",
+              "defaultValue": 1,
+              "metadata": {
+                "description": "Configured daily ingestion cap (GB) for the central LAW. Set to -1 when disabled."
+              }
+            },
             "tags": {
               "type": "object",
               "defaultValue": {},
@@ -2389,14 +2737,14 @@
             "topTablesQuery": "Usage\n| where TimeGenerated > ago(24h)\n| where IsBillable == true\n| summarize GB_24h = round(sum(Quantity) / 1024.0, 3) by DataType\n| top 15 by GB_24h desc\n| render barchart\n",
             "dailyTotalQuery": "Usage\n| where IsBillable == true\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by bin(TimeGenerated, 1d)\n| order by TimeGenerated asc\n| render timechart\n",
             "perSolutionQuery": "Usage\n| where TimeGenerated > ago(7d)\n| where IsBillable == true\n| summarize GB = round(sum(Quantity) / 1024.0, 3) by Solution\n| top 10 by GB desc\n| render piechart\n",
-            "capBurnQuery": "Usage\n| where IsBillable == true\n| where TimeGenerated >= startofday(now())\n| summarize TodayGB = round(sum(Quantity) / 1024.0, 3)\n| extend CapGB = toreal(1.0)\n| extend PercentOfCap = round(100.0 * TodayGB / CapGB, 1)\n| project Metric = pack_array(\"Today (GB)\", \"Daily cap (GB)\", \"% of cap used\"),\n          Value  = pack_array(TodayGB, CapGB, PercentOfCap)\n| mv-expand Metric to typeof(string), Value to typeof(real)\n",
+            "capBurnQuery": "[replace('Usage\n| where IsBillable == true\n| where TimeGenerated >= startofday(now())\n| summarize TodayGB = round(sum(Quantity) / 1024.0, 3)\n| extend CapGB = toreal(__DAILY_CAP_GB__)\n| extend PercentOfCap = iff(CapGB > 0, round(100.0 * TodayGB / CapGB, 1), real(null))\n| project Metric = pack_array(\"Today (GB)\", \"Daily cap (GB)\", \"% of cap used\"),\n          Value  = pack_array(TodayGB, CapGB, PercentOfCap)\n| mv-expand Metric to typeof(string), Value to typeof(real)\n', '__DAILY_CAP_GB__', string(parameters('dailyCapGb')))]",
             "workbookContent": {
               "version": "Notebook/1.0",
               "items": [
                 {
                   "type": 1,
                   "content": {
-                    "json": "## 💰 Cost of Monitoring — LAW Ingestion Overview\n\nEverything here reads from the built-in `Usage` table. Use this to pick candidates for **DCR transformations** (see [14 — Cost · Workspace Transformation effect]) and **Basic Logs** (see `toggle-table-plan.ps1`)."
+                    "json": "## 💰 Central LAW ingestion volume\n\nThis workbook reads only the central Log Analytics workspace `Usage` table. It does **not** include compute, App Service, Grafana, Event Hubs, ACR, disks/IPs, network monitoring, alerts, tests, other workspaces, or optional agents, and it does not reconcile the Azure bill. Use it to find candidates for **DCR transformations** and **Basic Logs**, then use [Azure Cost Management](https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/costanalysis) for actual and forecast charges."
                   },
                   "name": "header"
                 },
@@ -2476,7 +2824,7 @@
               "tags": "[parameters('tags')]",
               "kind": "shared",
               "properties": {
-                "displayName": "💰 Azure Monitor Lab — Cost of Monitoring",
+                "displayName": "💰 Azure Monitor Lab — Central LAW ingestion volume",
                 "serializedData": "[string(variables('workbookContent'))]",
                 "category": "workbook",
                 "sourceId": "[parameters('centralLawId')]",
@@ -2500,5 +2848,15 @@
         "[resourceId('Microsoft.Resources/deployments', 'law-central')]"
       ]
     }
-  ]
+  ],
+  "outputs": {
+    "customerAppInsightsName": {
+      "type": "string",
+      "value": "[if(parameters('enableSlotFailureScenario'), variables('customerAppInsightsName'), '')]"
+    },
+    "customerAppInsightsId": {
+      "type": "string",
+      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2022-09-01').outputs.id.value, '')]"
+    }
+  }
 }

@@ -2,15 +2,15 @@ name: Promotion policy
 
 on:
   push:
-    branches: [dev, integration, master]
+    branches: [dev, integration, main]
     paths:
       - '.github/scripts/promotion-policy*.cjs'
       - '.github/workflows/promotion-policy.yml'
   pull_request:
-    branches: [integration, master]
+    branches: [integration, main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
   pull_request_target:
-    branches: [master]
+    branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions:

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Creates 3 service principals with different Granular RBAC levels for the demo.
+    Creates 3 lab-specific service principals with different Granular RBAC levels.
 
 .DESCRIPTION
   SP1 (workspace-level): Log Analytics Reader — sees all tables, all rows.
@@ -37,11 +37,13 @@ if (-not (Test-Path $targetFile)) {
     Write-Error ".azure-target.json not found. Bootstrap with: Copy-Item lab.config.json.example lab.config.json; edit it; then run scripts/sync-config.ps1."
     return
 }
-$expectedSub = (Get-Content -Raw $targetFile | ConvertFrom-Json).expectedSubscriptionId
-$currentSub  = az account show --query id -o tsv
-if ($currentSub -ne $expectedSub) {
-    Write-Error "Wrong subscription ($currentSub). Expected $expectedSub. Run: az account set --subscription $expectedSub"
-    return
+$target = Get-Content -Raw $targetFile | ConvertFrom-Json
+$expectedSub = $target.expectedSubscriptionId
+az account set --subscription $expectedSub --only-show-errors
+if ($LASTEXITCODE -ne 0) { throw 'Could not select the RBAC demo subscription.' }
+$account = az account show --query '{id:id,tenantId:tenantId}' -o json | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $account.id -ne $expectedSub -or -not $target.expectedTenantId -or $account.tenantId -ne $target.expectedTenantId) {
+    throw 'RBAC demo subscription or tenant mismatch. No Entra identities were changed.'
 }
 
 # ---------------------------------------------------------------------------
@@ -59,8 +61,12 @@ if ([string]::IsNullOrWhiteSpace($WorkspaceName)) {
 $ws = az monitor log-analytics workspace show -g $ResourceGroup -n $WorkspaceName -o json | ConvertFrom-Json
 $workspaceId         = $ws.customerId   # GUID — used for API queries
 $workspaceResourceId = $ws.id           # ARM resource ID — used for role assignments
-$tenantId            = az account show --query tenantId -o tsv
-$resourceGroupId      = az group show -n $ResourceGroup --query id -o tsv
+$tenantId            = $account.tenantId
+$resourceGroupId      = az group show --subscription $expectedSub -n $ResourceGroup --query id -o tsv
+if ($LASTEXITCODE -ne 0 -or $resourceGroupId -ine "/subscriptions/$expectedSub/resourceGroups/$ResourceGroup") { throw 'Could not verify the RBAC demo resource group.' }
+$scopeHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($resourceGroupId.ToLowerInvariant()))).Substring(0, 12).ToLowerInvariant()
+$ownerTag = "azure-monitor-lab:resource-group:$($resourceGroupId.ToLowerInvariant())"
+$tenantTag = "azure-monitor-lab:tenant:$($tenantId.ToLowerInvariant())"
 
 $customRoles = az role definition list --custom-role-only true -o json | ConvertFrom-Json
 $granularRole = @($customRoles | Where-Object {
@@ -80,40 +86,72 @@ Write-Host "  Custom role  : $($granularRole.roleName)"
 # Define the 3 service principals
 # ---------------------------------------------------------------------------
 $spDefs = @(
-    @{ key = 'workspace'; displayName = 'amlab-rbac-sp-workspace'; tier = 'Workspace-level' }
-    @{ key = 'table';     displayName = 'amlab-rbac-sp-table';     tier = 'Table-level'     }
-    @{ key = 'row';       displayName = 'amlab-rbac-sp-row';       tier = 'Row-level'       }
+    @{ key = 'workspace'; displayName = "amlab-rbac-sp-workspace-$scopeHash"; tier = 'Workspace-level' }
+    @{ key = 'table';     displayName = "amlab-rbac-sp-table-$scopeHash";     tier = 'Table-level'     }
+    @{ key = 'row';       displayName = "amlab-rbac-sp-row-$scopeHash";       tier = 'Row-level'       }
 )
 
 $credentials = @{}
+$graphToken = az account get-access-token --subscription $expectedSub --resource https://graph.microsoft.com/ --query accessToken -o tsv --only-show-errors
+if ($LASTEXITCODE -ne 0 -or -not $graphToken) { throw 'Could not acquire a Graph token for the RBAC demo identities.' }
 
+function New-RbacDirectoryObject {
+    param([ValidateSet('applications', 'servicePrincipals')] [string] $Collection, [hashtable] $Body)
+    try {
+        Invoke-RestMethod -Method Post -Uri "https://graph.microsoft.com/v1.0/$Collection" `
+            -Headers @{ Authorization = "Bearer $graphToken" } -ContentType 'application/json' `
+            -Body ($Body | ConvertTo-Json -Depth 8 -Compress) -TimeoutSec 90 -ErrorAction Stop -Verbose:$false -Debug:$false
+    } catch {
+        throw "Could not create the lab-owned $Collection object (HTTP $([int]$_.Exception.Response.StatusCode)). Credential details suppressed."
+    }
+}
+
+try {
 foreach ($def in $spDefs) {
     Write-Host "`n=== [$($def.tier)] Creating SP: $($def.displayName) ===" -ForegroundColor Cyan
 
     # Check if app registration already exists
-    $existing = az ad app list --display-name $def.displayName --query "[0].appId" -o tsv 2>$null
-    if ($existing) {
-        Write-Host "  App already exists (appId: $existing) — resetting credentials" -ForegroundColor Yellow
-        $appId    = $existing
-        $spObject = az ad sp list --filter "appId eq '$appId'" --query "[0].id" -o tsv
+    $identityTags = @('azure-monitor-lab:managed:v1', $tenantTag, $ownerTag, "azure-monitor-lab:kind:rbac-$($def.key)")
+    $existing = @(az ad app list --display-name $def.displayName -o json --only-show-errors | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing RBAC demo registrations.' }
+    $existing = @($existing | Where-Object { $_.displayName -ceq $def.displayName })
+    if ($existing.Count -gt 1) { throw 'Multiple matching RBAC demo registrations exist. Resolve the ambiguity before continuing.' }
+    if ($existing.Count -eq 1) {
+        $appJson = $existing[0]
+        if ($appJson.signInAudience -ne 'AzureADMyOrg' -or @($identityTags | Where-Object { $_ -notin @($appJson.tags) }).Count -or
+            @($appJson.tags | Where-Object { $_ -like 'azure-monitor-lab:resource-group:*' }).Count -ne 1) {
+            throw 'The existing RBAC registration is not exclusively owned by this lab. Its credentials were not changed.'
+        }
+        $appId = $appJson.appId
+        Write-Host "  Reusing lab-owned app: $appId" -ForegroundColor Yellow
     } else {
-        # Create app registration
-        $appJson = az ad app create --display-name $def.displayName -o json | ConvertFrom-Json
+        $appJson = New-RbacDirectoryObject applications @{ displayName = $def.displayName; signInAudience = 'AzureADMyOrg'; tags = $identityTags }
         $appId   = $appJson.appId
         Write-Host "  Created app: $appId"
-
-        # Create service principal
-        $spJson   = az ad sp create --id $appId -o json | ConvertFrom-Json
+    }
+    if (-not $appId -or -not $appJson.id) { throw 'The RBAC registration response was incomplete.' }
+    $principals = @(az ad sp list --filter "appId eq '$appId'" -o json --only-show-errors | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0 -or $principals.Count -gt 1) { throw 'Could not resolve a unique RBAC service principal.' }
+    if (-not $principals.Count) {
+        $spJson = New-RbacDirectoryObject servicePrincipals @{ appId = $appId; tags = $identityTags }
         $spObject = $spJson.id
         Write-Host "  Created SP:  $spObject"
+    } else {
+        $spJson = $principals[0]
+        if ($spJson.servicePrincipalType -ne 'Application' -or $spJson.appOwnerOrganizationId -ne $tenantId -or
+            @($identityTags | Where-Object { $_ -notin @($spJson.tags) }).Count) { throw 'The RBAC principal ownership does not match this lab.' }
+        $spObject = $spJson.id
     }
+    if (-not $spObject) { throw 'The RBAC service principal response was incomplete.' }
 
     # Create/reset client secret (1 year validity)
     $secretJson = az ad app credential reset --id $appId --display-name 'demo-secret' --years 1 -o json | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $secretJson.password) { throw 'Could not create the RBAC demo credential.' }
 
     $credentials[$def.key] = @{
         displayName = $def.displayName
         appId       = $appId
+        applicationObjectId = $appJson.id
         secret      = $secretJson.password
         spObjectId  = $spObject
     }
@@ -122,6 +160,7 @@ foreach ($def in $spDefs) {
     Write-Host "  SP Object ID: $spObject"
     Write-Host "  Secret      : ********" -ForegroundColor DarkGray
 }
+} finally { $graphToken = $null }
 
 # ---------------------------------------------------------------------------
 # Assign roles
@@ -131,17 +170,20 @@ Write-Host "`n=== Assigning roles ===" -ForegroundColor Cyan
 # SP1: Log Analytics Reader (built-in, no conditions)
 Write-Host "  [Workspace] Log Analytics Reader → $($credentials['workspace'].displayName)"
 az role assignment create `
+    --subscription $expectedSub `
     --assignee-object-id $credentials['workspace'].spObjectId `
     --assignee-principal-type ServicePrincipal `
     --role 'Log Analytics Reader' `
     --scope $workspaceResourceId `
     -o none 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'Could not assign the workspace-level RBAC demo role.' }
 
 # SP2: Granular Reader + ABAC table condition (SecurityAudit_CL only)
 Write-Host "  [Table]     Granular Reader + ABAC (SecurityAudit_CL) → $($credentials['table'].displayName)"
 $tableCondition = "((!(ActionMatches{'Microsoft.OperationalInsights/workspaces/tables/data/read'})) OR (@Resource[Microsoft.OperationalInsights/workspaces/tables:name] StringEquals 'SecurityAudit_CL'))"
 
 az role assignment create `
+    --subscription $expectedSub `
     --assignee-object-id $credentials['table'].spObjectId `
     --assignee-principal-type ServicePrincipal `
     --role $granularRole.id `
@@ -149,12 +191,14 @@ az role assignment create `
     --condition $tableCondition `
     --condition-version '2.0' `
     -o none 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'Could not assign the table-level RBAC demo role.' }
 
 # SP3: Granular Reader + ABAC row condition (SecurityAudit_CL + Severity==Critical)
 Write-Host "  [Row]       Granular Reader + ABAC (Severity==Critical) → $($credentials['row'].displayName)"
 $rowCondition = '((!(ActionMatches{''Microsoft.OperationalInsights/workspaces/tables/data/read''})) OR ((@Resource[Microsoft.OperationalInsights/workspaces/tables:name] StringEquals ''SecurityAudit_CL'') AND (@Resource[Microsoft.OperationalInsights/workspaces/tables/record:Severity<$key_case_sensitive$>] StringEquals ''Critical'')))'
 
 az role assignment create `
+    --subscription $expectedSub `
     --assignee-object-id $credentials['row'].spObjectId `
     --assignee-principal-type ServicePrincipal `
     --role $granularRole.id `
@@ -162,6 +206,7 @@ az role assignment create `
     --condition $rowCondition `
     --condition-version '2.0' `
     -o none 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'Could not assign the row-level RBAC demo role.' }
 
 # ---------------------------------------------------------------------------
 # Save config
@@ -169,6 +214,7 @@ az role assignment create `
 $configPath = Join-Path $PSScriptRoot '.rbac-demo-config.json'
 $config = @{
     tenantId            = $tenantId
+    resourceGroupId     = $resourceGroupId
     workspaceId         = $workspaceId
     workspaceResourceId = $workspaceResourceId
     servicePrincipals   = $credentials

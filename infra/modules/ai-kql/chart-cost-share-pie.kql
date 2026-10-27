@@ -1,11 +1,8 @@
-// CHART — Cost share by agent (pie)
+// CHART — Token share by agent (pie)
 // -------------------------------------------------------------------
-// Purpose:  Visual showback chart. Each agent's slice = share of the
-//           estimated total spend, so the dominant consumer is obvious.
+// Purpose:  Visual usage chart. Each slice is an agent's share of tokens.
 // Render:   Portal Logs / Workbook only (CLI ignores render).
-// Pricing:  gpt-5-mini GlobalStandard list price (input $0.25/1M,
-//           output $2.00/1M). Replace with your current per-model rates.
-// Caveat:   Token-derived ESTIMATE — reconcile with Azure Cost Management.
+// Pricing:  Token share is not cost share when model/token rates differ.
 
 dependencies
 | where timestamp > ago(1d)
@@ -13,7 +10,6 @@ dependencies
 | extend inTok  = toint(customDimensions["gen_ai.usage.input_tokens"]),
          outTok = toint(customDimensions["gen_ai.usage.output_tokens"]),
          agent  = tostring(customDimensions["gen_ai.agent.name"])
-| summarize prompt=sum(inTok), completion=sum(outTok) by agent
-| extend est_usd = round(prompt/1000000.0*0.25 + completion/1000000.0*2.00, 4)
-| project agent, est_usd
-| render piechart with (title="Cost share by agent (USD)")
+| summarize total_tokens=sum(inTok)+sum(outTok) by agent
+| project agent, total_tokens
+| render piechart with (title="Token share by agent")

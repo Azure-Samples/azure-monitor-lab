@@ -1,6 +1,6 @@
 # Lab Operations
 
-The **Lab Operations** tab runs seven repository scripts in an independent **Azure Container Apps Job**. Normal lab deployment creates the infrastructure, builds the image in Azure, configures operator sign-in and managed-identity access, and enables the console. No GitHub App, runner repository, manual image publication, or separate enablement command is required.
+The **Lab Operations** tab runs allowlisted repository scripts in an independent **Azure Container Apps Job**. Normal lab deployment creates the infrastructure, builds the image in Azure, configures operator sign-in and managed-identity access, and enables the console. No GitHub App, runner repository, manual image publication, or separate enablement command is required.
 
 The Web App prepares approvals and reads execution status. It does not execute PowerShell, Azure CLI, or Kubernetes commands inside the app process. GitHub Actions is used only for repository tests, not runtime execution.
 
@@ -9,14 +9,80 @@ The Web App prepares approvals and reads execution status. It does not execute P
 | Action | Script | Scope and effect |
 |---|---|---|
 | Start Lab | [start-the-lab.ps1](../../scripts/start-the-lab.ps1) | Starts stopped VMs, VMSS instances, AKS, and web apps. Waits up to 20 minutes for startup. Running resources incur charges. |
+| Stop Lab | [stop-the-lab.ps1](../../scripts/stop-the-lab.ps1) | Deallocates VMs and VMSS instances, stops AKS, then stops the Web App hosting the Control Center. This reduces compute usage but does not stop fixed services, disks/IPs, retained data, telemetry, or optional-agent charges. |
 | Break Lab | [break-the-lab.ps1](../../scripts/break-the-lab.ps1) | Deallocates VMs, replaces the AKS demo frontend image, changes the load-generator error rate, starts a short load job, and adds an incident annotation. |
 | Restore Lab | [restore-the-lab.ps1](../../scripts/restore-the-lab.ps1) | Starts VMs and restores the known demo frontend/load-generator configuration. Adds a release annotation. This is not a rollback of arbitrary changes. |
 | Start Load Ramp | [start-ramp.ps1](../../scripts/start-ramp.ps1) | Replaces the named ramp job/configuration and submits approximately 60 minutes of AKS traffic against the lab app. |
+| Generate Customer Traffic | [generate-usage-traffic.ps1](../../scripts/generate-usage-traffic.ps1) | Runs 1-100 isolated Chromium users through the deployed `/customer/` journey, with concurrency 1-10 and repeat users no greater than total users. |
+| Break the customer app | [set-customer-dependency-fault.ps1](../../scripts/set-customer-dependency-fault.ps1), [trigger-broken-slot.ps1](../../scripts/trigger-broken-slot.ps1), [rollback-broken-slot.ps1](../../scripts/rollback-broken-slot.ps1) | One menu for broken customer deployment, fixed application SQL-path delay, orders processor failure, or explicit recovery. No traffic, order submission or dead-letter replay is automatic. |
 | Simulate High CPU | [simulate-high-cpu.ps1](../../scripts/simulate-high-cpu.ps1) | Submits fixed, self-expiring 10-minute CPU loads on both running demo VMs through Azure VM Run Command. No AKS dependency or VM restart. |
 | Send Custom Logs | [send-custom-logs.ps1](../../scripts/send-custom-logs.ps1) | Ingests 1-100 sample audit events into the existing custom table. |
 | Add Release Marker | [send-release-annotation.ps1](../../scripts/send-release-annotation.ps1) | Adds a marker with a 1-80 character name and Deployment or Incident category. |
 
 No arbitrary commands, script paths, deployment, teardown, permission setup, or AI execution are exposed. Existing SRE MCP approvals and health permissions are unchanged.
+
+### Release marker target
+
+Release markers (including Break Lab and Restore Lab) belong to the **Control Center**
+Application Insights component, not the separate customer component. The runner resolves
+the exact `appi-<suffix>` name from its existing `LAB_WEB_APP_NAME=app-<suffix>`
+configuration. Preflight and the called scripts use the same resolver; missing,
+duplicate, or customer-tagged targets fail before lab changes. `-CheckAccessOnly`
+performs discovery without posting a marker, but does not prove annotation write permission.
+
+For standalone scripts, pass `-WebAppName app-<suffix>` or
+`-AppInsightsName appi-<suffix>` to `send-release-annotation.ps1`,
+`break-the-lab.ps1`, or `restore-the-lab.ps1`. Without an explicit target, only a
+single non-customer component is accepted; multiple candidates fail rather than
+selecting the first or shortest name. Both parameters, when supplied, must agree.
+Customer-tagged and `-customer` components are excluded.
+Break/restore also resolve the exact Control Center Web App metadata before
+changing resources, rather than using the first app in the resource group.
+If only a standard `appi-<suffix>` target is available, they derive `app-<suffix>`.
+
+Existing runners need a rebuilt image containing `app-insights-target.ps1` and the
+updated scripts. This script-only fix does not require new permissions or changes to
+customer/slot/worker configuration. An image-only runner update must also update the
+Control Center's `LabConsole__Operations__Image` digest: approvals use that configured
+digest when dispatching executions. The general `deploy-webapp.ps1` upgrade is broader
+(platform/access bootstrap and app publication); do not use it as an image-only patch.
+
+### Generate Customer Traffic
+
+Select **Generate Customer Traffic**, set the bounded user, browser-concurrency, and repeat-user values, review the exact target and parameters, then approve. The runner requires exactly one app-prefixed Web App in the resource group and a healthy `/customer/` endpoint before it opens Chromium. Transient managed-identity, Azure discovery, and endpoint-readiness failures receive up to three bounded preflight attempts with safe phase diagnostics. The generator drives real routes and UI interactions; it does not submit fabricated telemetry directly.
+
+The default 24 users, 4 concurrent browsers, and 6 repeat users provide completed, abandoned, declined, support-assisted, cohort, variant, and repeat-session paths for [Scenario 70](../../docs/DEMO-SCENARIOS.md#s70). Customer API calls are paced below the deployed shared limit; HTTP 429 responses honor `Retry-After` with at most three retries. The job itself has no automatic retry, and only one Lab Operations run can be active. Container Apps Job compute, Application Insights ingestion, and retention charges apply. Usage aggregation can lag behind raw telemetry.
+
+The runner image now includes Node.js dependencies and Chromium, so an existing environment must rebuild the operations image and republish the Web App. Rerun `deploy.ps1`, or use the normal [console upgrade](../../scripts/deploy-webapp.ps1); updating only the browser bundle is insufficient.
+
+### Break the customer app
+
+The **Break the customer app** button is the single entry point for reversible customer exercises and recovery; there is no separate deployment-slot button. Nothing is preselected or executed by opening it:
+
+| Choice | Effect | Recovery |
+|---|---|---|
+| Broken deployment slot | Swap the armed customer slot into production; HTTP 503. | Restore the working slot. |
+| Slow SQL-backed customer operations | Fixed 3-second application-side delay on catalogue/order SQL paths. This is not actual SQL database degradation; SQL DTU health can stay healthy. | Reset delay to zero. |
+| Fail customer order processing | The dedicated processor throws on delivery. Accepted orders can remain queued and eventually dead-letter after bounded retries. No orders are automatically submitted. | Reset processor failure; independently inspect previous orders and dead letters. |
+| Restore customer application | Reset both customer slots' delay and worker failure, restart those exact targets, restore the working slot, and check production health/catalogue. | Does not replay messages or undo arbitrary changes. |
+
+Slot choices require `enableSlotFailureScenario`. Dependency choices require `enableCustomerDependencies`, an exact worker discovered from the deployment output, and the updated console bootstrap, job image and RBAC. Runtime checks refuse faults if either exact application has real dependencies disabled. An older/slot-only lab shows **Broken deployment slot** and **Restore working customer slot**. With dependency faults enabled, **Restore customer application** performs full recovery rather than leaving a hidden worker failure behind.
+
+Each choice uses the existing five-minute, single-use approval and resource-group confirmation. Faults are persistent, **not self-expiring**. The shared persistent journal blocks another customer fault until an approved recovery succeeds, including across operators/restarts and after partial failures. Disabled choices say **restore the current exercise first**; the menu explains the journal lock and leaves recovery available. A failed/uncertain execution is not automatically retried. Out-of-band SRE/CLI mitigation does not clear this conservative latch, even if the app is healthy: choose and approve **Restore customer application** (or **Restore working customer slot** in a slot-only lab) to verify recovery and unlock the choices. An unresolved job must be reconciled before a new job, including recovery, can start.
+
+The investigation panel records the dispatch reference time (not proven symptom onset), offers a **symptom-only prompt** for `application-troubleshooter` in VS Code/Copilot CLI or SRE Agent, and links to configured SRE/customer Health Model destinations. It neither reveals the injected setting in the prompt nor submits an agent task. The operator's menu and run history are not a secret examination environment. No automatic load, order, fault replay, agent mitigation or Health Model change occurs.
+
+Use Application Insights request/dependency/exception spans, platform metrics, Activity Logs, Functions logs and Service Bus queue/dead-letter counts to establish root cause. Cross-check actual customer model topology and signal freshness. Aggregate Healthy and absent/Unknown signals do not prove application health; an idle worker can have no recent error samples. Recovery verifies HTTP 200 and an actual JSON array of exactly three catalogue products; missing/extra products and object-shaped responses fail verification. Recovery's healthy catalogue does not prove historical order fulfilment, recovered latency, listener readiness or alert/model recovery.
+
+The independent runner receives a conditional custom role **only at the customer Web App and worker resource scopes**, for app-setting read/write and restart, with slot operations on the customer site. Azure RBAC cannot restrict these permissions to individual setting keys; trust the pinned allowlisted runner and protect its identity. These permissions can read sensitive settings, although scripts project only the feature flag and suppress diagnostic payloads. The Control Center receives no customer SQL/queue data-plane access and no customer app-setting write role.
+
+Publish the new Control Center and rebuild/bootstrap the independent runner together. Browser-only publication is insufficient. These choices add no service, but app restarts, existing compute, Service Bus retries, diagnostic/telemetry ingestion and optional agent usage can incur charges. Keep separately configured autonomous SRE recovery plans disabled for a manual exercise unless their exact behavior is intended.
+
+### Broken deployment slot
+
+Select **Break the customer app → Broken deployment slot**, review the customer Web App target and intentional-outage warning, then approve once. The operation requires customer production `/healthz` to return HTTP 200 and the `broken` slot to return HTTP 503 before swapping; afterward it verifies the customer app returns HTTP 503. It never swaps or changes the Control Center. Do not submit it again while the alert or recovery is in progress.
+
+Autonomous recovery is not configured by the deployment itself. Follow [Scenario 71](../../docs/DEMO-SCENARIOS.md#s71) to connect Azure Monitor and create the dedicated, narrowly filtered SRE Agent response plan. Keep that Autonomous plan off when the demo is idle.
 
 ### Simulate High CPU
 
@@ -40,18 +106,18 @@ For an existing lab, use the normal [console upgrade](../../scripts/deploy-webap
 
 Status refresh runs every ten seconds only while the tab and browser document are visible and a run is nonterminal. It stops after three read failures; manual refresh remains available. Progress is sanitized step metadata, not raw PowerShell output. No credentials are stored in the browser and failed or uncertain writes are never automatically resubmitted.
 
-**Cancellation is not rollback.** A cancelled or failed runner may have made partial changes. Start commands already issued continue in Azure. A submitted ramp job continues in AKS even after the runner exits or is cancelled; stopping it requires removing that exact job through the normal operator workflow. The app has no universal Stop button that could imply otherwise.
+**Cancellation is not rollback.** A cancelled or failed runner may have made partial changes. Start commands already issued continue in Azure. A submitted ramp job continues in AKS even after the runner exits or is cancelled; stopping it requires removing that exact job through the normal operator workflow. **Stop Lab is not teardown or rollback.** It stops the lab's startable compute surfaces; it does not cancel already submitted guest commands or Kubernetes jobs, and it does not delete resources.
 
 ## Automatic Deployment
 
 - **Scripted Bicep:** the normal [deploy.ps1](../../scripts/deploy.ps1) includes console initialization.
 - **Terraform:** a successful `terraform apply -var-file stages.tfvars` with Stage B enabled includes workload publication and console initialization. Relevant source, stage, or operator changes rerun the hook.
-- **Raw ARM/Bicep or portal templates:** these remain infrastructure-only. Their normal [workload completion wrapper](../../docs/POST-DEPLOYMENT.md) also initializes the console, with no additional console-specific setup. Use scripted deployment or Terraform for the complete automated flow.
+- **Raw ARM/Bicep or portal templates:** these remain infrastructure-only. Follow the wrapper documented for the relevant [deployment option](../../README.md#deploy); it also initializes the console, with no additional console-specific setup. Use scripted deployment or Terraform for the complete automated flow.
 - **Existing lab upgrade:** [deploy-webapp.ps1](../../scripts/deploy-webapp.ps1) publishes the app and provisions missing console dependencies without reapplying AKS workloads. Its `-WhatIf` describes the infrastructure and access scope.
 
 After successful deployment, open the Web App and sign in. The default operator is the signed-in Azure CLI user, or existing operators on an upgrade. Noninteractive deployments supply user object IDs using `-ConsoleOperatorObjectIds` or Terraform's `console_operator_object_ids`. These are deployment inputs, not a separate setup step.
 
-Infrastructure updates preserve runtime-owned sign-in and console app settings through a secure settings merge. Bootstrap retains the selected lab tags and any runner-specific tags present when bootstrap starts. Both publishing paths wait for the exact new assembly's publication ID, so a reachable older app cannot satisfy deployment completion. See [redeployment checks](../../docs/POST-DEPLOYMENT.md#redeployment-checks) for the live verification criteria and cleanup boundaries.
+Infrastructure updates preserve runtime-owned sign-in and console app settings through a secure settings merge. Bootstrap retains the selected lab tags and any runner-specific tags present when bootstrap starts. Both publishing paths wait for the exact new assembly's publication ID, so a reachable older app cannot satisfy deployment completion. A deployment that stops during bootstrap must be completed before using the controls. Before promoting deployment changes, test a fresh lab and a rerun with the same approved operators, then verify the published version, operator sign-in, health and runner readiness, and retained tags.
 
 ### Prerequisites
 
@@ -70,7 +136,7 @@ The subscription/region must support Basic Container Registry, ACR Tasks, and a 
 5. A private persistent journal at `/home/data/lab-operations/journal.json` and generated settings, followed by enablement. Unrelated app settings are preserved.
 6. With Stage AI, four matching demo agents are reused or created without simulated conversations. With both AI and SRE stages, native MCP and host-model access are configured. An SRE-only deployment does not include the separate host model required by this console's SRE assistant.
 
-The registry has ongoing service/storage charges. Builds, jobs, logs, running workloads, and optional model use have their usual Azure charges. The runner has no always-running application replica. Deployment does not execute any of the seven lab operations.
+The registry has ongoing service/storage charges. Builds, jobs, logs, running workloads, and optional model use have their usual Azure charges. The runner has no always-running application replica. Deployment does not execute any of the ten lab operations.
 
 ## Access Boundaries
 
@@ -78,9 +144,9 @@ The registry has ongoing service/storage charges. Builds, jobs, logs, running wo
 |---|---|
 | Browser operator | Single-tenant sign-in, explicit allowlist, same-origin POST checks, and expiring single-use approvals. |
 | Web App managed identity | Read-only lab inventory/workspace access and read/start access on one runner job. Optional agent roles are resource-scoped. |
-| Runner managed identity | Reader and a custom lifecycle/annotation role at the lab resource group, AcrPull on its registry, Monitoring Metrics Publisher on the custom-log DCR, and a separate Run Command role on the two selected demo VMs. |
+| Runner managed identity | Reader and a custom lifecycle/annotation role at the lab resource group, AcrPull on its registry, Monitoring Metrics Publisher on the custom-log DCR, a separate Run Command role on the two selected demo VMs, and—when enabled—a customer-Web-App-scoped read/slot-swap role. |
 
-Azure job-start permission supports template overrides. It is not an RBAC restriction to seven scripts: a compromised Web App identity could exercise the runner identity's permissions through that job. The application validates the image, execution limits, identity, fixed lab environment, and approved inputs. Keep deployment access and both identities restricted to a disposable lab.
+Azure job-start permission supports template overrides. It is not an RBAC restriction to ten scripts: a compromised Web App identity could exercise the runner identity's permissions through that job. The application validates the image, execution limits, identity, fixed lab environment, and approved inputs. Keep deployment access and both identities restricted to a disposable lab.
 
 `Microsoft.Compute/virtualMachines/runCommand/action` allows elevated guest execution as root on Linux and SYSTEM on Windows. Azure RBAC cannot restrict that permission to the fixed CPU payload or its duration. The CPU role is assigned on individual VM resources, never at subscription or resource-group scope; the existing lifecycle role does not gain guest execution. Removing a VM from the selected pair prevents future script submission but incremental deployment does not revoke older role assignments. Review and remove obsolete VM assignments when repurposing a lab.
 
@@ -113,7 +179,7 @@ Do not put secrets or sensitive data in marker text. Execution metadata is visib
 
 ## Verification
 
-[Lab Operations Tests](../../.github/workflows/lab-operations-tests.yml) covers approval/journal/ARM contracts, [seven real scripts under fake commands](../../scripts/tests/lab-operations-execution.Tests.ps1), [automatic bootstrap](../../scripts/tests/console-bootstrap.Tests.ps1), [deployment handoffs](../../scripts/tests/console-deployment.Tests.ps1), and browser regressions. CPU tests cover both OS payloads, readiness and target failures, no-write `-WhatIf`, partial submission, and temporary-file cleanup without running CPU load. These offline tests do not prove live guest execution, alert firing, tenant policy, ACR build availability, role propagation, or Kubernetes access.
+[Lab Operations Tests](../../.github/workflows/lab-operations-tests.yml) covers approval/journal/ARM contracts, [ten real scripts under fake commands](../../scripts/tests/lab-operations-execution.Tests.ps1), [automatic bootstrap](../../scripts/tests/console-bootstrap.Tests.ps1), [deployment handoffs](../../scripts/tests/console-deployment.Tests.ps1), and browser regressions. Customer-traffic tests cover immutable browser limits, target discovery, endpoint readiness, and wrapper invocation without opening a browser. CPU tests cover both OS payloads, readiness and target failures, no-write `-WhatIf`, partial submission, and temporary-file cleanup without running CPU load. These offline tests do not prove live Chromium execution, guest execution, alert firing, tenant policy, ACR build availability, role propagation, or Kubernetes access.
 
 The runner's `-CheckAccessOnly` mode validates its managed-identity login, target account, resource group, and action-specific prerequisites. For Start Lab, it also runs the real script's complete resource discovery with `-WhatIf`, including expanded VMSS instance views, without issuing start commands. For CPU simulation it verifies both VM targets and agents with `-WhatIf`, without submitting Run Command. It can acquire credentials and create temporary local files, but it does not execute a lab operation or prove that every later write will succeed. `-ValidateOnly` checks parameters without authenticating. Offline coverage includes duplicate Azure CLI paths, running and stopped VMSS instances, write-blocked discovery with all four resource types stopped, and sanitized failure phases and command names.
 

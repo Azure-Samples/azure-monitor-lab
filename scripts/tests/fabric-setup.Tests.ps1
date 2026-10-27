@@ -157,3 +157,38 @@ $fixture.Headers = @{}
 Assert-Failure { Invoke-TestTopology } '*operation URL or ID*'
 if ($fixture.Posts -ne 1 -or $fixture.Polls) { throw 'An accepted Eventstream update without operation metadata must not report success.' }
 Write-Output 'PASS: Eventstream updates use the same synchronous/asynchronous rules. No Azure calls or real delays.'
+
+$mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json -AsHashtable
+$capacityDeployments = @($mainTemplate.resources | Where-Object { $_.name -eq 'fabric-capacity' })
+if ($mainTemplate.outputs.Count -gt 64 -or $capacityDeployments.Count -ne 1 -or
+    $capacityDeployments[0].condition -cne "[parameters('enableFabric')]" -or
+    $mainTemplate.parameters.enableFabric.defaultValue -ne $false) {
+  throw 'The combined lab must retain the optional capacity without exceeding the ARM output limit.'
+}
+[xml]$architecture = Get-Content -LiteralPath (Join-Path $source 'docs/architecture-overview-sre.svg') -Raw
+$elements = @{}
+foreach ($element in $architecture.SelectNodes('//*[@id]')) { $elements[$element.id] = $element }
+foreach ($id in @('node-CUSTOMER', 'node-OBS', 'node-OAMW', 'node-OTEL', 'node-COPILOT',
+    'node-FAB', 'node-EVSTR', 'node-EH', 'node-RTD', 'edge-PLAT-EVSTR', 'edge-EVSTR-EH', 'edge-EH-RTD')) {
+  if (-not $elements.ContainsKey($id)) { throw "Shared architecture is missing '$id'." }
+}
+$azureBoundary = $elements['azure-resource-group-boundary']
+$azureBottom = [double]$azureBoundary.y + [double]$azureBoundary.height
+$fabricBoundary = $elements['fabric-workspace-boundary']
+if ([double]$fabricBoundary.y -le $azureBottom -or
+    [double]$elements['node-FAB'].rect.y -ge $azureBottom) {
+  throw 'The Fabric capacity must be inside Azure and tenant-scoped items outside the resource group.'
+}
+foreach ($id in @('node-EVSTR', 'node-EH', 'node-RTD')) {
+  if ([double]$elements[$id].rect.y -lt [double]$fabricBoundary.y -or
+      [double]$elements[$id].rect.y + [double]$elements[$id].rect.height -gt [double]$fabricBoundary.y + [double]$fabricBoundary.height) {
+    throw "Fabric item '$id' is outside the tenant-scoped workspace boundary."
+  }
+}
+$scenarioText = Get-Content -LiteralPath (Join-Path $source 'docs/DEMO-SCENARIOS.md') -Raw
+$scenarioIds = @([regex]::Matches($scenarioText, '<a id="s(\d+)"></a>') | ForEach-Object { [int]$_.Groups[1].Value })
+if (@($scenarioIds | Select-Object -Unique).Count -ne $scenarioIds.Count) { throw 'Scenario anchors must remain unique.' }
+foreach ($number in 0..80) {
+  if ($scenarioIds -notcontains $number) { throw "Integration or Fabric scenario '$number' was lost." }
+}
+Write-Output 'PASS: combined template output budget, shared architecture boundaries, and all integration/Fabric scenario anchors are preserved.'

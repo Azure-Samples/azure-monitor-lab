@@ -25,6 +25,8 @@ $PSNativeCommandUseErrorActionPreference = $true
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Info($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
 
+if ([string]::IsNullOrWhiteSpace($NamePrefix)) { $NamePrefix = 'amlab' }
+
 Write-Step "Pinning the Azure subscription"
 az account set --subscription $SubscriptionId | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'The AI setup subscription could not be selected.' }
@@ -60,10 +62,10 @@ $appInsights = az resource list `
   --subscription $SubscriptionId `
   --resource-group $ResourceGroup `
   --resource-type Microsoft.Insights/components `
-  --query "[?name=='appi-$NamePrefix'] | [0].{id:id,name:name}" `
+  --query "[?starts_with(name, 'appi-$NamePrefix-')] | sort_by(@, &name) | [0].{id:id,name:name}" `
   -o json | ConvertFrom-Json
 if (-not $appInsights) {
-  throw "Application Insights 'appi-$NamePrefix' was not found in '$ResourceGroup'."
+  throw "Application Insights 'appi-$NamePrefix-<suffix>' was not found in '$ResourceGroup'."
 }
 
 $appInsightsConnectionString = az resource show `

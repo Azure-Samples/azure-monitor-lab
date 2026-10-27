@@ -6,15 +6,17 @@
   <meta name="color-scheme" content="light">
   <title>Azure Monitor Lab Control Center</title>
   <link rel="stylesheet" href="/console.css">
+  <link rel="stylesheet" href="/console-theme.css">
   <script src="/console.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#panel-health">Skip to active view</a>
   <header class="topbar">
-    <a class="brand" href="/"><img id="brand-mark" width="28" height="28" alt=""><span>Azure Monitor <strong>Lab</strong></span></a>
+    <a class="brand" href="/" aria-label="Azure Monitor Lab home"><img id="brand-mark" width="210" height="50" alt="Azure Monitor Lab"></a>
     <nav class="documentation-nav" aria-label="Lab documentation">
-      <a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/LAB-CONTROL-CENTER.md" target="_blank" rel="noopener noreferrer" aria-label="Guide" title="Control Center guide"><i data-lucide="book-open"></i><span>Guide</span></a>
-      <a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md" target="_blank" rel="noopener noreferrer" aria-label="Scenarios" title="Guided scenarios"><i data-lucide="panels-top-left"></i><span>Scenarios</span></a>
+      <a data-link="CustomerApplication" data-link-optional aria-disabled="true" aria-label="Customer app" title="Not configured for this deployment"><i data-lucide="shopping-cart"></i><span>Customer app</span></a>
+      <a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/LAB-CONTROL-CENTER.md" target="_blank" rel="noopener noreferrer" aria-label="Guide" title="Control Center guide"><i data-lucide="book-open"></i><span>Guide</span></a>
+      <a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md" target="_blank" rel="noopener noreferrer" aria-label="Scenarios" title="Guided scenarios"><i data-lucide="panels-top-left"></i><span>Scenarios</span></a>
     </nav>
   </header>
   <main>
@@ -59,7 +61,7 @@
       <table id="infra-table" class="infra-table" aria-label="Infrastructure resource health" hidden><thead><tr><th scope="col">Resource</th><th scope="col">Status</th><th scope="col">Platform availability</th><th scope="col">Workbook telemetry</th></tr></thead><tbody id="infra-rows"></tbody></table>
       <div id="infra-empty" class="empty-history"><i data-lucide="heart-pulse"></i><p id="infra-empty-text">No infrastructure snapshot available.</p></div>
       <details id="infra-source-details" class="infra-sources" hidden><summary>Health sources</summary><ul id="infra-sources"></ul></details>
-      <nav class="scenario-links infra-scenarios" aria-label="Related scenarios for infrastructure health"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s1" target="_blank" rel="noopener noreferrer">1: Health Dashboard</a></nav>
+      <nav class="scenario-links infra-scenarios" aria-label="Related scenarios for infrastructure health"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s1" target="_blank" rel="noopener noreferrer">1: Health Dashboard</a></nav>
     </section>
     <div id="panel-console" role="tabpanel" aria-labelledby="tab-console" tabindex="0" class="workspace" hidden>
       <aside id="controls" aria-label="Lab controls">
@@ -71,7 +73,7 @@
             <button class="action danger-accent" data-action="explode"><i data-lucide="triangle-alert"></i><span>Trigger Error<small>GET /api/explode</small></span><i data-lucide="arrow-up-right"></i></button>
             <button class="action" data-action="dependency"><i data-lucide="network"></i><span>Test Dependency<small>GET /api/dep</small></span><i data-lucide="arrow-up-right"></i></button>
           </div>
-          <nav class="scenario-links" aria-label="Related scenarios for requests"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s3" target="_blank" rel="noopener noreferrer">3: Application Insights</a></nav>
+          <nav class="scenario-links" aria-label="Related scenarios for requests"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s3" target="_blank" rel="noopener noreferrer">3: Application Insights</a></nav>
         </section>
         <section class="control-section" aria-labelledby="checkout-heading">
           <div class="section-heading"><h2 id="checkout-heading">Business transaction</h2><span class="section-number">02</span></div>
@@ -81,7 +83,7 @@
           </div>
           <button class="button secondary full" data-action="checkout"><i data-lucide="shopping-cart"></i>Simulate Checkout<i data-lucide="arrow-right"></i></button>
           <div id="checkout-result" class="checkout-result" aria-live="polite"><span class="muted">No transactions yet</span></div>
-          <nav class="scenario-links" aria-label="Related scenarios for checkout"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s28" target="_blank" rel="noopener noreferrer">28: Business metrics</a></nav>
+          <nav class="scenario-links" aria-label="Related scenarios for checkout"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s28" target="_blank" rel="noopener noreferrer">28: Business metrics</a></nav>
         </section>
         <section class="control-section" aria-labelledby="traffic-heading">
           <div class="section-heading"><h2 id="traffic-heading">Traffic run</h2><span class="section-number">03</span></div>
@@ -93,13 +95,13 @@
           <div class="run-buttons"><button id="start-run" class="button primary"><i data-lucide="play"></i>Start Run</button><button id="stop-run" class="button secondary" disabled><i data-lucide="square"></i>Stop</button></div>
           <progress id="run-progress" value="0" max="10" aria-label="Traffic run progress"></progress>
           <div class="run-caption"><span id="run-status" role="status">Ready</span><span id="run-count">0 / 10</span></div>
-          <nav class="scenario-links" aria-label="Related scenarios for traffic"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s7" target="_blank" rel="noopener noreferrer">7: Alerts</a><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s13" target="_blank" rel="noopener noreferrer">13: Smart Detection</a></nav>
+          <nav class="scenario-links" aria-label="Related scenarios for traffic"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s7" target="_blank" rel="noopener noreferrer">7: Alerts</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s13" target="_blank" rel="noopener noreferrer">13: Smart Detection</a></nav>
         </section>
         <section class="advanced control-section" aria-labelledby="performance-heading">
           <div class="section-heading"><h2 id="performance-heading">Performance experiment</h2><i data-lucide="flask-conical"></i></div>
           <button id="performance" class="button secondary full"><i data-lucide="cpu"></i>Run Inefficient Code</button>
           <span id="cooldown" class="muted" role="status">Confirmation required</span>
-          <nav class="scenario-links" aria-label="Related scenarios for performance"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s18" target="_blank" rel="noopener noreferrer">18: Code Optimizations</a><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s29" target="_blank" rel="noopener noreferrer">29: Profiler</a></nav>
+          <nav class="scenario-links" aria-label="Related scenarios for performance"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s18" target="_blank" rel="noopener noreferrer">18: Code Optimizations</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s29" target="_blank" rel="noopener noreferrer">29: Profiler</a></nav>
         </section>
       </aside>
       <div class="results">
@@ -133,14 +135,29 @@
         <section aria-labelledby="operations-actions-heading"><div class="section-heading"><h2 id="operations-actions-heading">Lab actions</h2><span class="session-tag">APPROVAL REQUIRED</span></div>
           <div class="operation-actions">
             <button class="action" data-operation="start" aria-haspopup="dialog" disabled><i data-lucide="play"></i><span>Start Lab</span><i data-lucide="arrow-right"></i></button>
+            <button class="action danger-accent" data-operation="stop" aria-haspopup="dialog" disabled><i data-lucide="square"></i><span>Stop Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action danger-accent" data-operation="break" aria-haspopup="dialog" disabled><i data-lucide="triangle-alert"></i><span>Break Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="restore" aria-haspopup="dialog" disabled><i data-lucide="refresh-cw"></i><span>Restore Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="ramp" aria-haspopup="dialog" disabled><i data-lucide="chart-no-axes-combined"></i><span>Start Load Ramp</span><i data-lucide="arrow-right"></i></button>
+            <button class="action" data-operation="usage" aria-haspopup="dialog" disabled><i data-lucide="shopping-cart"></i><span>Generate Customer Traffic</span><i data-lucide="arrow-right"></i></button>
             <button class="action danger-accent" data-operation="cpu" aria-haspopup="dialog" disabled><i data-lucide="cpu"></i><span>Simulate High CPU</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="logs" aria-haspopup="dialog" disabled><i data-lucide="logs"></i><span>Send Custom Logs</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="annotation" aria-haspopup="dialog" disabled><i data-lucide="panels-top-left"></i><span>Add Release Marker</span><i data-lucide="arrow-right"></i></button>
+            <button id="customer-fault-menu" class="action danger-accent" aria-haspopup="dialog" disabled hidden><i data-lucide="triangle-alert"></i><span>Break the customer app</span><i data-lucide="arrow-right"></i></button>
           </div>
-          <nav class="scenario-links" aria-label="Related scenarios for operations"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s8" target="_blank" rel="noopener noreferrer">8: Break the lab</a><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s13" target="_blank" rel="noopener noreferrer">13: Smart Detection</a><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s24" target="_blank" rel="noopener noreferrer">24: Custom Logs</a><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s33" target="_blank" rel="noopener noreferrer">33: Release annotations</a></nav>
+          <section id="customer-incident" hidden aria-labelledby="customer-incident-heading">
+            <h3 id="customer-incident-heading">Customer application investigation</h3>
+            <p id="customer-incident-status" class="history-note" role="status"></p>
+            <label>Symptom-only troubleshooting prompt<textarea id="customer-incident-prompt" rows="8" readonly></textarea></label>
+            <div class="run-buttons">
+              <button id="customer-incident-copy" type="button" class="button secondary"><i data-lucide="copy"></i>Copy troubleshooting prompt</button>
+              <a id="customer-incident-sre" class="button secondary" hidden target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Open SRE Agent</a>
+              <a id="customer-incident-model" class="button secondary" hidden target="_blank" rel="noopener noreferrer"><i data-lucide="heart-pulse"></i>Open customer Health Model</a>
+              <button id="customer-incident-recover" type="button" class="button secondary"><i data-lucide="refresh-cw"></i>Restore application</button>
+            </div>
+            <p class="history-note">Paste the prompt into the application-troubleshooter VS Code/CLI agent or SRE Agent. Opening an agent does not submit a task or grant mitigation approval. Health Model signals can be unknown, stale, or unaffected by application-side delay. Recovery never replays dead-lettered orders.</p>
+          </section>
+          <nav class="scenario-links" aria-label="Related scenarios for operations"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s8" target="_blank" rel="noopener noreferrer">8: Break the lab</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s13" target="_blank" rel="noopener noreferrer">13: Smart Detection</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s24" target="_blank" rel="noopener noreferrer">24: Custom Logs</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s33" target="_blank" rel="noopener noreferrer">33: Release annotations</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s70" target="_blank" rel="noopener noreferrer">70: Customer usage</a></nav>
         </section>
         <section class="operations-activity" aria-labelledby="operations-runs-heading"><div class="section-heading"><h2 id="operations-runs-heading">Run activity</h2><div class="tool-actions"><span id="operations-run-count" class="muted">0 runs</span><button id="operations-refresh" class="icon-button" type="button" title="Refresh operation status" aria-label="Refresh operation status" disabled><i data-lucide="refresh-cw"></i></button></div></div>
           <p id="operations-updated" class="muted"></p><div id="operations-runs"></div><div id="operations-empty" class="empty-history"><i data-lucide="inbox"></i><p>No operations submitted</p></div>
@@ -161,7 +178,7 @@
           <div class="run-buttons"><button id="sre-send" type="submit" class="button primary" disabled><i data-lucide="send"></i>Send</button><button id="sre-stop" type="button" class="button secondary" disabled><i data-lucide="square"></i>Stop Waiting</button></div>
           <p class="history-note">Model charges may apply. Do not submit secrets. Approved operations run with the backend identity's permissions.</p>
           <p id="sre-destination-status" class="history-note">Loading SRE destination...</p>
-          <nav class="scenario-links" aria-label="Related scenarios for SRE"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s54" target="_blank" rel="noopener noreferrer">54: SRE Agent readiness</a></nav>
+          <nav class="scenario-links" aria-label="Related scenarios for SRE"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s54" target="_blank" rel="noopener noreferrer">54: SRE Agent readiness</a></nav>
           <details class="sre-tools"><summary id="sre-tool-count">MCP tools</summary><ul id="sre-tools"></ul></details>
         </form>
         <div class="agent-workspace">
@@ -182,7 +199,7 @@
       </div>
     </section>
     <section id="panel-foundry" role="tabpanel" aria-labelledby="tab-foundry" tabindex="0" hidden>
-      <div class="agent-heading"><div><p class="eyebrow">FOUNDRY / EXISTING LAB AGENTS</p><h2>Foundry Playground</h2></div><a id="foundry-open" class="button secondary" aria-disabled="true"><i data-lucide="external-link"></i>Open Foundry</a></div>
+      <div class="agent-heading"><div><p class="eyebrow">FOUNDRY / AGENT OBSERVABILITY</p><h2>Foundry Playground</h2></div><div class="run-buttons"><a id="observability-open" class="button secondary" aria-disabled="true"><i data-lucide="external-link"></i>Open Observability Agent</a><a id="foundry-open" class="button secondary" aria-disabled="true"><i data-lucide="external-link"></i>Open Foundry</a></div></div>
       <div class="agent-layout">
         <form id="agent-form" class="agent-settings">
           <div class="section-heading"><h2>New task</h2><button id="agent-refresh" type="button" class="icon-button" title="Refresh agent availability" aria-label="Refresh agent availability"><i data-lucide="refresh-cw"></i></button></div>
@@ -195,9 +212,83 @@
           <label class="consent"><input id="agent-consent" type="checkbox">I approve billable model usage for this task.</label>
           <div class="run-buttons"><button id="agent-send" type="submit" class="button primary" disabled><i data-lucide="send"></i>Run Agent</button><button id="agent-cancel" type="button" class="button secondary" disabled><i data-lucide="square"></i>Cancel</button></div>
           <p class="history-note">Do not submit secrets or sensitive data. Cancellation is best-effort; incurred usage may still be billed.</p>
-          <nav class="scenario-links" aria-label="Related scenarios for Foundry"><span>Related Scenarios</span><a data-documentation href="https://github.com/claestom/azure-monitor-lab/blob/master/docs/DEMO-SCENARIOS.md#s53" target="_blank" rel="noopener noreferrer">53: AI FinOps</a></nav>
+          <nav class="scenario-links" aria-label="Related scenarios for Foundry"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s53" target="_blank" rel="noopener noreferrer">53: AI FinOps</a></nav>
         </form>
         <div class="agent-workspace">
+          <section class="agent-scenario-panel" aria-labelledby="agent-scenario-heading">
+            <div class="section-heading"><div><p class="eyebrow">DETERMINISTIC TELEMETRY</p><h2 id="agent-scenario-heading">Troubleshooting scenarios</h2></div></div>
+            <form id="agent-scenario-form">
+              <div class="agent-scenario-fields">
+                <label>Failure<select id="agent-scenario" aria-label="Observability scenario"></select></label>
+                <label>Profile<select id="agent-scenario-mode" aria-label="Scenario profile"><option value="broken">Broken</option><option value="fixed">Fixed</option></select></label>
+              </div>
+              <p id="agent-scenario-description" class="history-note">Choose a deterministic scenario.</p>
+              <label class="consent"><input id="agent-scenario-consent" type="checkbox">I approve generation of synthetic, metadata-only demo telemetry.</label>
+              <div class="run-buttons"><button id="agent-scenario-run" class="button primary" type="submit" disabled><i data-lucide="activity"></i>Generate Trace</button></div>
+            </form>
+            <div id="agent-scenario-status" class="status-band" role="status">No observability scenario run</div>
+            <dl id="agent-scenario-outcome" class="scenario-outcome" hidden>
+              <div><dt>Technical</dt><dd id="scenario-technical">-</dd></div>
+              <div><dt>Task</dt><dd id="scenario-task">-</dd></div>
+              <div><dt>Performance</dt><dd id="scenario-performance">-</dd></div>
+              <div><dt>Trace</dt><dd id="scenario-trace">-</dd></div>
+              <div><dt>Retries</dt><dd id="scenario-retries">-</dd></div>
+              <div><dt>Tokens</dt><dd id="scenario-tokens">-</dd></div>
+            </dl>
+            <details class="incident-guide">
+              <summary>End-to-end Application Insights investigation</summary>
+              <p id="incident-journey-status" class="history-note" role="status">Generate a broken trace to begin the incident.</p>
+              <ol id="incident-journey">
+                <li>Establish task availability and Application Dashboard baseline.</li>
+                <li>Detect current customer impact in Live Metrics and alerts.</li>
+                <li>Separate failures, slow successes, and semantic task failures.</li>
+                <li>Use Application Map to locate the affected dependency.</li>
+                <li>Find this operation by trace ID in Transaction Search.</li>
+                <li>Traverse browser, request, agent, model, handoff, and tool telemetry.</li>
+                <li>Scope impact by scenario, cohort, agent, workflow, and model version.</li>
+                <li>Correlate the regression with release annotations and changes.</li>
+                <li>Use Observability Agent as trace specialist and produce the SRE handoff packet.</li>
+                <li>Use SRE Agent as incident commander to reconcile platform evidence and draft a Review-mode remediation.</li>
+                <li>Approve the smallest safe fix and run the Fixed profile.</li>
+                <li>Have both agents verify availability, correctness, latency, retries, tokens, trace hierarchy, and alert recovery.</li>
+              </ol>
+            </details>
+            <section id="agent-scenario-investigation" class="scenario-investigation" aria-labelledby="agent-scenario-prompt-heading" hidden>
+              <h3 id="agent-scenario-prompt-heading">Coordinated agent investigation</h3>
+              <p class="history-note">Step 1: open Observability Agent and paste the trace-specialist prompt. Copy its SRE handoff packet into Step 2, then paste the incident-command prompt into SRE Agent.</p>
+              <label for="agent-scenario-prompt">Observability Agent trace-specialist prompt</label>
+              <textarea id="agent-scenario-prompt" rows="9" readonly aria-label="Observability Agent investigation prompt"></textarea>
+              <div class="run-buttons"><button id="agent-scenario-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy Trace Prompt</button></div>
+              <label for="agent-scenario-sre-prompt">SRE Agent incident-command prompt</label>
+              <textarea id="agent-scenario-sre-prompt" rows="9" readonly aria-label="SRE Agent incident command prompt"></textarea>
+              <div class="run-buttons"><button id="agent-scenario-sre-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy SRE Prompt</button></div>
+            </section>
+            <p class="history-note">The optional strongest path uses Observability Agent for trace RCA and SRE Agent for incident command in Review mode. The base Application Insights investigation remains fully usable when either optional agent is disabled.</p>
+          </section>
+          <section class="agent-scenario-panel" aria-labelledby="alert-storm-heading">
+            <div class="section-heading"><div><p class="eyebrow">SCENARIO 64</p><h2 id="alert-storm-heading">Alert storm generator</h2></div></div>
+            <div class="agent-scenario-fields">
+              <label>Requests<select id="alert-storm-count" aria-label="Alert storm requests"><option value="12">12 requests</option><option value="18" selected>18 requests</option><option value="24">24 requests</option></select></label>
+              <label>Duration<select id="alert-storm-duration" aria-label="Alert storm duration"><option value="3">3 minutes</option><option value="5" selected>5 minutes</option><option value="10">10 minutes</option></select></label>
+            </div>
+            <label class="consent"><input id="alert-storm-consent" type="checkbox">I approve repeated synthetic slow and failed agent requests.</label>
+            <div class="run-buttons"><button id="alert-storm-start" class="button primary" type="button" disabled><i data-lucide="play"></i>Start Alert Storm</button><button id="alert-storm-stop" class="button secondary" type="button" disabled><i data-lucide="square"></i>Stop</button></div>
+            <progress id="alert-storm-progress" value="0" max="18" aria-label="Alert storm progress"></progress>
+            <div class="run-caption"><span id="alert-storm-status" role="status">Ready</span><span id="alert-storm-counter">0 / 18</span></div>
+            <p class="history-note">Generates one slow-tool run followed by two partial failures per cycle. Requests are spread across the selected duration and never replayed automatically.</p>
+          </section>
+          <section class="agent-scenario-panel" aria-labelledby="token-anomaly-heading">
+            <div class="section-heading"><div><p class="eyebrow">SCENARIO 65</p><h2 id="token-anomaly-heading">Token anomaly generator</h2></div></div>
+            <div class="agent-scenario-fields">
+              <label>Agent<select id="token-anomaly-agent" aria-label="Token anomaly agent" disabled><option value="">No agents available</option></select></label>
+              <label>Calls<select id="token-anomaly-count" aria-label="Token anomaly calls"><option value="3">3 calls</option><option value="5" selected>5 calls</option><option value="10">10 calls</option></select></label>
+            </div>
+            <label class="consent"><input id="token-anomaly-consent" type="checkbox">I approve this bounded batch of billable Foundry model calls.</label>
+            <div class="run-buttons"><button id="token-anomaly-start" class="button primary" type="button" disabled><i data-lucide="play"></i>Generate Token Anomaly</button><button id="token-anomaly-stop" class="button secondary" type="button" disabled><i data-lucide="square"></i>Stop</button></div>
+            <progress id="token-anomaly-progress" value="0" max="5" aria-label="Token anomaly progress"></progress>
+            <div class="run-caption"><span id="token-anomaly-status" role="status">Ready</span><span id="token-anomaly-counter">0 / 5</span></div>
+            <p class="history-note">Uses real, context-heavy Foundry calls and reports actual token totals. A bounded run demonstrates an anomaly but may not cross the 200,000-token static alert threshold.</p>
+          </section>
           <div class="section-heading"><h2>Task results</h2><button id="agent-clear" class="icon-button" title="Clear task results" aria-label="Clear task results"><i data-lucide="trash-2"></i></button></div>
           <div id="agent-status" class="status-band" role="status">No tasks submitted</div>
           <div id="agent-results" class="agent-results"></div>
@@ -214,7 +305,10 @@
   <dialog id="operation-dialog" aria-labelledby="operation-heading" aria-describedby="operation-impact">
     <h2 id="operation-heading">Lab operation</h2><p id="operation-impact"></p>
     <form id="operation-prepare-form">
-      <label id="operation-count-field" hidden>Event count<input id="operation-count" type="number" min="1" max="100" step="1" value="10" required></label>
+      <label id="operation-fault-field" hidden>Application fault or recovery<select id="operation-fault" disabled><option value="">Choose a reversible exercise</option></select></label>
+      <p id="operation-fault-description" class="history-note" hidden></p>
+      <label id="operation-count-field" hidden><span id="operation-count-label">Event count</span><input id="operation-count" type="number" min="1" max="100" step="1" value="10" required></label>
+      <div id="operation-usage-fields" hidden><label>Browser concurrency<input id="operation-concurrency" type="number" min="1" max="10" step="1" value="4"></label><label>Repeat users<input id="operation-repeat-users" type="number" min="0" max="100" step="1" value="6"></label></div>
       <div id="operation-marker-fields" hidden><label>Marker name<input id="operation-name" type="text" maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9 ._\(\)\-]{0,79}" autocomplete="off"></label><label>Category<select id="operation-category" aria-label="Marker category"><option value="Deployment">Deployment</option><option value="Incident">Incident</option></select></label></div>
       <div class="dialog-actions"><button type="button" class="button secondary" data-operation-cancel>Cancel</button><button id="operation-review" type="submit" class="button primary"><i data-lucide="scan-line"></i>Review Operation</button></div>
     </form>

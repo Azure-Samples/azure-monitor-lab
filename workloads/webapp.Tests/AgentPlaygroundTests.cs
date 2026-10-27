@@ -54,6 +54,31 @@ public sealed class AgentPlaygroundTests
     }
 
     [Fact]
+    public async Task TokenAnomalyGetsCompletionHeadroomWithoutChangingNormalTasks()
+    {
+        using var transport = new FakeFoundry();
+        var result = await Create(transport).RunAsync(
+            new("triage", "test task", true, "token-anomaly", Guid.NewGuid().ToString()), default);
+        Assert.Null(Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        using var sent = JsonDocument.Parse(transport.RunBody!);
+        Assert.Equal(4096, sent.RootElement.GetProperty("max_completion_tokens").GetInt32());
+    }
+
+    [Fact]
+    public async Task IncompleteRunReportsReasonAndConsumedUsageWithoutRetry()
+    {
+        using var transport = new FakeFoundry { RunStatus = "incomplete" };
+        var result = await Create(transport, true).RunAsync(
+            new("triage", "test task", true, "token-anomaly", Guid.NewGuid().ToString()), default);
+        Assert.Equal(502, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        var value = JsonSerializer.SerializeToElement(Assert.IsAssignableFrom<IValueHttpResult>(result).Value);
+        Assert.Equal("max_completion_tokens", value.GetProperty("incompleteReason").GetString());
+        Assert.Equal(120, value.GetProperty("inputTokens").GetInt64());
+        Assert.Equal(32, value.GetProperty("outputTokens").GetInt64());
+        Assert.Equal(1, transport.CreatedRuns);
+    }
+
+    [Fact]
     public async Task MissingUsageAndUnconfiguredPricingStayNull()
     {
         using var transport = new FakeFoundry { MissingUsage = true };
@@ -62,6 +87,18 @@ public sealed class AgentPlaygroundTests
         Assert.Null(answer.InputTokens);
         Assert.Null(answer.OutputTokens);
         Assert.Null(answer.EstimatedCostUsd);
+    }
+
+    [Theory]
+    [InlineData("unsupported", null)]
+    [InlineData(null, "9a812773-374f-481f-a1ec-4abfef3e3597")]
+    [InlineData("token-anomaly", "not-a-guid")]
+    public async Task InvalidTelemetryBatchMetadataIsRejected(string? scenario, string? batchId)
+    {
+        using var transport = new FakeFoundry();
+        var result = await Create(transport).RunAsync(new("triage", "test", true, scenario, batchId), default);
+        Assert.Equal(400, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        Assert.Equal(0, transport.CreatedRuns);
     }
 
     [Fact]
@@ -151,6 +188,7 @@ public sealed class AgentPlaygroundTests
         {
             id = "run_test", @object = "thread.run", created_at = 1700000000, thread_id = "thread_test",
             assistant_id = "asst_test", status = RunStatus, model = "test-model", tools = Array.Empty<object>(),
+            incomplete_details = RunStatus == "incomplete" ? new { reason = "max_completion_tokens" } : null,
             usage = MissingUsage ? null : new { prompt_tokens = 120, completion_tokens = 32, total_tokens = 152 }
         });
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

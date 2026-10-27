@@ -1,0 +1,18 @@
+let journey =
+    union
+        (pageViews
+        | where timestamp > ago(7d)
+        | where name startswith "Customer /"
+        | project timestamp, session_Id, user_Id, user_AuthenticatedId, Event = name, ItemType = "pageView"),
+        (customEvents
+        | where timestamp > ago(7d)
+        | where name in ("CustomerJourneyStarted", "CatalogViewed", "ProductSelected", "CartUpdated", "SupportRequested", "AgentResolutionViewed", "CheckoutStarted", "PaymentDeclined", "PurchaseCompleted")
+        | project timestamp, session_Id, user_Id, user_AuthenticatedId, Event = name, ItemType = "customEvent");
+journey
+| extend User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)
+| order by session_Id asc, timestamp asc
+| serialize
+| extend NextSession = next(session_Id), NextEvent = next(Event), NextItemType = next(ItemType)
+| where session_Id == NextSession
+| summarize Transitions = count(), Users = dcount(User) by Event, ItemType, NextEvent, NextItemType
+| order by Transitions desc

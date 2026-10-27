@@ -1,0 +1,136 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "995592362134426719"
+    }
+  },
+  "parameters": {
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "amlab",
+      "minLength": 3,
+      "maxLength": 8,
+      "metadata": {
+        "description": "Short prefix used to build resource names."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[uniqueString(resourceGroup().id)]",
+    "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]"
+  },
+  "resources": {
+    "analyticsRule": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[format('analyticsRule-{0}', uniqueString('analyticsRule', deployment().name))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceName": {
+            "value": "[variables('lawCentralName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "17387801086550536407"
+            }
+          },
+          "parameters": {
+            "workspaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Sentinel-enabled Log Analytics workspace name."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.SecurityInsights/alertRules",
+              "apiVersion": "2024-09-01",
+              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workspaceName'))]",
+              "name": "0a1b2c3d-amlab-rg-delete-alert",
+              "kind": "Scheduled",
+              "properties": {
+                "displayName": "amlab — Resource deletion in lab RG",
+                "description": "Demo Sentinel rule: any successful delete operation in the lab RG over the last 1h.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "AzureActivity\n| where TimeGenerated > ago(1h)\n| where ActivityStatusValue == \"Success\"\n| where OperationNameValue endswith \"/delete\"\n| project TimeGenerated, Caller, OperationNameValue, _ResourceId",
+                "queryFrequency": "PT15M",
+                "queryPeriod": "PT1H",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT1H",
+                "suppressionEnabled": false,
+                "tactics": [
+                  "Impact"
+                ],
+                "techniques": [
+                  "T1485"
+                ],
+                "eventGroupingSettings": {
+                  "aggregationKind": "AlertPerResult"
+                },
+                "entityMappings": [
+                  {
+                    "entityType": "Account",
+                    "fieldMappings": [
+                      {
+                        "identifier": "FullName",
+                        "columnName": "Caller"
+                      }
+                    ]
+                  },
+                  {
+                    "entityType": "AzureResource",
+                    "fieldMappings": [
+                      {
+                        "identifier": "ResourceId",
+                        "columnName": "_ResourceId"
+                      }
+                    ]
+                  }
+                ],
+                "incidentConfiguration": {
+                  "createIncident": true,
+                  "groupingConfiguration": {
+                    "enabled": true,
+                    "reopenClosedIncident": false,
+                    "lookbackDuration": "PT5H",
+                    "matchingMethod": "AnyAlert"
+                  }
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "ruleName": {
+              "type": "string",
+              "value": "0a1b2c3d-amlab-rg-delete-alert"
+            }
+          }
+        }
+      }
+    }
+  },
+  "outputs": {
+    "ruleName": {
+      "type": "string",
+      "value": "[reference('analyticsRule').outputs.ruleName.value]"
+    }
+  }
+}

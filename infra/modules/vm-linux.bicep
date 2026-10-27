@@ -20,13 +20,17 @@ param subnetId string
 @description('Data Collection Rule for VM Insights.')
 param dcrId string
 
+@description('Optional additional DCR for OpenTelemetry metrics. Empty keeps classic VM Insights only.')
+param otelDcrId string = ''
+
 @description('Resource tags.')
 param tags object = {}
+
+var useConfidentialVm = startsWith(toLower(vmSize), 'standard_ec') && (endsWith(toLower(vmSize), 'as_v5') || endsWith(toLower(vmSize), 'ads_v5'))
 
 resource pip 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
   name: 'pip-${vmName}'
   location: location
-  tags: tags
   sku: { name: 'Standard' }
   properties: {
     publicIPAllocationMethod: 'Static'
@@ -57,7 +61,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
   location: location
   tags: tags
   identity: { type: 'SystemAssigned' }
-  properties: {
+  properties: union({
     hardwareProfile: { vmSize: vmSize }
     osProfile: {
       computerName: vmName
@@ -71,13 +75,18 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
     storageProfile: {
       imageReference: {
         publisher: 'Canonical'
-        offer: '0001-com-ubuntu-server-jammy'
-        sku: '22_04-lts-gen2'
+        offer: useConfidentialVm ? '0001-com-ubuntu-confidential-vm-jammy' : '0001-com-ubuntu-server-jammy'
+        sku: useConfidentialVm ? '22_04-lts-cvm' : '22_04-lts-gen2'
         version: 'latest'
       }
       osDisk: {
         createOption: 'FromImage'
-        managedDisk: { storageAccountType: 'Standard_LRS' }
+        managedDisk: {
+          storageAccountType: 'Standard_LRS'
+          securityProfile: useConfidentialVm ? {
+            securityEncryptionType: 'VMGuestStateOnly'
+          } : null
+        }
       }
     }
     networkProfile: {
@@ -85,6 +94,32 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
     }
     diagnosticsProfile: {
       bootDiagnostics: { enabled: true }
+    }
+  }, useConfidentialVm ? {
+    securityProfile: {
+      securityType: 'ConfidentialVM'
+      uefiSettings: {
+        secureBootEnabled: true
+        vTpmEnabled: true
+      }
+    }
+  } : {})
+}
+
+resource autoShutdown 'Microsoft.DevTestLab/schedules@2018-09-15' = {
+  name: 'shutdown-computevm-${vm.name}'
+  location: location
+  tags: tags
+  properties: {
+    status: 'Enabled'
+    taskType: 'ComputeVmShutdownTask'
+    dailyRecurrence: {
+      time: '2300'
+    }
+    timeZoneId: 'Romance Standard Time'
+    targetResourceId: vm.id
+    notificationSettings: {
+      status: 'Disabled'
     }
   }
 }
@@ -129,6 +164,16 @@ resource dcra 'Microsoft.Insights/dataCollectionRuleAssociations@2023-03-11' = {
   properties: {
     dataCollectionRuleId: dcrId
     description: 'Associate VM Insights DCR'
+  }
+  dependsOn: [ ama ]
+}
+
+resource otelDcra 'Microsoft.Insights/dataCollectionRuleAssociations@2023-03-11' = if (!empty(otelDcrId)) {
+  scope: vm
+  name: 'vm-otel-metrics-association'
+  properties: {
+    dataCollectionRuleId: otelDcrId
+    description: 'Default OpenTelemetry guest metrics to the Azure Monitor workspace.'
   }
   dependsOn: [ ama ]
 }

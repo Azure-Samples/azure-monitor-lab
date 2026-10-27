@@ -1,8 +1,8 @@
 // =====================================================================================
 // AI observability artifacts — deployed with the optional AI stage.
-//   - Query Pack: the GenAI token/cost/health KQL queries (infra/modules/ai-kql/*.kql)
+//   - Query Pack: the GenAI usage/health KQL queries (infra/modules/ai-kql/*.kql)
 //     saved into Log Analytics (surface under the App Insights Logs > Queries hub).
-//   - Workbook: the importable FinOps workbook (token/cost/health, PTU break-even),
+//   - Workbook: the importable FinOps workbook (token/model/health, illustrative PTU inputs),
 //     deployed as a shared workbook scoped to the lab Application Insights.
 //
 // Token-spike/anomaly alerting lives in foundry.bicep (metric alerts on the account's
@@ -21,18 +21,18 @@ param tags object = {}
 // Each query is embedded at compile time from the .kql files in ai-kql/.
 var queries = [
   { key: 'token-usage-by-agent-hourly', display: 'Token usage by agent (hourly)', body: loadTextContent('ai-kql/token-usage-by-agent-hourly.kql') }
-  { key: 'cost-by-agent-daily', display: 'Estimated cost by agent', body: loadTextContent('ai-kql/cost-by-agent-daily.kql') }
-  { key: 'cost-trend-daily-7d', display: 'Estimated cost trend (7d)', body: loadTextContent('ai-kql/cost-trend-daily-7d.kql') }
-  { key: 'cost-per-successful-request', display: 'Cost per successful request', body: loadTextContent('ai-kql/cost-per-successful-request.kql') }
+  { key: 'cost-by-agent-daily', display: 'Token usage by agent (24h)', body: loadTextContent('ai-kql/cost-by-agent-daily.kql') }
+  { key: 'cost-trend-daily-7d', display: 'Token usage trend (7d)', body: loadTextContent('ai-kql/cost-trend-daily-7d.kql') }
+  { key: 'cost-per-successful-request', display: 'Tokens per successful request', body: loadTextContent('ai-kql/cost-per-successful-request.kql') }
   { key: 'cached-token-ratio', display: 'Cached-input token ratio', body: loadTextContent('ai-kql/cached-token-ratio.kql') }
   { key: 'model-router-distribution', display: 'Model router routed-model distribution', body: loadTextContent('ai-kql/model-router-distribution.kql') }
   { key: 'finish-reason-length-rate', display: 'Truncated-response rate', body: loadTextContent('ai-kql/finish-reason-length-rate.kql') }
   { key: 'latency-percentiles-by-agent', display: 'Latency percentiles by agent', body: loadTextContent('ai-kql/latency-percentiles-by-agent.kql') }
   { key: 'tool-error-rate', display: 'Tool error rate', body: loadTextContent('ai-kql/tool-error-rate.kql') }
-  { key: 'ptu-breakeven', display: 'PTU vs consumption break-even', body: loadTextContent('ai-kql/ptu-breakeven.kql') }
+  { key: 'ptu-breakeven', display: 'Illustrative PTU comparison (set rates)', body: loadTextContent('ai-kql/ptu-breakeven.kql') }
   { key: 'chart-tokens-by-agent-stacked', display: 'Chart: tokens by agent (stacked)', body: loadTextContent('ai-kql/chart-tokens-by-agent-stacked.kql') }
-  { key: 'chart-cost-by-agent-bar', display: 'Chart: cost by agent (bar)', body: loadTextContent('ai-kql/chart-cost-by-agent-bar.kql') }
-  { key: 'chart-cost-share-pie', display: 'Chart: cost share (pie)', body: loadTextContent('ai-kql/chart-cost-share-pie.kql') }
+  { key: 'chart-cost-by-agent-bar', display: 'Chart: tokens by agent (bar)', body: loadTextContent('ai-kql/chart-cost-by-agent-bar.kql') }
+  { key: 'chart-cost-share-pie', display: 'Chart: token share (pie)', body: loadTextContent('ai-kql/chart-cost-share-pie.kql') }
   { key: 'chart-tokens-trend-timechart', display: 'Chart: completion tokens per hour', body: loadTextContent('ai-kql/chart-tokens-trend-timechart.kql') }
 ]
 

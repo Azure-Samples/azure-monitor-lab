@@ -13,6 +13,8 @@
     3. The PaaS resource types the lab deploys (AKS, App Service, Managed Grafana,
        Azure Monitor Workspace, Event Hub, Key Vault, Log Analytics) are available
        in the region.
+    4. When requested, the Observability Agent location is supported and the
+       subscription has not reached the five-agent preview limit.
 
   Prints a PASS / WARN / FAIL table and returns a non-zero exit code (and throws when
   invoked from deploy.ps1) if any hard blocker is found, so you fail in ~15 seconds
@@ -39,6 +41,16 @@
 .PARAMETER DeployWindowsVm
   Whether the Windows VM is part of the deployment. Default true.
 
+.PARAMETER DeployObservabilityAgent
+  Whether the optional Observability Agent is part of the deployment. Default false.
+
+.PARAMETER ObservabilityAgentLocation
+  Region for the optional Observability Agent and its dedicated workspace.
+
+.PARAMETER ResourceGroup
+  Target resource group. Used to distinguish an idempotent agent redeployment from
+  creation of a sixth agent when the subscription preview limit is reached.
+
 .PARAMETER WarnOnly
   Report problems but do not fail (exit 0 / no throw). Useful for a dry inspection.
 
@@ -59,7 +71,12 @@ param(
   [string] $VmssSize        = 'Standard_B1s',
   [bool]   $DeployLinuxVm   = $true,
   [bool]   $DeployWindowsVm = $true,
+  [bool]   $DeployObservabilityAgent = $false,
+  [string] $ObservabilityAgentLocation = 'westeurope',
+  [string] $AppServiceLocation = 'westeurope',
+  [string] $ResourceGroup,
   [string] $AppServicePlanTier = 'Basic',
+  [bool] $DeployCustomerDependencies = $false,
   [switch] $WarnOnly
 )
 
@@ -78,10 +95,6 @@ function Add-Result($check, $detail, $status) {
 function Get-RegionToken($s) { if ($null -eq $s) { '' } else { ($s -replace '\s','').ToLowerInvariant() } }
 $locToken = Get-RegionToken $Location
 
-# App Service is pinned to westeurope by the templates (northeurope has no Basic quota
-# on the sponsored lab subs), so its availability + quota are validated against that
-# region, not the lab $Location.
-$appServiceLocation = 'westeurope'
 $appServiceLocToken = Get-RegionToken $appServiceLocation
 
 Write-Step "Pre-flight availability + quota check for region '$Location'"
@@ -99,6 +112,37 @@ if ($validLocations -notcontains $Location) {
   if ($WarnOnly) { exit 0 } else { throw "Pre-flight failed: '$Location' is not a valid Azure region." }
 }
 Add-Result 'Region name' "'$Location' is a valid region" 'PASS'
+
+if ($DeployObservabilityAgent) {
+  $supportedAgentLocations = @(
+    'australiaeast', 'canadacentral', 'centralus', 'eastasia', 'eastus',
+    'southcentralus', 'uksouth', 'westcentralus', 'westeurope'
+  )
+  if ($supportedAgentLocations -notcontains $ObservabilityAgentLocation.ToLowerInvariant()) {
+    Add-Result 'Observability Agent region' "'$ObservabilityAgentLocation' is not supported by this preview" 'FAIL'
+  } else {
+    Add-Result 'Observability Agent region' "'$ObservabilityAgentLocation' is supported by this preview" 'PASS'
+  }
+
+  $agentListJson = az resource list --subscription $sub.id `
+    --resource-type Microsoft.Monitor/observabilityAgents `
+    --query '[].{id:id}' --output json 2>$null
+  if ($LASTEXITCODE -eq 0 -and $agentListJson) {
+    $agents = @($agentListJson | ConvertFrom-Json)
+    $agentCount = $agents.Count
+    $targetAgentExists = -not [string]::IsNullOrWhiteSpace($ResourceGroup) -and
+      @($agents | Where-Object { $_.id -like "*/resourceGroups/$ResourceGroup/providers/Microsoft.Monitor/observabilityAgents/*" }).Count -gt 0
+    if ($agentCount -ge 5 -and -not $targetAgentExists) {
+      Add-Result 'Observability Agent limit' "$agentCount existing agents; the preview maximum is five per subscription" 'FAIL'
+    } elseif ($agentCount -ge 5) {
+      Add-Result 'Observability Agent limit' "$agentCount existing agents; the target resource group already contains an agent, so an idempotent update does not require another slot" 'PASS'
+    } else {
+      Add-Result 'Observability Agent limit' "$agentCount existing agents; $((5 - $agentCount)) preview slot(s) remain" 'PASS'
+    }
+  } else {
+    Add-Result 'Observability Agent limit' 'could not query the preview resource list; verify fewer than five agents before deployment' 'WARN'
+  }
+}
 
 # ---------------------------------------------------------------------------
 # Build the VM demand list: which SKUs, and how many of each, will be created.
@@ -213,6 +257,22 @@ $paasTypes = @(
   @{ Label = 'Key Vault';              Ns = 'Microsoft.KeyVault';         Type = 'vaults' }
   @{ Label = 'Log Analytics';          Ns = 'Microsoft.OperationalInsights'; Type = 'workspaces' }
 )
+if ($DeployCustomerDependencies) {
+  $paasTypes += @(
+    @{ Label = 'Customer SQL'; Ns = 'Microsoft.Sql'; Type = 'servers'; Customer = $true }
+    @{ Label = 'Customer Service Bus'; Ns = 'Microsoft.ServiceBus'; Type = 'namespaces'; Customer = $true }
+    @{ Label = 'Processor storage'; Ns = 'Microsoft.Storage'; Type = 'storageAccounts'; Customer = $true }
+  )
+  $flexLocations = az functionapp list-flexconsumption-locations --query '[].name' --output json --only-show-errors | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or -not $flexLocations) {
+    Add-Result 'Orders processor Flex Consumption' 'Could not verify supported regions. Update Azure CLI and verify Flex regional quota before deploying.' 'FAIL'
+  } elseif (@($flexLocations | ForEach-Object { Get-RegionToken $_ }) -notcontains $appServiceLocToken) {
+    Add-Result 'Orders processor Flex Consumption' "$appServiceLocation does not offer Flex Consumption." 'FAIL'
+  } else {
+    Add-Result 'Orders processor Flex Consumption' "$appServiceLocation offers Flex; 2048 MB/instance, maximum 40, no always-ready instances. Regional memory quota/capacity still requires ARM validation." 'PASS'
+  }
+  Add-Result 'Customer dependencies lifecycle' 'SQL Basic + Standard orders queue are billable even idle. Explicit Entra-admin SQL bootstrap and processor publication are required; no password/key or Azure-services SQL firewall fallback.' 'WARN'
+}
 foreach ($t in $paasTypes) {
   $locsJson = az provider show -n $t.Ns --query "resourceTypes[?resourceType=='$($t.Type)'].locations | [0]" -o json 2>$null
   $locs = if ($locsJson) { $locsJson | ConvertFrom-Json } else { $null }
@@ -222,8 +282,8 @@ foreach ($t in $paasTypes) {
     continue
   }
   # App Service is pinned to westeurope, so validate it against that region.
-  $checkLoc = if ($t.Ns -eq 'Microsoft.Web') { $appServiceLocation } else { $Location }
-  $checkTok = if ($t.Ns -eq 'Microsoft.Web') { $appServiceLocToken } else { $locToken }
+  $checkLoc = if ($t.Ns -eq 'Microsoft.Web' -or $t.Customer) { $appServiceLocation } else { $Location }
+  $checkTok = if ($t.Ns -eq 'Microsoft.Web' -or $t.Customer) { $appServiceLocToken } else { $locToken }
   $tokens = @($locs | ForEach-Object { Get-RegionToken $_ })
   if ($tokens -contains $checkTok) {
     Add-Result "$($t.Label)" "available in $checkLoc" 'PASS'

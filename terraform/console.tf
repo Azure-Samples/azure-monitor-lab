@@ -21,9 +21,14 @@ locals {
       "workloads/k8s/02-loadgen.yaml",
       "workloads/k8s/03-loadgen-ramp.yaml",
       "scripts/post-staged-deploy.ps1",
+      "scripts/setup-activity-log.ps1",
+      "scripts/setup-health-model.ps1",
+      "scripts/setup-slis.ps1",
+      "scripts/resolve-service-group-id.ps1",
       "scripts/post-deploy.ps1",
       "scripts/prepare-webapp-package.ps1",
       "scripts/wait-webapp-publication.ps1",
+      "scripts/prepare-broken-slot.ps1",
       "scripts/write-webapp-console-config.ps1",
       "scripts/initialize-webapp-console.ps1",
       "scripts/setup-webapp-agent-access.ps1",
@@ -38,6 +43,8 @@ locals {
       "scripts/simulate-high-cpu.ps1",
       "scripts/send-custom-logs.ps1",
       "scripts/send-release-annotation.ps1",
+      "scripts/trigger-broken-slot.ps1",
+      "scripts/rollback-broken-slot.ps1",
       "infra/modules/lab-console-platform.json",
       "infra/modules/lab-console-job.json",
       "infra/modules/custom-logs.json",
@@ -55,11 +62,11 @@ resource "terraform_data" "console_ready" {
     resource_group = data.azurerm_resource_group.lab.id
     prefix         = var.name_prefix
     sources        = sha256(join("", [for name in local.console_sources : filesha256("${path.module}/../${name}")]))
-    integrations   = jsonencode({ ai = var.enable_stage_ai, sre = var.enable_stage_sre_agent, stage_e = var.enable_stage_e, ai_location = var.ai_location, router_model_version = var.router_model_version })
+    integrations   = jsonencode({ ai = var.enable_stage_ai, sre = var.enable_stage_sre_agent, slot_failure = var.enable_slot_failure_scenario, stage_e = var.enable_stage_e, ai_location = var.ai_location, router_model_version = var.router_model_version })
     operators      = jsonencode(var.console_operator_object_ids)
   }
 
-  depends_on = [azapi_resource.stage_b, azapi_resource.stage_c, azapi_resource.stage_d, azapi_resource.stage_e, azapi_resource.stage_ai, azapi_resource.stage_sre_agent]
+  depends_on = [azapi_resource.stage_b, azapi_resource.stage_c, azapi_resource.stage_d, azapi_resource.stage_e, azapi_resource.stage_sentinel_content, azapi_resource.stage_ai, azapi_resource.stage_sre_agent]
 
   lifecycle {
     replace_triggered_by = [azapi_resource.stage_b]

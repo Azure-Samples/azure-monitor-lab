@@ -1,12 +1,8 @@
 // Cached-input token ratio, by agent (last 24h)
 // -------------------------------------------------------------------
-// Purpose:  Savings lever. Prompt caching bills cached input tokens at a
-//           large discount (~88% off). A LOW cached % on agents with big,
-//           repeated system prompts = money left on the table.
+// Purpose:  Measure prompt-cache use. Apply the current cached-input rate
+//           for the actual model to calculate savings.
 // Source:   Application Insights `dependencies` (GenAI spans).
-// Pricing:  gpt-5-mini Global (Azure OpenAI pricing) input $0.25/1M,
-//           cached input $0.03/1M -> each cached token saves $0.22/1M.
-//           https://azure.microsoft.com/en-us/pricing/details/azure-openai/
 // Notes:    `gen_ai.usage.cached_input_tokens` is only emitted when the
 //           model/SDK reports cache hits. If the column is absent it reads
 //           as 0 -> cached_pct 0 (i.e., no caching in effect = opportunity).
@@ -19,7 +15,5 @@ dependencies
          agent   = tostring(customDimensions["gen_ai.agent.name"])
 | summarize input=sum(inTok), cached=sum(coalesce(cached, 0)) by agent
 | extend cached_pct = round(100.0 * todouble(cached) / iff(input > 0, input, 1), 1)
-// Savings = cached tokens billed at $0.03/1M instead of $0.25/1M.
-| extend est_savings_usd = round(todouble(cached) * (0.25 - 0.03) / 1000000.0, 4)
-| project agent, input, cached, cached_pct, est_savings_usd
+| project agent, input, cached, cached_pct
 | order by cached_pct asc

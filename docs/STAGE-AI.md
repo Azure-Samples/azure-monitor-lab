@@ -2,7 +2,7 @@
 
 > **Goal of this stage:** add a real **GenAI workload** to the lab so the observability stack has token/trace/cost telemetry to reason about — the "AI FinOps" story. It layers a Microsoft Foundry account + models, wires them into the lab's Application Insights, and lands token-spike alerting plus an AI FinOps query pack, workbook, and health model. Fully **opt-in** and **off by default** (it deploys billable models).
 >
-> **Depends only on Stage A** (it connects to `appi-amlab`). Pinned to **swedencentral** regardless of the lab region, because the `gpt-5-*` / `model-router` SKUs, the Foundry portal, and the CloudHealth preview are region-limited — the same reason the workload Health Model is pinned.
+> **Depends only on Stage A** (it connects to `appi-amlab-<suffix>`). Pinned to **swedencentral** regardless of the lab region, because the `gpt-5-*` / `model-router` SKUs, the Foundry portal, and the CloudHealth preview are region-limited — the same reason the workload Health Model is pinned.
 
 ## 1) What gets created
 
@@ -10,13 +10,13 @@
 |---|---|---|
 | Foundry workload | `ai<amlab><suffix>` (AI Services account) + `amlab-ai-proj` project, both swedencentral | The GenAI control plane. Project management enabled; system-assigned identity. |
 | Model deployments | `gpt-5-mini` (chat), `text-embedding-3-small` (embeddings), `gpt-5.4` (optimization), **`model-router`** — all `GlobalStandard` | The models the agents + traffic simulator exercise. `model-router` picks a cheaper/stronger underlying model per request. |
-| Tracing connection | Project → `appi-amlab` Application Insights connection | Lights up the Foundry portal Observability/Tracing tab and lands `gen_ai.*` spans in the lab App Insights. |
+| Tracing connection | Project → `appi-amlab-<suffix>` Application Insights connection | Lights up the Foundry portal Observability/Tracing tab and lands `gen_ai.*` spans in the lab App Insights. |
 | Token alerts | `alert-amlab-token-anomaly` (dynamic threshold) + `alert-amlab-token-spike` (static ceiling) on the account's `TotalTokens` metric, split per deployment | Anomaly detection + a hard guardrail for runaway token spend. Optional `ag-amlab-ai` action group when `alertEmail` is set. |
-| AI FinOps observability | `qp-ai-finops` query pack (14 GenAI KQL queries) + a shared **AI FinOps workbook** | Token usage, estimated cost by agent, cached-token ratio, model-router distribution, PTU break-even, latency/error percentiles. |
-| AI health tier | An **"AI" tier folded into the workload health model** (`hm-amlab-workload`): an `aiworkload` node → the Foundry account entity (Latency / TotalErrors / TotalTokens metric signals) + 4 agent entities carrying error-rate + estimated-cost Log Analytics signals | One health model for the whole estate — the AI workload rolls up next to frontend/compute/platform; high cost or error rate turns an agent unhealthy. A separate `ai-healthmodel.bicep` exists as an opt-in fallback for standalone A+AI deployments (no Stage E). |
+| AI FinOps observability | `qp-ai-finops` query pack (14 GenAI KQL queries) + a shared **AI FinOps workbook** | Token usage, cached-token ratio, model-router distribution, tokens per successful request, an illustrative PTU comparison populated with clearly labeled example assumptions, and latency/error percentiles. |
+| AI health tier | An **"AI" tier folded into the workload health model** (`hm-amlab-workload`): an `aiworkload` node → the Foundry account entity (Latency / TotalErrors / TotalTokens metric signals) + 4 agent entities carrying error-rate + token-volume Log Analytics signals | One health model for the whole estate — the AI workload rolls up next to frontend/compute/platform; high token volume or error rate turns an agent unhealthy. A separate `ai-healthmodel.bicep` exists as an opt-in fallback for standalone A+AI deployments (no Stage E). |
 | Agents + traffic | 4 agents (`Support Triage`, `FinOps Q&A`, `Doc Summarizer`, `Context-Rich Assistant`) + a traffic simulator, provisioned by `scripts/setup-ai.ps1` | Generates the live token/trace/cost telemetry the queries, workbook, health model, and alerts consume. Python packages listed in [`workloads/ai/requirements.txt`](../workloads/ai/requirements.txt) are pip-installed first. |
 
-> Cross-stage references: `appi-amlab` and its backing App Insights LAW (Stage A). No dependency on Stages B–E; the AI stage creates its own action group.
+> Cross-stage references: `appi-amlab-<suffix>` and its backing App Insights LAW (Stage A). No dependency on Stages B–E; the AI stage creates its own action group.
 
 ## 2) Speaker notes
 
@@ -29,20 +29,20 @@
 3. **"model-router is the cost lever."**
    Open the *Model router routed-model distribution* query. Easy prompts get a cheap model, hard prompts a strong one — surfaced as `gen_ai.response.model`. Even a modest routing rate compounds into real savings.
 
-4. **"Prompt caching is free money."**
-   The `Context-Rich Assistant` uses a >1024-token static system prompt, so repeated calls hit the prompt cache. Show the *Cached-input token ratio* query — cached input is billed at a steep discount.
+4. **"Prompt caching can reduce input cost."**
+   The `Context-Rich Assistant` uses a >1024-token static system prompt, so repeated calls can hit the prompt cache. Show the *Cached-input token ratio* query, then use the actual model's current cached-input rate for the saving.
 
 5. **"Token alerts = guardrails before the bill."**
    Two alerts on `TotalTokens`: a dynamic-threshold anomaly detector that learns each deployment's baseline, and a static ceiling as a hard stop. Trigger it live by running the simulator hot (`--conversations 100 --interval 5`).
 
 6. **"One health model, AI included."**
-   The AI workload is folded into `hm-amlab-workload` as a fourth **AI** tier (alongside frontend/compute/platform). The 4 agent entities carry both an error-rate signal and an estimated-cost signal — a cost breach alone turns an agent unhealthy. Frame the CloudHealth blade as executive dashboarding (preview; API still moving).
+   The AI workload is folded into `hm-amlab-workload` as a fourth **AI** tier (alongside frontend/compute/platform). The 4 agent entities carry error-rate and token-volume signals. Frame the CloudHealth blade as executive dashboarding (preview; API still moving).
 
 ## 3) Portal walkthrough (UI)
 
 1. **Foundry portal (`ai.azure.com`) → project `amlab-ai-proj` → Observability / Tracing** — show agent runs, token consumption by model, and traces from the simulated conversations.
-2. **`appi-amlab` → Logs** — run a query from the `qp-ai-finops` pack (Queries hub), e.g. *Estimated cost by agent* or *Model router routed-model distribution*.
-3. **Monitor → Workbooks → Shared → "AI FinOps — Foundry Agents"** — time-range picker, token/cost tiles, PTU break-even, cost-share pie.
+2. **`appi-amlab-<suffix>` → Logs** — run a query from the `qp-ai-finops` pack (Queries hub), e.g. *Token usage by agent (24h)* or *Model router routed-model distribution*.
+3. **Monitor → Workbooks → Shared → "AI FinOps — Foundry Agents"** — time-range picker, token/efficiency tiles, token-share pie, and a PTU comparison that works with illustrative defaults. Replace those defaults with current rates for one comparable model and deployment type before planning.
 4. **Monitor → Alerts → Alert rules** — `alert-amlab-token-anomaly` + `alert-amlab-token-spike`.
 5. **Monitor → Health models → `hm-amlab-workload`** *(preview)* — open the graph; show the **AI** tier (`aiworkload` → Foundry account + 4 agent entities) rolling up alongside frontend/compute/platform.
 
@@ -69,7 +69,8 @@ az monitor metrics alert list -g $rg --query "[?contains(name,'token')].{name:na
 az resource list -g $rg --resource-type Microsoft.CloudHealth/healthmodels --query "[?ends_with(name,'-ai')].{name:name,location:location}" -o table
 
 # Telemetry landed? (after running scripts/setup-ai.ps1, allow a few minutes)
-az monitor app-insights query --app appi-amlab -g $rg --analytics-query "dependencies | where timestamp > ago(1h) | extend agent=tostring(customDimensions['gen_ai.agent.name']) | where isnotempty(agent) | summarize calls=count() by agent" --query "tables[0].rows" -o json
+$appi = az resource list -g $rg --resource-type Microsoft.Insights/components --query "[?starts_with(name, 'appi-amlab-')] | [0].name" -o tsv
+az monitor app-insights query --app $appi -g $rg --analytics-query "dependencies | where timestamp > ago(1h) | extend agent=tostring(customDimensions['gen_ai.agent.name']) | where isnotempty(agent) | summarize calls=count() by agent" --query "tables[0].rows" -o json
 ```
 
 ## 5) Done-when
@@ -90,13 +91,13 @@ az monitor app-insights query --app appi-amlab -g $rg --analytics-query "depende
 
 **Raw Bicep:** follow [the Stage AI preview, deploy, and completion sequence](DEPLOY-BICEP-STEP-BY-STEP.md#stage-ai-deploy-optional). It uses the dedicated AI template's parameter schema, refreshes an existing Web App before optional traffic, and skips Web App work for an A+AI lab. Do not pass the entire main parameters file to the AI template.
 
-**Portal/Cloud Shell:** finish the [portal workload wrapper](POST-DEPLOYMENT.md#portal-deployment) first. Then request optional traffic with the [AI Cloud Shell helper](../scripts/setup-ai-cloud-shell.ps1), which verifies and forwards account context and uses core ARM discovery without optional CLI extensions:
+**Portal/Cloud Shell:** finish the [portal deployment and Cloud Shell wrapper](../README.md#option-1-deploy-to-azure-portal-no-local-setup) first. Then request optional traffic with the [AI Cloud Shell helper](../scripts/setup-ai-cloud-shell.ps1), which verifies and forwards account context and uses core ARM discovery without optional CLI extensions:
 
 ```powershell
 ./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix amlab
 ```
 
-The Cloud Shell helper also works locally. Both helpers return after the worker acknowledges startup, not after the conversations finish. The PID and log/status paths are printed; keep the host and its Azure CLI sign-in available. Cloud Shell or CI termination can interrupt traffic, there is no automatic restart, and each invocation starts a new billable batch. See [background traffic details](POST-DEPLOYMENT.md#background-ai-traffic).
+The Cloud Shell helper also works locally. Both helpers return after the worker acknowledges startup, not after the conversations finish. The PID and log/status paths are printed; keep the host and its Azure CLI sign-in available. Cloud Shell or CI termination can interrupt traffic, there is no automatic restart, and each invocation starts a new billable batch. The worker runs on the deployment machine, not in the Web App or an Azure job. Its status and logs are stored under `%LOCALAPPDATA%/azure-monitor-lab/ai-traffic` on Windows or `$XDG_STATE_HOME/azure-monitor-lab/ai-traffic` on Linux, defaulting to `~/.local/state`. A `running` status confirms startup only; inspect the log for successful model responses.
 
 When adding AI after Stage E, rerun Stage E with `enableAi=true` to add its AI health tier. An A+AI deployment can instead opt into Stage AI's separate health model with `enableHealthModel=true`. Neither health-model option is required for the Foundry Playground; that console tab requires Stage B plus AI.
 

@@ -7,6 +7,10 @@ variable "resource_group_name" {
 }
 
 variable "location" { type = string }
+variable "app_service_location" {
+  type    = string
+  default = "westeurope"
+}
 variable "alert_email" { type = string }
 variable "vm_admin_password" {
   type      = string
@@ -53,6 +57,13 @@ variable "deploy_linux_vm" {
   default = true
 }
 
+variable "enable_vm_otel_metrics" {
+  type        = bool
+  default     = true
+  nullable    = false
+  description = "Add OpenTelemetry system metrics to standalone VMs in Stage B, using the existing Azure Monitor workspace. Classic VM Insights remains enabled; VMSS is unchanged. Setting false after deployment does not remove existing DCR associations."
+}
+
 variable "vm_size" {
   type    = string
   default = "Standard_B2s"
@@ -61,6 +72,11 @@ variable "vm_size" {
 variable "aks_node_vm_size" {
   type    = string
   default = "Standard_B2s"
+}
+
+variable "vmss_size" {
+  type    = string
+  default = "Standard_B1s"
 }
 
 variable "aks_node_count" {
@@ -136,6 +152,12 @@ variable "enable_stage_sre_agent" {
   type        = bool
   default     = false
   description = "Deploy the optional preview Azure SRE Agent stage. The agent is hard pinned to swedencentral and can incur billable usage."
+}
+
+variable "enable_slot_failure_scenario" {
+  type        = bool
+  default     = false
+  description = "Provision an S1 App Service plan and a preloaded broken slot for the opt-in SRE rollback scenario."
 }
 
 variable "ai_location" {

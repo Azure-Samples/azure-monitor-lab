@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@fontsource-variable/manrope": "^5.2.8",
+    "@microsoft/applicationinsights-web": "^3.4.4",
     "chart.js": "^4.5.0",
     "lucide": "^0.468.0"
   },

@@ -22,7 +22,12 @@
 
 .PARAMETER ServiceGroupId
   ARM resource id segment. Alphanumeric + - _ ( ) . ~ ; max 250 chars; globally
-  unique within the tenant.
+  unique within the tenant. Defaults to the existing RG membership target, or
+  amlab-workload-<scope-hash> for a new lab. The hash includes subscription and RG.
+
+.PARAMETER ServiceGroupDisplayName
+  Explicit display-name override. Otherwise preserve the existing group's name,
+  or use AMLAB - <resource-group> when creating a new group.
 
 .PARAMETER Teardown
   Remove the member relationship and the service group. Idempotent (DELETE).
@@ -40,8 +45,8 @@
 [CmdletBinding()]
 param(
   [string] $ResourceGroup           = 'rg-azure-monitor-lab',
-  [string] $ServiceGroupId          = 'amlab-workload',
-  [string] $ServiceGroupDisplayName = 'AMLAB · Azure Monitor Lab Workload',
+  [string] $ServiceGroupId,
+  [string] $ServiceGroupDisplayName,
   [string] $RelationshipId          = 'sgm-amlab-rg',
   [switch] $Teardown
 )
@@ -67,6 +72,8 @@ if (Test-Path $targetFile) {
 
 $subId    = $active.id
 $tenantId = $active.tenantId
+$ServiceGroupId = & (Join-Path $PSScriptRoot 'resolve-service-group-id.ps1') `
+  -SubscriptionId $subId -ResourceGroup $ResourceGroup -ServiceGroupId $ServiceGroupId -RelationshipId $RelationshipId
 Write-Info "Tenant   : $tenantId"
 Write-Info "Sub      : $subId"
 Write-Info "RG       : $ResourceGroup"
@@ -94,8 +101,10 @@ function Register-Provider {
   }
 }
 
-Write-Step "Ensuring required resource providers are registered"
-Register-Provider -Namespace 'Microsoft.Management'
+if (-not $Teardown) {
+  Write-Step "Ensuring required resource providers are registered"
+  Register-Provider -Namespace 'Microsoft.Management'
+}
 
 # --- API endpoints -------------------------------------------------------------
 $sgApi   = '2024-02-01-preview'
@@ -138,17 +147,19 @@ function Wait-ForProvisioning {
 if ($Teardown) {
   Write-Step "Teardown: removing service group member + service group"
 
-  Write-Info "DELETE $sgmUrl"
-  az rest --method delete --url $sgmUrl --only-show-errors 2>$null | Out-Null
-  Write-Info "Member relationship delete submitted."
+  $submitted = & (Join-Path $PSScriptRoot 'remove-arm-resource.ps1') -SubscriptionId $subId `
+    -ResourceId "$rgScope/providers/Microsoft.Relationships/serviceGroupMember/$RelationshipId" -ApiVersion $sgmApi
+  if ($submitted) {
+    Write-Info 'Delete submitted: member relationship'
+    Start-Sleep -Seconds 10
+  } else { Write-Info 'Already absent: member relationship' }
 
-  Start-Sleep -Seconds 10
+  $submitted = & (Join-Path $PSScriptRoot 'remove-arm-resource.ps1') -SubscriptionId $subId `
+    -ResourceId "/providers/Microsoft.Management/serviceGroups/$ServiceGroupId" -ApiVersion $sgApi
+  if ($submitted) { Write-Info 'Delete submitted: service group' }
+  else { Write-Info 'Already absent: service group' }
 
-  Write-Info "DELETE $sgUrl"
-  az rest --method delete --url $sgUrl --only-show-errors 2>$null | Out-Null
-  Write-Info "Service group delete submitted."
-
-  Write-Host "`nTeardown complete (DELETE is idempotent; no error if missing)." -ForegroundColor Green
+  Write-Host "`nService Group cleanup finished: deletes submitted or resources already absent." -ForegroundColor Green
   Write-Host "The Health Model itself is torn down with the RG via 'azd down' or 'az group delete'." -ForegroundColor DarkGray
   return
 }
@@ -158,6 +169,32 @@ if ($Teardown) {
 # ===============================================================================
 
 # --- 1. Service Group (tenant scope) ------------------------------------------
+if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
+  $PSNativeCommandUseErrorActionPreference = $false
+  $groupOutput = az rest --method get --url $sgUrl --only-show-errors -o json 2>&1 | Out-String
+  $groupExitCode = $LASTEXITCODE
+  if ($groupExitCode -eq 0) {
+    $existingGroup = $groupOutput | ConvertFrom-Json
+    $ServiceGroupDisplayName = $existingGroup.properties.displayName
+    if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
+      throw "Service Group '$ServiceGroupId' has no display name; refusing to overwrite it."
+    }
+    Write-Info "Preserving existing Service Group display name: $ServiceGroupDisplayName"
+  } else {
+    $errorCode = ''
+    if ($groupOutput -match '(?ms)^\s*ERROR:\s*[^\{\r\n]*(?<body>\{.*\})\)\s*$') {
+      $errorCode = ($Matches.body | ConvertFrom-Json).error.code
+    } elseif ($groupOutput -match '(?m)^\s*ERROR:\s*\((?<code>[A-Za-z0-9]+)\)') {
+      $errorCode = $Matches.code
+    } elseif ($groupOutput -match '(?m)^\s*ERROR:\s*Not Found\s*$') {
+      $errorCode = 'NotFound'
+    }
+    if ($errorCode -notin @('ResourceNotFound', 'ServiceGroupNameNotFound', 'NotFound')) {
+      throw "Could not read Service Group '$ServiceGroupId' (Azure CLI exit code $groupExitCode). Details:`n$groupOutput"
+    }
+    $ServiceGroupDisplayName = "AMLAB - $ResourceGroup"
+  }
+}
 Write-Step "Creating service group '$ServiceGroupId' under tenant root"
 
 $sgBody = @{
@@ -232,6 +269,6 @@ Write-Host @"
 
    To remove
    ---------
-   ./scripts/setup-health-model.ps1 -Teardown
+   ./scripts/setup-health-model.ps1 -ResourceGroup '$ResourceGroup' -ServiceGroupId '$ServiceGroupId' -Teardown
 
 "@ -ForegroundColor Green

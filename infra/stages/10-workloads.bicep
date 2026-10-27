@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region for App Service and its co-located diagnostic Storage and Event Hub dependencies.')
+param appServiceLocation string = 'westeurope'
+
 @description('Short prefix used to build resource names.')
 @minLength(3)
 @maxLength(8)
@@ -21,6 +24,9 @@ param deployWindowsVm bool = true
 @description('Deploy the Linux demo VM.')
 param deployLinuxVm bool = true
 
+@description('Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets.')
+param enableVmOtelMetrics bool = true
+
 @description('VM size.')
 param vmSize string = 'Standard_B2s'
 
@@ -36,10 +42,22 @@ param grafanaAdminObjectId string = ''
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
+@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the App Service plan with configurable Standard S2 and one worker.')
+param enableSlotFailureScenario bool = false
+
+param enableCustomerDependencies bool = false
+param sqlEntraAdminObjectId string = ''
+param sqlEntraAdminName string = ''
+@allowed(['User', 'Group', 'Application'])
+param sqlEntraAdminType string = 'Group'
+@allowed(['S1', 'S2', 'S3'])
+param slotAppServicePlanSku string = 'S2'
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
+var customerAppInsightsName = '${appInsightsName}-customer'
 var amwName = 'amw-${namePrefix}'
 var grafanaName = 'amg-${namePrefix}-${take(suffix, 4)}'
 var vnetName = 'vnet-${namePrefix}'
@@ -49,11 +67,13 @@ var aksName = 'aks-${namePrefix}'
 var aksDnsPrefix = '${namePrefix}-${take(suffix, 6)}'
 var appPlanName = 'plan-${namePrefix}'
 var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
+var customerWebAppName = 'app-${namePrefix}-${take(suffix, 5)}-customer'
 var dcrVmInsightsName = 'dcr-${namePrefix}-vminsights'
+var deployVmOtelMetrics = enableVmOtelMetrics && (deployLinuxVm || deployWindowsVm)
 var dcrPrometheusName = 'dcr-${namePrefix}-prometheus'
 var dceName = 'dce-${namePrefix}'
 var storageAccountName = 'st${namePrefix}${take(suffix, 8)}'
-// Dedicated storage co-located with the App Service (westeurope) for its archive diag
+// Dedicated storage co-located with the App Service for its archive diag
 // setting — storage diag destinations must match the source region.
 var appDiagStorageName = 'stapp${namePrefix}${take(suffix, 8)}'
 var eventHubNsName = 'evhns-${namePrefix}-${take(suffix, 5)}'
@@ -63,11 +83,6 @@ var commonTags = {
   purpose: 'azure-monitor-lab'
   costCenter: 'demo'
 }
-
-// App Service is pinned to westeurope, independent of the lab region — the sponsored
-// lab subscriptions have no Basic (B1) App Service quota in northeurope, so the plan
-// would fail ARM preflight there. westeurope has unlimited Basic quota.
-var appServiceLocation = 'westeurope'
 
 var workloadSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, 'snet-workload')
 
@@ -81,6 +96,10 @@ resource lawAppInsights 'Microsoft.OperationalInsights/workspaces@2023-09-01' ex
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: appInsightsName
+}
+
+resource customerAppInsights 'Microsoft.Insights/components@2020-02-02' existing = if (enableSlotFailureScenario) {
+  name: customerAppInsightsName
 }
 
 resource amw 'Microsoft.Monitor/accounts@2023-04-03' existing = {
@@ -108,6 +127,16 @@ resource eventHubAuthRule 'Microsoft.EventHub/namespaces/authorizationRules@2022
   name: 'RootManageSharedAccessKey'
 }
 
+module vmOtelMetrics '../modules/vm-otel-metrics.bicep' = if (deployVmOtelMetrics) {
+  name: 'vm-otel-metrics'
+  params: {
+    name: 'dcr-${namePrefix}-vm-otel'
+    location: location
+    monitoringAccountId: amw.id
+    tags: commonTags
+  }
+}
+
 module vmLinux '../modules/vm-linux.bicep' = if (deployLinuxVm) {
   name: 'vm-linux'
   params: {
@@ -118,6 +147,7 @@ module vmLinux '../modules/vm-linux.bicep' = if (deployLinuxVm) {
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }
@@ -132,6 +162,7 @@ module vmWindows '../modules/vm-windows.bicep' = if (deployWindowsVm) {
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId
     dcrId: dcrVmInsights.id
+    otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
 }
@@ -164,7 +195,7 @@ module grafana '../modules/grafana.bicep' = {
 }
 
 // Dedicated storage for the App Service archive-to-blob diag setting, co-located with
-// the App Service in westeurope (storage diag destinations must match the source region).
+// the App Service (storage diag destinations must match the source region).
 module appDiagStorage '../modules/storage-account.bicep' = {
   name: 'app-diag-storage'
   params: {
@@ -187,6 +218,39 @@ module appService '../modules/appservice.bicep' = {
     diagStorageAccountId: appDiagStorage.outputs.id
     diagEventHubAuthRuleId: eventHubAuthRule.id
     diagEventHubName: 'diagstream'
+    enableSlotFailureScenario: enableSlotFailureScenario
+    slotAppServicePlanSku: slotAppServicePlanSku
+    tags: commonTags
+  }
+}
+
+module customerDependencies '../modules/customer-dependencies.bicep' = if (enableCustomerDependencies && enableSlotFailureScenario) {
+  name: 'customer-dependencies'
+  params: {
+    namePrefix: namePrefix
+    suffix: suffix
+    location: appServiceLocation
+    centralLawId: lawCentral.id
+    appInsightsName: appInsights.name
+    sqlEntraAdminObjectId: sqlEntraAdminObjectId
+    sqlEntraAdminName: sqlEntraAdminName
+    sqlEntraAdminType: sqlEntraAdminType
+    tags: commonTags
+  }
+}
+
+module customerWebApp '../modules/customer-webapp.bicep' = if (enableSlotFailureScenario) {
+  name: 'customer-webapp'
+  params: {
+    webAppName: customerWebAppName
+    location: appServiceLocation
+    serverFarmResourceId: appService.outputs.planId
+    appInsightsConnectionString: customerAppInsights!.properties.ConnectionString
+    appInsightsInstrumentationKey: customerAppInsights!.properties.InstrumentationKey
+    centralLawId: lawCentral.id
+    customerIdentityId: enableCustomerDependencies ? customerDependencies!.outputs.customerIdentityId : ''
+    customerSubnetId: enableCustomerDependencies ? customerDependencies!.outputs.customerSubnetId : ''
+    customerDependencySettings: enableCustomerDependencies ? customerDependencies!.outputs.customerSettings : { CustomerDependencies__Enabled: 'false' }
     tags: commonTags
   }
 }
@@ -199,6 +263,9 @@ module consolePlatform '../modules/lab-console-platform.bicep' = {
     location: appServiceLocation
     tags: commonTags
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []
+    enableSlotFailureScenario: enableSlotFailureScenario
+    customerWebAppName: enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
+    customerWorkerName: enableCustomerDependencies ? customerDependencies!.outputs.workerName : ''
   }
 }
 
@@ -242,3 +309,9 @@ module flowLogs '../modules/flow-logs.bicep' = {
     tags: commonTags
   }
 }
+
+output webAppName string = appService.outputs.webAppName
+output customerWebAppName string = enableSlotFailureScenario ? customerWebApp!.outputs.webAppName : ''
+output customerWebAppDefaultHost string = enableSlotFailureScenario ? customerWebApp!.outputs.defaultHost : ''
+output customerAppInsightsName string = enableSlotFailureScenario ? customerAppInsightsName : ''
+output customerDependencies object = enableCustomerDependencies && enableSlotFailureScenario ? customerDependencies!.outputs.customerDependencies : { enabled: false }

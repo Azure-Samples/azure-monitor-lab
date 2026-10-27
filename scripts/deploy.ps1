@@ -22,6 +22,10 @@
 .PARAMETER ParametersFile
   Bicep parameters file. Defaults to infra/main.parameters.json.
 
+.PARAMETER ApproveCustomerDependencies
+  Approve SQL schema/users/seed initialization and orders worker publication for
+  the enabled customer backend. Otherwise post-deployment requests confirmation.
+
 .EXAMPLE
   ./scripts/deploy.ps1
 
@@ -36,7 +40,8 @@ param(
   [string] $ParametersFile = (Join-Path $PSScriptRoot '..' 'infra' 'main.parameters.json'),
   [switch] $SkipPreflight,
   [int]    $MaxDeployRetries = 0,
-  [guid[]] $ConsoleOperatorObjectIds
+  [guid[]] $ConsoleOperatorObjectIds,
+  [switch] $ApproveCustomerDependencies
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,6 +55,12 @@ function Write-Step($msg) {
 $pfAksNodeCount    = 1
 $pfDeployWindowsVm = $true
 $pfDeployLinuxVm   = $true
+$pfVmSize          = 'Standard_B2s'
+$pfAksNodeVmSize   = 'Standard_B2s'
+$pfVmssSize        = 'Standard_B1s'
+$pfAppServiceLocation = 'westeurope'
+$pfDeployObservabilityAgent = $false
+$pfObservabilityAgentLocation = 'westeurope'
 
 # -------------------------------------------------------------------
 # Materialize derived files (.azure-target.json, main.parameters.json,
@@ -77,6 +88,16 @@ if (Test-Path $labConfigPath) {
   if ($null -ne $labCfg.aksNodeCount)    { $pfAksNodeCount    = [int]$labCfg.aksNodeCount }
   if ($null -ne $labCfg.deployWindowsVm) { $pfDeployWindowsVm = [bool]$labCfg.deployWindowsVm }
   if ($null -ne $labCfg.deployLinuxVm)   { $pfDeployLinuxVm   = [bool]$labCfg.deployLinuxVm }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmSize))        { $pfVmSize = [string]$labCfg.vmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.aksNodeVmSize)) { $pfAksNodeVmSize = [string]$labCfg.aksNodeVmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmssSize))      { $pfVmssSize = [string]$labCfg.vmssSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.appServiceLocation)) { $pfAppServiceLocation = [string]$labCfg.appServiceLocation }
+  if ($null -ne $labCfg.stageToggles.enableStageObservabilityAgent) {
+    $pfDeployObservabilityAgent = [bool]$labCfg.stageToggles.enableStageObservabilityAgent
+  }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.observabilityAgentLocation)) {
+    $pfObservabilityAgentLocation = $labCfg.observabilityAgentLocation
+  }
 }
 
 # -------------------------------------------------------------------
@@ -108,15 +129,37 @@ Write-Step "Active subscription"
 az account show --query "{name:name, id:id, tenantId:tenantId, user:user.name}" -o table
 
 # 0b. Pre-flight availability + quota check — fail in ~15s instead of 20min in.
+$deploymentInputs = Get-Content -LiteralPath $ParametersFile -Raw | ConvertFrom-Json
+$pfCustomerDependencies = $deploymentInputs.parameters.enableCustomerDependencies.value -eq $true
+if ($pfCustomerDependencies) {
+  $sqlAdmin = [guid]::Empty
+  if ($deploymentInputs.parameters.enableSlotFailureScenario.value -isnot [bool] -or
+      $deploymentInputs.parameters.enableSlotFailureScenario.value -ne $true -or
+      -not [guid]::TryParseExact([string]$deploymentInputs.parameters.sqlEntraAdminObjectId.value, 'D', [ref]$sqlAdmin) -or
+      $sqlAdmin -eq [guid]::Empty -or [string]::IsNullOrWhiteSpace($deploymentInputs.parameters.sqlEntraAdminName.value) -or
+      ($deploymentInputs.parameters.sqlEntraAdminType -and $deploymentInputs.parameters.sqlEntraAdminType.value -notin @('User','Group','Application'))) {
+    throw 'Customer dependencies require enableSlotFailureScenario=true and explicit SQL Entra administrator GUID/name/type in the selected parameters file.'
+  }
+}
+$pfAppServicePlanTier = if ($deploymentInputs.parameters.enableSlotFailureScenario.value -eq $true) { 'Standard' } else { 'Basic' }
 if ($SkipPreflight) {
   Write-Step "Skipping pre-flight availability/quota check (-SkipPreflight)"
 } else {
   Write-Step "Pre-flight: validating SKUs + quota + resource availability in $Location"
   $preflight = Join-Path $PSScriptRoot 'preflight-check.ps1'
   & $preflight -Location $Location `
+               -VmSize $pfVmSize `
+               -AksNodeVmSize $pfAksNodeVmSize `
+               -VmssSize $pfVmssSize `
+               -AppServiceLocation $pfAppServiceLocation `
                -AksNodeCount $pfAksNodeCount `
                -DeployWindowsVm $pfDeployWindowsVm `
-               -DeployLinuxVm $pfDeployLinuxVm
+               -DeployLinuxVm $pfDeployLinuxVm `
+               -DeployObservabilityAgent $pfDeployObservabilityAgent `
+               -ObservabilityAgentLocation $pfObservabilityAgentLocation `
+               -DeployCustomerDependencies $pfCustomerDependencies `
+               -AppServicePlanTier $pfAppServicePlanTier `
+               -ResourceGroup $ResourceGroup
   if ($LASTEXITCODE -ne 0) {
     throw "Pre-flight check failed for region '$Location'. Fix the FAIL rows above (or re-run with -SkipPreflight to bypass) before deploying."
   }
@@ -148,6 +191,11 @@ Write-Step "Ensuring preview resource providers are registered"
 Register-ResourceProvider -Namespace 'Microsoft.CloudHealth'
 Register-ResourceProvider -Namespace 'Microsoft.App'
 Register-ResourceProvider -Namespace 'Microsoft.ContainerRegistry'
+if ($pfCustomerDependencies) {
+  Register-ResourceProvider -Namespace 'Microsoft.Sql'
+  Register-ResourceProvider -Namespace 'Microsoft.ServiceBus'
+  Register-ResourceProvider -Namespace 'Microsoft.App'
+}
 
 $fabricEnabled = $false
 if ($null -ne $labCfg -and $null -ne $labCfg.stageToggles -and $null -ne $labCfg.stageToggles.enableStageFabric) {
@@ -162,6 +210,9 @@ if ($fabricEnabled) {
 Write-Step "Deploying main.bicep (this takes about 5 minutes: AKS + VMs + Grafana)"
 $deploymentName = "amlab-$(Get-Date -Format 'yyyyMMddHHmmss')"
 $mainBicep = Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'
+. (Join-Path $PSScriptRoot 'deployment-slot-recovery.ps1')
+$deploymentSubscription = az account show --query id -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $deploymentSubscription) { throw 'Cannot resolve the pinned deployment subscription.' }
 
 # Transient allocation/capacity error codes. These are region-wide, service-side, and
 # NOT knowable ahead of time via any quota/SKU/availability API (see preflight-check.ps1) —
@@ -196,13 +247,11 @@ while ($true) {
     Write-Host "   Retry $($attempt - 1)/$MaxDeployRetries — capacity is often reclaimed as others delete clusters..." -ForegroundColor Yellow
   }
 
-  az deployment group create `
-    --resource-group $ResourceGroup `
-    --name $deploymentName `
-    --template-file $mainBicep `
-    --parameters "@$ParametersFile" `
-    --parameters location=$Location `
-    --output none
+  $deploymentArguments = @('--subscription', $deploymentSubscription, '--resource-group', $ResourceGroup,
+    '--name', $deploymentName, '--template-file', $mainBicep,
+    '--parameters', "@$ParametersFile", '--parameters', "location=$Location", '--mode', 'Incremental')
+  Invoke-LabDeployment -Arguments $deploymentArguments -SubscriptionId $deploymentSubscription `
+    -ResourceGroup $ResourceGroup -DeploymentName $deploymentName
 
   if ($LASTEXITCODE -eq 0) { break }
 
@@ -309,12 +358,21 @@ $outputs = $outputsJson | ConvertFrom-Json
 
 $webAppName       = $outputs.webAppName.value
 $webAppHost       = $outputs.webAppDefaultHost.value
+$customerWebAppName = $outputs.customerWebAppName.value
 $aksName          = $outputs.aksName.value
 $grafanaEndpoint  = $outputs.grafanaEndpoint.value
 $workbookId       = $outputs.workbookId.value
 $centralLawName   = $outputs.centralLawName.value
 $linuxVm          = $outputs.linuxVmNameOut.value
 $winVm            = $outputs.windowsVmNameOut.value
+
+if ($outputs.observabilityAgentEnabled.value) {
+  Write-Step 'Removing the Observability Agent subscription grant after verifying its resource-scoped replacement'
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $active.id `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
+}
 
 # 2b. Subscription-level Activity Log -> central LAW.
 #     Subscription-scope diagnostic settings cannot be deployed from RG-scope Bicep,
@@ -328,16 +386,10 @@ $winVm            = $outputs.windowsVmNameOut.value
 #     can be a future version that hasn't shipped to all regions yet (e.g. '2026-03-01'
 #     returning NoRegisteredProviderFound in swedencentral).
 Write-Step "Ensuring subscription Activity Log ships to law-amlab-central (scenario 43 prereq)"
-$lawArmId = az monitor log-analytics workspace show -g $ResourceGroup -n $centralLawName --query id -o tsv
-$diagName = 'amlab-activity-to-law'
-$existingWs = az monitor diagnostic-settings subscription list --query "value[?name=='$diagName'].workspaceId | [0]" -o tsv 2>$null
-if ($existingWs -and $existingWs -eq $lawArmId) {
-  Write-Host "   '$diagName' already routes Activity Log to law-amlab-central" -ForegroundColor DarkGray
-} else {
-  $logsJson = '[{"category":"Administrative","enabled":true},{"category":"Security","enabled":true},{"category":"ServiceHealth","enabled":true},{"category":"Alert","enabled":true},{"category":"Recommendation","enabled":true},{"category":"Policy","enabled":true},{"category":"Autoscale","enabled":true},{"category":"ResourceHealth","enabled":true}]'
-  az monitor diagnostic-settings subscription create --name $diagName --location global --workspace $lawArmId --logs $logsJson --only-show-errors | Out-Null
-  Write-Host "   '$diagName' created -> Activity Log will start landing in law-amlab-central (5-15 min latency)" -ForegroundColor Green
-}
+& (Join-Path $PSScriptRoot 'setup-activity-log.ps1') `
+  -SubscriptionId $active.id `
+  -ResourceGroup $ResourceGroup `
+  -WorkspaceName $centralLawName
 
 Write-Host ""
 Write-Host "Deployment outputs:" -ForegroundColor Green
@@ -350,7 +402,22 @@ Write-Host "  Windows VM     : $winVm"
 
 # 3. Post-deploy
 $postDeploy = Join-Path $PSScriptRoot 'post-deploy.ps1'
-& $postDeploy -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -WebAppName $webAppName -AksName $aksName -WebAppHost $webAppHost -CentralLawName $centralLawName -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
+$postDeployParameters = @{
+  SubscriptionId = $active.id
+  TenantId = $active.tenantId
+  ResourceGroup = $ResourceGroup
+  WebAppName = $webAppName
+  AksName = $aksName
+  WebAppHost = $webAppHost
+  CentralLawName = $centralLawName
+  ConsoleOperatorObjectIds = $ConsoleOperatorObjectIds
+  CustomerDependencyDeploymentName = $deploymentName
+  ApproveCustomerDependencies = $ApproveCustomerDependencies
+}
+if (-not [string]::IsNullOrWhiteSpace($customerWebAppName)) {
+  $postDeployParameters.CustomerWebAppName = $customerWebAppName
+}
+& $postDeploy @postDeployParameters
 
 # 4. Service Group (tenant-scoped, preview) + service group member relationship.
 #    Required before SLIs can be attached as extensions on the group.
@@ -375,7 +442,20 @@ if ($sreAgentEnabled) {
   & $setupSreAgent -SubscriptionId $active.id -ResourceGroup $ResourceGroup
 }
 
-# 7. Optional AI feature - create the demo agents + simulate GenAI traffic, but only
+# 7. Optional Azure Copilot Observability Agent. Bicep creates the agent, its
+#    dedicated Azure Monitor workspace, monitored Application Insights child,
+#    and least-privilege role assignments; this verifies the deployed contract.
+$observabilityAgentEnabled = $false
+if ($null -ne $labCfg -and $null -ne $labCfg.stageToggles -and $null -ne $labCfg.stageToggles.enableStageObservabilityAgent) {
+  $observabilityAgentEnabled = [bool]$labCfg.stageToggles.enableStageObservabilityAgent
+}
+if ($observabilityAgentEnabled) {
+  Write-Step "Observability Agent stage enabled - verifying resource, scope, operations, and RBAC"
+  $setupObservabilityAgent = Join-Path $PSScriptRoot 'setup-observability-agent.ps1'
+  & $setupObservabilityAgent -SubscriptionId $active.id -ResourceGroup $ResourceGroup
+}
+
+# 8. Optional AI feature - create the demo agents + simulate GenAI traffic, but only
 #    when lab.config.json enabled it (stageToggles.enableStageAI -> Bicep enableAi).
 $aiEnabled = $false
 $aiTrafficStarted = $false
