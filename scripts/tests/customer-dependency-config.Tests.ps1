@@ -5,8 +5,8 @@ New-Item -ItemType Directory -Path (Join-Path $fixture 'scripts'), (Join-Path $f
 try {
   Copy-Item (Join-Path $repo 'scripts\sync-config.ps1') (Join-Path $fixture 'scripts\sync-config.ps1')
   $cfg = Get-Content (Join-Path $repo 'lab.config.json.example') -Raw | ConvertFrom-Json
-  $cfg.subscriptionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
-  $cfg.tenantId = '11111111-aaaa-bbbb-cccc-dddddddddddd'
+  $cfg.subscriptionId = [guid]::NewGuid().ToString()
+  $cfg.tenantId = [guid]::NewGuid().ToString()
   $cfg.vmAdminPassword = 'Fixture-only-N0tASecret!'
   $file = Join-Path $fixture 'lab.config.json'
   function Invoke-FixtureSync {

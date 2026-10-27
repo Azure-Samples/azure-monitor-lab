@@ -113,6 +113,12 @@ Folder layout:
 
 If you change anything under `infra/stages/*.bicep`, recompile the JSON templates that Terraform consumes:
 
+Use the pinned Bicep version `0.37.4` and preserve LF line endings in embedded
+KQL/workbook inputs, as specified by `.gitattributes`. `loadTextContent` embeds
+those bytes in ARM JSON, so stale CRLF working copies can produce template drift
+even when query behavior is unchanged. After regeneration, run
+`./scripts/tests/compiled-templates.Tests.ps1` before committing.
+
 ```powershell
 az bicep build --file infra/stages/00-foundation.bicep        --outfile infra/stages/00-foundation.json
 az bicep build --file infra/stages/10-workloads.bicep         --outfile infra/stages/10-workloads.json
