@@ -3,7 +3,69 @@ param([string] $BicepExecutable)
 
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$appInsightsWorkbookFiles = @(
+  Join-Path $source 'infra/modules/appinsights-investigation-workbook.json'
+  Join-Path $source 'infra/modules/appinsights-usage-workbook.json'
+)
+$appInsightsQueryFiles = @(
+  $appInsightsWorkbookFiles
+  Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-kql') -Filter '*.kql' | Select-Object -ExpandProperty FullName
+)
+foreach ($queryFile in $appInsightsQueryFiles) {
+  $queryText = Get-Content -LiteralPath $queryFile -Raw
+  if ($queryText -match 'duration\s*/\s*1ms' -or $queryText -match 'duration\s*=\s*0ms') {
+    throw "Application Insights resource queries expose duration as numeric milliseconds; '$queryFile' must not mix it with timespan literals."
+  }
+}
+Write-Output 'PASS: Application Insights queries keep duration arithmetic in numeric milliseconds.'
+if (@(Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-kql') -Filter '*.kql').Count -ne 10) {
+  throw 'The Application Insights query pack must contain seven agent-investigation queries and three customer-usage queries.'
+}
+$appInsightsWorkbookFiles | ForEach-Object { $null = Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
+foreach ($moduleName in @('sre-agent', 'lab-console-platform')) {
+  $module = @($mainTemplate.resources | Where-Object name -eq $moduleName)
+  $slotAssignments = @($module.properties.template.resources | Where-Object {
+    $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'slot-rollback|slot-scenario-role'
+  })
+  if ($module.Count -ne 1 -or $slotAssignments.Count -ne 1 -or
+      $slotAssignments[0].scope -notmatch 'Microsoft\.Web/sites/' -or
+      $slotAssignments[0].condition -notmatch 'enableSlotFailureScenario') {
+    throw "The compiled $moduleName slot role assignment must be conditional and scoped to the customer Web App, never the resource group."
+  }
+}
+Write-Output 'PASS: compiled customer slot role assignments retain their Web App scope.'
+$platform = @($mainTemplate.resources | Where-Object name -eq 'lab-console-platform')[0].properties.template
+$faultRoles = @($platform.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and $_.properties.roleName -match 'Customer Fault Settings' })
+$faultAssignments = @($platform.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'customer-fault-role' })
+if ($faultRoles.Count -ne 1 -or $faultAssignments.Count -ne 2 -or
+    @($faultAssignments | Where-Object { $_.scope -notmatch "Microsoft.Web/sites/.+customer(WebApp|Worker)Name" -or $_.condition -notmatch 'customerWorkerName' }).Count -ne 0 -or
+    @($faultRoles[0].properties.permissions.actions | Where-Object { $_ -notmatch '^Microsoft.Web/sites/(slots/)?(config/(list/action|write)|restart/action)$' }).Count -ne 0) {
+  throw 'Customer fault permissions must be conditional and scoped only to the exact customer app and worker, not the resource group or Control Center.'
+}
+Write-Output 'PASS: customer fault setting/restart permissions are restricted to two conditional component scopes.'
+$consoleModule = @($mainTemplate.resources | Where-Object name -eq 'lab-console-platform')
+$consoleSlotAssignment = @($consoleModule.properties.template.resources | Where-Object {
+  $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'slot-scenario-role'
+})[0]
+if ($consoleSlotAssignment.name -notmatch 'customer-webapp-scope') {
+  throw 'The customer slot assignment must use a new scope-migration seed instead of reusing the legacy resource-group assignment name.'
+}
+if ($mainTemplate.variables.appInsightsName -ne "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]") {
+  throw 'Application Insights must use the generated five-character deployment suffix.'
+}
+$appInsightsObservability = @($mainTemplate.resources | Where-Object name -eq 'appinsights-observability')
+if ($appInsightsObservability.Count -ne 1) { throw 'The main template must deploy the Application Insights investigation query pack and workbook.' }
+$appInsightsWorkbooks = @($appInsightsObservability[0].properties.template.resources | Where-Object type -eq 'Microsoft.Insights/workbooks')
+if ($appInsightsWorkbooks.Count -ne 2) { throw 'The main template must deploy both the agent-investigation and customer-usage workbooks.' }
+$agentTaskAvailability = @($mainTemplate.resources | Where-Object name -eq 'agent-task-availability-test')
+if ($agentTaskAvailability.Count -ne 1 -or $agentTaskAvailability[0].properties.parameters.testUrl.value -notmatch '/api/agent-task-availability') {
+  throw 'The main template must deploy the task-level agent availability test.'
+}
+$alertsModule = @($mainTemplate.resources | Where-Object name -eq 'alerts')
+$agentAlerts = @($alertsModule[0].properties.template.resources | Where-Object name -in @('alert-agent-task-failures', 'alert-agent-efficiency-regression'))
+if ($alertsModule.Count -ne 1 -or $agentAlerts.Count -ne 2) { throw 'The main template must contain task correctness and efficiency alerts.' }
+Write-Output 'PASS: suffixed Application Insights, investigation and usage content, task availability, and agent alerts are compiled.'
 $vmModules = @($mainTemplate.resources | Where-Object name -in @('vm-linux', 'vm-windows'))
 if ($vmModules.Count -ne 2) { throw 'The main template must contain both demo VM modules.' }
 foreach ($vmModule in $vmModules) {
@@ -49,10 +111,10 @@ if (-not $BicepExecutable) {
 }
 $version = & $BicepExecutable --version
 if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Bicep CLI version 0\.37\.4\b') { throw 'Compile templates with Bicep 0.37.4 to match the checked-in artifacts.' }
-$temporary = Join-Path ([IO.Path]::GetTempPath()) ('amlab-template-check-' + [guid]::NewGuid().ToString('N'))
+$temporary = Join-Path $source ('.artifacts\amlab-template-check-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary
 try {
-  foreach ($relative in @('infra/main', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job')) {
+  foreach ($relative in @('infra/main', 'infra/customer-application', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job')) {
     $compiled = Join-Path $temporary ([IO.Path]::GetFileName($relative) + '.json')
     $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
     if ($LASTEXITCODE -ne 0) { $messages; throw "Bicep compilation failed: $relative" }

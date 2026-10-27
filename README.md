@@ -48,7 +48,7 @@ The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can a
 
 ## Deploy
 
-> Recommended region: `northeurope` (the default), which has the widest feature availability. A few things pin themselves to a fixed region no matter what you pick: the Health Model preview and the optional GenAI / AI stage (Microsoft Foundry and its models) go to `swedencentral` (they aren't available in `northeurope`), and the App Service goes to `westeurope` for quota reasons. Everything else follows the region you choose.
+> Recommended region: `northeurope` (the default), which has the widest feature availability. The Health Model preview and optional GenAI / AI stage (Microsoft Foundry and its models) go to `swedencentral`. App Service and its co-located diagnostic Storage and Event Hub dependencies use configurable `appServiceLocation` (default `westeurope`) so subscriptions closed to new customers in that region can select another supported region.
 
 ### Option 1: Deploy to Azure (portal, no local setup)
 
@@ -99,7 +99,7 @@ cd azure-monitor-lab
 Copy-Item lab.config.json.example lab.config.json
 notepad lab.config.json
 # Save your changes and close Notepad before continuing.
-# One-shot ignores enableStageA-E; enableStageAI and enableStageSreAgent remain optional.
+# One-shot ignores enableStageA-E; enableStageAI, enableStageSreAgent, and enableSlotFailureScenario remain optional.
 
 # 3. Deploy (deploy.ps1 calls sync-config.ps1 for you)
 ./scripts/deploy.ps1
@@ -166,7 +166,7 @@ $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 | [REFERENCE.md](docs/REFERENCE.md) | Full capability matrix · every deployed resource · demo walkthrough · cost breakdown · folder layout · optional add-ons · troubleshooting |
 | [COST-GUIDE.md](docs/COST-GUIDE.md) | Dated resource inventory · public-rate examples · usage formulas · optional agents · stop-versus-delete guidance |
 | [Lab Control Center](docs/LAB-CONTROL-CENTER.md) | Application guide, screenshot, traffic and agent capabilities, safety boundaries, and links to the guided scenarios |
-| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | All 69 demo scenarios, each with a story, a click-path, and a "killer line", plus audience-pivoted shortlists |
+| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | Numbered demo scenarios with stories, click-paths, starter prompts, and audience-pivoted shortlists; includes the [application troubleshooting agent](docs/DEMO-SCENARIOS.md#s72) and [real customer PaaS dependencies](docs/DEMO-SCENARIOS.md#s73) |
 | [POST-DEPLOYMENT.md](docs/POST-DEPLOYMENT.md) | Manual and optional preparation required by specific demo scenarios after deployment is complete |
 | [PM feature integration guide](docs/PM-FEATURE-INTEGRATION-GUIDE.md) | End-to-end workflow and validation checklist for product managers adding new Azure features to every deployment path |
 | [docs/DEPLOY-BICEP-STEP-BY-STEP.md](docs/DEPLOY-BICEP-STEP-BY-STEP.md) · [docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md](docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md) | Staged deployment tutorials |

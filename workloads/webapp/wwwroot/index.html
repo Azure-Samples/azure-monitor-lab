@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>Azure Monitor Lab Control Center</title>
   <link rel="stylesheet" href="/console.css">
+  <link rel="stylesheet" href="/console-theme.css">
   <script src="/console.js" defer></script>
 </head>
 <body>
@@ -13,6 +14,7 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Azure Monitor Lab home"><img id="brand-mark" width="210" height="50" alt="Azure Monitor Lab"></a>
     <nav class="documentation-nav" aria-label="Lab documentation">
+      <a data-link="CustomerApplication" data-link-optional aria-disabled="true" aria-label="Customer app" title="Not configured for this deployment"><i data-lucide="shopping-cart"></i><span>Customer app</span></a>
       <a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/LAB-CONTROL-CENTER.md" target="_blank" rel="noopener noreferrer" aria-label="Guide" title="Control Center guide"><i data-lucide="book-open"></i><span>Guide</span></a>
       <a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md" target="_blank" rel="noopener noreferrer" aria-label="Scenarios" title="Guided scenarios"><i data-lucide="panels-top-left"></i><span>Scenarios</span></a>
     </nav>
@@ -137,11 +139,25 @@
             <button class="action danger-accent" data-operation="break" aria-haspopup="dialog" disabled><i data-lucide="triangle-alert"></i><span>Break Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="restore" aria-haspopup="dialog" disabled><i data-lucide="refresh-cw"></i><span>Restore Lab</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="ramp" aria-haspopup="dialog" disabled><i data-lucide="chart-no-axes-combined"></i><span>Start Load Ramp</span><i data-lucide="arrow-right"></i></button>
+            <button class="action" data-operation="usage" aria-haspopup="dialog" disabled><i data-lucide="shopping-cart"></i><span>Generate Customer Traffic</span><i data-lucide="arrow-right"></i></button>
             <button class="action danger-accent" data-operation="cpu" aria-haspopup="dialog" disabled><i data-lucide="cpu"></i><span>Simulate High CPU</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="logs" aria-haspopup="dialog" disabled><i data-lucide="logs"></i><span>Send Custom Logs</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="annotation" aria-haspopup="dialog" disabled><i data-lucide="panels-top-left"></i><span>Add Release Marker</span><i data-lucide="arrow-right"></i></button>
+            <button id="customer-fault-menu" class="action danger-accent" aria-haspopup="dialog" disabled hidden><i data-lucide="triangle-alert"></i><span>Break the customer app</span><i data-lucide="arrow-right"></i></button>
           </div>
-          <nav class="scenario-links" aria-label="Related scenarios for operations"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s8" target="_blank" rel="noopener noreferrer">8: Break the lab</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s13" target="_blank" rel="noopener noreferrer">13: Smart Detection</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s24" target="_blank" rel="noopener noreferrer">24: Custom Logs</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s33" target="_blank" rel="noopener noreferrer">33: Release annotations</a></nav>
+          <section id="customer-incident" hidden aria-labelledby="customer-incident-heading">
+            <h3 id="customer-incident-heading">Customer application investigation</h3>
+            <p id="customer-incident-status" class="history-note" role="status"></p>
+            <label>Symptom-only troubleshooting prompt<textarea id="customer-incident-prompt" rows="8" readonly></textarea></label>
+            <div class="run-buttons">
+              <button id="customer-incident-copy" type="button" class="button secondary"><i data-lucide="copy"></i>Copy troubleshooting prompt</button>
+              <a id="customer-incident-sre" class="button secondary" hidden target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Open SRE Agent</a>
+              <a id="customer-incident-model" class="button secondary" hidden target="_blank" rel="noopener noreferrer"><i data-lucide="heart-pulse"></i>Open customer Health Model</a>
+              <button id="customer-incident-recover" type="button" class="button secondary"><i data-lucide="refresh-cw"></i>Restore application</button>
+            </div>
+            <p class="history-note">Paste the prompt into the application-troubleshooter VS Code/CLI agent or SRE Agent. Opening an agent does not submit a task or grant mitigation approval. Health Model signals can be unknown, stale, or unaffected by application-side delay. Recovery never replays dead-lettered orders.</p>
+          </section>
+          <nav class="scenario-links" aria-label="Related scenarios for operations"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s8" target="_blank" rel="noopener noreferrer">8: Break the lab</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s13" target="_blank" rel="noopener noreferrer">13: Smart Detection</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s24" target="_blank" rel="noopener noreferrer">24: Custom Logs</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s33" target="_blank" rel="noopener noreferrer">33: Release annotations</a><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s70" target="_blank" rel="noopener noreferrer">70: Customer usage</a></nav>
         </section>
         <section class="operations-activity" aria-labelledby="operations-runs-heading"><div class="section-heading"><h2 id="operations-runs-heading">Run activity</h2><div class="tool-actions"><span id="operations-run-count" class="muted">0 runs</span><button id="operations-refresh" class="icon-button" type="button" title="Refresh operation status" aria-label="Refresh operation status" disabled><i data-lucide="refresh-cw"></i></button></div></div>
           <p id="operations-updated" class="muted"></p><div id="operations-runs"></div><div id="operations-empty" class="empty-history"><i data-lucide="inbox"></i><p>No operations submitted</p></div>
@@ -206,17 +222,48 @@
                 <label>Failure<select id="agent-scenario" aria-label="Observability scenario"></select></label>
                 <label>Profile<select id="agent-scenario-mode" aria-label="Scenario profile"><option value="broken">Broken</option><option value="fixed">Fixed</option></select></label>
               </div>
+              <p id="agent-scenario-description" class="history-note">Choose a deterministic scenario.</p>
               <label class="consent"><input id="agent-scenario-consent" type="checkbox">I approve generation of synthetic, metadata-only demo telemetry.</label>
               <div class="run-buttons"><button id="agent-scenario-run" class="button primary" type="submit" disabled><i data-lucide="activity"></i>Generate Trace</button></div>
             </form>
             <div id="agent-scenario-status" class="status-band" role="status">No observability scenario run</div>
+            <dl id="agent-scenario-outcome" class="scenario-outcome" hidden>
+              <div><dt>Technical</dt><dd id="scenario-technical">-</dd></div>
+              <div><dt>Task</dt><dd id="scenario-task">-</dd></div>
+              <div><dt>Performance</dt><dd id="scenario-performance">-</dd></div>
+              <div><dt>Trace</dt><dd id="scenario-trace">-</dd></div>
+              <div><dt>Retries</dt><dd id="scenario-retries">-</dd></div>
+              <div><dt>Tokens</dt><dd id="scenario-tokens">-</dd></div>
+            </dl>
+            <details class="incident-guide">
+              <summary>End-to-end Application Insights investigation</summary>
+              <p id="incident-journey-status" class="history-note" role="status">Generate a broken trace to begin the incident.</p>
+              <ol id="incident-journey">
+                <li>Establish task availability and Application Dashboard baseline.</li>
+                <li>Detect current customer impact in Live Metrics and alerts.</li>
+                <li>Separate failures, slow successes, and semantic task failures.</li>
+                <li>Use Application Map to locate the affected dependency.</li>
+                <li>Find this operation by trace ID in Transaction Search.</li>
+                <li>Traverse browser, request, agent, model, handoff, and tool telemetry.</li>
+                <li>Scope impact by scenario, cohort, agent, workflow, and model version.</li>
+                <li>Correlate the regression with release annotations and changes.</li>
+                <li>Use Observability Agent as trace specialist and produce the SRE handoff packet.</li>
+                <li>Use SRE Agent as incident commander to reconcile platform evidence and draft a Review-mode remediation.</li>
+                <li>Approve the smallest safe fix and run the Fixed profile.</li>
+                <li>Have both agents verify availability, correctness, latency, retries, tokens, trace hierarchy, and alert recovery.</li>
+              </ol>
+            </details>
             <section id="agent-scenario-investigation" class="scenario-investigation" aria-labelledby="agent-scenario-prompt-heading" hidden>
-              <h3 id="agent-scenario-prompt-heading">Observability Agent chat prompt</h3>
-              <p class="history-note">Open Observability Agent, start a chat, and paste this trace-specific prompt.</p>
+              <h3 id="agent-scenario-prompt-heading">Coordinated agent investigation</h3>
+              <p class="history-note">Step 1: open Observability Agent and paste the trace-specialist prompt. Copy its SRE handoff packet into Step 2, then paste the incident-command prompt into SRE Agent.</p>
+              <label for="agent-scenario-prompt">Observability Agent trace-specialist prompt</label>
               <textarea id="agent-scenario-prompt" rows="9" readonly aria-label="Observability Agent investigation prompt"></textarea>
-              <div class="run-buttons"><button id="agent-scenario-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy Prompt</button></div>
+              <div class="run-buttons"><button id="agent-scenario-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy Trace Prompt</button></div>
+              <label for="agent-scenario-sre-prompt">SRE Agent incident-command prompt</label>
+              <textarea id="agent-scenario-sre-prompt" rows="9" readonly aria-label="SRE Agent incident command prompt"></textarea>
+              <div class="run-buttons"><button id="agent-scenario-sre-copy" class="button secondary" type="button"><i data-lucide="copy"></i>Copy SRE Prompt</button></div>
             </section>
-            <p class="history-note">Run the broken profile, open Observability Agent chat with the generated prompt, then run the fixed profile and compare latency, tool selection, and task outcome.</p>
+            <p class="history-note">The optional strongest path uses Observability Agent for trace RCA and SRE Agent for incident command in Review mode. The base Application Insights investigation remains fully usable when either optional agent is disabled.</p>
           </section>
           <section class="agent-scenario-panel" aria-labelledby="alert-storm-heading">
             <div class="section-heading"><div><p class="eyebrow">SCENARIO 64</p><h2 id="alert-storm-heading">Alert storm generator</h2></div></div>
@@ -258,7 +305,10 @@
   <dialog id="operation-dialog" aria-labelledby="operation-heading" aria-describedby="operation-impact">
     <h2 id="operation-heading">Lab operation</h2><p id="operation-impact"></p>
     <form id="operation-prepare-form">
-      <label id="operation-count-field" hidden>Event count<input id="operation-count" type="number" min="1" max="100" step="1" value="10" required></label>
+      <label id="operation-fault-field" hidden>Application fault or recovery<select id="operation-fault" disabled><option value="">Choose a reversible exercise</option></select></label>
+      <p id="operation-fault-description" class="history-note" hidden></p>
+      <label id="operation-count-field" hidden><span id="operation-count-label">Event count</span><input id="operation-count" type="number" min="1" max="100" step="1" value="10" required></label>
+      <div id="operation-usage-fields" hidden><label>Browser concurrency<input id="operation-concurrency" type="number" min="1" max="10" step="1" value="4"></label><label>Repeat users<input id="operation-repeat-users" type="number" min="0" max="100" step="1" value="6"></label></div>
       <div id="operation-marker-fields" hidden><label>Marker name<input id="operation-name" type="text" maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9 ._\(\)\-]{0,79}" autocomplete="off"></label><label>Category<select id="operation-category" aria-label="Marker category"><option value="Deployment">Deployment</option><option value="Incident">Incident</option></select></label></div>
       <div class="dialog-actions"><button type="button" class="button secondary" data-operation-cancel>Cancel</button><button id="operation-review" type="submit" class="button primary"><i data-lucide="scan-line"></i>Review Operation</button></div>
     </form>

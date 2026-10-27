@@ -11,11 +11,11 @@
 | Microsoft Sentinel (conditional) | Sentinel onboarding on `law-amlab-central` (only when `enableSentinel=true`) + one starter analytics rule | Turn the central workspace into a Sentinel workspace. Useful when a customer wants to compare "Azure Monitor native" (Stage D) vs "SOC-grade" (Sentinel). |
 | Data export | `exp-amlab-heartbeat` exporting `Heartbeat` rows from `law-amlab-central` to `st<amlab><suffix>` | Demonstrates *continuous export to ADLS/Blob* for long-term retention, audit pipelines, and analytics outside LAW. |
 | Managed Prometheus rule group | `prg-amlab` against `amw-amlab`, scoped to `aks-amlab`, alerting via `ag-amlab-email` | Recording + alerting rules in PromQL. Stage B set up the metrics; this stage acts on them. |
-| Availability test | `test-amlab-app` against the Stage B web app, results into `appi-amlab`, alerting via `ag-amlab-email` | Classic synthetic ping test demonstrating "is the URL up from outside?" with multi-region probes. |
+| Availability tests | `test-amlab-app` and `test-amlab-agent-task` against the Stage B web app, results into `appi-amlab-<suffix>`, alerting via `ag-amlab-email` | Root reachability plus deterministic customer-function monitoring of the fixed agent task from multiple regions. |
 | Health model | `hm-amlab-workload` wiring web app, App Insights, AKS, Linux VM, Windows VM, VMSS, Key Vault, storage, action group into a single health graph | Preview capability — gives an executive-level "service health" rollup with traffic-light entities. |
 | SLI identity | `id-sli-amlab` (User-Assigned Managed Identity) bound to `amw-amlab` | Identity used by SLI/SLO tooling and Grafana service connections. Prereq for the SLI scripts shipped in `scripts/`. |
 
-> Cross-stage references: `law-amlab-central`, `amw-amlab`, `appi-amlab`, `st<amlab><suffix>`, `kv-amlab-<suffix>` (Stage A); `aks-amlab`, web app (Stage B); `vmss-amlab`, `ag-amlab-email`, both VMs (Stage C).
+> Cross-stage references: `law-amlab-central`, `amw-amlab`, `appi-amlab-<suffix>`, `st<amlab><suffix>`, `kv-amlab-<suffix>` (Stage A); `aks-amlab`, web app (Stage B); `vmss-amlab`, `ag-amlab-email`, both VMs (Stage C).
 
 ## 2) Speaker notes
 
@@ -45,7 +45,7 @@
 1. **`law-amlab-central` → Microsoft Sentinel** *(only if `enableSentinel=true`)* — show the workspace is Sentinel-enabled. Open *Analytics → Active rules* and find the starter rule.
 2. **`law-amlab-central` → Data Export → `exp-amlab-heartbeat`** — show the destination storage account and the `Heartbeat` table mapping. After ~30 min you can browse the container in `st<amlab><suffix>` to see exported blobs.
 3. **`amw-amlab` → Rule groups → `prg-amlab`** — show recording + alerting rules in PromQL.
-4. **`appi-amlab` → Availability → `test-amlab-app`** — show the world map of probe locations and the test history.
+4. **`appi-amlab-<suffix>` → Availability** — compare `test-amlab-app` (root reachability) with `test-amlab-agent-task` (customer-function health) on the world map and test history.
 5. **Monitor → Health models → `hm-amlab-workload`** *(preview blade)* — open the graph view. Show entities (web app, AKS, VMs, VMSS, Key Vault, storage) and their roll-up health.
 6. **Resource group → `id-sli-amlab`** — managed identity; show *Azure role assignments* on `amw-amlab`.
 7. **Optional: Grafana → Data sources** — show that `amg-amlab-<suffix>` already has `amw-amlab` wired in; `id-sli-amlab` is the identity used for Azure Monitor data sources in custom Grafana dashboards.

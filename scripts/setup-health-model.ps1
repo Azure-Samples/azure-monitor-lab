@@ -189,7 +189,7 @@ if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
     } elseif ($groupOutput -match '(?m)^\s*ERROR:\s*Not Found\s*$') {
       $errorCode = 'NotFound'
     }
-    if ($errorCode -notin @('ResourceNotFound', 'NotFound')) {
+    if ($errorCode -notin @('ResourceNotFound', 'ServiceGroupNameNotFound', 'NotFound')) {
       throw "Could not read Service Group '$ServiceGroupId' (Azure CLI exit code $groupExitCode). Details:`n$groupOutput"
     }
     $ServiceGroupDisplayName = "AMLAB - $ResourceGroup"

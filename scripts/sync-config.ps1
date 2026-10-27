@@ -71,6 +71,10 @@ function Coalesce($a, $b) { if ($null -ne $a -and $a -ne '') { $a } else { $b } 
 $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
 $dailyCapGb       = Coalesce $cfg.dailyCapGb       1
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
+$vmSize           = Coalesce $cfg.vmSize           'Standard_B2s'
+$aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_B2s'
+$vmssSize         = Coalesce $cfg.vmssSize         'Standard_B1s'
+$appServiceLocation = Coalesce $cfg.appServiceLocation 'westeurope'
 $deployWindowsVm  = if ($null -eq $cfg.deployWindowsVm) { $true } else { [bool]$cfg.deployWindowsVm }
 $deployLinuxVm    = if ($null -eq $cfg.deployLinuxVm)   { $true } else { [bool]$cfg.deployLinuxVm }
 $enableVmOtelMetrics = $true
@@ -100,20 +104,47 @@ if ($enableLawReplication -and [string]::IsNullOrWhiteSpace($lawReplicationLocat
 }
 
 $stages = $cfg.stageToggles
-if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageSreAgent=$false; enableStageObservabilityAgent=$false } }
+if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageSreAgent=$false; enableStageObservabilityAgent=$false; enableSlotFailureScenario=$false } }
 # AI stage is optional and defaults off when absent from the config.
 $enableStageAI = if ($null -eq $stages.enableStageAI) { $false } else { [bool]$stages.enableStageAI }
 # SRE Agent is optional and defaults off when absent from the config.
 $enableStageSreAgent = if ($null -eq $stages.enableStageSreAgent) { $false } else { [bool]$stages.enableStageSreAgent }
 # Azure Copilot Observability Agent is optional and defaults off when absent.
 $enableStageObservabilityAgent = if ($null -eq $stages.enableStageObservabilityAgent) { $false } else { [bool]$stages.enableStageObservabilityAgent }
+$enableSlotFailureScenario = if ($null -eq $stages.enableSlotFailureScenario) { $false } else { [bool]$stages.enableSlotFailureScenario }
+if ($null -ne $stages.PSObject.Properties['enableCustomerDependencies'] -and $stages.enableCustomerDependencies -isnot [bool]) {
+  throw 'stageToggles.enableCustomerDependencies must be a JSON Boolean.'
+}
+$enableCustomerDependencies = $stages.enableCustomerDependencies -eq $true
+$sqlEntraAdminObjectId = Coalesce $cfg.sqlEntraAdminObjectId ''
+$sqlEntraAdminName = Coalesce $cfg.sqlEntraAdminName ''
+$sqlEntraAdminType = Coalesce $cfg.sqlEntraAdminType 'Group'
+$slotAppServicePlanSku = Coalesce $cfg.slotAppServicePlanSku 'S2'
+if ($slotAppServicePlanSku -notin @('S1','S2','S3')) { throw 'slotAppServicePlanSku must be S1, S2, or S3.' }
+if ($sqlEntraAdminType -notin @('User','Group','Application')) { throw 'sqlEntraAdminType must be User, Group, or Application.' }
+if ($enableCustomerDependencies) {
+  if ($stages.enableSlotFailureScenario -isnot [bool] -or $stages.enableSlotFailureScenario -ne $true -or
+      $stages.enableStageB -isnot [bool] -or $stages.enableStageB -ne $true) {
+    throw 'enableCustomerDependencies requires enableSlotFailureScenario=true and enableStageB=true.'
+  }
+  $adminId = [guid]::Empty
+  if (-not [guid]::TryParseExact($sqlEntraAdminObjectId, 'D', [ref]$adminId) -or $adminId -eq [guid]::Empty -or [string]::IsNullOrWhiteSpace($sqlEntraAdminName)) {
+    throw 'Customer dependencies require explicit sqlEntraAdminObjectId (nonzero GUID), sqlEntraAdminName, and sqlEntraAdminType.'
+  }
+  if ($cfg.PSObject.Properties.Name -contains 'sqlAdministratorPassword' -or $cfg.PSObject.Properties.Name -contains 'sqlAdministratorLogin') {
+    throw 'Customer SQL supports Microsoft Entra authentication only; remove SQL credentials.'
+  }
+}
+if ($enableSlotFailureScenario -and -not [bool]$stages.enableStageB) {
+  throw 'stageToggles.enableSlotFailureScenario requires stageToggles.enableStageB=true.'
+}
 $observabilityAgentLocation = Coalesce $cfg.observabilityAgentLocation 'westeurope'
 $supportedObservabilityAgentLocations = @('australiaeast','canadacentral','centralus','eastasia','eastus','southcentralus','uksouth','westcentralus','westeurope')
 if ($observabilityAgentLocation -notin $supportedObservabilityAgentLocations) {
   throw "observabilityAgentLocation '$observabilityAgentLocation' is unsupported. Use one of: $($supportedObservabilityAgentLocations -join ', ')."
 }
 $enableObservabilityAgentAutomaticInvestigation = if ($null -eq $cfg.enableObservabilityAgentAutomaticInvestigation) { $false } else { [bool]$cfg.enableObservabilityAgentAutomaticInvestigation }
-$observabilityAgentInstructions = Coalesce $cfg.observabilityAgentInstructions 'Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.'
+$observabilityAgentInstructions = Coalesce $cfg.observabilityAgentInstructions 'Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact and keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task or efficiency failures and add [OPS-REVIEW] to the title. Reconstruct the Application Insights request, agent, model, handoff, and tool hierarchy; report technical, task, performance, and trace health separately. Produce an SRE handoff packet with customer impact, likely fault domain and confidence, three timestamped evidence points with sources, the smallest safe correction, rollback conditions, missing evidence, and fixed-run verification criteria. Do not claim remediation or incident closure.'
 if ($observabilityAgentInstructions.Length -gt 8192) {
   throw 'observabilityAgentInstructions must not exceed 8192 characters.'
 }
@@ -151,6 +182,7 @@ $bicepParams = [ordered]@{
   'contentVersion' = '1.0.0.0'
   'parameters'     = [ordered]@{
     'location'        = @{ value = $cfg.location }
+    'appServiceLocation' = @{ value = $appServiceLocation }
     'namePrefix'      = @{ value = $cfg.namePrefix }
     'alertEmail'      = @{ value = $cfg.alertEmail }
     'vmAdminUsername' = @{ value = $vmAdminUsername }
@@ -159,10 +191,19 @@ $bicepParams = [ordered]@{
     'deployLinuxVm'   = @{ value = $deployLinuxVm }
     'enableVmOtelMetrics' = @{ value = $enableVmOtelMetrics }
     'dailyCapGb'      = @{ value = [int]$dailyCapGb }
+    'vmSize'          = @{ value = $vmSize }
+    'aksNodeVmSize'   = @{ value = $aksNodeVmSize }
+    'vmssSize'        = @{ value = $vmssSize }
     'aksNodeCount'    = @{ value = [int]$aksNodeCount }
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
     'enableAi'        = @{ value = $enableStageAI }
     'enableSreAgent'  = @{ value = $enableStageSreAgent }
+    'enableSlotFailureScenario' = @{ value = $enableSlotFailureScenario }
+    'enableCustomerDependencies' = @{ value = $enableCustomerDependencies }
+    'sqlEntraAdminObjectId' = @{ value = $sqlEntraAdminObjectId }
+    'sqlEntraAdminName' = @{ value = $sqlEntraAdminName }
+    'sqlEntraAdminType' = @{ value = $sqlEntraAdminType }
+    'slotAppServicePlanSku' = @{ value = $slotAppServicePlanSku }
     'enableObservabilityAgent' = @{ value = $enableStageObservabilityAgent }
     'observabilityAgentLocation' = @{ value = $observabilityAgentLocation }
     'enableObservabilityAgentAutomaticInvestigation' = @{ value = $enableObservabilityAgentAutomaticInvestigation }
@@ -181,6 +222,9 @@ Write-Done "OK"
 # 3. terraform/stages.tfvars  (Terraform var-file)
 # ---------------------------------------------------------------------------
 Write-Step "Writing $tfVarsPath"
+if ($enableCustomerDependencies) {
+  Write-Warning 'Customer dependencies are Bicep/Azure CLI only. Terraform retains the disabled baseline; do not deploy this feature using Terraform.'
+}
 function Esc($s) { ($s -replace '"','\"') }
 $tfLines = @(
   "# AUTO-GENERATED by scripts/sync-config.ps1 from lab.config.json"
@@ -189,11 +233,15 @@ $tfLines = @(
   "subscription_id     = `"$(Esc $cfg.subscriptionId)`""
   "resource_group_name = `"$(Esc $cfg.resourceGroup)`""
   "location            = `"$(Esc $cfg.location)`""
+  "app_service_location = `"$(Esc $appServiceLocation)`""
   "name_prefix         = `"$(Esc $cfg.namePrefix)`""
   "alert_email         = `"$(Esc $cfg.alertEmail)`""
   "vm_admin_username   = `"$(Esc $vmAdminUsername)`""
   "vm_admin_password   = `"$(Esc $cfg.vmAdminPassword)`""
   "daily_cap_gb        = $([int]$dailyCapGb)"
+  "vm_size             = `"$(Esc $vmSize)`""
+  "aks_node_vm_size    = `"$(Esc $aksNodeVmSize)`""
+  "vmss_size           = `"$(Esc $vmssSize)`""
   "aks_node_count      = $([int]$aksNodeCount)"
   "grafana_admin_object_id = `"$(Esc $grafanaAdminObjectId)`""
   "deploy_windows_vm   = $($deployWindowsVm.ToString().ToLower())"
@@ -210,6 +258,7 @@ $tfLines = @(
   "enable_stage_e = $((($stages.enableStageE -as [bool]).ToString()).ToLower())"
   "enable_stage_ai = $($enableStageAI.ToString().ToLower())"
   "enable_stage_sre_agent = $($enableStageSreAgent.ToString().ToLower())"
+  "enable_slot_failure_scenario = $($enableSlotFailureScenario.ToString().ToLower())"
 )
 Set-Content -Path $tfVarsPath -Value ($tfLines -join "`r`n") -Encoding UTF8
 Write-Done "OK"

@@ -16,6 +16,15 @@ param existingResourceTags object = {}
 @maxLength(2)
 param cpuVmNames array = []
 
+@description('Allow the independent runner to trigger the opt-in broken-slot swap.')
+param enableSlotFailureScenario bool = false
+
+@description('Customer-facing Web App targeted by the opt-in broken-slot operation.')
+param customerWebAppName string = ''
+
+@description('Exact customer orders worker name. Empty disables dependency fault permissions.')
+param customerWorkerName string = ''
+
 var suffix = uniqueString(resourceGroup().id, webAppName)
 var registryName = 'acrlabops${take(suffix, 12)}'
 var environmentName = 'cae-labops-${take(suffix, 8)}'
@@ -24,6 +33,10 @@ var jobName = 'job-labops-${take(suffix, 8)}'
 
 resource site 'Microsoft.Web/sites@2023-12-01' existing = {
   name: webAppName
+}
+
+resource customerSite 'Microsoft.Web/sites@2023-12-01' existing = {
+  name: customerWebAppName
 }
 
 module identity 'br/public:avm/res/managed-identity/user-assigned-identity:0.6.0' = {
@@ -99,7 +112,7 @@ resource runnerRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
     assignableScopes: [resourceGroup().id]
     permissions: [
       {
-        actions: [
+        actions: concat([
           'Microsoft.Resources/subscriptions/resourceGroups/read'
           'Microsoft.Resources/subscriptions/resources/read'
           'Microsoft.Compute/virtualMachines/read'
@@ -123,12 +136,93 @@ resource runnerRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
           'Microsoft.Insights/components/Annotations/write'
           'Microsoft.Insights/dataCollectionRules/read'
           'Microsoft.Insights/dataCollectionEndpoints/read'
+        ], [])
+        notActions: []
+        dataActions: []
+        notDataActions: []
+      }
+    ]
+  }
+}
+
+resource slotScenarioRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (enableSlotFailureScenario) {
+  name: guid(resourceGroup().id, 'lab-console-slot-scenario-role')
+  properties: {
+    roleName: 'Lab Console Customer Slot Operation ${take(suffix, 8)}'
+    description: 'Read and swap deployment slots only on the dedicated customer Web App.'
+    type: 'CustomRole'
+    assignableScopes: [resourceGroup().id]
+    permissions: [
+      {
+        actions: [
+          'Microsoft.Web/sites/read'
+          'Microsoft.Web/sites/slots/read'
+          'Microsoft.Web/sites/slots/slotsswap/action'
         ]
         notActions: []
         dataActions: []
         notDataActions: []
       }
     ]
+  }
+}
+
+resource slotScenarioAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSlotFailureScenario) {
+  name: guid(customerSite.id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', identityName), slotScenarioRole!.id, 'customer-webapp-scope')
+  scope: customerSite
+  properties: {
+    roleDefinitionId: slotScenarioRole!.id
+    principalId: identity.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource customerWorker 'Microsoft.Web/sites@2023-12-01' existing = {
+  name: customerWorkerName
+}
+
+resource customerFaultRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (enableSlotFailureScenario && !empty(customerWorkerName)) {
+  name: guid(resourceGroup().id, 'lab-console-customer-fault-role')
+  properties: {
+    roleName: 'Lab Console Customer Fault Settings ${take(suffix, 8)}'
+    description: 'App-setting updates and restarts on only the dedicated customer app and orders worker. App settings cannot be property-scoped by Azure RBAC.'
+    type: 'CustomRole'
+    assignableScopes: [resourceGroup().id]
+    permissions: [
+      {
+        actions: [
+          'Microsoft.Web/sites/config/list/action'
+          'Microsoft.Web/sites/config/write'
+          'Microsoft.Web/sites/restart/action'
+          'Microsoft.Web/sites/slots/config/list/action'
+          'Microsoft.Web/sites/slots/config/write'
+          'Microsoft.Web/sites/slots/restart/action'
+        ]
+        notActions: []
+        dataActions: []
+        notDataActions: []
+      }
+    ]
+  }
+}
+
+resource customerFaultSiteAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSlotFailureScenario && !empty(customerWorkerName)) {
+  name: guid(customerSite.id, identityName, 'customer-fault-settings')
+  scope: customerSite
+  properties: {
+    roleDefinitionId: customerFaultRole!.id
+    principalId: identity.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource customerFaultWorkerAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSlotFailureScenario && !empty(customerWorkerName)) {
+  name: guid(customerWorker.id, identityName, 'customer-fault-settings')
+  scope: customerWorker
+  properties: {
+    roleDefinitionId: customerFaultRole!.id
+    principalId: identity.outputs.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 

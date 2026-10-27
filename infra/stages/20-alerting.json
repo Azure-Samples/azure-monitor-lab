@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11093617091725445620"
+      "templateHash": "8788356410363448855"
     }
   },
   "parameters": {
@@ -14,6 +14,13 @@
       "defaultValue": "[resourceGroup().location]",
       "metadata": {
         "description": "Azure region for all resources."
+      }
+    },
+    "appServiceLocation": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region of the App Service resources targeted by alerts."
       }
     },
     "namePrefix": {
@@ -51,6 +58,13 @@
         "description": "Admin password for VMSS."
       }
     },
+    "vmssSize": {
+      "type": "string",
+      "defaultValue": "Standard_B1s",
+      "metadata": {
+        "description": "Predictive-autoscale VMSS instance size."
+      }
+    },
     "deployWindowsVm": {
       "type": "bool",
       "defaultValue": true,
@@ -65,6 +79,13 @@
         "description": "Deploy the Linux demo VM."
       }
     },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable alerts for the isolated customer Web App slot-recovery scenario."
+      }
+    },
     "ownerTag": {
       "type": "string",
       "defaultValue": "demo-lab",
@@ -76,12 +97,13 @@
   "variables": {
     "suffix": "[uniqueString(resourceGroup().id)]",
     "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "linuxVmName": "[format('vm-{0}-lin', parameters('namePrefix'))]",
     "windowsVmName": "[format('vmwin{0}', take(variables('suffix'), 4))]",
     "aksName": "[format('aks-{0}', parameters('namePrefix'))]",
     "appPlanName": "[format('plan-{0}', parameters('namePrefix'))]",
     "webAppName": "[format('app-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
+    "customerWebAppName": "[format('app-{0}-{1}-customer', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "actionGroupName": "[format('ag-{0}-email', parameters('namePrefix'))]",
     "vmssName": "[format('vmss-{0}', parameters('namePrefix'))]",
     "vnetName": "[format('vnet-{0}', parameters('namePrefix'))]",
@@ -90,7 +112,6 @@
       "purpose": "azure-monitor-lab",
       "costCenter": "demo"
     },
-    "appServiceLocation": "westeurope",
     "workloadSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'snet-workload')]"
   },
   "resources": [
@@ -110,6 +131,8 @@
           "location": {
             "value": "[parameters('location')]"
           },
+          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', resourceId('Microsoft.Compute/virtualMachines', variables('linuxVmName'))), createObject('value', ''))]",
+          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', resourceId('Microsoft.Compute/virtualMachines', variables('windowsVmName'))), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -121,7 +144,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "14299518871303356779"
+              "templateHash": "17890678230181324105"
             }
           },
           "parameters": {
@@ -143,7 +166,24 @@
               "metadata": {
                 "description": "Resource tags."
               }
+            },
+            "linuxVmId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the optional Linux demo VM."
+              }
+            },
+            "windowsVmId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the optional Windows demo VM."
+              }
             }
+          },
+          "variables": {
+            "vmStartRoleName": "[format('Azure Monitor Lab VM Start {0}', take(uniqueString(subscription().id, resourceGroup().name), 8))]"
           },
           "resources": [
             {
@@ -280,16 +320,58 @@
               }
             },
             {
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, variables('vmStartRoleName'))]",
+              "properties": {
+                "roleName": "[variables('vmStartRoleName')]",
+                "description": "Allows the lab auto-mitigation Logic App to start the configured demo VMs.",
+                "type": "CustomRole",
+                "permissions": [
+                  {
+                    "actions": [
+                      "Microsoft.Compute/virtualMachines/start/action"
+                    ],
+                    "notActions": [],
+                    "dataActions": [],
+                    "notDataActions": []
+                  }
+                ],
+                "assignableScopes": [
+                  "[resourceGroup().id]"
+                ]
+              }
+            },
+            {
+              "condition": "[not(empty(parameters('linuxVmId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "name": "[guid(resourceGroup().id, resourceId('Microsoft.Logic/workflows', parameters('name')), 'rg-contributor')]",
+              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', last(split(parameters('linuxVmId'), '/')))]",
+              "name": "[guid(parameters('linuxVmId'), resourceId('Microsoft.Logic/workflows', parameters('name')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName'))))]",
               "properties": {
                 "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
-                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Logic/workflows', parameters('name'))]"
+                "[resourceId('Microsoft.Logic/workflows', parameters('name'))]",
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('windowsVmId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', last(split(parameters('windowsVmId'), '/')))]",
+              "name": "[guid(parameters('windowsVmId'), resourceId('Microsoft.Logic/workflows', parameters('name')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName'))))]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Logic/workflows', parameters('name'))]",
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName')))]"
               ]
             }
           ],
@@ -434,8 +516,9 @@
           "webAppId": {
             "value": "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
           },
+          "customerWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', resourceId('Microsoft.Web/sites', variables('customerWebAppName'))), createObject('value', ''))]",
           "webAppRegion": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "appInsightsId": {
             "value": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
@@ -453,7 +536,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "14373381281535683708"
+              "templateHash": "1425053957084465378"
             }
           },
           "parameters": {
@@ -479,6 +562,13 @@
               "type": "string",
               "metadata": {
                 "description": "Web App resource ID."
+              }
+            },
+            "customerWebAppId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional customer-facing Web App resource ID for the slot-recovery scenario."
               }
             },
             "webAppRegion": {
@@ -596,6 +686,45 @@
               }
             },
             {
+              "condition": "[not(empty(parameters('customerWebAppId')))]",
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-customer-app-5xx",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Customer Web App returned at least one HTTP 5xx in the last minute.",
+                "severity": 1,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('customerWebAppId')]"
+                ],
+                "targetResourceType": "Microsoft.Web/sites",
+                "targetResourceRegion": "[parameters('webAppRegion')]",
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT1M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "CustomerHttp5xx",
+                      "metricNamespace": "Microsoft.Web/sites",
+                      "metricName": "Http5xx",
+                      "operator": "GreaterThan",
+                      "threshold": 0,
+                      "timeAggregation": "Total",
+                      "criterionType": "StaticThresholdCriterion"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[parameters('actionGroupId')]"
+                  }
+                ]
+              }
+            },
+            {
               "type": "Microsoft.Insights/metricAlerts",
               "apiVersion": "2018-03-01",
               "name": "alert-aks-node-cpu-high",
@@ -655,6 +784,80 @@
                       "timeAggregation": "Count",
                       "operator": "GreaterThan",
                       "threshold": 10,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "autoMitigate": true,
+                "actions": {
+                  "actionGroups": [
+                    "[parameters('actionGroupId')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "alert-agent-task-failures",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Agent tasks are technically available but fail semantic task completion.",
+                "enabled": true,
+                "severity": 2,
+                "scopes": [
+                  "[parameters('appInsightsId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "dependencies | where type == \"GenAI\" | extend TaskSuccess = tostring(customDimensions[\"task.success\"]) | where TaskSuccess == \"false\" | summarize FailedTasks = count()",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 2,
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "autoMitigate": true,
+                "actions": {
+                  "actionGroups": [
+                    "[parameters('actionGroupId')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "alert-agent-efficiency-regression",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "Agent tasks exceed performance budgets or amplify work through retries.",
+                "enabled": true,
+                "severity": 3,
+                "scopes": [
+                  "[parameters('appInsightsId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "dependencies | where type == \"GenAI\" | extend PerformanceSuccess = tostring(customDimensions[\"performance.success\"]), RetryCount = toint(customDimensions[\"retry.count\"]) | where PerformanceSuccess == \"false\" or RetryCount > 1 | summarize DegradedTasks = count()",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 5,
                       "failingPeriods": {
                         "numberOfEvaluationPeriods": 1,
                         "minFailingPeriodsToAlert": 1
@@ -743,7 +946,7 @@
             "value": "[parameters('location')]"
           },
           "webAppRegion": {
-            "value": "[variables('appServiceLocation')]"
+            "value": "[parameters('appServiceLocation')]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -1504,7 +1707,7 @@
             "value": "[parameters('location')]"
           },
           "vmSize": {
-            "value": "Standard_B1s"
+            "value": "[parameters('vmssSize')]"
           },
           "adminUsername": {
             "value": "[parameters('vmAdminUsername')]"
@@ -1526,7 +1729,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "533414499167899336"
+              "templateHash": "12020505676555017969"
             }
           },
           "parameters": {
@@ -1575,6 +1778,9 @@
               }
             }
           },
+          "variables": {
+            "useConfidentialVm": "[and(startsWith(toLower(parameters('vmSize')), 'standard_ec'), or(endsWith(toLower(parameters('vmSize')), 'as_v5'), endsWith(toLower(parameters('vmSize')), 'ads_v5')))]"
+          },
           "resources": [
             {
               "type": "Microsoft.Compute/virtualMachineScaleSets",
@@ -1595,52 +1801,7 @@
                 "upgradePolicy": {
                   "mode": "Automatic"
                 },
-                "virtualMachineProfile": {
-                  "osProfile": {
-                    "computerNamePrefix": "[take(parameters('name'), 9)]",
-                    "adminUsername": "[parameters('adminUsername')]",
-                    "adminPassword": "[parameters('adminPassword')]",
-                    "linuxConfiguration": {
-                      "disablePasswordAuthentication": false,
-                      "provisionVMAgent": true
-                    }
-                  },
-                  "storageProfile": {
-                    "imageReference": {
-                      "publisher": "Canonical",
-                      "offer": "0001-com-ubuntu-server-jammy",
-                      "sku": "22_04-lts-gen2",
-                      "version": "latest"
-                    },
-                    "osDisk": {
-                      "createOption": "FromImage",
-                      "managedDisk": {
-                        "storageAccountType": "Standard_LRS"
-                      }
-                    }
-                  },
-                  "networkProfile": {
-                    "networkInterfaceConfigurations": [
-                      {
-                        "name": "[format('nic-{0}', parameters('name'))]",
-                        "properties": {
-                          "primary": true,
-                          "ipConfigurations": [
-                            {
-                              "name": "ipconfig1",
-                              "properties": {
-                                "primary": true,
-                                "subnet": {
-                                  "id": "[parameters('subnetId')]"
-                                }
-                              }
-                            }
-                          ]
-                        }
-                      }
-                    ]
-                  }
-                }
+                "virtualMachineProfile": "[union(createObject('osProfile', createObject('computerNamePrefix', take(parameters('name'), 9), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'linuxConfiguration', createObject('disablePasswordAuthentication', false(), 'provisionVMAgent', true())), 'storageProfile', createObject('imageReference', createObject('publisher', 'Canonical', 'offer', if(variables('useConfidentialVm'), '0001-com-ubuntu-confidential-vm-jammy', '0001-com-ubuntu-server-jammy'), 'sku', if(variables('useConfidentialVm'), '22_04-lts-cvm', '22_04-lts-gen2'), 'version', 'latest'), 'osDisk', createObject('createOption', 'FromImage', 'managedDisk', createObject('storageAccountType', 'Standard_LRS', 'securityProfile', if(variables('useConfidentialVm'), createObject('securityEncryptionType', 'VMGuestStateOnly'), null())))), 'networkProfile', createObject('networkInterfaceConfigurations', createArray(createObject('name', format('nic-{0}', parameters('name')), 'properties', createObject('primary', true(), 'ipConfigurations', createArray(createObject('name', 'ipconfig1', 'properties', createObject('primary', true(), 'subnet', createObject('id', parameters('subnetId')))))))))), if(variables('useConfidentialVm'), createObject('securityProfile', createObject('securityType', 'ConfidentialVM', 'uefiSettings', createObject('secureBootEnabled', true(), 'vTpmEnabled', true()))), createObject()))]"
               }
             },
             {

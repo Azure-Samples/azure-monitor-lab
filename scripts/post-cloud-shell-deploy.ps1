@@ -11,6 +11,14 @@
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
 
+.PARAMETER CustomerDependencyDeploymentName
+  Exact portal/Bicep customer deployment. If omitted, completion discovers the
+  latest successful deployment for the customer app.
+
+.PARAMETER ApproveCustomerDependencies
+  Explicit approval for enabled customer SQL initialization and worker publication.
+  Otherwise completion prompts before changing the backend.
+
 .PARAMETER EnableStageObservabilityAgent
   Validate Azure Copilot Observability Agent when true. When omitted, detect the
   deployed resource. Explicit false skips validation without changing it.
@@ -25,6 +33,8 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [string] $NamePrefix = 'amlab',
   [guid[]] $ConsoleOperatorObjectIds,
+  [string] $CustomerDependencyDeploymentName,
+  [switch] $ApproveCustomerDependencies,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false
 )
@@ -61,7 +71,7 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
   $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
 }
 $webApp = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*"
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and $_.name -notmatch '-customer$'
 }) | Select-Object -First 1
 $aks = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.ContainerService/managedClusters' -and $_.name -ieq "aks-$NamePrefix"
@@ -70,13 +80,22 @@ $centralLaw = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.OperationalInsights/workspaces' -and $_.name -like "law-$NamePrefix-central-*"
 }) | Select-Object -First 1
 $appInsights = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -ieq "appi-$NamePrefix"
-}) | Select-Object -First 1
+  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -like "appi-$NamePrefix-*"
+} | Sort-Object name) | Select-Object -First 1
+if (-not $appInsights) {
+  $appInsights = @($resources | Where-Object {
+    $_.type -ieq 'Microsoft.Insights/components' -and $_.name -ieq "appi-$NamePrefix"
+  }) | Select-Object -First 1
+}
 
 if (-not $webApp) { throw "Could not find App Service 'app-$NamePrefix-<suffix>' in '$ResourceGroup'." }
+$customerWebApp = @($resources | Where-Object {
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -ieq "$($webApp.name)-customer"
+}) | Select-Object -First 1
+$customerWebAppName = if ($customerWebApp) { $customerWebApp.name } else { $null }
 if (-not $aks) { throw "Could not find AKS cluster 'aks-$NamePrefix' in '$ResourceGroup'." }
 if (-not $centralLaw) { throw "Could not find central LAW 'law-$NamePrefix-central-<suffix>' in '$ResourceGroup'." }
-if (-not $appInsights) { throw "Could not find Application Insights 'appi-$NamePrefix' in '$ResourceGroup'." }
+if (-not $appInsights) { throw "Could not find Application Insights 'appi-$NamePrefix-<suffix>' in '$ResourceGroup'." }
 
 $webAppHost = "$($webApp.name).azurewebsites.net"
 Write-Info "Web App: $($webApp.name)"
@@ -107,6 +126,9 @@ Write-Step "Running App Service and AKS post-deployment setup"
   -WebAppName $webApp.name `
   -AksName $aks.name `
   -WebAppHost $webAppHost `
+  -CustomerWebAppName $customerWebAppName `
+  -CustomerDependencyDeploymentName $CustomerDependencyDeploymentName `
+  -ApproveCustomerDependencies:$ApproveCustomerDependencies `
   -CentralLawName $centralLaw.name `
   -AppInsightsConnectionString $appInsightsConnectionString `
   -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
@@ -134,6 +156,10 @@ if ($EnableStageSreAgent) {
 if ($EnableStageObservabilityAgent) {
   Write-Step 'Validating the deployed Observability Agent, monitored Application Insights resource, and RBAC'
   & (Join-Path $PSScriptRoot 'setup-observability-agent.ps1') -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $SubscriptionId `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
 }
 
 Write-Host @"

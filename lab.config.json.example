@@ -12,11 +12,20 @@
 
   "resourceGroup":    "rg-azure-monitor-lab",
   "location":         "northeurope",
+  "appServiceLocation": "westeurope",
   "namePrefix":       "amlab",
   "vmAdminUsername":  "azureuser",
   "dailyCapGb":       1,
   "aksNodeCount":     2,
+  "vmSize":           "Standard_B2s",
+  "aksNodeVmSize":    "Standard_B2s",
+  "vmssSize":         "Standard_B1s",
   "grafanaAdminObjectId": "",
+  "slotAppServicePlanSku": "S2",
+  "sqlEntraAdminObjectId": "",
+  "sqlEntraAdminName": "",
+  "sqlEntraAdminType": "Group",
+  "_customerDependenciesDocs": "Bicep/Azure CLI only. Requires Stage B and enableSlotFailureScenario. SQL Basic is Entra-only: supply explicit SQL admin object ID/name/type, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL networking. After provisioning explicitly run deploy-customer-dependencies.ps1 using the SQL Entra admin identity, approving only an exact temporary operator firewall IP if needed. Disabling is not deletion under ARM incremental mode; teardown removes the lab resource group.",
   "_grafanaAdminObjectIdDocs": "Leave empty to grant Grafana Admin to the deploying identity. When a pipeline deploys, set the Microsoft Entra object ID of the human lab operator or group that must access Grafana, not an application client ID.",
   "deployWindowsVm":  true,
   "deployLinuxVm":    true,
@@ -31,7 +40,7 @@
   "forbiddenSubscriptionIds": [],
   "observabilityAgentLocation": "westeurope",
   "enableObservabilityAgentAutomaticInvestigation": false,
-  "observabilityAgentInstructions": "Correlate alerts for the lab application and its dependencies when they describe the same customer impact. Keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task failures. Add [OPS-REVIEW] to issue titles.",
+  "observabilityAgentInstructions": "Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact and keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task or efficiency failures and add [OPS-REVIEW] to the title. Reconstruct the Application Insights request, agent, model, handoff, and tool hierarchy; report technical, task, performance, and trace health separately. Produce an SRE handoff packet with customer impact, likely fault domain and confidence, three timestamped evidence points with sources, the smallest safe correction, rollback conditions, missing evidence, and fixed-run verification criteria. Do not claim remediation or incident closure.",
 
   "stageToggles": {
     "enableStageA": true,
@@ -41,6 +50,8 @@
     "enableStageE": true,
     "enableStageAI": false,
     "enableStageSreAgent": false,
-    "enableStageObservabilityAgent": false
+    "enableStageObservabilityAgent": false,
+    "enableSlotFailureScenario": false,
+    "enableCustomerDependencies": false
   }
 }

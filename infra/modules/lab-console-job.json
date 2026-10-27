@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "5351355873177201771"
+      "templateHash": "12370167117907457222"
     }
   },
   "parameters": {
@@ -17,6 +17,14 @@
     },
     "webAppName": {
       "type": "string"
+    },
+    "customerWebAppName": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "customerWorkerName": {
+      "type": "string",
+      "defaultValue": ""
     },
     "environmentId": {
       "type": "string"
@@ -158,6 +166,18 @@
                   {
                     "name": "LAB_RESOURCE_GROUP",
                     "value": "[resourceGroup().name]"
+                  },
+                  {
+                    "name": "LAB_WEB_APP_NAME",
+                    "value": "[parameters('webAppName')]"
+                  },
+                  {
+                    "name": "LAB_CUSTOMER_WEB_APP_NAME",
+                    "value": "[parameters('customerWebAppName')]"
+                  },
+                  {
+                    "name": "LAB_CUSTOMER_WORKER_NAME",
+                    "value": "[parameters('customerWorkerName')]"
                   },
                   {
                     "name": "LAB_RUNNER_MODE",

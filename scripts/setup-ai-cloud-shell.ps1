@@ -62,10 +62,10 @@ $appInsights = az resource list `
   --subscription $SubscriptionId `
   --resource-group $ResourceGroup `
   --resource-type Microsoft.Insights/components `
-  --query "[?name=='appi-$NamePrefix'] | [0].{id:id,name:name}" `
+  --query "[?starts_with(name, 'appi-$NamePrefix-')] | sort_by(@, &name) | [0].{id:id,name:name}" `
   -o json | ConvertFrom-Json
 if (-not $appInsights) {
-  throw "Application Insights 'appi-$NamePrefix' was not found in '$ResourceGroup'."
+  throw "Application Insights 'appi-$NamePrefix-<suffix>' was not found in '$ResourceGroup'."
 }
 
 $appInsightsConnectionString = az resource show `

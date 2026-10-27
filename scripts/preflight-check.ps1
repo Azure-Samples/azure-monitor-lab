@@ -73,8 +73,10 @@ param(
   [bool]   $DeployWindowsVm = $true,
   [bool]   $DeployObservabilityAgent = $false,
   [string] $ObservabilityAgentLocation = 'westeurope',
+  [string] $AppServiceLocation = 'westeurope',
   [string] $ResourceGroup,
   [string] $AppServicePlanTier = 'Basic',
+  [bool] $DeployCustomerDependencies = $false,
   [switch] $WarnOnly
 )
 
@@ -93,10 +95,6 @@ function Add-Result($check, $detail, $status) {
 function Get-RegionToken($s) { if ($null -eq $s) { '' } else { ($s -replace '\s','').ToLowerInvariant() } }
 $locToken = Get-RegionToken $Location
 
-# App Service is pinned to westeurope by the templates (northeurope has no Basic quota
-# on the sponsored lab subs), so its availability + quota are validated against that
-# region, not the lab $Location.
-$appServiceLocation = 'westeurope'
 $appServiceLocToken = Get-RegionToken $appServiceLocation
 
 Write-Step "Pre-flight availability + quota check for region '$Location'"
@@ -259,6 +257,22 @@ $paasTypes = @(
   @{ Label = 'Key Vault';              Ns = 'Microsoft.KeyVault';         Type = 'vaults' }
   @{ Label = 'Log Analytics';          Ns = 'Microsoft.OperationalInsights'; Type = 'workspaces' }
 )
+if ($DeployCustomerDependencies) {
+  $paasTypes += @(
+    @{ Label = 'Customer SQL'; Ns = 'Microsoft.Sql'; Type = 'servers'; Customer = $true }
+    @{ Label = 'Customer Service Bus'; Ns = 'Microsoft.ServiceBus'; Type = 'namespaces'; Customer = $true }
+    @{ Label = 'Processor storage'; Ns = 'Microsoft.Storage'; Type = 'storageAccounts'; Customer = $true }
+  )
+  $flexLocations = az functionapp list-flexconsumption-locations --query '[].name' --output json --only-show-errors | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or -not $flexLocations) {
+    Add-Result 'Orders processor Flex Consumption' 'Could not verify supported regions. Update Azure CLI and verify Flex regional quota before deploying.' 'FAIL'
+  } elseif (@($flexLocations | ForEach-Object { Get-RegionToken $_ }) -notcontains $appServiceLocToken) {
+    Add-Result 'Orders processor Flex Consumption' "$appServiceLocation does not offer Flex Consumption." 'FAIL'
+  } else {
+    Add-Result 'Orders processor Flex Consumption' "$appServiceLocation offers Flex; 2048 MB/instance, maximum 40, no always-ready instances. Regional memory quota/capacity still requires ARM validation." 'PASS'
+  }
+  Add-Result 'Customer dependencies lifecycle' 'SQL Basic + Standard orders queue are billable even idle. Explicit Entra-admin SQL bootstrap and processor publication are required; no password/key or Azure-services SQL firewall fallback.' 'WARN'
+}
 foreach ($t in $paasTypes) {
   $locsJson = az provider show -n $t.Ns --query "resourceTypes[?resourceType=='$($t.Type)'].locations | [0]" -o json 2>$null
   $locs = if ($locsJson) { $locsJson | ConvertFrom-Json } else { $null }
@@ -268,8 +282,8 @@ foreach ($t in $paasTypes) {
     continue
   }
   # App Service is pinned to westeurope, so validate it against that region.
-  $checkLoc = if ($t.Ns -eq 'Microsoft.Web') { $appServiceLocation } else { $Location }
-  $checkTok = if ($t.Ns -eq 'Microsoft.Web') { $appServiceLocToken } else { $locToken }
+  $checkLoc = if ($t.Ns -eq 'Microsoft.Web' -or $t.Customer) { $appServiceLocation } else { $Location }
+  $checkTok = if ($t.Ns -eq 'Microsoft.Web' -or $t.Customer) { $appServiceLocToken } else { $locToken }
   $tokens = @($locs | ForEach-Object { Get-RegionToken $_ })
   if ($tokens -contains $checkTok) {
     Add-Result "$($t.Label)" "available in $checkLoc" 'PASS'

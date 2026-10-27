@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("lab-console.json", optional: true, reloadOnChange: false).AddEnvironmentVariables();
 builder.Services.AddApplicationInsightsTelemetry();
+builder.AddCustomerDependencies();
 builder.Services.AddSingleton<AgentPlayground>();
 builder.Services.AddSingleton<IAgentScenarioDelay, AgentScenarioDelay>();
 builder.Services.AddSingleton<AgentObservabilityScenarios>();
@@ -98,6 +99,18 @@ builder.Services.AddRateLimiter(options =>
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("agent-task-reads", limiter =>
+    {
+        limiter.PermitLimit = 30;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("customer-journey", limiter =>
+    {
+        limiter.PermitLimit = 60;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
     options.AddFixedWindowLimiter("console-performance", limiter =>
     {
         limiter.PermitLimit = 1;
@@ -129,6 +142,32 @@ app.Use(async (context, next) =>
         }
         return Task.CompletedTask;
     });
+    await next(context);
+});
+app.Use(async (context, next) =>
+{
+    if (app.Configuration.GetValue<bool>("LabConsole:ForceOutage")
+        && context.Request.Path != "/api/slot-warmup")
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.Headers.RetryAfter = "60";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Intentional deployment-slot outage.",
+            recovery = "Swap the broken slot back with production."
+        });
+        return;
+    }
+    await next(context);
+});
+app.Use(async (context, next) =>
+{
+    if (app.Configuration.GetValue<bool>("LabConsole:CustomerAppMode")
+        && context.Request.Path == "/")
+    {
+        context.Response.Redirect("/customer/");
+        return;
+    }
     await next(context);
 });
 app.UseExceptionHandler(handler => handler.Run(async context =>
@@ -181,7 +220,7 @@ app.UseRateLimiter();
 
 app.MapGet("/api/console/config", (IConfiguration configuration) =>
 {
-    var links = new[] { "ApplicationInsights", "Logs", "Workbook", "Grafana" }
+    var links = new[] { "ApplicationInsights", "Logs", "Workbook", "Grafana", "CustomerApplication" }
         .ToDictionary(name => name, name =>
         {
             var value = configuration[$"LabConsole:Links:{name}"];
@@ -190,7 +229,35 @@ app.MapGet("/api/console/config", (IConfiguration configuration) =>
         });
     return Results.Json(new { links, performanceCooldownSeconds = 30 });
 });
+app.MapGet("/api/telemetry/config", (IConfiguration configuration) =>
+{
+    var connectionString = configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+    var valid = !string.IsNullOrWhiteSpace(connectionString)
+        && connectionString.Length <= 4096
+        && connectionString.Contains("InstrumentationKey=", StringComparison.OrdinalIgnoreCase);
+    return Results.Json(new
+    {
+        enabled = valid,
+        connectionString = valid ? connectionString : null,
+        serviceName = "azure-monitor-lab-console-browser",
+        serviceVersion = typeof(AgentAccess).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown",
+        contentRecordingEnabled = false
+    });
+});
 app.MapGet("/healthz", () => Results.Text("OK"));
+app.MapCustomerDependencies();
+app.MapGet("/api/slot-warmup", () => Results.Json(new
+{
+    ready = true,
+    deploymentId = typeof(AgentAccess).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown"
+}));
+app.MapGet("/api/agent-task-availability", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
+    scenarios.RunAvailabilityAsync(cancellationToken))
+    .RequireRateLimiting("agent-task-reads");
+app.MapPost("/api/customer/support", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
+    scenarios.RunAvailabilityAsync(cancellationToken))
+    .RequireRateLimiting("customer-journey");
 app.MapGet("/api/console/version", () => Results.Json(new
 {
     deploymentId = typeof(AgentAccess).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown"
@@ -311,6 +378,7 @@ app.MapGet("/api/checkout", (HttpRequest request, TelemetryClient tc) =>
 // Triggered by scripts/trigger-code-optimization.ps1.
 app.MapGet("/api/inefficient", RunInefficient);
 app.MapPost("/api/console/performance", RunInefficient).RequireRateLimiting("console-performance");
+app.MapFallbackToFile("/customer/{*path:nonfile}", "customer/index.html");
 
 app.Run();
 

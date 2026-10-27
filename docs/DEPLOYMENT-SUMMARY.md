@@ -4,7 +4,7 @@
 **Subscription:** `<your-subscription-name>` (`<your-subscription-id>`)
 **Tenant:** `<your-tenant-id>`
 **Resource Group:** `rg-azure-monitor-lab`
-**Region:** North Europe (App Service pinned to West Europe; optional AI stage + Health Model pinned to Sweden Central)
+**Region:** North Europe (App Service uses configurable `appServiceLocation`; optional AI stage + Health Model pinned to Sweden Central)
 
 ---
 
@@ -17,7 +17,7 @@ This is the primary-resource inventory. Child resources, deployment records, pol
 | Resource group | `rg-azure-monitor-lab` |
 | Central Log Analytics workspace | `law-amlab-central-<suffix>` |
 | App Insights LAW | `law-amlab-appinsights-<suffix>` |
-| Application Insights | `appi-amlab` |
+| Application Insights | `appi-amlab-<suffix>` |
 | Azure Monitor Workspace (Managed Prometheus) | `amw-amlab` |
 | Data Collection Endpoint | `dce-amlab` |
 | DCR — VM Insights | `dcr-amlab-vminsights` |
@@ -25,13 +25,13 @@ This is the primary-resource inventory. Child resources, deployment records, pol
 | VNet / NSG | `vnet-amlab` / `nsg-amlab` |
 | Linux VM (Ubuntu 22.04) | `vm-amlab-lin` |
 | Windows VM (Win 2022) | `vmwin<suffix>` |
-| AKS cluster | `aks-amlab` (1 × Standard_B2s system node by default) |
+| AKS cluster | `aks-amlab` (1 configured system node by default) |
 | Linux VM auto-shutdown | `shutdown-computevm-vm-amlab-lin` (23:00 CET/CEST) |
 | Windows VM auto-shutdown | `shutdown-computevm-vmwin<suffix>` (23:00 CET/CEST) |
-| VM scale set | `vmss-amlab` (1 × Standard_B1s by default) |
+| VM scale set | `vmss-amlab` (1 configured `vmssSize` instance by default) |
 | Azure Managed Grafana | https://amg-amlab-<suffix>.cse.grafana.azure.com |
-| App Service (Linux B1, **West Europe**) | https://app-amlab-<suffix>.azurewebsites.net |
-| App Service diag sinks (**West Europe**) | `stapp-amlab<suffix>` (archive) · `evhns-amlab-<suffix>` (stream) |
+| App Service (Linux B1, **`appServiceLocation`**) | https://app-amlab-<suffix>.azurewebsites.net |
+| App Service diag sinks (**`appServiceLocation`**) | `stapp-amlab<suffix>` (archive) · `evhns-amlab-<suffix>` (stream) |
 | AKS frontend (LoadBalancer) | http://<public-ip> |
 | Action Group | `ag-amlab-email` → `<your-alert-email>` |
 | Alert processing rules | Maintenance, disabled low-severity, and conditional VM auto-shutdown suppression |
@@ -83,7 +83,7 @@ The one-shot deployment also includes custom-log ingestion resources, workspace 
 |---|---|---|
 | Linux Dependency Agent | **skipped** | Not supported on Ubuntu 22.04.5+ kernels. VM Insights still gets perf, heartbeat, processes via AMA + DCR. Service Map demo runs on the Windows VM. |
 | App Service GitHub deployment | **replaced** | Tenant has no GitHub source-control token. `post-deploy.ps1` now builds the bundled `workloads/webapp/AmlabHello` project locally and zip-deploys it instead. |
-| AKS node count | **1 by default** | Both one-shot and staged IaC default to one `Standard_B2s` system node. Increase `aksNodeCount` when the selected subscription, add-ons, or workshop workloads require more capacity. |
+| AKS node count | **1 by default** | Both one-shot and staged IaC default to one system node using `aksNodeVmSize`. Increase `aksNodeCount` when the selected subscription, add-ons, or workshop workloads require more capacity. |
 | Daily ingestion cap | 1 GB/day on each LAW | Prevents runaway ingest costs. |
 
 ---

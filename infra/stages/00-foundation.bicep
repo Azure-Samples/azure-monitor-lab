@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region for App Service and its co-located diagnostic Event Hub dependency.')
+param appServiceLocation string = 'westeurope'
+
 @description('Short prefix used to build resource names.')
 @minLength(3)
 @maxLength(8)
@@ -20,10 +23,14 @@ param enableLawReplication bool = false
 @description('Secondary region for LAW replication.')
 param lawReplicationLocation string = ''
 
+@description('Enable the isolated customer Web App slot-recovery scenario and its dedicated Application Insights component.')
+param enableSlotFailureScenario bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
+var customerAppInsightsName = '${appInsightsName}-customer'
 var amwName = 'amw-${namePrefix}'
 var vnetName = 'vnet-${namePrefix}'
 var nsgName = 'nsg-${namePrefix}'
@@ -40,12 +47,6 @@ var commonTags = {
   purpose: 'azure-monitor-lab'
   costCenter: 'demo'
 }
-
-// App Service (Stage B) is pinned to westeurope (no Basic App Service quota in
-// northeurope on the sponsored subs). The Event Hub below is the App Service's
-// diagnostic fan-out target, and Event Hub diag destinations MUST be in the same
-// region as the monitored resource — so it is co-located in westeurope too.
-var appServiceLocation = 'westeurope'
 
 module lawCentral '../modules/law.bicep' = {
   name: 'law-central'
@@ -80,6 +81,27 @@ module appInsights '../modules/appinsights.bicep' = {
     name: appInsightsName
     location: location
     workspaceId: lawAppInsights.outputs.id
+    tags: commonTags
+  }
+}
+
+module customerAppInsights '../modules/appinsights.bicep' = if (enableSlotFailureScenario) {
+  name: 'appi-customer'
+  params: {
+    name: customerAppInsightsName
+    location: location
+    workspaceId: lawAppInsights.outputs.id
+    tags: union(commonTags, { 'amlab-component': 'customer-web-app' })
+  }
+}
+
+module appInsightsObservability '../modules/appinsights-observability.bicep' = {
+  name: 'appinsights-observability'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    appInsightsId: appInsights.outputs.id
+    customerAppInsightsId: enableSlotFailureScenario ? customerAppInsights!.outputs.id : appInsights.outputs.id
     tags: commonTags
   }
 }
@@ -261,3 +283,6 @@ module costWorkbook '../modules/cost-workbook.bicep' = {
     tags: commonTags
   }
 }
+
+output customerAppInsightsName string = enableSlotFailureScenario ? customerAppInsightsName : ''
+output customerAppInsightsId string = enableSlotFailureScenario ? customerAppInsights!.outputs.id : ''

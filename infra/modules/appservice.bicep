@@ -28,13 +28,20 @@ param diagEventHubName string = ''
 @description('Resource tags.')
 param tags object = {}
 
+@description('Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1.')
+param enableSlotFailureScenario bool = false
+
+@description('Slot scenario plan SKU. Defaults to S2 to preserve the current live plan; one worker.')
+@allowed(['S1', 'S2', 'S3'])
+param slotAppServicePlanSku string = 'S2'
+
 resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: planName
   location: location
   tags: tags
   sku: {
-    name: 'B1'
-    tier: 'Basic'
+    name: enableSlotFailureScenario ? slotAppServicePlanSku : 'B1'
+    tier: enableSlotFailureScenario ? 'Standard' : 'Basic'
     capacity: 1
   }
   kind: 'linux'
@@ -82,6 +89,10 @@ module appSettings './appservice-settings.bicep' = {
       SnapshotDebugger_EXTENSION_VERSION: '~1'
       SCM_DO_BUILD_DURING_DEPLOYMENT: 'true'
       WEBSITE_HTTPLOGGING_RETENTION_DAYS: '3'
+      LabConsole__SlotScenarioEnabled: string(enableSlotFailureScenario)
+      LabConsole__ForceOutage: 'false'
+      WEBSITE_SWAP_WARMUP_PING_PATH: '/api/slot-warmup'
+      WEBSITE_SWAP_WARMUP_PING_STATUSES: '200'
     }
   }
 }

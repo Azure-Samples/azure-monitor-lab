@@ -22,6 +22,10 @@
 .PARAMETER ParametersFile
   Bicep parameters file. Defaults to infra/main.parameters.json.
 
+.PARAMETER ApproveCustomerDependencies
+  Approve SQL schema/users/seed initialization and orders worker publication for
+  the enabled customer backend. Otherwise post-deployment requests confirmation.
+
 .EXAMPLE
   ./scripts/deploy.ps1
 
@@ -36,7 +40,8 @@ param(
   [string] $ParametersFile = (Join-Path $PSScriptRoot '..' 'infra' 'main.parameters.json'),
   [switch] $SkipPreflight,
   [int]    $MaxDeployRetries = 0,
-  [guid[]] $ConsoleOperatorObjectIds
+  [guid[]] $ConsoleOperatorObjectIds,
+  [switch] $ApproveCustomerDependencies
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,6 +55,10 @@ function Write-Step($msg) {
 $pfAksNodeCount    = 1
 $pfDeployWindowsVm = $true
 $pfDeployLinuxVm   = $true
+$pfVmSize          = 'Standard_B2s'
+$pfAksNodeVmSize   = 'Standard_B2s'
+$pfVmssSize        = 'Standard_B1s'
+$pfAppServiceLocation = 'westeurope'
 $pfDeployObservabilityAgent = $false
 $pfObservabilityAgentLocation = 'westeurope'
 
@@ -79,6 +88,10 @@ if (Test-Path $labConfigPath) {
   if ($null -ne $labCfg.aksNodeCount)    { $pfAksNodeCount    = [int]$labCfg.aksNodeCount }
   if ($null -ne $labCfg.deployWindowsVm) { $pfDeployWindowsVm = [bool]$labCfg.deployWindowsVm }
   if ($null -ne $labCfg.deployLinuxVm)   { $pfDeployLinuxVm   = [bool]$labCfg.deployLinuxVm }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmSize))        { $pfVmSize = [string]$labCfg.vmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.aksNodeVmSize)) { $pfAksNodeVmSize = [string]$labCfg.aksNodeVmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmssSize))      { $pfVmssSize = [string]$labCfg.vmssSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.appServiceLocation)) { $pfAppServiceLocation = [string]$labCfg.appServiceLocation }
   if ($null -ne $labCfg.stageToggles.enableStageObservabilityAgent) {
     $pfDeployObservabilityAgent = [bool]$labCfg.stageToggles.enableStageObservabilityAgent
   }
@@ -116,17 +129,36 @@ Write-Step "Active subscription"
 az account show --query "{name:name, id:id, tenantId:tenantId, user:user.name}" -o table
 
 # 0b. Pre-flight availability + quota check — fail in ~15s instead of 20min in.
+$deploymentInputs = Get-Content -LiteralPath $ParametersFile -Raw | ConvertFrom-Json
+$pfCustomerDependencies = $deploymentInputs.parameters.enableCustomerDependencies.value -eq $true
+if ($pfCustomerDependencies) {
+  $sqlAdmin = [guid]::Empty
+  if ($deploymentInputs.parameters.enableSlotFailureScenario.value -isnot [bool] -or
+      $deploymentInputs.parameters.enableSlotFailureScenario.value -ne $true -or
+      -not [guid]::TryParseExact([string]$deploymentInputs.parameters.sqlEntraAdminObjectId.value, 'D', [ref]$sqlAdmin) -or
+      $sqlAdmin -eq [guid]::Empty -or [string]::IsNullOrWhiteSpace($deploymentInputs.parameters.sqlEntraAdminName.value) -or
+      ($deploymentInputs.parameters.sqlEntraAdminType -and $deploymentInputs.parameters.sqlEntraAdminType.value -notin @('User','Group','Application'))) {
+    throw 'Customer dependencies require enableSlotFailureScenario=true and explicit SQL Entra administrator GUID/name/type in the selected parameters file.'
+  }
+}
+$pfAppServicePlanTier = if ($deploymentInputs.parameters.enableSlotFailureScenario.value -eq $true) { 'Standard' } else { 'Basic' }
 if ($SkipPreflight) {
   Write-Step "Skipping pre-flight availability/quota check (-SkipPreflight)"
 } else {
   Write-Step "Pre-flight: validating SKUs + quota + resource availability in $Location"
   $preflight = Join-Path $PSScriptRoot 'preflight-check.ps1'
   & $preflight -Location $Location `
+               -VmSize $pfVmSize `
+               -AksNodeVmSize $pfAksNodeVmSize `
+               -VmssSize $pfVmssSize `
+               -AppServiceLocation $pfAppServiceLocation `
                -AksNodeCount $pfAksNodeCount `
                -DeployWindowsVm $pfDeployWindowsVm `
                -DeployLinuxVm $pfDeployLinuxVm `
                -DeployObservabilityAgent $pfDeployObservabilityAgent `
                -ObservabilityAgentLocation $pfObservabilityAgentLocation `
+               -DeployCustomerDependencies $pfCustomerDependencies `
+               -AppServicePlanTier $pfAppServicePlanTier `
                -ResourceGroup $ResourceGroup
   if ($LASTEXITCODE -ne 0) {
     throw "Pre-flight check failed for region '$Location'. Fix the FAIL rows above (or re-run with -SkipPreflight to bypass) before deploying."
@@ -159,11 +191,19 @@ Write-Step "Ensuring preview resource providers are registered"
 Register-ResourceProvider -Namespace 'Microsoft.CloudHealth'
 Register-ResourceProvider -Namespace 'Microsoft.App'
 Register-ResourceProvider -Namespace 'Microsoft.ContainerRegistry'
+if ($pfCustomerDependencies) {
+  Register-ResourceProvider -Namespace 'Microsoft.Sql'
+  Register-ResourceProvider -Namespace 'Microsoft.ServiceBus'
+  Register-ResourceProvider -Namespace 'Microsoft.App'
+}
 
 # 2. Deploy
 Write-Step "Deploying main.bicep (this takes about 5 minutes: AKS + VMs + Grafana)"
 $deploymentName = "amlab-$(Get-Date -Format 'yyyyMMddHHmmss')"
 $mainBicep = Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'
+. (Join-Path $PSScriptRoot 'deployment-slot-recovery.ps1')
+$deploymentSubscription = az account show --query id -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $deploymentSubscription) { throw 'Cannot resolve the pinned deployment subscription.' }
 
 # Transient allocation/capacity error codes. These are region-wide, service-side, and
 # NOT knowable ahead of time via any quota/SKU/availability API (see preflight-check.ps1) —
@@ -197,13 +237,11 @@ while ($true) {
     Write-Host "   Retry $($attempt - 1)/$MaxDeployRetries — capacity is often reclaimed as others delete clusters..." -ForegroundColor Yellow
   }
 
-  az deployment group create `
-    --resource-group $ResourceGroup `
-    --name $deploymentName `
-    --template-file $mainBicep `
-    --parameters "@$ParametersFile" `
-    --parameters location=$Location `
-    --output none
+  $deploymentArguments = @('--subscription', $deploymentSubscription, '--resource-group', $ResourceGroup,
+    '--name', $deploymentName, '--template-file', $mainBicep,
+    '--parameters', "@$ParametersFile", '--parameters', "location=$Location", '--mode', 'Incremental')
+  Invoke-LabDeployment -Arguments $deploymentArguments -SubscriptionId $deploymentSubscription `
+    -ResourceGroup $ResourceGroup -DeploymentName $deploymentName
 
   if ($LASTEXITCODE -eq 0) { break }
 
@@ -280,12 +318,21 @@ $outputs = $outputsJson | ConvertFrom-Json
 
 $webAppName       = $outputs.webAppName.value
 $webAppHost       = $outputs.webAppDefaultHost.value
+$customerWebAppName = $outputs.customerWebAppName.value
 $aksName          = $outputs.aksName.value
 $grafanaEndpoint  = $outputs.grafanaEndpoint.value
 $workbookId       = $outputs.workbookId.value
 $centralLawName   = $outputs.centralLawName.value
 $linuxVm          = $outputs.linuxVmNameOut.value
 $winVm            = $outputs.windowsVmNameOut.value
+
+if ($outputs.observabilityAgentEnabled.value) {
+  Write-Step 'Removing the Observability Agent subscription grant after verifying its resource-scoped replacement'
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $active.id `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
+}
 
 # 2b. Subscription-level Activity Log -> central LAW.
 #     Subscription-scope diagnostic settings cannot be deployed from RG-scope Bicep,
@@ -315,7 +362,22 @@ Write-Host "  Windows VM     : $winVm"
 
 # 3. Post-deploy
 $postDeploy = Join-Path $PSScriptRoot 'post-deploy.ps1'
-& $postDeploy -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -WebAppName $webAppName -AksName $aksName -WebAppHost $webAppHost -CentralLawName $centralLawName -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
+$postDeployParameters = @{
+  SubscriptionId = $active.id
+  TenantId = $active.tenantId
+  ResourceGroup = $ResourceGroup
+  WebAppName = $webAppName
+  AksName = $aksName
+  WebAppHost = $webAppHost
+  CentralLawName = $centralLawName
+  ConsoleOperatorObjectIds = $ConsoleOperatorObjectIds
+  CustomerDependencyDeploymentName = $deploymentName
+  ApproveCustomerDependencies = $ApproveCustomerDependencies
+}
+if (-not [string]::IsNullOrWhiteSpace($customerWebAppName)) {
+  $postDeployParameters.CustomerWebAppName = $customerWebAppName
+}
+& $postDeploy @postDeployParameters
 
 # 4. Service Group (tenant-scoped, preview) + service group member relationship.
 #    Required before SLIs can be attached as extensions on the group.
