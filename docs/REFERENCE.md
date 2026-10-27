@@ -377,6 +377,7 @@ These scripts operate or extend an already deployed lab. Most are manual demo he
 
 ## Troubleshooting
 
+- **`customer-webapp` fails with `ResourceNotFound` on `/config/appsettings` during a first deployment**: older templates could read customer app settings before the AVM site deployment completed. The settings read now runs inside a nested deployment that depends on site creation, while preserving existing runtime settings. Use the updated Bicep sources and compiled ARM templates, then rerun the same deployment (or Stage B for staged deployments). No resource-group deletion is required.
 - **App Service Logs panes are empty** for the first ~10 min — the source-control deployment from GitHub is still building (Oryx).
 - **`AppRequests` / `AppDependencies` empty** in App Insights LAW → ensure the Web App restarted at least once after the App Settings landed: `az webapp restart -g rg-azure-monitor-lab -n <webApp>`.
 - **AKS LB IP stuck `<pending>`** → wait 1-2 min, or `kubectl describe svc hello-frontend -n demo`.

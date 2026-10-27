@@ -52,11 +52,10 @@ module site 'br/public:avm/res/web/site:0.24.0' = {
   }
 }
 
-module appSettings './appservice-settings.bicep' = {
+module appSettings './appservice-settings-merge.bicep' = {
   name: 'customer-web-app-settings'
   params: {
     webAppName: site.outputs.name
-    existingAppSettings: list('${resourceId('Microsoft.Web/sites', webAppName)}/config/appsettings', '2023-12-01').properties
     appSettings: union({
       APPLICATIONINSIGHTS_CONNECTION_STRING: appInsightsConnectionString
       APPINSIGHTS_INSTRUMENTATIONKEY: appInsightsInstrumentationKey

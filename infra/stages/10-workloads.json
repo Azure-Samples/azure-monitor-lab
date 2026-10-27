@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "7098555952290491799"
+      "templateHash": "11253305280788967099"
     }
   },
   "parameters": {
@@ -27712,7 +27712,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "12466581355623816918"
+              "templateHash": "14116149934811644844"
             }
           },
           "parameters": {
@@ -42657,9 +42657,6 @@
                   "webAppName": {
                     "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.name.value]"
                   },
-                  "existingAppSettings": {
-                    "value": "[list(format('{0}/config/appsettings', resourceId('Microsoft.Web/sites', parameters('webAppName'))), '2023-12-01').properties]"
-                  },
                   "appSettings": {
                     "value": "[union(createObject('APPLICATIONINSIGHTS_CONNECTION_STRING', parameters('appInsightsConnectionString'), 'APPINSIGHTS_INSTRUMENTATIONKEY', parameters('appInsightsInstrumentationKey'), 'ApplicationInsightsAgent_EXTENSION_VERSION', '~3', 'XDT_MicrosoftApplicationInsights_Mode', 'recommended', 'XDT_MicrosoftApplicationInsights_PreemptSdk', '1', 'InstrumentationEngine_EXTENSION_VERSION', 'disabled', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'false', 'LabConsole__CustomerAppMode', 'true', 'LabConsole__SlotScenarioEnabled', 'true', 'LabConsole__ForceOutage', 'false', 'WEBSITE_SWAP_WARMUP_PING_PATH', '/api/slot-warmup', 'WEBSITE_SWAP_WARMUP_PING_STATUSES', '200'), parameters('customerDependencySettings'))]"
                   }
@@ -42671,35 +42668,84 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.37.4.10188",
-                      "templateHash": "5145608396194603445"
+                      "templateHash": "12497422678682809962"
                     }
                   },
                   "parameters": {
                     "webAppName": {
                       "type": "string",
                       "metadata": {
-                        "description": "Web App created by the parent deployment."
-                      }
-                    },
-                    "existingAppSettings": {
-                      "type": "secureObject",
-                      "metadata": {
-                        "description": "Existing settings read by the parent after creating the Web App, avoiding a self-reference in the settings resource."
+                        "description": "Web App created before this deployment starts."
                       }
                     },
                     "appSettings": {
                       "type": "secureObject",
                       "metadata": {
-                        "description": "Infrastructure-owned telemetry settings to merge with existing settings."
+                        "description": "Infrastructure-owned settings to merge with existing runtime settings."
                       }
                     }
                   },
                   "resources": [
                     {
-                      "type": "Microsoft.Web/sites/config",
-                      "apiVersion": "2023-12-01",
-                      "name": "[format('{0}/{1}', parameters('webAppName'), 'appsettings')]",
-                      "properties": "[union(parameters('existingAppSettings'), parameters('appSettings'))]"
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "merge-app-settings",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "webAppName": {
+                            "value": "[parameters('webAppName')]"
+                          },
+                          "existingAppSettings": {
+                            "value": "[list(format('{0}/config/appsettings', resourceId('Microsoft.Web/sites', parameters('webAppName'))), '2023-12-01').properties]"
+                          },
+                          "appSettings": {
+                            "value": "[parameters('appSettings')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "5145608396194603445"
+                            }
+                          },
+                          "parameters": {
+                            "webAppName": {
+                              "type": "string",
+                              "metadata": {
+                                "description": "Web App created by the parent deployment."
+                              }
+                            },
+                            "existingAppSettings": {
+                              "type": "secureObject",
+                              "metadata": {
+                                "description": "Existing settings read by the parent after creating the Web App, avoiding a self-reference in the settings resource."
+                              }
+                            },
+                            "appSettings": {
+                              "type": "secureObject",
+                              "metadata": {
+                                "description": "Infrastructure-owned telemetry settings to merge with existing settings."
+                              }
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Web/sites/config",
+                              "apiVersion": "2023-12-01",
+                              "name": "[format('{0}/{1}', parameters('webAppName'), 'appsettings')]",
+                              "properties": "[union(parameters('existingAppSettings'), parameters('appSettings'))]"
+                            }
+                          ]
+                        }
+                      }
                     }
                   ]
                 }
