@@ -225,6 +225,10 @@ function Ensure-EventHubConnection {
     -DisplayName $connectionName `
     -NamespaceName $NamespaceName `
     -EventHubName $EventHubName
+  if ($connection -and $connection.credentialDetails.credentialType -eq 'WorkspaceIdentity') {
+    Write-Info "Reusing workspace-identity Fabric connection '$connectionName' ($($connection.id)); shared keys are not required."
+    return $connection
+  }
   if ($connection) {
     Write-Info "Refreshing Fabric connection '$connectionName' ($($connection.id))"
   }
@@ -276,7 +280,7 @@ function Ensure-EventHubConnection {
         type = 'EventHub'
         creationMethod = 'EventHub.Contents'
         parameters = @(
-          @{ dataType = 'Text'; name = 'endpoint'; value = "sb://$NamespaceName.servicebus.windows.net/" }
+          @{ dataType = 'Text'; name = 'endpoint'; value = $NamespaceName }
           @{ dataType = 'Text'; name = 'entityPath'; value = $EventHubName }
         )
       }
@@ -623,9 +627,14 @@ if (-not $SkipEventstreamConnection -and -not [string]::IsNullOrWhiteSpace($even
     Write-Host "Eventstream source and Eventhouse destination configured." -ForegroundColor Green
     $setupResults.Add([pscustomobject]@{ Feature = 'Eventstream topology'; Status = 'Configured'; Detail = 'Event Hub -> Eventstream -> Eventhouse. Data delivery is verified separately.' })
   } catch {
+    $connectionAction = if ($eventHubConnection.credentialDetails.credentialType -eq 'WorkspaceIdentity') {
+      'If the Eventstream API rejects WorkspaceIdentity, publish the Event Hubs source and Eventhouse destination in the Fabric portal; keep shared keys disabled.'
+    } else {
+      'Create/repair the Event Hub connection once in Fabric, then rerun setup.'
+    }
     $setupResults.Add([pscustomobject]@{
       Feature = 'Eventstream topology'; Status = 'ActionRequired'
-      Detail = "$($_.Exception.Message) Create/repair the Event Hub connection once in Fabric, then rerun setup."
+      Detail = "$($_.Exception.Message) $connectionAction"
     })
   }
 } else {
@@ -719,10 +728,10 @@ Write-Host "Eventstream ID: $($eventstream.id)"
 if (-not $eventstreamAutomated) {
   Write-Host "`nManual Eventstream connection:" -ForegroundColor Cyan
   Write-Host "1. Open '$EventstreamName', switch to Edit mode, and select Add source > Connect data sources > Azure Event Hubs."
-  Write-Host "2. Create a Shared Access Key connection to namespace '$eventHubNamespace' and Event Hub 'diagnostics'."
-  Write-Host "3. Use Shared Access Key Name 'diagnostics-listen' and its primary or secondary key from the Event Hubs namespace."
-  Write-Host "4. After the connection test succeeds, cancel before adding or publishing source topology."
-  Write-Host "5. Rerun this script. It will discover the connection and publish the source, stream, and Eventhouse destination automatically."
+  Write-Host "2. Connect to namespace '$eventHubNamespace' and Event Hub 'diagnostics'. For Entra-only namespaces, select Workspace identity after enabling the workspace identity and granting it Azure Event Hubs Data Receiver on this event hub."
+  Write-Host "3. Otherwise use Shared Access Key Name 'diagnostics-listen' and its primary or secondary key. Do not enable shared-key authentication merely to bypass an Entra-only policy."
+  Write-Host "4. For shared-key connections, cancel after the connection test succeeds and rerun setup to publish topology."
+  Write-Host "5. If the Eventstream API rejects WorkspaceIdentity, publish the source and a MonitoringTelemetry Eventhouse destination targeting AzureDiagnosticsRaw directly in the portal."
   Write-Host "6. Rerun setup to verify '$DestinationTableName' and open the automatically provisioned dashboard."
   Write-Host "The connection key is entered only in Fabric; do not paste it into this script or source control."
 }

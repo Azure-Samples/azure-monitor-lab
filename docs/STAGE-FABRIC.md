@@ -58,6 +58,10 @@ After deployment, `setup-fabric.ps1` creates or reuses:
 
 Setup attempts to create the Event Hub connection and publish the source-to-Eventhouse topology automatically. The Listen-only key is held only in process memory, never printed or persisted, and cleared immediately. Some tenants reject Shared Access Key connection creation through the public Fabric API even though the same connection works in the portal. In that case, create the connection once through the guided portal flow and rerun setup; the script discovers it by endpoint and publishes the topology automatically.
 
+For an Entra-only Event Hubs namespace (`disableLocalAuth=true`), keep shared keys disabled. Enable the Fabric workspace identity, grant it **Azure Event Hubs Data Receiver** scoped to the `diagnostics` event hub, and create an Event Hubs connection using **Workspace identity** authentication. These identity/access changes require administrator approval. Setup reuses workspace-identity connections without reading shared keys or replacing their credentials. See [Event Hubs source authentication](https://learn.microsoft.com/fabric/real-time-intelligence/event-streams/add-source-azure-event-hubs).
+
+Some tenants expose workspace-identity connections but reject them when publishing an Eventstream through the public API (`DataSourcesValidationError`, authentication method `WorkspaceIdentity` not supported). In that case, creating the connection or rerunning setup does not complete streaming: publish the Event Hubs source and the `MonitoringTelemetry` Eventhouse destination targeting `AzureDiagnosticsRaw` in the Fabric portal. Setup reports this limitation as **ActionRequired**, not a verified live stream. Do not switch to shared keys to bypass this restriction.
+
 Setup polls Eventstream failures and checks for rows ingested into `AzureDiagnosticsRaw` in the last 15 minutes. Its default verification window is 180 seconds, configurable up to 900 seconds. Empty/missing tables remain **Pending**, not healthy; API/authorization/query failures are reported explicitly. A final feature-by-feature summary shows what succeeded and what still requires action. Failures cause setup to throw after reporting results; the main deployment reports optional Fabric setup failure without undoing infrastructure.
 
 Reruns reuse existing items and preserve user-edited dashboards and mirror definitions. Sample rows are deduplicated by their stable synthetic IDs. Changing dashboard/table-selection configuration does not overwrite existing item definitions; use the portal to change an existing item or create a deliberately separate item.
@@ -126,8 +130,8 @@ Normally `setup-fabric.ps1` creates the Event Hubs connection and publishes the 
 Some tenants reject Event Hubs Shared Access Key credentials through the public Fabric Connections API even though the portal supports them. In that case, create only the connection once:
 
 1. Open `AzureMonitorEvents`, switch to **Edit** mode, and select **Add source** > **Connect data sources** > **Azure Event Hubs**.
-2. Create a **Shared Access Key** connection for the deployed namespace and the `diagnostics` Event Hub.
-3. Use Shared Access Key Name `diagnostics-listen` and retrieve its primary or secondary key from **Event Hubs namespace** > **Shared access policies**. Do not use `diagnostics-send`; it cannot consume events.
+2. Create a connection for the deployed namespace and the `diagnostics` Event Hub. For Entra-only namespaces, use **Workspace identity** with the approved event-hub-scoped receiver permission described above.
+3. If shared-key authentication is already allowed, use **Shared Access Key** with key name `diagnostics-listen` and retrieve its primary or secondary key from **Event Hubs namespace** > **Shared access policies**. Do not use `diagnostics-send`; it cannot consume events. Do not weaken an Entra-only policy to make this fallback work.
 4. Set Consumer group to `$Default`, Data format to **JSON**, and Data gateway to **none**.
 5. After the connection test succeeds, cancel before adding or publishing the source.
 6. Rerun `setup-fabric.ps1`. It discovers the connection by Event Hub endpoint and publishes the source, default stream, and `MonitoringTelemetry` Eventhouse destination automatically.

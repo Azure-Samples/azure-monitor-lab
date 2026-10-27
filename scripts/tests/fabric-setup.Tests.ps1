@@ -5,7 +5,7 @@ $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$parseErrors)
 if ($parseErrors.Count) { throw "Fabric setup does not parse: $($parseErrors.Message -join '; ')" }
 
-foreach ($name in @('Write-Info', 'Wait-FabricOperation', 'New-FabricItem', 'ConvertTo-InlineBase64', 'Set-EventstreamTopology')) {
+foreach ($name in @('Write-Info', 'Wait-FabricOperation', 'New-FabricItem', 'ConvertTo-InlineBase64', 'Set-EventstreamTopology', 'Ensure-EventHubConnection')) {
   $definition = @($ast.EndBlock.Statements | Where-Object {
     $_ -is [Management.Automation.Language.FunctionDefinitionAst] -and $_.Name -eq $name
   })
@@ -28,11 +28,27 @@ function Reset-Fixture {
   $fixture.Polls = 0
   $fixture.Delays = [Collections.Generic.List[int]]::new()
   $fixture.PostFailure = ''
+  $fixture.Connection = $null
+  $fixture.KeyReads = 0
+  $fixture.ConnectionBody = $null
+}
+
+function Get-FabricConnection { param($DisplayName, $NamespaceName, $EventHubName); return $fixture.Connection }
+function az {
+  if (($args -join ' ') -notlike 'eventhubs namespace authorization-rule keys list *') { throw 'Unexpected Azure CLI call.' }
+  $fixture.KeyReads++
+  $global:LASTEXITCODE = 0
+  return 'offline-listen-test'
 }
 
 function Invoke-RestMethod {
   param($Method, $Uri, $Headers, $ContentType, $Body, $ResponseHeadersVariable, $StatusCodeVariable)
   if ($Headers.Authorization -ne $script:fabricHeaders.Authorization) { throw 'Unexpected Fabric authorization.' }
+  if ($Method -eq 'Post' -and $Uri -eq "$fabricApi/connections") {
+    $fixture.Posts++
+    $fixture.ConnectionBody = $Body | ConvertFrom-Json
+    return @{ id = 'test-connection' }
+  }
   if ($Method -eq 'Post' -and $Uri -eq "$fabricApi/workspaces/test-workspace/eventstreams/test-stream/getDefinition") {
     return @{ definition = @{ parts = @() } }
   }
@@ -157,6 +173,22 @@ $fixture.Headers = @{}
 Assert-Failure { Invoke-TestTopology } '*operation URL or ID*'
 if ($fixture.Posts -ne 1 -or $fixture.Polls) { throw 'An accepted Eventstream update without operation metadata must not report success.' }
 Write-Output 'PASS: Eventstream updates use the same synchronous/asynchronous rules. No Azure calls or real delays.'
+
+Reset-Fixture
+$fixture.Connection = @{ id = 'identity-connection'; credentialDetails = @{ credentialType = 'WorkspaceIdentity' } }
+$connection = Ensure-EventHubConnection -NamespaceName testhub -EventHubName diagnostics
+if ($connection.id -ne 'identity-connection' -or $fixture.KeyReads -or $fixture.Posts) {
+  throw 'Workspace-identity connections must be reused without reading shared keys or replacing credentials.'
+}
+Reset-Fixture
+$connection = Ensure-EventHubConnection -NamespaceName testhub -EventHubName diagnostics
+$endpoint = @($fixture.ConnectionBody.connectionDetails.parameters | Where-Object name -eq endpoint)
+if ($connection.id -ne 'test-connection' -or $fixture.KeyReads -ne 1 -or $fixture.Posts -ne 1 -or
+    $endpoint.Count -ne 1 -or $endpoint[0].value -ne 'testhub' -or
+    $fixture.ConnectionBody.credentialDetails.credentials.credentialType -ne 'Basic') {
+  throw 'Shared-key connections must use the connector namespace parameter, not a Service Bus URI.'
+}
+Write-Output 'PASS: Workspace identity is preserved and new connections use the established EventHub endpoint format.'
 
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json -AsHashtable
 $capacityDeployments = @($mainTemplate.resources | Where-Object { $_.name -eq 'fabric-capacity' })
