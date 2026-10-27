@@ -114,7 +114,7 @@ if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Bicep CLI version 0\.37\.4\b') 
 $temporary = Join-Path $source ('.artifacts\amlab-template-check-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary
 try {
-  foreach ($relative in @('infra/main', 'infra/customer-application', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/60-fabric', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job')) {
+  foreach ($relative in @('infra/main', 'infra/customer-application', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/60-fabric', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job', 'infra/modules/fabric-auto-suspend')) {
     $compiled = Join-Path $temporary ([IO.Path]::GetFileName($relative) + '.json')
     $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
     if ($LASTEXITCODE -ne 0) { $messages; throw "Bicep compilation failed: $relative" }

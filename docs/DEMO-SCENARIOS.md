@@ -3755,8 +3755,8 @@ A Fabric Real-Time Dashboard presents live health and throughput alongside busin
 
 ### Click-path
 
-1. Create or open a Real-Time Dashboard connected to `MonitoringTelemetry`.
-2. Add tiles for event rate, errors, affected service, and recent incidents.
+1. Open the automatically provisioned `Azure Monitor Demo Live Health` dashboard connected to `MonitoringTelemetry`.
+2. Show the live ingestion-rate and recent-telemetry tiles. Customize parsing/tiles for errors, affected service, and incidents if desired; the default raw diagnostic schema varies by source.
 3. Apply a time range and service filter.
 4. Pin the dashboard for an operations wallboard view.
 
@@ -3776,10 +3776,10 @@ Infrastructure health matters because it affects an outcome. Fabric can join ope
 
 ### Click-path
 
-1. Show operational events in `MonitoringTelemetry`.
-2. Add or identify a business event stream with a shared service or correlation ID.
-3. Join the streams in KQL by time window and correlation ID.
-4. Chart failed requests beside affected transactions or revenue.
+1. Show live operational events in `MonitoringTelemetry`, separately from the generated `LabSampleEvents` table.
+2. Open the dashboard's **SYNTHETIC business correlation** tile: setup seeds four deduplicated operational/business sample events with shared correlation IDs.
+3. Inspect the KQL join and compare the synthetic failed and completed transactions. These are not real orders or measured customer impact.
+4. Optionally replace the example with a real business event source and join by time window/correlation ID; that application-specific integration is not deployed automatically.
 
 ### Killer line
 > *"The question changes from 'is CPU high?' to 'which customers and outcomes are affected right now?'"*
@@ -3797,7 +3797,7 @@ F2 is intentionally small and can throttle under sustained demand. Capacity Metr
 
 ### Click-path
 
-1. Open the Microsoft Fabric Capacity Metrics app for the lab capacity.
+1. Install the Microsoft Fabric Capacity Metrics app once if needed (capacity admin and Power BI Pro/PPU/trial), then open it for the lab capacity. Installation is not automated by a documented public API.
 2. Show CU utilization and timepoint detail.
 3. Identify interactive versus background operations.
 4. Explain how throttling and smoothing protect the capacity.
@@ -3843,16 +3843,16 @@ Fabric F2 bills while active. The lab makes lifecycle control part of the demo, 
 **Audience:** Data platform teams, observability architects, analytics teams.
 **Time:** 5 min.
 
-> **Requires Stage Fabric and Preview onboarding.** A tenant admin must enable the **Mirrored Azure Monitor** catalog item. Creating its connection requires role-assignment write plus Log Analytics workspace read/query permissions, or an equivalent privileged built-in role. The mirrored item is a guided Fabric portal step and is not created by this lab's deployment scripts. Fabric compute charges apply when Fabric workloads query the data, while Azure Monitor ingestion and retention charges continue normally.
+> **Requires Stage Fabric and Preview onboarding.** A tenant admin must enable the **Mirrored Azure Monitor** catalog item. Creating its connection requires role-assignment write plus Log Analytics workspace read/query permissions, or an equivalent privileged built-in role. After that one-time source authorization, setup can create the mirrored catalog through the public API when `fabricAutomation.enableMirroring=true` and its connection ID is configured. Fabric compute charges apply when Fabric workloads query the data, while Azure Monitor ingestion and retention charges continue normally.
 
 ### Story
 Mirror Azure Monitor exposes selected Log Analytics tables to Fabric without an export pipeline or duplicate storage. The data remains in Azure Monitor's Delta Lake storage and appears through read-only OneLake shortcuts, so teams can analyze operational telemetry beside business data in Eventhouse, Real-Time Dashboards, Power BI, Spark, and agentic workloads.
 
 ### Click-path
 
-1. In the Fabric workspace, create a **Mirrored Azure Monitor** item and connect the lab's central Log Analytics workspace.
+1. Authorize an Azure Monitor connection to central Log Analytics, configure `fabricAutomation.enableMirroring` and `mirrorConnectionId`, then rerun setup to create **Azure Monitor Demo Mirrored Logs**. Alternatively create the mirrored item manually in the portal.
 2. For a same-tenant production setup, choose **Workspace identity**. Use an organizational account only for an interactive demo, and explain that Azure RBAC and Fabric workspace permissions are independent security boundaries.
-3. Select useful tables such as `AzureActivity`, `ContainerLogV2`, `AppServiceHTTPLogs`, and `Perf`, then create the mirrored item.
+3. Inspect the explicit selection of `AzureActivity`, `ContainerLogV2`, `AppServiceHTTPLogs`, and `Perf`. Configure `mirrorTables` explicitly for your collected tables; setup does not widen the selection when a table is missing.
 4. Allow about 15 minutes for new data to appear. Preview does not backfill historical rows, and the mirrored tables are read-only in Fabric.
 5. Open the generated Eventhouse endpoint or create an Eventhouse shortcut. Query a mirrored table and join it with business data already in OneLake.
 6. Contrast this with [scenario 74](#s74): Eventstream consumes a live Event Hub feed into `AzureDiagnosticsRaw`; mirroring exposes Log Analytics tables without copying them.

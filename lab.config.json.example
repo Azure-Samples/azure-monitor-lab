@@ -9,6 +9,18 @@
 
   "alertEmail":       "your.alias@example.com",
   "fabricAdminEmail": "admin@example.com",
+  "fabricAutomation": {
+    "seedSampleData": true,
+    "verificationTimeoutSeconds": 180,
+    "enableMirroring": false,
+    "mirrorConnectionId": "",
+    "mirrorScope": [],
+    "mirrorTables": ["AzureActivity", "ContainerLogV2", "AppServiceHTTPLogs", "Perf"],
+    "enableAutoSuspend": false,
+    "autoSuspendHourUtc": 20,
+    "autoSuspendMinuteUtc": 0
+  },
+  "_fabricAutomationDocs": "Read directly by setup-fabric.ps1 for one-shot, post-staged and Cloud Shell setup; not projected into ARM/Terraform parameters. Sample events are synthetic, not real orders. Mirroring is opt-in because preview source protections do not carry into Fabric; authorize an Azure Monitor connection once and supply its Fabric connection ID. Auto-suspend is opt-in, daily UTC, interrupts ingestion/queries, and deploys a capacity-scoped managed-identity Logic App outside Terraform state. Set enableAutoSuspend=false and rerun setup to disable its schedule; this does not resume the capacity.",
   "vmAdminPassword":  "<STRONG-PASSWORD>",
 
   "resourceGroup":    "rg-azure-monitor-lab",

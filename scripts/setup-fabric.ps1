@@ -22,6 +22,15 @@ param(
   [string] $KqlDatabaseName = 'MonitoringTelemetry',
   [string] $EventstreamName = 'AzureMonitorEvents',
   [string] $DestinationTableName = 'AzureDiagnosticsRaw',
+  [bool] $SeedSampleData = $true,
+  [bool] $EnableMirroring = $false,
+  [string] $MirrorConnectionId = '',
+  [string[]] $MirrorScope = @(),
+  [string[]] $MirrorTables = @('AzureActivity', 'ContainerLogV2', 'AppServiceHTTPLogs', 'Perf'),
+  [ValidateRange(1, 900)] [int] $VerificationTimeoutSeconds = 180,
+  [bool] $EnableAutoSuspend = $false,
+  [ValidateRange(0, 23)] [int] $AutoSuspendHourUtc = 20,
+  [ValidateRange(0, 59)] [int] $AutoSuspendMinuteUtc = 0,
   [ValidateRange(5, 120)] [int] $MaxOperationMinutes = 30,
   [switch] $SkipEventstreamConnection,
   [switch] $Teardown
@@ -29,6 +38,32 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $fabricApi = 'https://api.fabric.microsoft.com/v1'
+. (Join-Path $PSScriptRoot 'fabric-observability.ps1')
+
+$configPath = Join-Path $PSScriptRoot '..' 'lab.config.json'
+if (-not $Teardown -and (Test-Path -LiteralPath $configPath)) {
+  $automation = (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).fabricAutomation
+  $options = @{
+    SeedSampleData = 'seedSampleData'; EnableMirroring = 'enableMirroring'
+    MirrorConnectionId = 'mirrorConnectionId'; MirrorScope = 'mirrorScope'; MirrorTables = 'mirrorTables'
+    VerificationTimeoutSeconds = 'verificationTimeoutSeconds'; EnableAutoSuspend = 'enableAutoSuspend'
+    AutoSuspendHourUtc = 'autoSuspendHourUtc'; AutoSuspendMinuteUtc = 'autoSuspendMinuteUtc'
+  }
+  foreach ($parameter in $options.Keys) {
+    $value = $automation.($options[$parameter])
+    if (-not $PSBoundParameters.ContainsKey($parameter) -and $null -ne $value) {
+      if ($parameter -in @('SeedSampleData', 'EnableMirroring', 'EnableAutoSuspend') -and $value -isnot [bool]) {
+        throw "fabricAutomation.$($options[$parameter]) must be a JSON boolean."
+      }
+      Set-Variable -Name $parameter -Value $value
+    }
+  }
+}
+if ($VerificationTimeoutSeconds -lt 1 -or $VerificationTimeoutSeconds -gt 900 -or
+    $AutoSuspendHourUtc -lt 0 -or $AutoSuspendHourUtc -gt 23 -or
+    $AutoSuspendMinuteUtc -lt 0 -or $AutoSuspendMinuteUtc -gt 59) {
+  throw 'Fabric automation timeout or UTC schedule is outside its supported range.'
+}
 
 function Write-Step($Message) { Write-Host "`n==> $Message" -ForegroundColor Cyan }
 function Write-Info($Message) { Write-Host "    $Message" -ForegroundColor DarkGray }
@@ -39,8 +74,9 @@ function Get-CollectionItem {
     [Parameter(Mandatory)] [string] $DisplayName
   )
 
-  $response = Invoke-RestMethod -Method Get -Uri "$fabricApi/$Path" -Headers $script:fabricHeaders
-  return @($response.value | Where-Object { $_.displayName -eq $DisplayName }) | Select-Object -First 1
+  $items = @(Get-FabricApiCollection -Path $Path | Where-Object { $_.displayName -eq $DisplayName })
+  if ($items.Count -gt 1) { throw "Multiple Fabric items are named '$DisplayName'; refusing an ambiguous match." }
+  return $items | Select-Object -First 1
 }
 
 function Wait-FabricOperation {
@@ -454,7 +490,7 @@ $capacityDetails = az resource show `
 $capacityAdministrators = @($capacityDetails.administrators)
 Write-Info "Capacity state: $($capacityDetails.state)"
 Write-Info "Capacity administrators: $($capacityAdministrators -join ', ')"
-if ($capacityDetails.state -ne 'Active') {
+if (-not $Teardown -and $capacityDetails.state -ne 'Active') {
   throw "Fabric capacity '$($armCapacity.name)' is '$($capacityDetails.state)'. Resume it before setup: ./scripts/resume-fabric.ps1 -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup"
 }
 if ($active.userType -ne 'user') {
@@ -567,6 +603,7 @@ if ([string]::IsNullOrWhiteSpace($eventHubNamespace)) {
 }
 
 $eventstreamAutomated = $false
+$setupResults = [Collections.Generic.List[object]]::new()
 if (-not $SkipEventstreamConnection -and -not [string]::IsNullOrWhiteSpace($eventHubNamespace)) {
   Write-Step 'Connecting the Fabric Eventstream automatically'
   try {
@@ -582,13 +619,97 @@ if (-not $SkipEventstreamConnection -and -not [string]::IsNullOrWhiteSpace($even
       -TableName $DestinationTableName
     $eventstreamAutomated = $true
     Write-Host "Eventstream source and Eventhouse destination configured." -ForegroundColor Green
+    $setupResults.Add([pscustomobject]@{ Feature = 'Eventstream topology'; Status = 'Configured'; Detail = 'Event Hub -> Eventstream -> Eventhouse. Data delivery is verified separately.' })
   } catch {
-    Write-Host "  Automatic Eventstream connection failed: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host '  Create the Event Hub connection once in Fabric, then rerun this script. The source and destination topology will be published automatically.' -ForegroundColor Yellow
+    $setupResults.Add([pscustomobject]@{
+      Feature = 'Eventstream topology'; Status = 'ActionRequired'
+      Detail = "$($_.Exception.Message) Create/repair the Event Hub connection once in Fabric, then rerun setup."
+    })
   }
+} else {
+  $setupResults.Add([pscustomobject]@{
+    Feature = 'Eventstream topology'; Status = 'ActionRequired'
+    Detail = 'Connection automation was skipped or Stage A Event Hubs is absent. Configure the stream and generate traffic before verifying ingestion.'
+  })
 }
 
-Write-Host "`nFabric setup completed." -ForegroundColor Green
+Write-Step 'Configuring the Fabric suspension schedule'
+try {
+  & (Join-Path $PSScriptRoot 'setup-fabric-auto-suspend.ps1') -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup `
+    -Enabled $EnableAutoSuspend -HourUtc $AutoSuspendHourUtc -MinuteUtc $AutoSuspendMinuteUtc
+  $setupResults.Add([pscustomobject]@{
+    Feature = 'Daily auto-suspension'; Status = 'Configured'
+    Detail = $(if ($EnableAutoSuspend) { "Daily $($AutoSuspendHourUtc.ToString('00')):$($AutoSuspendMinuteUtc.ToString('00')) UTC. Interrupts queries and ingestion." } else { 'Disabled; no automatic capacity state changes.' })
+  })
+} catch {
+  $setupResults.Add([pscustomobject]@{ Feature = 'Daily auto-suspension'; Status = 'Failed'; Detail = $_.Exception.Message })
+}
+
+Write-Step 'Creating and verifying the observability experience'
+try {
+  $databaseDetails = Invoke-RestMethod -Method Get `
+    -Uri "$fabricApi/workspaces/$($workspace.id)/kqlDatabases/$($kqlDatabase.id)" -Headers $script:fabricHeaders
+  $queryServiceUri = $databaseDetails.properties.queryServiceUri
+  if ([string]::IsNullOrWhiteSpace($queryServiceUri)) { throw 'Fabric has not returned the KQL database queryServiceUri. Rerun setup once the database is ready.' }
+  $samplesReady = $false
+  if ($SeedSampleData) {
+    try {
+      Initialize-FabricSampleData -QueryServiceUri $queryServiceUri -DatabaseName $KqlDatabaseName
+      $samplesReady = $true
+      $setupResults.Add([pscustomobject]@{ Feature = 'Business correlation'; Status = 'Verified'; Detail = 'Four deduplicated SYNTHETIC sample events in LabSampleEvents. No real orders or customer data were created.' })
+    } catch {
+      $setupResults.Add([pscustomobject]@{ Feature = 'Business correlation'; Status = 'Failed'; Detail = $_.Exception.Message })
+    }
+  } else {
+    $setupResults.Add([pscustomobject]@{ Feature = 'Business correlation'; Status = 'Skipped'; Detail = 'Synthetic sample seeding is disabled.' })
+  }
+  try {
+    $dashboardDefinition = New-FabricDashboardDefinition -WorkspaceId $workspace.id -QueryServiceUri $queryServiceUri `
+      -DatabaseName $KqlDatabaseName -TableName $DestinationTableName -IncludeSampleData $samplesReady
+    $dashboard = Ensure-FabricItem -CollectionPath "workspaces/$($workspace.id)/kqlDashboards" `
+      -DisplayName 'Azure Monitor Demo Live Health' -CreateBody @{
+        displayName = 'Azure Monitor Demo Live Health'
+        description = 'Live ingestion and raw diagnostics, with separately labelled synthetic business correlation.'
+        definition = @{ parts = @(@{
+          path = 'RealTimeDashboard.json'
+          payload = ConvertTo-InlineBase64 -Value ($dashboardDefinition | ConvertTo-Json -Depth 15)
+          payloadType = 'InlineBase64'
+        }) }
+      }
+    $setupResults.Add([pscustomobject]@{ Feature = 'Real-Time Dashboard'; Status = 'Configured'; Detail = "Dashboard $($dashboard.id) created/reused. Existing dashboard edits are preserved; live tiles are empty until telemetry arrives." })
+  } catch {
+    $setupResults.Add([pscustomobject]@{ Feature = 'Real-Time Dashboard'; Status = 'Failed'; Detail = $_.Exception.Message })
+  }
+  if ($eventstreamAutomated) {
+    $setupResults.Add((Wait-FabricTelemetry -WorkspaceId $workspace.id -EventstreamId $eventstream.id `
+      -QueryServiceUri $queryServiceUri -DatabaseName $KqlDatabaseName -TableName $DestinationTableName -TimeoutSeconds $VerificationTimeoutSeconds))
+  } else {
+    $setupResults.Add([pscustomobject]@{ Feature = 'Live ingestion'; Status = 'Pending'; Detail = 'Stream connection is incomplete. Synthetic samples do not count as live ingestion verification.' })
+  }
+} catch {
+  $setupResults.Add([pscustomobject]@{ Feature = 'Observability experience'; Status = 'Failed'; Detail = $_.Exception.Message })
+}
+
+if ($EnableMirroring) {
+  Write-Step 'Configuring Azure Monitor mirroring (preview)'
+  try {
+    $centralWorkspaces = @(az resource list --subscription $SubscriptionId --resource-group $ResourceGroup `
+      --resource-type Microsoft.OperationalInsights/workspaces --output json | ConvertFrom-Json |
+      Where-Object { $_.name -like "law-$NamePrefix-central-*" })
+    if ($LASTEXITCODE -ne 0 -or $centralWorkspaces.Count -ne 1) { throw 'Cannot uniquely discover the central Log Analytics workspace for mirroring.' }
+    $setupResults.Add((Initialize-FabricMirror -WorkspaceId $workspace.id -CentralWorkspaceId $centralWorkspaces[0].id `
+      -ConnectionId $MirrorConnectionId -Scope $MirrorScope -Tables $MirrorTables))
+  } catch {
+    $setupResults.Add([pscustomobject]@{ Feature = 'Azure Monitor mirroring'; Status = 'Failed'; Detail = $_.Exception.Message })
+  }
+} else {
+  $setupResults.Add([pscustomobject]@{ Feature = 'Azure Monitor mirroring'; Status = 'Skipped'; Detail = 'Set fabricAutomation.enableMirroring=true to opt in. Preview source protections do not carry into Fabric; review workspace access first.' })
+}
+$setupResults.Add([pscustomobject]@{
+  Feature = 'Capacity Metrics app'; Status = 'ActionRequired'
+  Detail = 'If not installed, install Capacity Metrics once using a capacity admin with Power BI Pro/PPU/trial: https://learn.microsoft.com/fabric/enterprise/metrics-app-install . No documented public installation API; setup cannot verify installation.'
+})
+
 Write-Host "Workspace: https://app.fabric.microsoft.com/groups/$($workspace.id)"
 Write-Host "Eventhouse ID: $($eventhouse.id)"
 Write-Host "KQL database ID: $($kqlDatabase.id)"
@@ -600,9 +721,10 @@ if (-not $eventstreamAutomated) {
   Write-Host "3. Use Shared Access Key Name 'diagnostics-listen' and its primary or secondary key from the Event Hubs namespace."
   Write-Host "4. After the connection test succeeds, cancel before adding or publishing source topology."
   Write-Host "5. Rerun this script. It will discover the connection and publish the source, stream, and Eventhouse destination automatically."
-  Write-Host "6. Confirm events arrive in '$DestinationTableName', then create the Real-Time Dashboard from '$KqlDatabaseName'."
+  Write-Host "6. Rerun setup to verify '$DestinationTableName' and open the automatically provisioned dashboard."
   Write-Host "The connection key is entered only in Fabric; do not paste it into this script or source control."
 }
 Write-Host "`nNext steps: docs/STAGE-FABRIC.md#after-deployps1-checklist" -ForegroundColor Cyan
-Write-Host "Verify '$DestinationTableName', create the Real-Time Dashboard, check the Azure health views, and suspend F2 when finished."
+Write-Host "Check the results below, open the dashboard and Azure health views, and suspend F2 when finished."
 Write-Host "`nSuspend F2 when idle: ./scripts/suspend-fabric.ps1 -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+Write-FabricSetupSummary -Results $setupResults.ToArray()

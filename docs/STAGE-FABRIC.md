@@ -1,6 +1,6 @@
 # Stage Fabric - Microsoft Fabric Real-Time Intelligence
 
-Stage Fabric adds an optional Microsoft Fabric F2 capacity and a guided Real-Time Intelligence scenario. It is disabled by default because F2 bills while active.
+Stage Fabric adds an optional Microsoft Fabric F2 capacity and automated Real-Time Intelligence setup. It is disabled by default because F2 bills while active. Automation uses supported Fabric/Kusto APIs; it does not bypass tenant consent, preview enablement, source authorization, or app licensing.
 
 ## Cost warning
 
@@ -53,8 +53,16 @@ After deployment, `setup-fabric.ps1` creates or reuses:
 - Eventhouse
 - Read-write KQL database
 - Empty Eventstream
+- Real-Time Dashboard `Azure Monitor Demo Live Health`, connected to the KQL database, with live ingestion rate and recent raw telemetry tiles
+- Four explicitly labelled synthetic operational/business events in `LabSampleEvents` and a correlation dashboard tile (unless sample seeding is disabled). These are not real orders, customer activity, or evidence that the live stream works.
 
-Setup attempts to create the Event Hub connection and publish the source-to-Eventhouse topology automatically. The Listen-only key is held only in process memory, never printed or persisted, and cleared immediately. Some tenants reject Shared Access Key connection creation through the public Fabric API even though the same connection works in the portal. In that case, create the connection once through the guided portal flow and rerun setup; the script discovers it by endpoint and publishes the topology automatically. Real-Time Dashboard creation remains a guided portal step.
+Setup attempts to create the Event Hub connection and publish the source-to-Eventhouse topology automatically. The Listen-only key is held only in process memory, never printed or persisted, and cleared immediately. Some tenants reject Shared Access Key connection creation through the public Fabric API even though the same connection works in the portal. In that case, create the connection once through the guided portal flow and rerun setup; the script discovers it by endpoint and publishes the topology automatically.
+
+Setup polls Eventstream failures and checks for rows ingested into `AzureDiagnosticsRaw` in the last 15 minutes. Its default verification window is 180 seconds, configurable up to 900 seconds. Empty/missing tables remain **Pending**, not healthy; API/authorization/query failures are reported explicitly. A final feature-by-feature summary shows what succeeded and what still requires action. Failures cause setup to throw after reporting results; the main deployment reports optional Fabric setup failure without undoing infrastructure.
+
+Reruns reuse existing items and preserve user-edited dashboards and mirror definitions. Sample rows are deduplicated by their stable synthetic IDs. Changing dashboard/table-selection configuration does not overwrite existing item definitions; use the portal to change an existing item or create a deliberately separate item.
+
+Two additional experiences are opt-in: mirrored Azure Monitor catalog creation from a preauthorized connection, and a daily UTC capacity-suspension Logic App. See the automation settings below.
 
 The Azure Monitor workbook reports the ARM capacity state and provisioning state. Active is Green; Paused or Suspended is Orange; failed provisioning is Red. Fabric Eventstream is a tenant-scoped SaaS item rather than an ARM resource, so its item and data-flow status is inspected in the Fabric workspace instead of queried directly by the Azure workbook.
 
@@ -113,7 +121,7 @@ terraform -chdir=terraform apply -var-file stages.tfvars
 
 ## Complete the Eventstream in Fabric
 
-Normally `setup-fabric.ps1` creates the Event Hubs connection and publishes the complete Eventstream topology automatically. Confirm that `AzureDiagnosticsRaw` receives events, then create a Real-Time Dashboard from `MonitoringTelemetry`.
+Normally `setup-fabric.ps1` creates the Event Hubs connection and publishes the complete Eventstream topology automatically. It also provisions the dashboard and checks that `AzureDiagnosticsRaw` receives recent events.
 
 Some tenants reject Event Hubs Shared Access Key credentials through the public Fabric Connections API even though the portal supports them. In that case, create only the connection once:
 
@@ -153,13 +161,13 @@ AzureDiagnosticsRaw
 | take 10
 ```
 
-### 5. Create the Real-Time Dashboard
+### 5. Open the automatically provisioned dashboard
 
-In the Fabric workspace, select **+ New item** > **Real-Time Dashboard**, name it `Azure Monitor Demo Live Health`, then select **Add data source** > **KQL Database** and connect `MonitoringTelemetry`.
+Open `Azure Monitor Demo Live Health` in the workspace. Its data source is already `MonitoringTelemetry`; the tiles show ingestion rate, recent raw diagnostics, and (by default) a separately labelled synthetic business-correlation example. Empty live tiles do not prove a healthy stream: use the setup verification result.
 
-### 6. Add a live tile
+### 6. Customize if desired
 
-Switch to **Editing**, select **New visual**, and use:
+No tile creation is required. To add your own visual, switch to **Editing**, select **New visual**, and use:
 
 ```kusto
 AzureDiagnosticsRaw
@@ -167,17 +175,60 @@ AzureDiagnosticsRaw
 | render timechart
 ```
 
-Select **Done**, then **Save**. Optionally enable **Manage** > **Refresh settings** > **Live refresh**.
+Select **Done**, then **Save**. The generated dashboard refreshes every five minutes; tune refresh and service-specific parsing for your demo. Setup preserves your edits on rerun.
 
 ### 7. Check Azure health views
 
 In Azure Monitor, open the lab Health Dashboard workbook and confirm the Fabric F2 capacity row. Open `hm-amlab-workload` and confirm the optional **Real-Time Intelligence** tier.
 
-### 8. Suspend F2 when finished
+### 8. Review remaining actions and suspend F2 when finished
 
-Use the suspend command below. Resume F2 before the next Fabric session.
+Install the Capacity Metrics app once if needed (capacity administrator plus Power BI Pro/PPU/trial). There is no documented public API to install this app, so setup reports **ActionRequired** rather than pretending it is installed. See [Microsoft's installation guide](https://learn.microsoft.com/fabric/enterprise/metrics-app-install).
+
+Use the suspend command below, or explicitly enable the daily schedule. Resume F2 before the next Fabric session.
 
 `start-the-lab.ps1 -Wait` also detects and resumes the optional F2 capacity together with the lab's VMs, VMSS, AKS, and App Service resources.
+
+## Automation settings
+
+The setup helpers read `fabricAutomation` directly from `lab.config.json`; these settings do not need ARM/Terraform parameter projection. Explicit script parameters override config. The Cloud Shell wrapper exposes the same options.
+
+```json
+"fabricAutomation": {
+  "seedSampleData": true,
+  "verificationTimeoutSeconds": 180,
+  "enableMirroring": false,
+  "mirrorConnectionId": "",
+  "mirrorScope": [],
+  "mirrorTables": ["AzureActivity", "ContainerLogV2", "AppServiceHTTPLogs", "Perf"],
+  "enableAutoSuspend": false,
+  "autoSuspendHourUtc": 20,
+  "autoSuspendMinuteUtc": 0
+}
+```
+
+### Azure Monitor mirroring (preview)
+
+1. A tenant administrator enables the **Mirrored Azure Monitor** preview. Review Fabric workspace access first: preview Log Analytics table/row/column protections do not carry into Fabric.
+2. Authorize an Azure Monitor connection to the lab's **central** Log Analytics workspace once in Fabric. Prefer workspace identity where supported; the necessary source RBAC and interactive consent remain administrator/user actions. Setup does not create service-principal secrets or grant itself additional source access.
+3. Set `enableMirroring=true` and `mirrorConnectionId` to that Fabric connection GUID, then rerun setup. Without an explicit ID, setup only reuses a unique Azure Monitor/Log Analytics connection whose returned path contains the exact central workspace ARM ID.
+4. Setup discovers selectable source scopes and tables using the catalog discovery APIs, creates the `Azure Monitor Demo Mirrored Logs` catalog item, and reports its status. If the connection exposes multiple selectable scopes, set `mirrorScope` to the exact `fullyQualifiedScope` array returned by Fabric discovery. An explicitly supplied connection ID is the operator's selection of the authorized source; ensure it targets central Log Analytics.
+
+Only the explicit `mirrorTables` allowlist is mounted. A missing/ambiguous table stops creation and reports an action; setup never falls back to mirroring every table. Adjust the list explicitly if your enabled stages collect different tables. Existing mirrored items are reused without changing their source or selection.
+
+Data remains in Azure Monitor Delta storage, exposed through read-only OneLake shortcuts. Allow about 15 minutes and verify data separately; catalog creation or a Running status is not proof of available rows. Preview does not backfill historical data. See [scenario 80](DEMO-SCENARIOS.md#s80), [the MirroredCatalog definition API](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/mirrored-catalog-definition), and [the preview guidance](https://learn.microsoft.com/fabric/mirroring/catalog-mirroring/azure-monitor).
+
+### Opt-in daily suspension
+
+Set `enableAutoSuspend=true` and the desired UTC hour/minute, or run:
+
+```powershell
+./scripts/setup-fabric-auto-suspend.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>' -Enabled $true -HourUtc 20 -MinuteUtc 0
+```
+
+This deploys a Consumption Logic App with a managed identity authorized **only to read and suspend this one capacity**. Creating its custom role and assignment requires RBAC administration permissions. Its first run is in the future, at least 15 minutes after configuration; setup never immediately suspends F2. Execution history is available in the Logic App.
+
+This is a fixed daily schedule, **not an idle detector**. It interrupts active queries and ingestion and can incur Logic Apps transaction charges. It does not automatically resume F2. Set `enableAutoSuspend=false` and rerun setup (or run the helper with `-Enabled $false`) to disable an existing schedule without changing capacity state. Disabled schedules/role definitions remain until teardown. The setup helper uses an ARM deployment for all deployment methods; these extra resources are outside Terraform state and are removed with the lab resource group, not by `terraform destroy` alone.
 
 ## Suspend and resume
 
