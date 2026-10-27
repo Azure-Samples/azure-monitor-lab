@@ -107,8 +107,11 @@ For a branch-based portal deployment with Fabric enabled, also run `./scripts/se
 
 ```powershell
 # 1. Clone the repo and enter it
-git clone --branch feature/fabric-stage https://github.com/Azure-Samples/azure-monitor-lab.git
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
+
+# Fabric preview only: omit this switch when deploying stable main.
+git switch feature/fabric-stage
 
 # 2. Copy the template and fill in subscriptionId, tenantId, alertEmail, vmAdminPassword, ...
 Copy-Item lab.config.json.example lab.config.json
