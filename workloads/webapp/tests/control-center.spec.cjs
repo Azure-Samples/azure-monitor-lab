@@ -139,8 +139,11 @@ for (const width of [1440, 390, 320]) {
     await prepare(page);
     await page.evaluate(() => document.fonts.ready);
     if (width <= 760) {
-      expect(await page.evaluate(() => document.querySelector('[data-action="health"]').getBoundingClientRect().bottom
-        <= document.querySelector('.mobile-feedback').getBoundingClientRect().top)).toBe(true);
+      await page.locator('[data-action="health"]').scrollIntoViewIfNeeded();
+      await expect.poll(() => page.evaluate(() => {
+        const action = document.querySelector('[data-action="health"]').getBoundingClientRect();
+        return action.top >= 0 && action.bottom <= document.querySelector('.mobile-feedback').getBoundingClientRect().top;
+      })).toBe(true);
     }
     await page.getByRole('button', { name: /Check Health/ }).click();
     await expect(page.locator('#total')).toHaveText('1');
