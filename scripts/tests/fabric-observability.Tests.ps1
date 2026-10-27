@@ -246,7 +246,7 @@ Write-Output 'PASS: preview mirroring uses explicit mounts, reuses items and rep
 Reset-Fixture
 $fixture.FullSetup = $true
 & (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' `
-  -ResourceGroup rg-fabric-test -SkipEventstreamConnection -EnableMirroring:$true -MirrorConnectionId $connectionId -MirrorTables AzureActivity, Perf `
+  -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -SkipEventstreamConnection -EnableMirroring:$true -MirrorConnectionId $connectionId -MirrorTables AzureActivity, Perf `
   -VerificationTimeoutSeconds 1
 if (-not $fixture.Dashboard -or -not $fixture.Mirror -or $fixture.Samples.Count -ne 4) {
   throw 'Full setup must wire dashboard, synthetic correlation and configured mirroring without manual helper calls.'
@@ -256,8 +256,26 @@ Write-Output 'PASS: full setup orchestrates supported experiences and explicitly
 Reset-Fixture
 $fixture.FullSetup = $true
 $fixture.CapacityState = 'Suspended'
-& (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' -ResourceGroup rg-fabric-test -Teardown
+& (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -Teardown
 if (-not $fixture.DeletedWorkspace -or $fixture.Dashboard -or $fixture.Samples.Count) {
   throw 'Teardown must delete tenant items even after scheduled capacity suspension, without creating any demo items.'
 }
 Write-Output 'PASS: suspended capacity does not prevent tenant-workspace teardown.'
+
+$configBlock = @($ast.EndBlock.Statements | Where-Object {
+  $_ -is [Management.Automation.Language.IfStatementAst] -and $_.Extent.Text.StartsWith('if (Test-Path -LiteralPath $configPath)')
+})[0]
+function Test-WorkspaceConfig {
+  $configPath = 'fixture.json'
+  $Teardown = $true
+  $WorkspaceName = 'default'
+  $EnableAutoSuspend = $false
+  function Test-Path { return $true }
+  function Get-Content { return '{"fabricAutomation":{"workspaceName":"Isolated lab workspace","enableAutoSuspend":true}}' }
+  . ([scriptblock]::Create($configBlock.Extent.Text))
+  if ($WorkspaceName -ne 'Isolated lab workspace' -or $EnableAutoSuspend) {
+    throw 'Teardown must honor the configured workspace without applying setup-only options.'
+  }
+}
+Test-WorkspaceConfig
+Write-Output 'PASS: configured workspace isolation is preserved during teardown.'

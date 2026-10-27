@@ -195,6 +195,7 @@ The setup helpers read `fabricAutomation` directly from `lab.config.json`; these
 
 ```json
 "fabricAutomation": {
+  "workspaceName": "Azure Monitor Demo Lab",
   "seedSampleData": true,
   "verificationTimeoutSeconds": 180,
   "enableMirroring": false,
@@ -206,6 +207,8 @@ The setup helpers read `fabricAutomation` directly from `lab.config.json`; these
   "autoSuspendMinuteUtc": 0
 }
 ```
+
+For multiple lab resource groups in the same tenant, set a distinct `workspaceName` for each one. The same name is honored during setup and teardown; explicit `-WorkspaceName` overrides config. Never point a lab's teardown at another lab's workspace.
 
 ### Azure Monitor mirroring (preview)
 

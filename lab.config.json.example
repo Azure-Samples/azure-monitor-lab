@@ -10,6 +10,7 @@
   "alertEmail":       "your.alias@example.com",
   "fabricAdminEmail": "admin@example.com",
   "fabricAutomation": {
+    "workspaceName": "Azure Monitor Demo Lab",
     "seedSampleData": true,
     "verificationTimeoutSeconds": 180,
     "enableMirroring": false,

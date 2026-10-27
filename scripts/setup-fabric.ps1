@@ -41,15 +41,17 @@ $fabricApi = 'https://api.fabric.microsoft.com/v1'
 . (Join-Path $PSScriptRoot 'fabric-observability.ps1')
 
 $configPath = Join-Path $PSScriptRoot '..' 'lab.config.json'
-if (-not $Teardown -and (Test-Path -LiteralPath $configPath)) {
+if (Test-Path -LiteralPath $configPath) {
   $automation = (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).fabricAutomation
   $options = @{
+    WorkspaceName = 'workspaceName'
     SeedSampleData = 'seedSampleData'; EnableMirroring = 'enableMirroring'
     MirrorConnectionId = 'mirrorConnectionId'; MirrorScope = 'mirrorScope'; MirrorTables = 'mirrorTables'
     VerificationTimeoutSeconds = 'verificationTimeoutSeconds'; EnableAutoSuspend = 'enableAutoSuspend'
     AutoSuspendHourUtc = 'autoSuspendHourUtc'; AutoSuspendMinuteUtc = 'autoSuspendMinuteUtc'
   }
   foreach ($parameter in $options.Keys) {
+    if ($Teardown -and $parameter -ne 'WorkspaceName') { continue }
     $value = $automation.($options[$parameter])
     if (-not $PSBoundParameters.ContainsKey($parameter) -and $null -ne $value) {
       if ($parameter -in @('SeedSampleData', 'EnableMirroring', 'EnableAutoSuspend') -and $value -isnot [bool]) {
