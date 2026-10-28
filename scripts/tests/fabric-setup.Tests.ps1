@@ -31,9 +31,24 @@ function Reset-Fixture {
   $fixture.Connection = $null
   $fixture.KeyReads = 0
   $fixture.ConnectionBody = $null
+  $fixture.Grants = 0
+  $fixture.TopologyBody = $null
+  $fixture.ExistingTopology = $null
 }
 
 function Get-FabricConnection { param($DisplayName, $NamespaceName, $EventHubName); return $fixture.Connection }
+function Ensure-FabricWorkspaceIdentity { param($WorkspaceId); return @{ servicePrincipalId = 'workspace-principal' } }
+function Grant-FabricSourceRole {
+  param($PrincipalId, $Scope, $RoleId)
+  if ($PrincipalId -ne 'workspace-principal' -or $Scope -notlike '*/namespaces/testhub/eventhubs/diagnostics' -or
+      $RoleId -ne 'a638d3c7-ab3a-418d-83e6-5f17a39d4fde') { throw 'Unexpected source RBAC grant.' }
+  $fixture.Grants++
+}
+function New-FabricKeylessConnection {
+  param($Body)
+  Invoke-RestMethod -Method Post -Uri "$fabricApi/connections" -Headers $script:fabricHeaders `
+    -ContentType 'application/json' -Body ($Body | ConvertTo-Json -Depth 12)
+}
 function az {
   if (($args -join ' ') -notlike 'eventhubs namespace authorization-rule keys list *') { throw 'Unexpected Azure CLI call.' }
   $fixture.KeyReads++
@@ -50,7 +65,12 @@ function Invoke-RestMethod {
     return @{ id = 'test-connection' }
   }
   if ($Method -eq 'Post' -and $Uri -eq "$fabricApi/workspaces/test-workspace/eventstreams/test-stream/getDefinition") {
-    return @{ definition = @{ parts = @() } }
+    if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 200 -Scope 1 }
+    $parts = @()
+    if ($fixture.ExistingTopology) {
+      $parts = @(@{ path = 'eventstream.json'; payload = ConvertTo-InlineBase64 ($fixture.ExistingTopology | ConvertTo-Json -Depth 20) })
+    }
+    return @{ definition = @{ parts = $parts } }
   }
   if ($Method -eq 'Get' -and $Uri -eq "$fabricApi/workspaces/test-workspace/eventstreams/test-stream/topology") {
     return @{ sources = @() }
@@ -59,12 +79,14 @@ function Invoke-RestMethod {
     $fixture.Posts++
     if ($fixture.PostFailure) { throw $fixture.PostFailure }
     if ($ContentType -ne 'application/json' -or -not ($Body | ConvertFrom-Json)) { throw 'Invalid Fabric request body.' }
+    if ($Uri -like '*/updateDefinition') { $fixture.TopologyBody = $Body | ConvertFrom-Json }
     if ($ResponseHeadersVariable) { Set-Variable -Name $ResponseHeadersVariable -Value $fixture.Headers -Scope 1 }
     if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value $fixture.StatusCode -Scope 1 }
     if ($fixture.StatusCode -eq 202) { return }
     return [pscustomobject]@{ id = 'test-workspace'; displayName = 'Test workspace' }
   }
   if ($Method -eq 'Get') {
+    if ($Uri -eq "$($fixture.OperationUri)/result") { return @{ definition = @{ parts = @() } } }
     $fixture.Polls++
     if ($Uri -ne $fixture.OperationUri) { throw "Unexpected polling URL '$Uri' after HTTP $($fixture.StatusCode)." }
     if (-not $fixture.States.Count) { throw 'The test did not expect another operation poll.' }
@@ -124,6 +146,17 @@ Write-Output 'PASS: HTTP 202 waits for completion using operation Location or ID
 
 Reset-Fixture
 $fixture.StatusCode = 202
+$fixture.CreateUri = "$fabricApi/workspaces/test-workspace/getDefinition"
+$fixture.Headers = @{ Location = @('/v1/operations/test-operation') }
+$fixture.States.Enqueue(@{ status = 'Succeeded' })
+$result = New-FabricItem -Path 'workspaces/test-workspace/getDefinition' -Body @{}
+if (-not $result.definition -or $fixture.Posts -ne 1 -or $fixture.Polls -ne 1) {
+  throw 'Asynchronous getDefinition must fetch the completed operation result, including when Location is relative.'
+}
+Write-Output 'PASS: asynchronous item definitions resolve the operation result without resubmitting the request.'
+
+Reset-Fixture
+$fixture.StatusCode = 202
 $fixture.Headers = @{}
 Assert-Failure { Invoke-TestCreate } '*operation URL or ID*'
 if ($fixture.Posts -ne 1 -or $fixture.Polls -or $fixture.Delays.Count) { throw 'Missing operation metadata must fail before polling.' }
@@ -162,6 +195,11 @@ foreach ($statusCode in @(200, 202)) {
     $fixture.States.Enqueue(@{ status = 'Succeeded' })
   }
   Invoke-TestTopology
+  $topology = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($fixture.TopologyBody.definition.parts[0].payload)) | ConvertFrom-Json
+  if ($topology.sources[0].type -cne 'AzureEventHubExtended' -or $topology.sources[0].properties.startPosition -ne 'Latest' -or
+      $topology.sources[0].properties.consumerGroupName -cne '$Default' -or $topology.sources[0].properties.inputSerialization) {
+    throw 'Keyless Event Hubs ingestion requires the Extended source, consumer group and start position, not Basic source serialization.'
+  }
   $expectedPolls = if ($statusCode -eq 202) { 2 } else { 0 }
   if ($fixture.Posts -ne 1 -or $fixture.Polls -ne $expectedPolls) { throw "Eventstream update mishandled HTTP $statusCode." }
 }
@@ -175,20 +213,42 @@ if ($fixture.Posts -ne 1 -or $fixture.Polls) { throw 'An accepted Eventstream up
 Write-Output 'PASS: Eventstream updates use the same synchronous/asynchronous rules. No Azure calls or real delays.'
 
 Reset-Fixture
+$fixture.ExistingTopology = @{
+  sources = @(@{ name = 'custom-source'; type = 'OtherSource' })
+  destinations = @(); streams = @(); operators = @()
+}
+Assert-Failure { Invoke-TestTopology } '*custom topology*'
+if ($fixture.Posts) { throw 'Custom topology must not be overwritten.' }
+Reset-Fixture
+$fixture.ExistingTopology = @{
+  sources = @(@{ name = 'azure-event-hub'; type = 'AzureEventHubExtended'; properties = @{ dataConnectionId = 'test-connection'; consumerGroupName = '$Default' } })
+  streams = @(@{ name = 'published-stream'; inputNodes = @(@{ name = 'azure-event-hub' }) })
+  destinations = @(@{ name = 'published-destination'; type = 'Eventhouse'; properties = @{ itemId = 'test-database'; workspaceId = 'test-workspace'; tableName = 'TestTable' }; inputNodes = @(@{ name = 'published-stream' }) })
+  operators = @()
+}
+Invoke-TestTopology
+if ($fixture.Posts) { throw 'An equivalent published Extended topology must be reused without renaming nodes or republishing.' }
+Write-Output 'PASS: custom topology is protected and equivalent manually published Extended topology is preserved.'
+
+Reset-Fixture
 $fixture.Connection = @{ id = 'identity-connection'; credentialDetails = @{ credentialType = 'WorkspaceIdentity' } }
-$connection = Ensure-EventHubConnection -NamespaceName testhub -EventHubName diagnostics
+$connection = Ensure-EventHubConnection -NamespaceName testhub -EventHubName diagnostics -WorkspaceId test-workspace
 if ($connection.id -ne 'identity-connection' -or $fixture.KeyReads -or $fixture.Posts) {
   throw 'Workspace-identity connections must be reused without reading shared keys or replacing credentials.'
 }
 Reset-Fixture
-$connection = Ensure-EventHubConnection -NamespaceName testhub -EventHubName diagnostics
+$connection = Ensure-EventHubConnection -NamespaceName testhub -EventHubName diagnostics -WorkspaceId test-workspace
 $endpoint = @($fixture.ConnectionBody.connectionDetails.parameters | Where-Object name -eq endpoint)
-if ($connection.id -ne 'test-connection' -or $fixture.KeyReads -ne 1 -or $fixture.Posts -ne 1 -or
-    $endpoint.Count -ne 1 -or $endpoint[0].value -ne 'testhub' -or
-    $fixture.ConnectionBody.credentialDetails.credentials.credentialType -ne 'Basic') {
-  throw 'Shared-key connections must use the connector namespace parameter, not a Service Bus URI.'
+if ($connection.id -ne 'test-connection' -or $fixture.KeyReads -or $fixture.Posts -ne 1 -or $fixture.Grants -ne 1 -or
+    $endpoint.Count -ne 1 -or $endpoint[0].value -ne 'testhub.servicebus.windows.net' -or
+    $fixture.ConnectionBody.credentialDetails.credentials.credentialType -ne 'WorkspaceIdentity') {
+  throw 'New connections must be keyless, with exact hub-scoped receiver access.'
 }
-Write-Output 'PASS: Workspace identity is preserved and new connections use the established EventHub endpoint format.'
+Reset-Fixture
+$fixture.Connection = @{ id = 'basic-connection'; credentialDetails = @{ credentialType = 'Basic' } }
+Assert-Failure { Ensure-EventHubConnection -NamespaceName testhub -EventHubName diagnostics -WorkspaceId test-workspace } '*will not overwrite credentials*'
+if ($fixture.KeyReads -or $fixture.Posts) { throw 'Existing non-keyless connection must not be modified or read secrets.' }
+Write-Output 'PASS: Workspace identity is preserved and new connections are keyless; shared keys are never read.'
 
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json -AsHashtable
 $capacityDeployments = @($mainTemplate.resources | Where-Object { $_.name -eq 'fabric-capacity' })
@@ -246,3 +306,23 @@ foreach ($number in 0..80) {
   if ($scenarioIds -notcontains $number) { throw "Integration or Fabric scenario '$number' was lost." }
 }
 Write-Output 'PASS: combined template output budget, shared architecture boundaries, and all integration/Fabric scenario anchors are preserved.'
+
+$example = Get-Content -LiteralPath (Join-Path $source 'lab.config.json.example') -Raw | ConvertFrom-Json
+$foundation = Get-Content -LiteralPath (Join-Path $source 'infra/stages/00-foundation.json') -Raw | ConvertFrom-Json
+$ui = Get-Content -LiteralPath (Join-Path $source 'infra/createUiDefinition.json') -Raw | ConvertFrom-Json
+$slider = @($ui.parameters.steps.elements | Where-Object name -eq 'dailyCapGb')
+if ($example.dailyCapGb -ne 3 -or $mainTemplate.parameters.dailyCapGb.defaultValue -ne 3 -or
+    $foundation.parameters.dailyCapGb.defaultValue -ne 3 -or $slider.defaultValue -ne 3 -or
+    $example.fabricAutomation.enableMirroring -ne $true -or $example.fabricAutomation.enableAutoSuspend -ne $true -or
+    $example.fabricAutomation.autoSuspendHourUtc -ne 20 -or $example.fabricAutomation.autoSuspendMinuteUtc -ne 0) {
+  throw 'Fresh lab defaults must configure both mirrors, daily 20:00 UTC suspension and 3 GB/day ingestion caps.'
+}
+foreach ($template in @($mainTemplate, $foundation)) {
+  foreach ($lawName in @('law-central', 'law-appinsights')) {
+    $law = @($template.resources | Where-Object name -eq $lawName)
+    if ($law.Count -ne 1 -or $law[0].properties.parameters.dailyQuotaGb.value -cne "[parameters('dailyCapGb')]") {
+      throw "Both Log Analytics workspaces must receive the configured cap; missing '$lawName'."
+    }
+  }
+}
+Write-Output 'PASS: new deployment defaults enable both mirrors and daily suspension, with an independent 3 GB/day cap on each Log Analytics workspace.'

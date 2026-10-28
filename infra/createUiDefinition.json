@@ -200,9 +200,9 @@
             "min": 1,
             "max": 10,
             "label": "Daily ingestion cap (GB)",
-            "defaultValue": 1,
+            "defaultValue": 3,
             "showStepMarkers": true,
-            "toolTip": "Daily ingestion cap on the central Log Analytics workspace.",
+            "toolTip": "Daily ingestion cap on each Log Analytics workspace: central and Application Insights.",
             "constraints": {
               "required": true
             }

@@ -139,6 +139,7 @@ function New-FabricDashboardDefinition {
   param(
     [Parameter(Mandatory)] [string] $WorkspaceId,
     [Parameter(Mandatory)] [string] $QueryServiceUri,
+    [Parameter(Mandatory)] [guid] $DatabaseId,
     [Parameter(Mandatory)] [string] $DatabaseName,
     [Parameter(Mandatory)] [string] $TableName,
     [bool] $IncludeSampleData = $true
@@ -147,18 +148,34 @@ function New-FabricDashboardDefinition {
   $pageId = '23acdd3d-a4b3-4ad1-b93f-9702966bdfb0'
   $dataSourceId = '22c5b148-7ca3-4201-af93-d86b134875c1'
   $liveQuery = "union isfuzzy=true (datatable(IngestedAt:datetime, Payload:string)[]), ($TableName | project IngestedAt=ingestion_time(), Payload=tostring(pack_all()))"
+  $recentQuery = @'
+| where IngestedAt > ago(1h)
+| extend Envelope=parse_json(Payload)
+| extend Events=iff(gettype(Envelope.records) == 'array', Envelope.records, pack_array(Envelope))
+| mv-expand Event=Events
+| extend Properties=parse_json(tostring(Event.properties)), ResourceId=coalesce(tostring(Event.resourceId), tostring(Event.resourceID))
+| project Time=coalesce(todatetime(Event['time']), todatetime(Event.EventTime), IngestedAt),
+    Resource=tostring(split(ResourceId, '/')[-1]),
+    Category=coalesce(tostring(Event.category), iff(isnotempty(tostring(Event.metricName)), 'Metric', '')),
+    Level=coalesce(tostring(Event.level), tostring(Properties.LogLevel)),
+    Method=tostring(Properties.CsMethod), Path=tostring(Properties.CsUriStem),
+    Status=toint(Properties.ScStatus), DurationMs=toreal(Properties.TimeTaken),
+    Message=coalesce(tostring(Event.resultDescription), tostring(Properties.Message), tostring(Event.operationName)),
+    Metric=tostring(Event.metricName), Value=toreal(Event.average)
+| top 20 by Time desc
+'@
   $tiles = @(
     @{
       id = '993183ed-f2de-42ef-9987-a96bb5b59f36'; title = 'Live ingestion rate (last hour)'
       query = "$liveQuery | where IngestedAt > ago(1h) | summarize Events=count() by bin(IngestedAt, 5m) | render timechart"
-      layout = @{ x = 0; y = 0; width = 12; height = 5 }
+      layout = @{ x = 0; y = 0; width = 24; height = 7 }
       pageId = $pageId; dataSourceId = $dataSourceId; visualType = 'line'; usedParamVariables = @()
       visualOptions = @{}
     }
     @{
-      id = '91ae253d-d3c9-471f-bda0-6c8c0c6a9c5f'; title = 'Recent live telemetry (raw payload)'
-      query = "$liveQuery | where IngestedAt > ago(1h) | top 20 by IngestedAt desc"
-      layout = @{ x = 0; y = 5; width = 12; height = 5 }
+      id = '91ae253d-d3c9-471f-bda0-6c8c0c6a9c5f'; title = 'Recent live telemetry'
+      query = "$liveQuery`n$recentQuery"
+      layout = @{ x = 0; y = 7; width = 24; height = 8 }
       pageId = $pageId; dataSourceId = $dataSourceId; visualType = 'table'; usedParamVariables = @()
       visualOptions = @{}
     }
@@ -177,7 +194,7 @@ LabSampleEvents
   ) on CorrelationId
 | project CorrelationId, Service, OperationalOutcome, BusinessOutcome, Amount
 '@
-      layout = @{ x = 0; y = 10; width = 12; height = 5 }
+      layout = @{ x = 0; y = 15; width = 24; height = 8 }
       pageId = $pageId; dataSourceId = $dataSourceId; visualType = 'table'; usedParamVariables = @()
       visualOptions = @{}
     }
@@ -190,7 +207,7 @@ LabSampleEvents
     parameters = @()
     dataSources = @(@{
       id = $dataSourceId; name = $DatabaseName; scopeId = 'kusto-trident'; kind = 'kusto-trident'
-      clusterUri = $QueryServiceUri; database = $DatabaseName; workspace = $WorkspaceId
+      clusterUri = $QueryServiceUri; database = $DatabaseId.ToString(); workspace = $WorkspaceId
     })
     pages = @(@{ id = $pageId; name = 'Monitoring and sample business impact' })
     autoRefresh = @{ enabled = $true; defaultInterval = '5m'; minInterval = '5m' }
@@ -222,10 +239,19 @@ function Get-FabricSelectableScope {
   }
 }
 
+function Get-FabricLeafScope {
+  param([object[]] $Nodes)
+  foreach ($node in $Nodes) {
+    if ($node.children) { Get-FabricLeafScope -Nodes $node.children }
+    elseif (@($node.fullyQualifiedScope).Count) { $node }
+  }
+}
+
 function Initialize-FabricMirror {
   param(
     [Parameter(Mandatory)] [string] $WorkspaceId,
-    [Parameter(Mandatory)] [string] $CentralWorkspaceId,
+    [Parameter(Mandatory)] [guid] $SourceCustomerId,
+    [string] $DisplayName = 'Azure Monitor Demo Mirrored Logs',
     [string] $ConnectionId = '',
     [string[]] $Scope = @(),
     [string[]] $Tables = @('AzureActivity', 'ContainerLogV2', 'AppServiceHTTPLogs', 'Perf')
@@ -241,20 +267,24 @@ function Initialize-FabricMirror {
     if ($connection.Count -ne 1) { throw 'The configured mirror connection is not accessible to the signed-in user.' }
   } else {
     $connection = @($connections | Where-Object {
-      $_.connectionDetails.type -match 'AzureMonitor|LogAnalytics' -and
-      $_.connectionDetails.path -and
-      $_.connectionDetails.path.IndexOf($CentralWorkspaceId, [StringComparison]::OrdinalIgnoreCase) -ge 0
+      $_.connectionDetails.type -eq 'AzureMonitorMirroredCatalog' -and
+      ($_.connectionDetails.path -split ';')[0] -eq $SourceCustomerId.ToString()
     })
     if ($connection.Count -ne 1) {
       return [pscustomobject]@{
         Feature = 'Azure Monitor mirroring'; Status = 'ActionRequired'
-        Detail = 'Create/authorize one Azure Monitor connection to central Log Analytics in Fabric, set fabricAutomation.mirrorConnectionId and rerun. Preview tenant enablement and source RBAC remain administrator actions.'
+        Detail = 'No unique connection targets the Log Analytics customer GUID. Verify source authorization and tenant preview enablement.'
       }
     }
   }
+  if ($connection[0].connectionDetails.type -ne 'AzureMonitorMirroredCatalog' -or
+      ($connection[0].connectionDetails.path -split ';')[0] -ne $SourceCustomerId.ToString()) {
+    throw 'Mirror connection targets a different source workspace; refusing to expose its data.'
+  }
   $connectionIdValue = $connection[0].id
   $discoveryPath = "workspaces/$WorkspaceId/catalogmirroring"
-  $scopes = @(Get-FabricSelectableScope -Nodes @(Get-FabricApiCollection -Path "$discoveryPath/scopes?beta=true&connectionId=$connectionIdValue&recursive=true"))
+  $nodes = @(Get-FabricApiCollection -Path "$discoveryPath/scopes?beta=true&connectionId=$connectionIdValue&recursive=true")
+  $scopes = @(Get-FabricSelectableScope -Nodes $nodes)
   if ($Scope.Count) {
     $selected = @($scopes | Where-Object { (ConvertTo-Json -InputObject @($_.fullyQualifiedScope) -Compress) -ceq (ConvertTo-Json -InputObject $Scope -Compress) })
   } else {
@@ -266,10 +296,11 @@ function Initialize-FabricMirror {
       Detail = 'Mirror connection has no unique selectable scope. Set fabricAutomation.mirrorScope to the exact fullyQualifiedScope array returned by Fabric catalogmirroring/scopes, then rerun.'
     }
   }
-  $scopeQuery = (@($selected[0].fullyQualifiedScope | ForEach-Object { 'scope=' + [uri]::EscapeDataString($_) }) -join '&')
-  $tablePath = "$discoveryPath/tables?beta=true&connectionId=$connectionIdValue"
-  if ($scopeQuery) { $tablePath += "&$scopeQuery" }
-  $available = @(Get-FabricApiCollection -Path $tablePath)
+  $leaves = @(Get-FabricLeafScope -Nodes @($selected[0]))
+  $available = @(foreach ($leaf in $leaves) {
+    $scopeQuery = (@($leaf.fullyQualifiedScope | ForEach-Object { 'scope=' + [uri]::EscapeDataString($_) }) -join '&')
+    Get-FabricApiCollection -Path "$discoveryPath/tables?beta=true&connectionId=$connectionIdValue&$scopeQuery"
+  })
   $mounts = @()
   foreach ($tableName in $Tables) {
     $match = @($available | Where-Object name -ceq $tableName)
@@ -284,26 +315,38 @@ function Initialize-FabricMirror {
   $definition = @{
     '$schema' = 'https://developer.microsoft.com/json-schemas/fabric/item/mirroredCatalog/definition/mirroredCatalogDefinition/1.0.0/schema.json'
     properties = @{
-      source = @{ type = 'AzureMonitorMirroredCatalog'; typeProperties = @{ connectionId = $connectionIdValue; scope = @($selected[0].fullyQualifiedScope) } }
+      source = @{ type = 'AzureMonitorMirroredCatalog'; typeProperties = @{ connectionId = $connectionIdValue; scope = @($selected[0].fullyQualifiedScope); warehouse = $SourceCustomerId.ToString() } }
       mountedTables = $mounts
     }
   }
   $mirror = Ensure-FabricItem -CollectionPath "workspaces/$WorkspaceId/mirroredCatalogs" `
-    -DisplayName 'Azure Monitor Demo Mirrored Logs' -CreateBody @{
-      displayName = 'Azure Monitor Demo Mirrored Logs'
-      description = 'Read-only OneLake shortcuts to explicitly selected central Log Analytics tables. No data copy.'
+    -DisplayName $DisplayName -CreateBody @{
+      displayName = $DisplayName
+      description = 'Read-only OneLake shortcuts to explicitly selected Log Analytics tables. No data copy.'
       definition = @{ parts = @(@{
         path = 'MirroredCatalogDefinition.json'
         payload = ConvertTo-InlineBase64 -Value ($definition | ConvertTo-Json -Depth 15)
         payloadType = 'InlineBase64'
       }) }
     }
+  $saved = New-FabricItem -Path "workspaces/$WorkspaceId/mirroredCatalogs/$($mirror.id)/getDefinition" -Body @{}
+  $part = @($saved.definition.parts | Where-Object path -eq 'MirroredCatalogDefinition.json')
+  if ($part.Count -ne 1) { throw 'Mirror definition is not available; cannot verify its source and table selection.' }
+  $savedDefinition = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($part[0].payload)) | ConvertFrom-Json
+  $savedSource = $savedDefinition.properties.source.typeProperties
+  $savedTables = @($savedDefinition.properties.mountedTables.source.typeProperties.tableName | Sort-Object)
+  if ($savedSource.connectionId -ne $connectionIdValue -or
+      (Compare-Object @($Tables | Sort-Object) $savedTables) -or
+      ($savedSource.scope -join '/') -cne ($selected[0].fullyQualifiedScope -join '/')) {
+    throw 'Existing mirror has a different source or table selection. Its definition was preserved; choose a different mirror name or explicitly edit it.'
+  }
   $status = Invoke-RestMethod -Method Get `
     -Uri "$fabricApi/workspaces/$WorkspaceId/mirroredCatalogs/$($mirror.id)/mirroringStatus?beta=true" -Headers $script:fabricHeaders
   if ($status.status -eq 'Failed') { throw "Mirroring failed: $($status.error | ConvertTo-Json -Depth 6 -Compress)" }
   if ($status.status -notin @('Running', 'Stopped')) { throw "Unexpected mirroring status '$($status.status)'." }
   return [pscustomobject]@{
     Feature = 'Azure Monitor mirroring'; Status = 'Pending'
+    MirrorId = $mirror.id; DisplayName = $DisplayName; Tables = $Tables
     Detail = "Mirrored item $($mirror.id): $($status.status). Allow about 15 minutes, then verify table data. Existing items are reused without overwriting their table selection."
   }
 }

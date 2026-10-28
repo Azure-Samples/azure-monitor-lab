@@ -52,21 +52,23 @@ After deployment, `setup-fabric.ps1` creates or reuses:
 - Fabric workspace
 - Eventhouse
 - Read-write KQL database
-- Empty Eventstream
-- Real-Time Dashboard `Azure Monitor Demo Live Health`, connected to the KQL database, with live ingestion rate and recent raw telemetry tiles
+- Workspace identity, with **Azure Event Hubs Data Receiver** assigned only at the lab's `diagnostics` event hub
+- Keyless Event Hubs connection and published **Extended** Eventstream source, default stream and Eventhouse destination
+- Real-Time Dashboard `Azure Monitor Demo Live Health`, bound to the KQL database item GUID, with wide ingestion-rate and parsed recent-telemetry tiles
 - Four explicitly labelled synthetic operational/business events in `LabSampleEvents` and a correlation dashboard tile (unless sample seeding is disabled). These are not real orders, customer activity, or evidence that the live stream works.
+- Azure Monitor connections and explicit mirrored catalogs for **both central and Application Insights Log Analytics**, unless mirroring is explicitly disabled
+- Separate `Azure Monitor Mirrored Logs - Central` and `Azure Monitor Mirrored Logs - Application Insights` dashboards, with numbers, charts, detail tables and source-receipt/freshness metrics
+- A daily **20:00 UTC** suspension schedule for the lab capacity, unless explicitly disabled
 
-Setup attempts to create the Event Hub connection and publish the source-to-Eventhouse topology automatically. The Listen-only key is held only in process memory, never printed or persisted, and cleared immediately. Some tenants reject Shared Access Key connection creation through the public Fabric API even though the same connection works in the portal. In that case, create the connection once through the guided portal flow and rerun setup; the script discovers it by endpoint and publishes the topology automatically.
+Setup provisions or reuses the workspace identity, assigns hub-scoped receiver access, creates a **Workspace identity** connection and publishes `AzureEventHubExtended`. The Basic `AzureEventHub` source does **not** support WorkspaceIdentity; selecting Extended features is essential, not a portal-versus-API workaround. Setup never retrieves shared keys, enables local authentication, or overwrites an existing connection's credentials. `NotEncrypted` is the connector's required connection-encryption enum, not a request to disable transport TLS.
 
-For an Entra-only Event Hubs namespace (`disableLocalAuth=true`), keep shared keys disabled. Enable the Fabric workspace identity, grant it **Azure Event Hubs Data Receiver** scoped to the `diagnostics` event hub, and create an Event Hubs connection using **Workspace identity** authentication. These identity/access changes require administrator approval. Setup reuses workspace-identity connections without reading shared keys or replacing their credentials. See [Event Hubs source authentication](https://learn.microsoft.com/fabric/real-time-intelligence/event-streams/add-source-azure-event-hubs).
-
-Some tenants expose workspace-identity connections but reject them when publishing an Eventstream through the public API (`DataSourcesValidationError`, authentication method `WorkspaceIdentity` not supported). In that case, creating the connection or rerunning setup does not complete streaming: publish the Event Hubs source and the `MonitoringTelemetry` Eventhouse destination targeting `AzureDiagnosticsRaw` in the Fabric portal. Setup reports this limitation as **ActionRequired**, not a verified live stream. Do not switch to shared keys to bypass this restriction.
+These operations require Fabric workspace administration and source-scoped Azure RBAC administration. Keep `disableLocalAuth=true` on Entra-only namespaces. An existing Basic connection is preserved and reported for action rather than silently converted. New sources start at `Latest`; old Event Hub messages are not replayed. See [Event Hubs source authentication](https://learn.microsoft.com/fabric/real-time-intelligence/event-streams/add-source-azure-event-hubs).
 
 Setup polls Eventstream failures and checks for rows ingested into `AzureDiagnosticsRaw` in the last 15 minutes. Its default verification window is 180 seconds, configurable up to 900 seconds. Empty/missing tables remain **Pending**, not healthy; API/authorization/query failures are reported explicitly. A final feature-by-feature summary shows what succeeded and what still requires action. Failures cause setup to throw after reporting results; the main deployment reports optional Fabric setup failure without undoing infrastructure.
 
-Reruns reuse existing items and preserve user-edited dashboards and mirror definitions. Sample rows are deduplicated by their stable synthetic IDs. Changing dashboard/table-selection configuration does not overwrite existing item definitions; use the portal to change an existing item or create a deliberately separate item.
+Reruns reuse existing items and preserve user-edited dashboards and mirror definitions. Sample rows are deduplicated by their stable synthetic IDs. A conflicting mirror source/table selection is reported, not overwritten. Custom Eventstream nodes are not replaced: use a distinct `EventstreamName` or `-SkipEventstreamConnection`. A workspace on another capacity is rejected rather than moved or coupled to the wrong suspension schedule.
 
-Two additional experiences are opt-in: mirrored Azure Monitor catalog creation from a preauthorized connection, and a daily UTC capacity-suspension Logic App. See the automation settings below.
+Mirroring and daily suspension default on **within the optional Fabric stage**. Existing explicit `false` values in local config remain opt-outs; update them to adopt these defaults. Both Log Analytics workspaces default to **3 GB/day each**, not a shared 3 GB budget. The cap can still interrupt ingestion; it is not a total-cost limit. No live Azure caps or tenant settings are changed merely by updating these scripts.
 
 The Azure Monitor workbook reports the ARM capacity state and provisioning state. Active is Green; Paused or Suspended is Orange; failed provisioning is Red. Fabric Eventstream is a tenant-scoped SaaS item rather than an ARM resource, so its item and data-flow status is inspected in the Fabric workspace instead of queried directly by the Azure workbook.
 
@@ -78,6 +80,10 @@ The Azure Monitor workbook reports the ARM capacity state and provisioning state
 - A Microsoft Entra user UPN from the deployment tenant for `fabricAdminEmail`; an external alert or guest notification address is not sufficient
 - Stage A deployed if the Eventstream will use the lab Event Hub
 - Azure CLI and PowerShell 7+
+- Fabric workspace-admin permission to provision its identity
+- Azure role-assignment write permission at the source event hub and both source Log Analytics workspaces; custom-role administration to create the source mirroring roles
+- Tenant admin enables **Mirrored catalog item** under **OneLake catalog > Govern > Configurations > Tenant settings**. Capacity admin/Azure Owner alone does not grant this tenant role.
+- Review Fabric workspace membership before enabling mirrors: Azure Monitor table/row/column protections do not carry into Fabric
 
 ## One-shot deployment
 
@@ -96,7 +102,7 @@ Then deploy and configure the Fabric items:
 ./scripts/deploy.ps1
 ```
 
-`deploy.ps1` calls `setup-fabric.ps1` automatically when Fabric is enabled. Run `setup-fabric.ps1` separately only when the deployment output asks you to create a connection and rerun, or when resuming setup after a timeout.
+`deploy.ps1` calls `setup-fabric.ps1` automatically when Fabric is enabled. Run it separately to resume pending provisioning or after resolving a reported prerequisite. No Eventstream or dashboard editing is needed for a fresh supported deployment with the prerequisites satisfied.
 
 Fabric item creation is asynchronous and can be slower on F2. The setup script waits up to 30 minutes by default, honors the service `Retry-After` header, and prints operation IDs and progress. Override the ceiling with `-MaxOperationMinutes <5-120>`. If a caller times out, the Fabric operation can still finish; rerun the same command safely and the script will reuse every item that already exists.
 
@@ -127,14 +133,7 @@ terraform -chdir=terraform apply -var-file stages.tfvars
 
 Normally `setup-fabric.ps1` creates the Event Hubs connection and publishes the complete Eventstream topology automatically. It also provisions the dashboard and checks that `AzureDiagnosticsRaw` receives recent events.
 
-Some tenants reject Event Hubs Shared Access Key credentials through the public Fabric Connections API even though the portal supports them. In that case, create only the connection once:
-
-1. Open `AzureMonitorEvents`, switch to **Edit** mode, and select **Add source** > **Connect data sources** > **Azure Event Hubs**.
-2. Create a connection for the deployed namespace and the `diagnostics` Event Hub. For Entra-only namespaces, use **Workspace identity** with the approved event-hub-scoped receiver permission described above.
-3. If shared-key authentication is already allowed, use **Shared Access Key** with key name `diagnostics-listen` and retrieve its primary or secondary key from **Event Hubs namespace** > **Shared access policies**. Do not use `diagnostics-send`; it cannot consume events. Do not weaken an Entra-only policy to make this fallback work.
-4. Set Consumer group to `$Default`, Data format to **JSON**, and Data gateway to **none**.
-5. After the connection test succeeds, cancel before adding or publishing the source.
-6. Rerun `setup-fabric.ps1`. It discovers the connection by Event Hub endpoint and publishes the source, default stream, and `MonitoringTelemetry` Eventhouse destination automatically.
+If setup reports an identity or RBAC error, resolve that specific permission and rerun. Newly granted permissions can take time to propagate. For a deliberately manual pipeline, choose Azure Event Hubs **Extended features**, **Workspace identity**, consumer group `$Default`, and an Eventhouse destination targeting `MonitoringTelemetry.AzureDiagnosticsRaw`. Basic-source WorkspaceIdentity errors cannot be fixed by publishing the same Basic source in the portal. Never enable shared-key authentication to bypass the error.
 
 Use `-SkipEventstreamConnection` to keep all connection and topology configuration manual.
 
@@ -144,9 +143,9 @@ Use `-SkipEventstreamConnection` to keep all connection and topology configurati
 
 If the terminal says `Eventstream source and Eventhouse destination configured`, continue to step 3.
 
-### 2. Complete the one-time connection fallback
+### 2. Resolve any reported prerequisite
 
-If connection creation was rejected, follow the connection-only steps above. Cancel before adding or publishing topology, then rerun:
+If an API, identity or source-authorization step failed, correct the reported cause, then rerun:
 
 ```powershell
 ./scripts/setup-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>'
@@ -167,7 +166,11 @@ AzureDiagnosticsRaw
 
 ### 5. Open the automatically provisioned dashboard
 
-Open `Azure Monitor Demo Live Health` in the workspace. Its data source is already `MonitoringTelemetry`; the tiles show ingestion rate, recent raw diagnostics, and (by default) a separately labelled synthetic business-correlation example. Empty live tiles do not prove a healthy stream: use the setup verification result.
+Open `Azure Monitor Demo Live Health` in the workspace. Its data source is already `MonitoringTelemetry`; the tiles show envelope/batch ingestion rate, parsed recent diagnostics, and (by default) a separately labelled synthetic business-correlation example. New dashboards use vertically stacked, 24-unit-wide tiles with height at least 7. Empty live tiles do not prove a healthy stream: use the setup verification result.
+
+The dashboard's Fabric data source binds to the KQL database **item ID**, not its display name. If every tile reports `Entity ID ... of kind 'Database' was not found`, edit the dashboard data source and reselect the existing `MonitoringTelemetry` database, then save. Setup preserves existing dashboards, so rerunning it does not repair an older binding.
+
+The recent-telemetry tile expands diagnostic `records` batches into individual events and shows time, resource, category, level, HTTP method/path/status/duration, message, and metric name/average. Fields that do not apply to an event remain empty; nested JSON-string HTTP properties are parsed automatically.
 
 ### 6. Customize if desired
 
@@ -189,7 +192,7 @@ In Azure Monitor, open the lab Health Dashboard workbook and confirm the Fabric 
 
 Install the Capacity Metrics app once if needed (capacity administrator plus Power BI Pro/PPU/trial). There is no documented public API to install this app, so setup reports **ActionRequired** rather than pretending it is installed. See [Microsoft's installation guide](https://learn.microsoft.com/fabric/enterprise/metrics-app-install).
 
-Use the suspend command below, or explicitly enable the daily schedule. Resume F2 before the next Fabric session.
+The daily 20:00 UTC schedule is enabled by default by Fabric setup. It is not an idle detector. Resume F2 before the next Fabric session; you can also suspend it immediately with the command below.
 
 `start-the-lab.ps1 -Wait` also detects and resumes the optional F2 capacity together with the lab's VMs, VMSS, AKS, and App Service resources.
 
@@ -202,11 +205,13 @@ The setup helpers read `fabricAutomation` directly from `lab.config.json`; these
   "workspaceName": "Azure Monitor Demo Lab",
   "seedSampleData": true,
   "verificationTimeoutSeconds": 180,
-  "enableMirroring": false,
+  "enableMirroring": true,
   "mirrorConnectionId": "",
   "mirrorScope": [],
   "mirrorTables": ["AzureActivity", "ContainerLogV2", "AppServiceHTTPLogs", "Perf"],
-  "enableAutoSuspend": false,
+  "appInsightsMirrorConnectionId": "",
+  "appInsightsMirrorTables": ["AppRequests", "AppDependencies", "AppExceptions", "AppTraces"],
+  "enableAutoSuspend": true,
   "autoSuspendHourUtc": 20,
   "autoSuspendMinuteUtc": 0
 }
@@ -217,17 +222,22 @@ For multiple lab resource groups in the same tenant, set a distinct `workspaceNa
 ### Azure Monitor mirroring (preview)
 
 1. A tenant administrator enables the **Mirrored Azure Monitor** preview. Review Fabric workspace access first: preview Log Analytics table/row/column protections do not carry into Fabric.
-2. Authorize an Azure Monitor connection to the lab's **central** Log Analytics workspace once in Fabric. Prefer workspace identity where supported; the necessary source RBAC and interactive consent remain administrator/user actions. Setup does not create service-principal secrets or grant itself additional source access.
-3. Set `enableMirroring=true` and `mirrorConnectionId` to that Fabric connection GUID, then rerun setup. Without an explicit ID, setup only reuses a unique Azure Monitor/Log Analytics connection whose returned path contains the exact central workspace ARM ID.
-4. Setup discovers selectable source scopes and tables using the catalog discovery APIs, creates the `Azure Monitor Demo Mirrored Logs` catalog item, and reports its status. If the connection exposes multiple selectable scopes, set `mirrorScope` to the exact `fullyQualifiedScope` array returned by Fabric discovery. An explicitly supplied connection ID is the operator's selection of the authorized source; ensure it targets central Log Analytics.
+2. With the default `enableMirroring=true`, setup discovers both lab Log Analytics workspaces in the explicit resource group and reads their **customer GUIDs**, not their ARM IDs. It reuses an exact source connection or creates a same-tenant WorkspaceIdentity connection through the supported connector API.
+3. For each new mirror connection, setup creates a resource-group-available custom role with exactly `Microsoft.OperationalInsights/workspaces/read`, `Microsoft.OperationalInsights/workspaces/query/read`, and **`Microsoft.Authorization/roleAssignments/write`**, assigned to the workspace identity **only at that source LAW**. The last permission is privileged; do not extend these assignments to a resource group/subscription. No Owner role, client secret, shared key, tenant toggle or Fabric membership change is created.
+4. Setup enumerates selectable scopes and their leaf namespaces, mounts the explicit allowlist, and creates `Azure Monitor Demo Mirrored Logs` (central) and `Azure Monitor Demo Mirrored App Insights`. `mirrorConnectionId` and `appInsightsMirrorConnectionId` optionally select existing authorized connections; an ID targeting another LAW is rejected. Multiple selectable scopes require an explicit `mirrorScope` for central.
+5. Setup starts both mirrors before waiting up to 15 minutes per source for the automatically provisioned Eventhouse endpoint/external tables. It creates each dashboard as soon as its endpoint is discoverable and verifies the **saved** queries. Provisioning/empty data remains **Pending**, not Verified. Resolve missing collection or rerun after an unusually long service delay if necessary; no arbitrary database or synthetic telemetry substitutes for mirrored logs.
 
-Only the explicit `mirrorTables` allowlist is mounted. A missing/ambiguous table stops creation and reports an action; setup never falls back to mirroring every table. Adjust the list explicitly if your enabled stages collect different tables. Existing mirrored items are reused without changing their source or selection.
+Only the explicit `mirrorTables`/`appInsightsMirrorTables` allowlists are mounted. A missing/ambiguous table stops that source's creation and reports an action; setup never falls back to mirroring every table. Preview discovery only returns tables with recent streaming data. Adjust the list explicitly if your enabled stages collect different tables. Existing mirrored items are reused without changing their source or selection.
+
+The Application Insights dashboard has **14 tiles**: six numeric cards, four time-series charts and four tables covering sampling-adjusted requests/exceptions, server errors, weighted latency percentiles, dependencies, endpoint reliability and freshness. The central dashboard has **10 tiles** over the selected infrastructure tables. Numeric visuals serialize as lowercase `multistat`, with explicit `Metric`/`Value` mappings; cards are 12x7, charts at least 12x7, and tables 12/24x8, with no overlapping tiles.
+
+Queries use `external_table('AppRequests')` and equivalent external tables, not ordinary KQL table names. **Source receipt delay** is `_TimeReceived - TimeGenerated`, excluding negative intervals from percentiles and reporting missing/negative receipt counts separately. Latest-event age is `now() - max(TimeGenerated)`. Neither is end-to-end Fabric mirror latency. `_ReceivedTime` must not be used for this calculation because its rounding can produce misleading negative values. Counts use `ItemCount` sampling weights and duration percentiles use `percentilew` for Application Insights.
 
 Data remains in Azure Monitor Delta storage, exposed through read-only OneLake shortcuts. Allow about 15 minutes and verify data separately; catalog creation or a Running status is not proof of available rows. Preview does not backfill historical data. See [scenario 80](DEMO-SCENARIOS.md#s80), [the MirroredCatalog definition API](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/mirrored-catalog-definition), and [the preview guidance](https://learn.microsoft.com/fabric/mirroring/catalog-mirroring/azure-monitor).
 
-### Opt-in daily suspension
+### Default daily suspension
 
-Set `enableAutoSuspend=true` and the desired UTC hour/minute, or run:
+Fabric setup defaults `enableAutoSuspend=true` at 20:00 UTC. Override the hour/minute in config, or run the standalone helper explicitly:
 
 ```powershell
 ./scripts/setup-fabric-auto-suspend.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>' -Enabled $true -HourUtc 20 -MinuteUtc 0
@@ -246,11 +256,17 @@ This is a fixed daily schedule, **not an idle detector**. It interrupts active q
 
 Both commands require confirmation by default and verify the explicit subscription before changing the capacity.
 
-Full lab teardown also removes the tenant-scoped workspace and its contained Eventhouse, KQL database, and Eventstream before deleting the resource group. To run only that cleanup:
+Full lab teardown also removes the tenant-scoped workspace and its contained Eventhouse, KQL databases, Eventstream, mirrors and dashboards before deleting the resource group. Generated mirror connection objects and the workspace identity's source-LAW-scoped mirroring assignments are removed; unused generated custom roles are deleted, while definitions still assigned elsewhere are preserved with a warning. Independently named preauthorized connections are not deleted. A workspace assigned to another capacity is rejected. To run only that cleanup:
 
 ```powershell
 ./scripts/setup-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>' -Teardown
 ```
+
+The standalone helper honors the root config's `namePrefix` unless explicitly overridden; use a distinct `workspaceName` for each lab. Tenant resources are not removed by `terraform destroy` alone.
+
+## Capacity Metrics credentials
+
+The Metrics app is the one non-scriptable scenario: install it from Microsoft's link using a capacity administrator with Power BI Pro/PPU/trial, then connect it to the correct capacity. If it reports **Data source Extension is missing credentials**, open the app's workspace, select its semantic model **Settings > Data source credentials > Edit credentials**, and authenticate with the appropriate organizational account/OAuth in the same tenant. Apply the app's required capacity parameters and refresh. Azure CLI login, Azure Owner, or assigning a Fabric workspace identity does not supply these Power BI OAuth credentials. A missing tenant-settings page requires a Fabric tenant administrator (including activating an eligible role), not merely capacity administration.
 
 ## Authorization troubleshooting
 

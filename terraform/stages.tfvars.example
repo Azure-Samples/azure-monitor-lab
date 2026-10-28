@@ -39,7 +39,9 @@ enable_stage_e = false  # Optional advanced (auto-mitigation Logic App, availabi
 # Off by default because the capacity bills while active. Indicative PAYG retail price:
 # about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies; OneLake storage
 # and other meters can add cost. Run scripts/setup-fabric.ps1 after apply, and suspend
-# the capacity when the demo is idle.
+# the capacity when the demo is idle. Setup defaults to keyless streaming, both LAW
+# mirrors and their dashboards, plus daily 20:00 UTC suspension. Review the source
+# RBAC grants and tenant preview prerequisites in docs/STAGE-FABRIC.md first.
 enable_stage_fabric = false
 fabric_admin_email  = "admin@example.com" # replace with your tenant's user UPN, not an external alert alias
 

@@ -69,7 +69,7 @@ if ($missing.Count -gt 0) {
 # Defaults for optional keys
 function Coalesce($a, $b) { if ($null -ne $a -and $a -ne '') { $a } else { $b } }
 $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
-$dailyCapGb       = Coalesce $cfg.dailyCapGb       1
+$dailyCapGb       = Coalesce $cfg.dailyCapGb       3
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
 $vmSize           = Coalesce $cfg.vmSize           'Standard_B2s'
 $aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_B2s'

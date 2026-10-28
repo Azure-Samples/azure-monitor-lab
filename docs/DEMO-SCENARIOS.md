@@ -237,10 +237,10 @@ Watch what a real incident looks like end-to-end: agents stop reporting, alerts 
 **Time:** 3 min.
 
 ### Story
-Observability can become an unbounded bill. We capped both LAWs at **1 GB/day** and we can trace every config change via the Activity Log.
+Observability can become an unbounded bill. We cap both LAWs at **3 GB/day each** by default and can trace every config change via the Activity Log. This is an ingestion guardrail, not a total-spend cap.
 
 ### Click-path
-1. **`law-amlab-central`** → **Usage and estimated costs** → show the daily cap (1 GB/day) and current burn.
+1. **`law-amlab-central`** → **Usage and estimated costs** → show the configured daily cap (default 3 GB/day) and current burn. The App Insights LAW has its own independent cap.
 2. **Logs** → run saved query `09 — Activity log · Who changed what in this RG (last 24h)`.
 3. *(Optional)* enable **Change Analysis** on the App Service → open *Diagnose and solve problems* → *Change Analysis*.
 
@@ -1814,7 +1814,7 @@ Every workbook in the lab so far has been about **the workload's** health. This 
 |---|---|
 | Workbook | `Azure Monitor Lab — Central LAW ingestion volume` (id stored as a GUID under `rg-azure-monitor-lab`) |
 | Source | `law-amlab-central.Usage` |
-| Panels | Daily ingest GB, top 10 tables by ingest, ingest by solution, GB billed vs included (1 GB/day cap) |
+| Panels | Daily ingest GB, top 10 tables by ingest, ingest by solution, GB billed vs included (default 3 GB/day cap) |
 
 ### Click-path
 
@@ -3739,6 +3739,55 @@ Eventhouse provides a high-volume KQL surface for streamed operational data. Tea
 3. Inspect table ingestion and query recent events with KQL.
 4. Group events by source, severity, or business dimension.
 
+### Reuse Log Analytics KQL inside Fabric
+
+The KQL language is reusable; the streamed Event Hub envelope is not the Log Analytics table schema. Paste this adapter into a Fabric query tab, then append any one of the query bodies below. Only the adapter changes between platforms; the body also runs directly against `AppServiceHTTPLogs` in Log Analytics.
+
+```kusto
+let AppServiceHTTPLogs =
+    AzureDiagnosticsRaw
+    | mv-expand Event=records
+    | where tostring(Event.category) == 'AppServiceHTTPLogs'
+    | extend Properties=parse_json(tostring(Event.properties))
+    | project TimeGenerated=todatetime(Event['time']),
+        CsMethod=tostring(Properties.CsMethod),
+        CsUriStem=tostring(Properties.CsUriStem),
+        ScStatus=toint(Properties.ScStatus),
+        TimeTaken=toreal(Properties.TimeTaken);
+```
+
+**Traffic and server errors**
+
+```kusto
+AppServiceHTTPLogs
+| where TimeGenerated > ago(1h)
+| summarize Requests=count(), ServerErrors=countif(ScStatus >= 500)
+    by bin(TimeGenerated, 5m)
+| render timechart
+```
+
+**Endpoint reliability**
+
+```kusto
+AppServiceHTTPLogs
+| where TimeGenerated > ago(1h)
+| summarize Requests=count(), Errors=countif(ScStatus >= 500),
+    P95Ms=percentile(TimeTaken, 95) by CsMethod, CsUriStem
+| extend ErrorPct=round(100.0 * Errors / Requests, 2)
+| top 10 by Errors desc
+```
+
+**Latency percentiles**
+
+```kusto
+AppServiceHTTPLogs
+| where TimeGenerated > ago(1h)
+| summarize percentiles(TimeTaken, 50, 95, 99) by bin(TimeGenerated, 5m)
+| render timechart
+```
+
+For mirrored Log Analytics, a one-line adapter such as `let AppRequests = external_table('AppRequests');` retains its familiar schema; the generated Application Insights dashboard demonstrates sampling-weighted KQL directly over those external tables. Do not claim identical schemas between streamed diagnostic envelopes and LAW tables, or that Log Analytics-specific `workspace()` syntax automatically works in Fabric.
+
 ### Killer line
 > *"The monitoring signal becomes a reusable real-time data asset without moving the operational alerting system."*
 
@@ -3756,8 +3805,8 @@ A Fabric Real-Time Dashboard presents live health and throughput alongside busin
 ### Click-path
 
 1. Open the automatically provisioned `Azure Monitor Demo Live Health` dashboard connected to `MonitoringTelemetry`.
-2. Show the live ingestion-rate and recent-telemetry tiles. Customize parsing/tiles for errors, affected service, and incidents if desired; the default raw diagnostic schema varies by source.
-3. Apply a time range and service filter.
+2. Show the wide live ingestion-rate and recent-telemetry tiles. The middle table expands diagnostic batches and parses time, resource, category, level, HTTP method/path/status/duration, message and metric fields.
+3. Open `Azure Monitor Mirrored Logs - Application Insights` for six numeric cards, four time-series charts and four tables; contrast it with the infrastructure-oriented `Azure Monitor Mirrored Logs - Central`. The generated queries use a fixed last-24h window; edit queries to change it.
 4. Pin the dashboard for an operations wallboard view.
 
 ### Killer line
@@ -3829,6 +3878,7 @@ Fabric F2 bills while active. The lab makes lifecycle control part of the demo, 
    ```
 4. Explain that storage and other metered usage may continue separately.
 5. Open `hm-amlab-workload` and show the optional **Real-Time Intelligence** tier rolling the Fabric F2 Resource Health state into workload health.
+6. Show the managed-identity Logic App created by setup: daily **20:00 UTC**, read/suspend access only to the lab capacity. It is not an idle detector and does not automatically resume. Set `fabricAutomation.enableAutoSuspend=false` and rerun setup to disable the schedule without changing capacity state.
 
 ### Killer line
 > *"The cheapest idle capacity is a suspended capacity, so shutdown is part of the runbook rather than an afterthought."*
@@ -3843,19 +3893,20 @@ Fabric F2 bills while active. The lab makes lifecycle control part of the demo, 
 **Audience:** Data platform teams, observability architects, analytics teams.
 **Time:** 5 min.
 
-> **Requires Stage Fabric and Preview onboarding.** A tenant admin must enable the **Mirrored Azure Monitor** catalog item. Creating its connection requires role-assignment write plus Log Analytics workspace read/query permissions, or an equivalent privileged built-in role. After that one-time source authorization, setup can create the mirrored catalog through the public API when `fabricAutomation.enableMirroring=true` and its connection ID is configured. Fabric compute charges apply when Fabric workloads query the data, while Azure Monitor ingestion and retention charges continue normally.
+> **Requires Stage Fabric and Preview onboarding.** A tenant admin must enable the **Mirrored Azure Monitor** catalog item. Setup defaults to mirroring both lab LAWs and creating their dashboards. It creates WorkspaceIdentity connections with source-LAW-scoped custom roles granting read/query and **role-assignment write**; the deploying user needs RBAC/custom-role administration. Tenant preview enablement cannot be bypassed. Fabric compute charges apply when Fabric workloads query the data, while Azure Monitor ingestion and retention charges continue normally.
 
 ### Story
 Mirror Azure Monitor exposes selected Log Analytics tables to Fabric without an export pipeline or duplicate storage. The data remains in Azure Monitor's Delta Lake storage and appears through read-only OneLake shortcuts, so teams can analyze operational telemetry beside business data in Eventhouse, Real-Time Dashboards, Power BI, Spark, and agentic workloads.
 
 ### Click-path
 
-1. Authorize an Azure Monitor connection to central Log Analytics, configure `fabricAutomation.enableMirroring` and `mirrorConnectionId`, then rerun setup to create **Azure Monitor Demo Mirrored Logs**. Alternatively create the mirrored item manually in the portal.
-2. For a same-tenant production setup, choose **Workspace identity**. Use an organizational account only for an interactive demo, and explain that Azure RBAC and Fabric workspace permissions are independent security boundaries.
-3. Inspect the explicit selection of `AzureActivity`, `ContainerLogV2`, `AppServiceHTTPLogs`, and `Perf`. Configure `mirrorTables` explicitly for your collected tables; setup does not widen the selection when a table is missing.
+1. Read the setup summary, then open **Azure Monitor Demo Mirrored Logs** (central) and **Azure Monitor Demo Mirrored App Insights**. Connections are discovered by exact LAW customer GUID or created automatically; no connection GUID is required for a fresh deployment.
+2. Show **Workspace identity**, its source-LAW-scoped permissions, and explain that Azure RBAC and Fabric workspace permissions are independent security boundaries.
+3. Inspect the explicit central selection of `AzureActivity`, `ContainerLogV2`, `AppServiceHTTPLogs`, and `Perf`, and the Application Insights selection of `AppRequests`, `AppDependencies`, `AppExceptions`, and `AppTraces`. Configure allowlists for your collected tables; setup never widens missing selections to all tables.
 4. Allow about 15 minutes for new data to appear. Preview does not backfill historical rows, and the mirrored tables are read-only in Fabric.
 5. Open the generated Eventhouse endpoint or create an Eventhouse shortcut. Query a mirrored table and join it with business data already in OneLake.
 6. Contrast this with [scenario 74](#s74): Eventstream consumes a live Event Hub feed into `AzureDiagnosticsRaw`; mirroring exposes Log Analytics tables without copying them.
+7. Open the two generated **Azure Monitor Mirrored Logs** dashboards. Numeric cards use supported lowercase `multistat` visuals and 12x7 layouts; charts/tables are wide enough to render. Explain source receipt delay (`_TimeReceived - TimeGenerated`), missing/negative receipt counts and latest-event age. These are **not Fabric end-to-end mirror latency**.
 
 ### Watch-outs
 

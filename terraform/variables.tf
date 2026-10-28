@@ -29,7 +29,7 @@ variable "owner_tag" {
 
 variable "daily_cap_gb" {
   type    = number
-  default = 1
+  default = 3
 }
 
 variable "enable_law_replication" {

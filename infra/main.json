@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "10009751133156138470"
+      "templateHash": "2357189288868899604"
     }
   },
   "parameters": {
@@ -74,9 +74,9 @@
     },
     "dailyCapGb": {
       "type": "int",
-      "defaultValue": 1,
+      "defaultValue": 3,
       "metadata": {
-        "description": "Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable."
+        "description": "Daily ingestion cap (GB) on each of the central and Application Insights Log Analytics workspaces. Set to -1 to disable."
       }
     },
     "vmSize": {
@@ -64671,7 +64671,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4309548182300101190"
+              "templateHash": "13632335284258159914"
             }
           },
           "parameters": {
@@ -64695,7 +64695,7 @@
             },
             "dailyCapGb": {
               "type": "int",
-              "defaultValue": 1,
+              "defaultValue": 3,
               "metadata": {
                 "description": "Configured daily ingestion cap (GB) for the central LAW. Set to -1 when disabled."
               }

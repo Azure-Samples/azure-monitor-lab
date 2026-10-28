@@ -6,8 +6,9 @@
   Pins and verifies the Azure subscription, finds the deployed Fabric F2 capacity,
   then creates or reuses a workspace, Eventhouse, KQL database, and Eventstream.
   It attempts to create the Event Hubs connection and publish the source-to-Eventhouse
-  topology. If the tenant rejects public API connection creation, the user creates
-  that connection once in Fabric and reruns this script to publish the topology.
+  topology using workspace identity and Extended Event Hubs. By default it also
+  provisions both Log Analytics mirrors/dashboards and daily capacity suspension.
+  Tenant preview enablement and Capacity Metrics licensing remain prerequisites.
 
 .EXAMPLE
   ./scripts/setup-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup rg-azure-monitor-lab
@@ -23,12 +24,14 @@ param(
   [string] $EventstreamName = 'AzureMonitorEvents',
   [string] $DestinationTableName = 'AzureDiagnosticsRaw',
   [bool] $SeedSampleData = $true,
-  [bool] $EnableMirroring = $false,
+  [bool] $EnableMirroring = $true,
   [string] $MirrorConnectionId = '',
   [string[]] $MirrorScope = @(),
   [string[]] $MirrorTables = @('AzureActivity', 'ContainerLogV2', 'AppServiceHTTPLogs', 'Perf'),
+  [string] $AppInsightsMirrorConnectionId = '',
+  [string[]] $AppInsightsMirrorTables = @('AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces'),
   [ValidateRange(1, 900)] [int] $VerificationTimeoutSeconds = 180,
-  [bool] $EnableAutoSuspend = $false,
+  [bool] $EnableAutoSuspend = $true,
   [ValidateRange(0, 23)] [int] $AutoSuspendHourUtc = 20,
   [ValidateRange(0, 59)] [int] $AutoSuspendMinuteUtc = 0,
   [ValidateRange(5, 120)] [int] $MaxOperationMinutes = 30,
@@ -39,14 +42,21 @@ param(
 $ErrorActionPreference = 'Stop'
 $fabricApi = 'https://api.fabric.microsoft.com/v1'
 . (Join-Path $PSScriptRoot 'fabric-observability.ps1')
+. (Join-Path $PSScriptRoot 'fabric-connections.ps1')
+. (Join-Path $PSScriptRoot 'fabric-mirrored-dashboard.ps1')
 
 $configPath = Join-Path $PSScriptRoot '..' 'lab.config.json'
 if (Test-Path -LiteralPath $configPath) {
-  $automation = (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).fabricAutomation
+  $configuration = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+  $automation = $configuration.fabricAutomation
+  if (-not $PSBoundParameters.ContainsKey('NamePrefix') -and $configuration.namePrefix) {
+    $NamePrefix = $configuration.namePrefix
+  }
   $options = @{
     WorkspaceName = 'workspaceName'
     SeedSampleData = 'seedSampleData'; EnableMirroring = 'enableMirroring'
     MirrorConnectionId = 'mirrorConnectionId'; MirrorScope = 'mirrorScope'; MirrorTables = 'mirrorTables'
+    AppInsightsMirrorConnectionId = 'appInsightsMirrorConnectionId'; AppInsightsMirrorTables = 'appInsightsMirrorTables'
     VerificationTimeoutSeconds = 'verificationTimeoutSeconds'; EnableAutoSuspend = 'enableAutoSuspend'
     AutoSuspendHourUtc = 'autoSuspendHourUtc'; AutoSuspendMinuteUtc = 'autoSuspendMinuteUtc'
   }
@@ -161,7 +171,11 @@ function New-FabricItem {
   if ([string]::IsNullOrWhiteSpace($operationUrl)) {
     throw "Fabric accepted '$Path' but did not return an operation URL or ID. No request was retried."
   }
+  if ($operationUrl.StartsWith('/')) { $operationUrl = "https://api.fabric.microsoft.com$operationUrl" }
   Wait-FabricOperation -OperationUrl $operationUrl -OperationId $operationId
+  if ($Path -match '/getDefinition$') {
+    return Invoke-RestMethod -Method Get -Uri "$($operationUrl.TrimEnd('/'))/result" -Headers $script:fabricHeaders
+  }
   return $result
 }
 
@@ -199,27 +213,35 @@ function Get-FabricConnection {
     [string] $EventHubName = ''
   )
 
-  $connections = Invoke-RestMethod -Method Get -Uri "$fabricApi/connections" -Headers $script:fabricHeaders
-  $connection = @($connections.value | Where-Object { $_.displayName -eq $DisplayName }) | Select-Object -First 1
-  if ($connection -or [string]::IsNullOrWhiteSpace($NamespaceName)) { return $connection }
-
-  $namespaceToken = $NamespaceName.ToLowerInvariant()
-  $eventHubPattern = '(^|[;"/:=])' + [regex]::Escape($EventHubName.ToLowerInvariant()) + '($|[;"/},])'
-  return @($connections.value | Where-Object {
-    $_.connectionDetails -and
+  $connections = @(Get-FabricApiCollection -Path connections)
+  $connection = @($connections | Where-Object { $_.displayName -eq $DisplayName })
+  if ($connection.Count -gt 1) { throw "Multiple connections are named '$DisplayName'." }
+  if ([string]::IsNullOrWhiteSpace($NamespaceName)) { return $connection | Select-Object -First 1 }
+  $namespacePattern = '(^|[;"/:=])' + [regex]::Escape($NamespaceName) + '(\.servicebus\.windows\.net)?(?=$|[;"/},])'
+  $eventHubPattern = '(^|[;"/:=])' + [regex]::Escape($EventHubName) + '(?=$|[;"/},])'
+  $matches = @($connections | Where-Object {
     $_.connectionDetails.type -eq 'EventHub' -and
-    $_.connectionDetails.path -and
-    $_.connectionDetails.path.ToLowerInvariant().Contains($namespaceToken) -and
-    $_.connectionDetails.path.ToLowerInvariant() -match $eventHubPattern
-  }) | Select-Object -First 1
+    $_.connectionDetails.path -match $namespacePattern -and $_.connectionDetails.path -match $eventHubPattern
+  })
+  if ($connection.Count -and $connection[0].id -notin $matches.id) {
+    throw "Connection '$DisplayName' targets a different Event Hub; refusing reuse or credential changes."
+  }
+  if ($connection.Count) { return $connection[0] }
+  if ($matches.Count -gt 1) { throw 'Multiple connections target the Event Hub; use a uniquely named lab connection.' }
+  return $matches | Select-Object -First 1
 }
 
 function Ensure-EventHubConnection {
   param(
     [Parameter(Mandatory)] [string] $NamespaceName,
-    [Parameter(Mandatory)] [string] $EventHubName
+    [Parameter(Mandatory)] [string] $EventHubName,
+    [Parameter(Mandatory)] [string] $WorkspaceId
   )
 
+  $identity = Ensure-FabricWorkspaceIdentity -WorkspaceId $WorkspaceId
+  $hubScope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.EventHub/namespaces/$NamespaceName/eventhubs/$EventHubName"
+  Grant-FabricSourceRole -PrincipalId $identity.servicePrincipalId -Scope $hubScope `
+    -RoleId 'a638d3c7-ab3a-418d-83e6-5f17a39d4fde'
   $connectionName = "amlab-$NamespaceName-$EventHubName"
   $connection = Get-FabricConnection `
     -DisplayName $connectionName `
@@ -229,92 +251,24 @@ function Ensure-EventHubConnection {
     Write-Info "Reusing workspace-identity Fabric connection '$connectionName' ($($connection.id)); shared keys are not required."
     return $connection
   }
-  if ($connection) {
-    Write-Info "Refreshing Fabric connection '$connectionName' ($($connection.id))"
-  }
-
-  $listenKey = $null
-  $connectionBody = $null
-  try {
-    $listenKey = az eventhubs namespace authorization-rule keys list `
-      --subscription $SubscriptionId `
-      --resource-group $ResourceGroup `
-      --namespace-name $NamespaceName `
-      --name diagnostics-listen `
-      --query primaryKey `
-      -o tsv
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($listenKey)) {
-      throw "Could not retrieve the Listen-only 'diagnostics-listen' key. Redeploy the latest template or use -SkipEventstreamConnection."
-    }
-
-    $credentialDetails = @{
-      singleSignOnType = 'None'
-      connectionEncryption = 'NotEncrypted'
-      skipTestConnection = $false
-      credentials = @{
-        credentialType = 'Basic'
-        username = 'diagnostics-listen'
-        password = $listenKey
-      }
-    }
-    if ($connection) {
-      $updateBody = @{
-        connectivityType = 'ShareableCloud'
-        displayName = $connectionName
-        privacyLevel = 'Organizational'
-        credentialDetails = $credentialDetails
-      }
-      $connection = Invoke-RestMethod `
-        -Method Patch `
-        -Uri "$fabricApi/connections/$($connection.id)" `
-        -Headers $script:fabricHeaders `
-        -ContentType 'application/json' `
-        -Body ($updateBody | ConvertTo-Json -Depth 12)
-      return $connection
-    }
-
-    $connectionBody = @{
+  if ($connection) { throw "Connection '$connectionName' is not keyless. Preserve it and create a WorkspaceIdentity connection for this hub before rerunning; setup will not overwrite credentials." }
+  return New-FabricKeylessConnection -Body @{
       connectivityType = 'ShareableCloud'
       displayName = $connectionName
       connectionDetails = @{
         type = 'EventHub'
         creationMethod = 'EventHub.Contents'
         parameters = @(
-          @{ dataType = 'Text'; name = 'endpoint'; value = $NamespaceName }
+          @{ dataType = 'Text'; name = 'endpoint'; value = "$NamespaceName.servicebus.windows.net" }
           @{ dataType = 'Text'; name = 'entityPath'; value = $EventHubName }
         )
       }
       privacyLevel = 'Organizational'
-      credentialDetails = $credentialDetails
-    }
-
-    Write-Info "Creating Fabric Event Hub connection '$connectionName'"
-    try {
-      $connection = Invoke-RestMethod `
-        -Method Post `
-        -Uri "$fabricApi/connections" `
-        -Headers $script:fabricHeaders `
-        -ContentType 'application/json' `
-        -Body ($connectionBody | ConvertTo-Json -Depth 12)
-    } catch {
-      $fabricError = $_.ErrorDetails.Message
-      if ($fabricError) {
-        try {
-          $parsedError = $fabricError | ConvertFrom-Json
-          $safeError = "$($parsedError.errorCode): $($parsedError.message)"
-        } catch {
-          $safeError = 'Fabric API request failed without a structured error response.'
-        }
-        throw "Fabric rejected automated Event Hub connection creation. Create the connection once in the Fabric portal, then rerun this script to publish the topology automatically. Fabric response: $safeError"
+      credentialDetails = @{
+        connectionEncryption = 'NotEncrypted'
+        credentials = @{ credentialType = 'WorkspaceIdentity' }
+        skipTestConnection = $false
       }
-      throw
-    }
-    return $connection
-  } finally {
-    $listenKey = $null
-    $credentialDetails = $null
-    $updateBody = $null
-    $connectionBody = $null
   }
 }
 
@@ -331,10 +285,7 @@ function Set-EventstreamTopology {
   $sourceName = 'AzureEventHubSource'
   $streamName = "$EventstreamName-stream"
   $destinationName = 'EventhouseDestination'
-  $definitionResponse = Invoke-RestMethod `
-    -Method Post `
-    -Uri "$fabricApi/workspaces/$WorkspaceId/eventstreams/$EventstreamId/getDefinition" `
-    -Headers $script:fabricHeaders
+  $definitionResponse = New-FabricItem -Path "workspaces/$WorkspaceId/eventstreams/$EventstreamId/getDefinition" -Body @{}
   $eventstreamPart = @($definitionResponse.definition.parts | Where-Object { $_.path -eq 'eventstream.json' }) | Select-Object -First 1
   $existingTopology = if ($eventstreamPart -and $eventstreamPart.payload) {
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($eventstreamPart.payload)) | ConvertFrom-Json
@@ -347,15 +298,35 @@ function Set-EventstreamTopology {
     }
   }
 
+  $runtimeTopology = Invoke-RestMethod -Method Get `
+    -Uri "$fabricApi/workspaces/$WorkspaceId/eventstreams/$EventstreamId/topology" -Headers $script:fabricHeaders
   $existingSource = @($existingTopology.sources | Where-Object { $_.name -eq $sourceName }) | Select-Object -First 1
   $existingStream = @($existingTopology.streams | Where-Object { $_.name -eq $streamName }) | Select-Object -First 1
   $existingDestination = @($existingTopology.destinations | Where-Object { $_.name -eq $destinationName }) | Select-Object -First 1
-  $runtimeTopology = Invoke-RestMethod `
-    -Method Get `
-    -Uri "$fabricApi/workspaces/$WorkspaceId/eventstreams/$EventstreamId/topology" `
-    -Headers $script:fabricHeaders
+  if (@($existingTopology.sources).Count -eq 1 -and @($existingTopology.destinations).Count -eq 1 -and
+      @($existingTopology.streams).Count -eq 1 -and -not $existingTopology.operators -and
+      -not @(@($runtimeTopology.sources) + @($runtimeTopology.destinations) | Where-Object status -eq 'Failed').Count) {
+    $source = $existingTopology.sources[0]
+    $stream = $existingTopology.streams[0]
+    $destination = $existingTopology.destinations[0]
+    if ($source.type -eq 'AzureEventHubExtended' -and $source.properties.dataConnectionId -eq $ConnectionId -and
+        $source.properties.consumerGroupName -ceq '$Default' -and $destination.type -eq 'Eventhouse' -and
+        $destination.properties.itemId -eq $KqlDatabaseId -and $destination.properties.workspaceId -eq $WorkspaceId -and
+        $destination.properties.tableName -eq $TableName -and
+        @($stream.inputNodes).Count -eq 1 -and $stream.inputNodes[0].name -eq $source.name -and
+        @($destination.inputNodes).Count -eq 1 -and $destination.inputNodes[0].name -eq $stream.name) {
+      Write-Info 'Existing Extended Event Hubs topology already targets this database/table; preserving its published definition.'
+      return
+    }
+  }
+  if (@($existingTopology.sources | Where-Object name -ne $sourceName).Count -or
+      @($existingTopology.destinations | Where-Object name -ne $destinationName).Count -or
+      @($existingTopology.streams | Where-Object name -ne $streamName).Count -or
+      @($existingTopology.operators | Where-Object { $null -ne $_ }).Count) {
+    throw 'Eventstream contains a custom topology; refusing to replace user-defined nodes. Use a separate EventstreamName for generated topology.'
+  }
   $runtimeSource = @($runtimeTopology.sources | Where-Object { $_.name -eq $sourceName }) | Select-Object -First 1
-  $sourceId = if ($existingSource.id -and $runtimeSource.status -ne 'Failed') {
+  $sourceId = if ($existingSource.id -and $existingSource.type -eq 'AzureEventHubExtended' -and $runtimeSource.status -ne 'Failed') {
     $existingSource.id
   } else {
     if ($runtimeSource.status -eq 'Failed') {
@@ -371,11 +342,11 @@ function Set-EventstreamTopology {
       [ordered]@{
         id = $sourceId
         name = $sourceName
-        type = 'AzureEventHub'
+        type = 'AzureEventHubExtended'
         properties = [ordered]@{
           dataConnectionId = $ConnectionId
           consumerGroupName = '$Default'
-          inputSerialization = @{ type = 'Json'; properties = @{ encoding = 'UTF8' } }
+          startPosition = 'Latest'
         }
       }
     )
@@ -412,6 +383,7 @@ function Set-EventstreamTopology {
     retentionTimeInDays = 1
     eventThroughputLevel = 'Low'
   }
+  $otherParts = @($definitionResponse.definition.parts | Where-Object { $_.path -notin @('eventstream.json', 'eventstreamProperties.json') })
   $requestBody = @{
     definition = @{
       parts = @(
@@ -425,7 +397,7 @@ function Set-EventstreamTopology {
           payload = ConvertTo-InlineBase64 -Value ($properties | ConvertTo-Json -Depth 5)
           payloadType = 'InlineBase64'
         }
-      )
+      ) + $otherParts
     }
   }
 
@@ -513,6 +485,18 @@ $script:fabricHeaders = @{ Authorization = "Bearer $fabricToken" }
 
 if ($Teardown) {
   Write-Step 'Removing the Fabric workspace and contained items'
+  $workspace = Get-CollectionItem -Path 'workspaces' -DisplayName $WorkspaceName
+  if (-not $workspace) {
+    Write-Info "Workspace '$WorkspaceName' does not exist; nothing to remove."
+    return
+  }
+  if (-not $workspace.capacityId) {
+    $workspace = Invoke-RestMethod -Method Get -Uri "$fabricApi/workspaces/$($workspace.id)" -Headers $script:fabricHeaders
+  }
+  $teardownCapacities = @(Get-FabricApiCollection -Path capacities | Where-Object displayName -eq $armCapacity.name)
+  if ($teardownCapacities.Count -ne 1 -or $workspace.capacityId -ne $teardownCapacities[0].id) {
+    throw 'Teardown workspace is not on the lab capacity; refusing to delete a shared or unrelated workspace.'
+  }
   $teardownNamespace = az resource list `
     --subscription $SubscriptionId `
     --resource-group $ResourceGroup `
@@ -525,7 +509,7 @@ if ($Teardown) {
       -DisplayName $connectionName `
       -NamespaceName $teardownNamespace `
       -EventHubName 'diagnostics'
-    if ($connection) {
+    if ($connection -and $connection.displayName -eq $connectionName) {
       Write-Info "Deleting Fabric connection '$($connection.displayName)' ($($connection.id))"
       Invoke-RestMethod `
         -Method Delete `
@@ -534,10 +518,14 @@ if ($Teardown) {
     }
   }
 
-  $workspace = Get-CollectionItem -Path 'workspaces' -DisplayName $WorkspaceName
-  if (-not $workspace) {
-    Write-Info "Workspace '$WorkspaceName' does not exist; nothing to remove."
-    return
+  $sourceWorkspaces = @(az resource list --subscription $SubscriptionId --resource-group $ResourceGroup `
+    --resource-type Microsoft.OperationalInsights/workspaces --output json | ConvertFrom-Json |
+    Where-Object { $_.name -like "law-$NamePrefix-central-*" -or $_.name -like "law-$NamePrefix-appinsights-*" })
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot discover source Log Analytics workspaces during Fabric teardown.' }
+  foreach ($sourceWorkspace in $sourceWorkspaces) {
+    $customerId = az monitor log-analytics workspace show --subscription $SubscriptionId --ids $sourceWorkspace.id --query customerId --output tsv
+    if ($LASTEXITCODE -ne 0 -or -not $customerId) { throw 'Cannot resolve a mirror source during teardown.' }
+    Remove-FabricMonitorAccess -WorkspaceId $workspace.id -SourceResourceId $sourceWorkspace.id -SourceCustomerId $customerId
   }
 
   Invoke-RestMethod `
@@ -563,6 +551,12 @@ $workspace = Ensure-FabricItem `
     description = 'Real-Time Intelligence scenarios for the Azure Monitor Demo Lab.'
     capacityId = $fabricCapacity.id
   }
+if (-not $workspace.capacityId) {
+  $workspace = Invoke-RestMethod -Method Get -Uri "$fabricApi/workspaces/$($workspace.id)" -Headers $script:fabricHeaders
+}
+if ($workspace.capacityId -ne $fabricCapacity.id) {
+  throw "Existing workspace '$WorkspaceName' is not assigned to this lab's capacity. Choose a unique WorkspaceName; setup will not move a shared workspace or schedule suspension against another capacity."
+}
 
 Write-Step 'Creating or reusing Real-Time Intelligence items'
 $eventhouse = Ensure-FabricItem `
@@ -605,7 +599,7 @@ if ([string]::IsNullOrWhiteSpace($eventHubNamespace)) {
 } else {
   Write-Info "Namespace: $eventHubNamespace"
   Write-Info 'Event Hub: diagnostics'
-  Write-Info 'Listen authorization rule: diagnostics-listen'
+  Write-Info 'Authentication: workspace identity; receiver access scoped to this event hub.'
 }
 
 $eventstreamAutomated = $false
@@ -615,7 +609,7 @@ if (-not $SkipEventstreamConnection -and -not [string]::IsNullOrWhiteSpace($even
   try {
     $eventHubConnection = Ensure-EventHubConnection `
       -NamespaceName $eventHubNamespace `
-      -EventHubName 'diagnostics'
+      -EventHubName 'diagnostics' -WorkspaceId $workspace.id
     Set-EventstreamTopology `
       -WorkspaceId $workspace.id `
       -EventstreamId $eventstream.id `
@@ -627,11 +621,7 @@ if (-not $SkipEventstreamConnection -and -not [string]::IsNullOrWhiteSpace($even
     Write-Host "Eventstream source and Eventhouse destination configured." -ForegroundColor Green
     $setupResults.Add([pscustomobject]@{ Feature = 'Eventstream topology'; Status = 'Configured'; Detail = 'Event Hub -> Eventstream -> Eventhouse. Data delivery is verified separately.' })
   } catch {
-    $connectionAction = if ($eventHubConnection.credentialDetails.credentialType -eq 'WorkspaceIdentity') {
-      'If the Eventstream API rejects WorkspaceIdentity, publish the Event Hubs source and Eventhouse destination in the Fabric portal; keep shared keys disabled.'
-    } else {
-      'Create/repair the Event Hub connection once in Fabric, then rerun setup.'
-    }
+    $connectionAction = 'Verify workspace-admin and event-hub-scoped RBAC assignment permissions, then rerun. Keep shared keys disabled; WorkspaceIdentity requires the Extended Event Hubs source.'
     $setupResults.Add([pscustomobject]@{
       Feature = 'Eventstream topology'; Status = 'ActionRequired'
       Detail = "$($_.Exception.Message) $connectionAction"
@@ -676,7 +666,7 @@ try {
   }
   try {
     $dashboardDefinition = New-FabricDashboardDefinition -WorkspaceId $workspace.id -QueryServiceUri $queryServiceUri `
-      -DatabaseName $KqlDatabaseName -TableName $DestinationTableName -IncludeSampleData $samplesReady
+      -DatabaseId $kqlDatabase.id -DatabaseName $KqlDatabaseName -TableName $DestinationTableName -IncludeSampleData $samplesReady
     $dashboard = Ensure-FabricItem -CollectionPath "workspaces/$($workspace.id)/kqlDashboards" `
       -DisplayName 'Azure Monitor Demo Live Health' -CreateBody @{
         displayName = 'Azure Monitor Demo Live Health'
@@ -703,18 +693,45 @@ try {
 
 if ($EnableMirroring) {
   Write-Step 'Configuring Azure Monitor mirroring (preview)'
-  try {
-    $centralWorkspaces = @(az resource list --subscription $SubscriptionId --resource-group $ResourceGroup `
-      --resource-type Microsoft.OperationalInsights/workspaces --output json | ConvertFrom-Json |
-      Where-Object { $_.name -like "law-$NamePrefix-central-*" })
-    if ($LASTEXITCODE -ne 0 -or $centralWorkspaces.Count -ne 1) { throw 'Cannot uniquely discover the central Log Analytics workspace for mirroring.' }
-    $setupResults.Add((Initialize-FabricMirror -WorkspaceId $workspace.id -CentralWorkspaceId $centralWorkspaces[0].id `
-      -ConnectionId $MirrorConnectionId -Scope $MirrorScope -Tables $MirrorTables))
-  } catch {
-    $setupResults.Add([pscustomobject]@{ Feature = 'Azure Monitor mirroring'; Status = 'Failed'; Detail = $_.Exception.Message })
+  $mirroredSources = [Collections.Generic.List[object]]::new()
+  foreach ($source in @(
+    @{ Kind = 'central'; Name = 'Azure Monitor Demo Mirrored Logs'; ConnectionId = $MirrorConnectionId; Tables = $MirrorTables; Scope = $MirrorScope },
+    @{ Kind = 'appinsights'; Name = 'Azure Monitor Demo Mirrored App Insights'; ConnectionId = $AppInsightsMirrorConnectionId; Tables = $AppInsightsMirrorTables; Scope = @() }
+  )) {
+    try {
+      $sourceWorkspaces = @(az resource list --subscription $SubscriptionId --resource-group $ResourceGroup `
+        --resource-type Microsoft.OperationalInsights/workspaces --output json | ConvertFrom-Json |
+        Where-Object { $_.name -like "law-$NamePrefix-$($source.Kind)-*" })
+      if ($LASTEXITCODE -ne 0 -or $sourceWorkspaces.Count -ne 1) { throw "Cannot uniquely discover the $($source.Kind) Log Analytics workspace." }
+      $customerId = az monitor log-analytics workspace show --subscription $SubscriptionId --ids $sourceWorkspaces[0].id --query customerId --output tsv
+      if ($LASTEXITCODE -ne 0 -or -not $customerId) { throw 'Cannot read the Log Analytics workspace customer GUID.' }
+      $connection = Ensure-FabricMonitorConnection -WorkspaceId $workspace.id -SourceResourceId $sourceWorkspaces[0].id `
+        -SourceCustomerId $customerId -ConnectionId $source.ConnectionId
+      $mirror = Initialize-FabricMirror -WorkspaceId $workspace.id -SourceCustomerId $customerId `
+        -DisplayName $source.Name -ConnectionId $connection.id -Scope $source.Scope -Tables $source.Tables
+      $setupResults.Add($mirror)
+      if ($mirror.MirrorId) {
+        $mirroredSources.Add(@{ Mirror = $mirror; ApplicationInsights = ($source.Kind -eq 'appinsights') })
+      }
+    } catch {
+      $setupResults.Add([pscustomobject]@{ Feature = "Azure Monitor mirroring ($($source.Kind))"; Status = 'Failed'; Detail = $_.Exception.Message })
+    }
+  }
+  foreach ($mirroredSource in $mirroredSources) {
+    try {
+      $dashboardResult = Initialize-FabricMirroredDashboard -WorkspaceId $workspace.id -Mirror $mirroredSource.Mirror `
+        -ApplicationInsights:$mirroredSource.ApplicationInsights
+      $setupResults.Add($dashboardResult)
+      if ($dashboardResult.Status -eq 'Verified') {
+        $mirroredSource.Mirror.Status = 'Verified'
+        $mirroredSource.Mirror.Detail = "Mirrored item $($mirroredSource.Mirror.MirrorId): external tables and visible data verified through its dashboard queries."
+      }
+    } catch {
+      $setupResults.Add([pscustomobject]@{ Feature = "Mirrored dashboard ($($mirroredSource.Mirror.DisplayName))"; Status = 'Failed'; Detail = $_.Exception.Message })
+    }
   }
 } else {
-  $setupResults.Add([pscustomobject]@{ Feature = 'Azure Monitor mirroring'; Status = 'Skipped'; Detail = 'Set fabricAutomation.enableMirroring=true to opt in. Preview source protections do not carry into Fabric; review workspace access first.' })
+  $setupResults.Add([pscustomobject]@{ Feature = 'Azure Monitor mirroring'; Status = 'Skipped'; Detail = 'Disabled explicitly. Preview source protections do not carry into Fabric; review workspace access before enabling.' })
 }
 $setupResults.Add([pscustomobject]@{
   Feature = 'Capacity Metrics app'; Status = 'ActionRequired'
@@ -727,13 +744,10 @@ Write-Host "KQL database ID: $($kqlDatabase.id)"
 Write-Host "Eventstream ID: $($eventstream.id)"
 if (-not $eventstreamAutomated) {
   Write-Host "`nManual Eventstream connection:" -ForegroundColor Cyan
-  Write-Host "1. Open '$EventstreamName', switch to Edit mode, and select Add source > Connect data sources > Azure Event Hubs."
-  Write-Host "2. Connect to namespace '$eventHubNamespace' and Event Hub 'diagnostics'. For Entra-only namespaces, select Workspace identity after enabling the workspace identity and granting it Azure Event Hubs Data Receiver on this event hub."
-  Write-Host "3. Otherwise use Shared Access Key Name 'diagnostics-listen' and its primary or secondary key. Do not enable shared-key authentication merely to bypass an Entra-only policy."
-  Write-Host "4. For shared-key connections, cancel after the connection test succeeds and rerun setup to publish topology."
-  Write-Host "5. If the Eventstream API rejects WorkspaceIdentity, publish the source and a MonitoringTelemetry Eventhouse destination targeting AzureDiagnosticsRaw directly in the portal."
-  Write-Host "6. Rerun setup to verify '$DestinationTableName' and open the automatically provisioned dashboard."
-  Write-Host "The connection key is entered only in Fabric; do not paste it into this script or source control."
+  Write-Host "1. Resolve the reported workspace identity/RBAC/API error and rerun setup."
+  Write-Host "2. For a manual source, select Azure Event Hubs with Extended features and Workspace identity, namespace '$eventHubNamespace', event hub 'diagnostics', consumer group '`$Default'."
+  Write-Host "3. Connect it to the '$KqlDatabaseName' Eventhouse database and '$DestinationTableName' table, then publish. Basic AzureEventHub does not support WorkspaceIdentity."
+  Write-Host "4. Keep local/shared-key authentication disabled. Use -SkipEventstreamConnection to preserve manual topology on rerun."
 }
 Write-Host "`nNext steps: docs/STAGE-FABRIC.md#after-deployps1-checklist" -ForegroundColor Cyan
 Write-Host "Check the results below, open the dashboard and Azure health views, and suspend F2 when finished."

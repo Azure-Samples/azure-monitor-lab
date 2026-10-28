@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 . (Join-Path $source 'scripts/fabric-observability.ps1')
+. (Join-Path $source 'scripts/fabric-connections.ps1')
+. (Join-Path $source 'scripts/fabric-mirrored-dashboard.ps1')
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $source 'scripts/setup-fabric.ps1'), [ref]$null, [ref]$errors)
 if ($errors.Count) { throw 'Fabric setup does not parse.' }
@@ -14,6 +16,9 @@ function Write-Info($Message) {}
 $fabricApi = 'https://api.fabric.microsoft.com/v1'
 $script:fabricHeaders = @{ Authorization = 'Bearer offline-fabric-test' }
 $connectionId = 'c65e7960-71e7-4e31-bacb-d379595fb3f0'
+$customerId = '33333333-3333-3333-3333-333333333333'
+$appConnectionId = '55555555-5555-5555-5555-555555555555'
+$appCustomerId = '44444444-4444-4444-4444-444444444444'
 $endpoint = 'https://test.kusto.fabric.microsoft.com'
 $fixture = @{}
 
@@ -30,8 +35,13 @@ function Reset-Fixture {
   $fixture.PartialFailure = $false
   $fixture.Dashboard = $null
   $fixture.Mirror = $null
-  $fixture.Connections = @(@{ id = $connectionId; connectionDetails = @{ type = 'AzureMonitor'; path = '/central-law' } })
-  $fixture.Scopes = @(@{ name = 'central'; fullyQualifiedScope = @('central'); isSelectable = 'Selectable' })
+  $fixture.Connections = @(
+    @{ id = $connectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$customerId;https://api.loganalytics.io/iceberg" } },
+    @{ id = $appConnectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$appCustomerId;https://api.loganalytics.io/iceberg" } }
+  )
+  $fixture.Scopes = @(@{ name = '(root)'; fullyQualifiedScope = @(); isSelectable = 'Selectable'; children = @(
+    @{ name = 'dbo'; fullyQualifiedScope = @('dbo'); isSelectable = 'NotSelectable' }
+  ) })
   $fixture.Tables = @('AzureActivity', 'Perf' | ForEach-Object { @{ name = $_; fullyQualifiedScope = @('central', 'logs') } })
   $fixture.MirrorStatus = 'Running'
   $fixture.Delays = 0
@@ -42,6 +52,10 @@ function Reset-Fixture {
   $fixture.DeletedWorkspace = $false
   $fixture.Continuation = $null
   $fixture.MoreConnections = @()
+  $fixture.MirrorDefinition = $null
+  $fixture.Mirrors = @()
+  $fixture.Dashboards = @()
+  $fixture.Definitions = @{}
 }
 function az {
   if ($fixture.FullSetup) {
@@ -55,6 +69,8 @@ function az {
       'account get-access-token' {
         if ($args -contains 'https://api.fabric.microsoft.com') { return 'offline-fabric-test' }
       }
+      'monitor log-analytics' { if ($args -contains '/appinsights-law') { return $appCustomerId }; return $customerId }
+      'role definition' { return '[]' }
       'resource show' { return ConvertTo-Json @{ state = $fixture.CapacityState; administrators = @('operator@example.com') } }
       'resource list' {
         if ($args -contains 'Microsoft.Fabric/capacities') {
@@ -65,7 +81,7 @@ function az {
         }
         if ($args -contains 'Microsoft.Logic/workflows') { return '[]' }
         if ($args -contains 'Microsoft.EventHub/namespaces') { return 'testhub' }
-        if ($args -contains 'Microsoft.OperationalInsights/workspaces') { return '[{"id":"/central-law","name":"law-amlab-central-test"}]' }
+        if ($args -contains 'Microsoft.OperationalInsights/workspaces') { return '[{"id":"/central-law","name":"law-amlab-central-test"},{"id":"/appinsights-law","name":"law-amlab-appinsights-test"}]' }
       }
     }
   }
@@ -90,6 +106,11 @@ function Invoke-RestMethod {
       if ($fixture.TableExists) { $rows = @(,@('AzureDiagnosticsRaw')) }
       return @{ Tables = @((New-Table @('TableName') $rows)) }
     }
+    if ($query -eq '.show external tables') {
+      return @{ Tables = @((New-Table @('TableName') @(@('AzureActivity'), @('Perf'), @('AppRequests'), @('AppDependencies'), @('AppExceptions'), @('AppTraces')))) }
+    }
+    if ($query -match "project Metric='") { return @{ Tables = @((New-Table @('Metric', 'Value') @(,@('Test metric', 42.0)))) } }
+    if ($query -match 'external_table') { return @{ Tables = @((New-Table @('Count') @(,@(5)))) } }
     if ($query -like '.create-merge table LabSampleEvents*') { return @{ Tables = @() } }
     if ($query -like '.set-or-append LabSampleEvents*') {
       if ($query -notmatch 'where SampleId !in' -or $query -notmatch 'IsSynthetic = true') { throw 'Samples must be labelled and deduplicated.' }
@@ -105,11 +126,17 @@ function Invoke-RestMethod {
     if ($fixture.FullSetup) {
       switch ($Uri) {
         "$fabricApi/capacities" { return @{ value = @(@{ id = 'capacity'; displayName = 'testcapacity' }) } }
-        "$fabricApi/workspaces" { return @{ value = @(@{ id = 'workspace'; displayName = 'Azure Monitor Demo Lab' }) } }
+        "$fabricApi/workspaces" { return @{ value = @(@{ id = 'workspace'; displayName = 'Azure Monitor Demo Lab'; capacityId = 'capacity' }) } }
         "$fabricApi/workspaces/workspace/eventhouses" { return @{ value = @(@{ id = 'eventhouse'; displayName = 'Azure Monitor Demo Eventhouse' }) } }
-        "$fabricApi/workspaces/workspace/kqlDatabases" { return @{ value = @(@{ id = 'database'; displayName = 'MonitoringTelemetry' }) } }
+        "$fabricApi/workspaces/workspace/kqlDatabases" { return @{ value = @(
+          @{ id = '22222222-2222-2222-2222-222222222222'; displayName = 'MonitoringTelemetry' },
+          @{ id = '66666666-6666-6666-6666-666666666666'; displayName = 'Azure Monitor Demo Mirrored Logs' },
+          @{ id = '77777777-7777-7777-7777-777777777777'; displayName = 'Azure Monitor Demo Mirrored App Insights' }
+        ) } }
         "$fabricApi/workspaces/workspace/eventstreams" { return @{ value = @(@{ id = 'stream'; displayName = 'AzureMonitorEvents' }) } }
-        "$fabricApi/workspaces/workspace/kqlDatabases/database" { return @{ properties = @{ queryServiceUri = 'https://test.kusto.fabric.microsoft.com' } } }
+        "$fabricApi/workspaces/workspace/kqlDatabases/22222222-2222-2222-2222-222222222222" { return @{ properties = @{ queryServiceUri = 'https://test.kusto.fabric.microsoft.com' } } }
+        "$fabricApi/workspaces/workspace/kqlDatabases/66666666-6666-6666-6666-666666666666" { return @{ id = '66666666-6666-6666-6666-666666666666'; properties = @{ queryServiceUri = $endpoint } } }
+        "$fabricApi/workspaces/workspace/kqlDatabases/77777777-7777-7777-7777-777777777777" { return @{ id = '77777777-7777-7777-7777-777777777777'; properties = @{ queryServiceUri = $endpoint } } }
       }
     }
     switch -Wildcard ($Uri) {
@@ -117,9 +144,15 @@ function Invoke-RestMethod {
       '*/connections' { return @{ value = $fixture.Connections; continuationUri = $fixture.Continuation } }
       '*/connections?page=2' { return @{ value = $fixture.MoreConnections } }
       '*/catalogmirroring/scopes?*' { return @{ value = $fixture.Scopes } }
-      '*/catalogmirroring/tables?*' { return @{ value = $fixture.Tables } }
-      '*/kqlDashboards' { return @{ value = @($(if ($fixture.Dashboard) { $fixture.Dashboard })) } }
-      '*/mirroredCatalogs' { return @{ value = @($(if ($fixture.Mirror) { $fixture.Mirror })) } }
+      '*/catalogmirroring/tables?*' {
+        if ($Uri -notmatch '&scope=dbo') { throw 'Table discovery must use the leaf namespace, not an empty selectable root.' }
+        if ($Uri -like "*connectionId=$appConnectionId*") {
+          return @{ value = @('AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces' | ForEach-Object { @{ name = $_; fullyQualifiedScope = @('dbo') } }) }
+        }
+        return @{ value = $fixture.Tables }
+      }
+      '*/kqlDashboards' { return @{ value = $fixture.Dashboards } }
+      '*/mirroredCatalogs' { return @{ value = $fixture.Mirrors } }
       '*/mirroringStatus?beta=true' { return @{ status = $fixture.MirrorStatus; error = @{ message = 'source access failed' } } }
     }
   }
@@ -131,8 +164,15 @@ function Invoke-RestMethod {
     if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 201 -Scope 1 }
     $request = $Body | ConvertFrom-Json
     $item = @{ id = [guid]::NewGuid().ToString(); displayName = $request.displayName }
-    if ($Uri -like '*/kqlDashboards') { $fixture.Dashboard = $item } else { $fixture.Mirror = $item }
+    if ($Uri -like '*/kqlDashboards') { $fixture.Dashboard = $item; $fixture.Dashboards += $item } else {
+      $fixture.Mirror = $item; $fixture.Mirrors += $item; $fixture.MirrorDefinition = $request.definition
+    }
+    $fixture.Definitions[$item.id] = $request.definition
     return $item
+  }
+  if ($Method -eq 'Post' -and ($Uri -like '*/mirroredCatalogs/*/getDefinition' -or $Uri -like '*/kqlDashboards/*/getDefinition')) {
+    if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 200 -Scope 1 }
+    return @{ definition = $fixture.Definitions[($Uri -split '/')[-2]] }
   }
   throw "Unexpected REST call: $Method $Uri"
 }
@@ -146,7 +186,7 @@ function Test-Telemetry {
     -DatabaseName MonitoringTelemetry -TableName AzureDiagnosticsRaw -TimeoutSeconds 1
 }
 function Test-Mirror {
-  Initialize-FabricMirror -WorkspaceId workspace -CentralWorkspaceId '/central-law' -Tables AzureActivity, Perf
+  Initialize-FabricMirror -WorkspaceId workspace -SourceCustomerId $customerId -Tables AzureActivity, Perf
 }
 
 Reset-Fixture
@@ -183,19 +223,32 @@ Reset-Fixture
 1..2 | ForEach-Object { Initialize-FabricSampleData -QueryServiceUri $endpoint -DatabaseName MonitoringTelemetry }
 if ($fixture.Samples.Count -ne 4) { throw 'Sample reruns must not duplicate events.' }
 $dashboard = New-FabricDashboardDefinition -WorkspaceId '11111111-1111-1111-1111-111111111111' `
-  -QueryServiceUri $endpoint -DatabaseName MonitoringTelemetry -TableName AzureDiagnosticsRaw
+  -QueryServiceUri $endpoint -DatabaseId '22222222-2222-2222-2222-222222222222' -DatabaseName MonitoringTelemetry -TableName AzureDiagnosticsRaw
+if ($dashboard.dataSources[0].database -ne '22222222-2222-2222-2222-222222222222' -or
+    $dashboard.dataSources[0].name -ne 'MonitoringTelemetry') {
+  throw 'Fabric dashboard data sources must use the database item ID for binding and its display name only for the label.'
+}
 if ($dashboard.tiles.Count -ne 3 -or $dashboard.dataSources[0].kind -ne 'kusto-trident' -or
     $dashboard.dataSources[0].clusterUri -ne $endpoint -or $dashboard.tiles[2].query -notmatch 'join kind=inner' -or
     $dashboard.tiles[2].title -notmatch 'SYNTHETIC' -or $dashboard.tiles[2].query -notmatch 'IsSynthetic == true') {
   throw 'Dashboard must bind live telemetry and explicitly labelled synthetic correlation to the KQL database.'
 }
+if ($dashboard.tiles[1].query -notmatch 'mv-expand Event=Events' -or
+    $dashboard.tiles[1].query -notmatch 'parse_json\(tostring\(Event.properties\)\)' -or
+    $dashboard.tiles[1].query -notmatch 'Status=toint\(Properties.ScStatus\)' -or
+    $dashboard.tiles[1].query -notmatch 'top 20 by Time desc') {
+  throw 'Recent telemetry must expand diagnostic batches and parse nested HTTP fields into timestamp-ordered event columns.'
+}
 foreach ($tile in $dashboard.tiles) {
+  if ($tile.layout.width -ne 24 -or $tile.layout.x -ne 0 -or $tile.layout.height -lt 7) {
+    throw 'Dashboard tiles must use the wide, left-aligned layout.'
+  }
   if (-not $tile.query -or $tile.dataSourceId -ne $dashboard.dataSources[0].id -or $tile.pageId -ne $dashboard.pages[0].id -or $null -eq $tile.visualOptions) {
     throw 'All dashboard tiles require queries, valid data-source/page references and visual options.'
   }
 }
 $noSampleDashboard = New-FabricDashboardDefinition -WorkspaceId workspace -QueryServiceUri $endpoint `
-  -DatabaseName db -TableName AzureDiagnosticsRaw -IncludeSampleData:$false
+  -DatabaseId '22222222-2222-2222-2222-222222222222' -DatabaseName db -TableName AzureDiagnosticsRaw -IncludeSampleData:$false
 if ($noSampleDashboard.tiles.Count -ne 2 -or ($noSampleDashboard | ConvertTo-Json -Depth 15) -match 'LabSampleEvents') { throw 'Sample opt-out must remove sample-dependent tiles.' }
 $body = @{ displayName = $dashboard.title; definition = @{ parts = @(@{
   path = 'RealTimeDashboard.json'; payloadType = 'InlineBase64'
@@ -205,6 +258,36 @@ $body = @{ displayName = $dashboard.title; definition = @{ parts = @(@{
 if (@($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and $_.Uri -like '*/kqlDashboards' }).Count -ne 1) { throw 'Dashboard reruns must reuse the item without overwriting user edits.' }
 Write-Output 'PASS: synthetic sample deduplication, correlation joins, sample opt-out and idempotent dashboard creation.'
 
+foreach ($applicationInsights in @($true, $false)) {
+  $tables = if ($applicationInsights) { @('AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces') } else { @('AzureActivity', 'Perf') }
+  $mirroredDashboard = New-FabricMirroredDashboardDefinition -WorkspaceId workspace -QueryServiceUri $endpoint `
+    -DatabaseId '22222222-2222-2222-2222-222222222222' -DatabaseName 'Mirrored logs' -Tables $tables -ApplicationInsights:$applicationInsights
+  $expectedTiles = if ($applicationInsights) { 14 } else { 10 }
+  if ($mirroredDashboard.tiles.Count -ne $expectedTiles -or $mirroredDashboard.dataSources[0].database -ne '22222222-2222-2222-2222-222222222222') {
+    throw 'Mirrored dashboard must bind the actual database item GUID and include cards, charts and detail tables.'
+  }
+  $cards = @($mirroredDashboard.tiles | Where-Object visualType -ceq 'multistat')
+  if ($cards.Count -ne 6) { throw 'Numeric visuals must serialize as lowercase multistat, not stat or multiStat.' }
+  foreach ($tile in $mirroredDashboard.tiles) {
+    $layout = $tile.layout
+    if ($tile.visualType -notin @('multistat', 'line', 'table') -or $layout.width -lt 9 -or $layout.height -lt 7 -or
+        $layout.x -lt 0 -or $layout.y -lt 0 -or $layout.x + $layout.width -gt 24) { throw 'Unsupported visual type or tile dimensions.' }
+    if ($tile.query -notmatch 'external_table\(' -or $tile.query -match '_ReceivedTime') { throw 'Mirror queries must use external tables and the actual source receipt timestamp.' }
+    if ($tile.visualType -eq 'multistat' -and ($tile.query -notmatch "project Metric='.*', Value=toreal\(Value\)" -or
+        $tile.visualOptions.multiStat__labelColumn -ne 'Metric' -or $tile.visualOptions.multiStat__valueColumn -ne 'Value')) {
+      throw 'Numeric cards require explicit Metric/Value columns and visual mappings.'
+    }
+    foreach ($other in $mirroredDashboard.tiles | Where-Object id -ne $tile.id) {
+      if ($layout.x -lt $other.layout.x + $other.layout.width -and $other.layout.x -lt $layout.x + $layout.width -and
+          $layout.y -lt $other.layout.y + $other.layout.height -and $other.layout.y -lt $layout.y + $layout.height) { throw 'Dashboard tiles overlap.' }
+    }
+  }
+  if ($applicationInsights -and ($mirroredDashboard.tiles[2].query -notmatch 'percentilew' -or $mirroredDashboard.tiles[0].query -notmatch 'ItemCount')) {
+    throw 'Application Insights counts and percentiles must respect sampling weights.'
+  }
+}
+Write-Output 'PASS: both mirrored dashboards have supported visuals, correct GUID bindings, sampling, explicit KPI outputs and nonoverlapping minimum-sized layouts.'
+
 Reset-Fixture
 1..2 | ForEach-Object { if ((Test-Mirror).Status -ne 'Pending') { throw 'Created mirror is not proof of data availability.' } }
 $mirrorPosts = @($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and $_.Uri -like '*/mirroredCatalogs' })
@@ -213,6 +296,7 @@ $part = ($mirrorPosts[0].Body | ConvertFrom-Json).definition.parts[0]
 $definition = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($part.payload)) | ConvertFrom-Json
 if ($part.path -ne 'MirroredCatalogDefinition.json' -or
     $definition.properties.source.type -ne 'AzureMonitorMirroredCatalog' -or
+    $definition.properties.source.typeProperties.warehouse -ne $customerId -or
     $definition.properties.mountedTables.Count -ne 2 -or
     ($definition.properties.mountedTables.source.typeProperties.tableName -join ',') -ne 'AzureActivity,Perf') {
   throw 'Mirror must mount only the explicitly requested tables using the documented source type.'
@@ -235,7 +319,7 @@ Assert-Failure { Test-Mirror } '*403*'
 Reset-Fixture
 $fixture.Continuation = "$fabricApi/connections?page=2"
 $fixture.MoreConnections = @(@{ id = 'second-connection' })
-if (@(Get-FabricApiCollection -Path connections).Count -ne 2) { throw 'Collection pagination must include all pages.' }
+if (@(Get-FabricApiCollection -Path connections).Count -ne 3) { throw 'Collection pagination must include all pages.' }
 $fixture.Continuation = 'https://untrusted.example/connections'
 Assert-Failure { Get-FabricApiCollection -Path connections } '*Unexpected Fabric continuation URL*'
 $fixture.Continuation = "$fabricApi/connections"
@@ -247,8 +331,8 @@ Reset-Fixture
 $fixture.FullSetup = $true
 & (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' `
   -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -SkipEventstreamConnection -EnableMirroring:$true -MirrorConnectionId $connectionId -MirrorTables AzureActivity, Perf `
-  -VerificationTimeoutSeconds 1
-if (-not $fixture.Dashboard -or -not $fixture.Mirror -or $fixture.Samples.Count -ne 4) {
+  -AppInsightsMirrorConnectionId $appConnectionId -AppInsightsMirrorTables AppRequests,AppDependencies,AppExceptions,AppTraces -EnableAutoSuspend:$false -VerificationTimeoutSeconds 1
+if ($fixture.Dashboards.Count -ne 3 -or $fixture.Mirrors.Count -ne 2 -or $fixture.Samples.Count -ne 4) {
   throw 'Full setup must wire dashboard, synthetic correlation and configured mirroring without manual helper calls.'
 }
 Write-Output 'PASS: full setup orchestrates supported experiences and explicitly reports incomplete live ingestion and manual Capacity Metrics installation.'

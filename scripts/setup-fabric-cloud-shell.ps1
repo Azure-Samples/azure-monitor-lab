@@ -9,12 +9,14 @@ param(
   [string] $NamePrefix = 'amlab',
   [string] $WorkspaceName = 'Azure Monitor Demo Lab',
   [bool] $SeedSampleData = $true,
-  [bool] $EnableMirroring = $false,
+  [bool] $EnableMirroring = $true,
   [string] $MirrorConnectionId = '',
   [string[]] $MirrorScope = @(),
   [string[]] $MirrorTables = @('AzureActivity', 'ContainerLogV2', 'AppServiceHTTPLogs', 'Perf'),
+  [string] $AppInsightsMirrorConnectionId = '',
+  [string[]] $AppInsightsMirrorTables = @('AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces'),
   [ValidateRange(1, 900)] [int] $VerificationTimeoutSeconds = 180,
-  [bool] $EnableAutoSuspend = $false,
+  [bool] $EnableAutoSuspend = $true,
   [ValidateRange(0, 23)] [int] $AutoSuspendHourUtc = 20,
   [ValidateRange(0, 59)] [int] $AutoSuspendMinuteUtc = 0,
   [ValidateRange(5, 120)] [int] $MaxOperationMinutes = 30,
@@ -33,7 +35,7 @@ if ($SkipEventstreamConnection) {
   $setupParameters.SkipEventstreamConnection = $true
 }
 foreach ($parameter in @('SeedSampleData', 'EnableMirroring', 'MirrorConnectionId', 'MirrorScope',
-    'MirrorTables', 'VerificationTimeoutSeconds', 'EnableAutoSuspend', 'AutoSuspendHourUtc', 'AutoSuspendMinuteUtc')) {
+    'MirrorTables', 'AppInsightsMirrorConnectionId', 'AppInsightsMirrorTables', 'VerificationTimeoutSeconds', 'EnableAutoSuspend', 'AutoSuspendHourUtc', 'AutoSuspendMinuteUtc')) {
   if ($PSBoundParameters.ContainsKey($parameter)) { $setupParameters[$parameter] = $PSBoundParameters[$parameter] }
 }
 

@@ -38,8 +38,8 @@ param deployLinuxVm bool = true
 @description('Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets.')
 param enableVmOtelMetrics bool = true
 
-@description('Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable.')
-param dailyCapGb int = 1
+@description('Daily ingestion cap (GB) on each of the central and Application Insights Log Analytics workspaces. Set to -1 to disable.')
+param dailyCapGb int = 3
 
 @description('VM size (kept small for a demo lab).')
 param vmSize string = 'Standard_B2s'

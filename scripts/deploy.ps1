@@ -480,7 +480,8 @@ if ($fabricEnabled) {
   Write-Step "Fabric feature enabled - creating workspace and Real-Time Intelligence items"
   $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
   try {
-    & $setupFabric -SubscriptionId $target.expectedSubscriptionId -ResourceGroup $ResourceGroup
+    $fabricNamePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+    & $setupFabric -SubscriptionId $target.expectedSubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $fabricNamePrefix
   } catch {
     Write-Host "  Fabric SaaS setup failed: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host "  The F2 capacity may still be active and billable. Re-run setup manually or suspend it:" -ForegroundColor Yellow
