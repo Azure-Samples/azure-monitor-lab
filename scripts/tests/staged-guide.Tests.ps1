@@ -11,7 +11,7 @@ if ($guideStageE -lt 0 -or $guideSentinelContent -le $guideStageE -or
 }
 $blocks = [regex]::Matches($guide, '(?ms)^```powershell\r?\n(.*?)^```')
 $helperImport = '. ./scripts/staged-deploy-helpers.ps1'
-foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
+foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-FABRIC.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
   $text = Get-Content -LiteralPath (Join-Path $source $relativePath) -Raw
   foreach ($example in [regex]::Matches($text, '(?ms)^```powershell\r?\n(.*?)^```')) {
     $errors = $null
@@ -129,18 +129,19 @@ try {
     Where-Object { $_ -is [Management.Automation.ValidateSetAttribute] } |
     ForEach-Object { $_.ValidValues }
   if ($allowedStages -notcontains '41-sentinel-content') { throw 'Reloading must replace the stale Stage ValidateSet.' }
+  if ($allowedStages -notcontains '60-fabric') { throw 'Reloading must add the optional Fabric stage.' }
   Write-Output 'PASS: dot-sourcing replaces stale stage helpers, accepts Stage 41, and preserves inputs without Azure calls.'
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '70-observability-agent')) {
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
     $templateReference = "--template-file ./infra/stages/$stage.bicep"
     $parameterReference = '--parameters "@$($stageParameterFiles[''{0}''])"' -f $stage
     if (-not $guide.Contains($templateReference) -or -not $guide.Contains($parameterReference)) {
       throw "The guide must deploy $stage with its native Azure CLI command and projected parameter file."
     }
   }
-  if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 9) {
+  if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 10) {
     throw 'Every staged deployment command must include a what-if confirmation.'
   }
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '70-observability-agent')) {
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
     $fixture.Stage = $stage
     $fixture.Events.Clear()
     $fixture.AccountChecks = 0
@@ -184,7 +185,7 @@ try {
     if ($stage -eq 'Observability Agent' -and $section.IndexOf('./scripts/setup-observability-agent.ps1') -gt $section.IndexOf('./scripts/deploy-webapp.ps1')) { throw 'Observability Agent validation must precede console publication.' }
   }
   if ($guide -match '--template-file infra/main.bicep') { throw 'A staged guide must not deploy the full-lab template.' }
-  Write-Output 'PASS: all nine Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
+  Write-Output 'PASS: all ten Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
   Write-Output 'PASS: late AI/SRE/Observability Agent instructions refresh existing consoles and preserve standalone A-only scenarios.'
 } finally {
   Pop-Location

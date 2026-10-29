@@ -200,9 +200,9 @@
             "min": 1,
             "max": 10,
             "label": "Daily ingestion cap (GB)",
-            "defaultValue": 1,
+            "defaultValue": 3,
             "showStepMarkers": true,
-            "toolTip": "Daily ingestion cap on the central Log Analytics workspace.",
+            "toolTip": "Daily ingestion cap on each Log Analytics workspace: central and Application Insights.",
             "constraints": {
               "required": true
             }
@@ -351,6 +351,34 @@
             "visible": "[equals(steps('advanced').enableAi, true)]",
             "options": {
               "text": "The AI stage deploys billable Microsoft Foundry models in swedencentral. The portal deployment creates the infrastructure only. After deployment, run ./scripts/setup-ai.ps1 -ResourceGroup <resource-group> to create the agents and generate simulated traffic."
+            }
+          },
+          {
+            "name": "enableFabric",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable optional Microsoft Fabric F2 capacity",
+            "defaultValue": false,
+            "toolTip": "Deploys an F2 Fabric capacity pinned to swedencentral. Indicative PAYG retail cost while active: about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies; OneLake storage and other meters can add cost. Off by default."
+          },
+          {
+            "name": "fabricAdminEmail",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Fabric administrator UPN",
+            "defaultValue": "",
+            "toolTip": "Microsoft Entra user UPN in the selected subscription tenant. Replace the fictitious example admin@example.com with your tenant's user UPN. Do not use an external notification alias.",
+            "constraints": {
+              "required": "[equals(steps('advanced').enableFabric, true)]",
+              "regex": "^[^@\\s]+@[^@\\s]+$",
+              "validationMessage": "Enter a Microsoft Entra user UPN from the deployment tenant."
+            },
+            "visible": "[equals(steps('advanced').enableFabric, true)]"
+          },
+          {
+            "name": "fabricPostDeployInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('advanced').enableFabric, true)]",
+            "options": {
+              "text": "Cost warning: Fabric F2 is pinned to swedencentral and bills while active at an indicative PAYG retail cost of about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies and additional Fabric usage may add charges. The deployment creates only the ARM capacity. Run ./scripts/setup-fabric.ps1 afterward to create Fabric SaaS items, and suspend the capacity when the demo is idle."
             }
           },
           {
@@ -514,6 +542,8 @@
       "appServiceRepoUrl": "[steps('advanced').appServiceRepoUrl]",
       "siemWebhookUrl": "[steps('advanced').siemWebhookUrl]",
       "enableAi": "[steps('advanced').enableAi]",
+      "enableFabric": "[steps('advanced').enableFabric]",
+      "fabricAdminEmail": "[steps('advanced').fabricAdminEmail]",
       "enableSreAgent": "[steps('advanced').enableSreAgent]",
       "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",
       "slotAppServicePlanSku": "[steps('advanced').slotAppServicePlanSku]",

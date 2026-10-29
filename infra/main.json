@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "18270326743947474242"
+      "templateHash": "2357189288868899604"
     }
   },
   "parameters": {
@@ -74,9 +74,9 @@
     },
     "dailyCapGb": {
       "type": "int",
-      "defaultValue": 1,
+      "defaultValue": 3,
       "metadata": {
-        "description": "Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable."
+        "description": "Daily ingestion cap (GB) on each of the central and Application Insights Log Analytics workspaces. Set to -1 to disable."
       }
     },
     "vmSize": {
@@ -273,9 +273,24 @@
       "metadata": {
         "description": "Model Router deployment version for the AI feature. VERIFY for your region with \"az cognitiveservices account list-models\"."
       }
+    },
+    "enableFabric": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable the optional Microsoft Fabric F2 capacity. Off by default. F2 is pinned to swedencentral and costs about $0.36/hour ($262.80/month PAYG) while active."
+      }
+    },
+    "fabricAdminEmail": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Microsoft Entra user UPN that administers the Fabric capacity. Must be a user in the deployment tenant, not an external notification address."
+      }
     }
   },
   "variables": {
+    "validatedFabricAdminEmail": "[if(or(not(parameters('enableFabric')), and(not(empty(parameters('fabricAdminEmail'))), contains(parameters('fabricAdminEmail'), '@'))), parameters('fabricAdminEmail'), fail('fabricAdminEmail is required when enableFabric is true and must be a Microsoft Entra user UPN in the deployment tenant.'))]",
     "suffix": "[uniqueString(resourceGroup().id)]",
     "lawCentralName": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "lawAppInsightsName": "[format('law-{0}-appinsights-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
@@ -307,10 +322,12 @@
     "sliUamiName": "[format('id-sli-{0}', parameters('namePrefix'))]",
     "platformLogsDcrName": "[format('dcr-{0}-platformlogs', parameters('namePrefix'))]",
     "metricsExportDcrName": "[format('dcr-{0}-metricsexport', parameters('namePrefix'))]",
+    "fabricCapacityName": "[toLower(format('fab{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8)))]",
     "sreAgentName": "[format('sre-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "observabilityAgentName": "[format('obs-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "observabilityAgentMonitoringAccountName": "[format('amw-{0}-obs', parameters('namePrefix'))]",
     "aiLocation": "swedencentral",
+    "fabricLocation": "swedencentral",
     "commonTags": {
       "owner": "[parameters('ownerTag')]",
       "purpose": "azure-monitor-lab",
@@ -2548,7 +2565,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "17713457183335564880"
+              "templateHash": "13427846610720516459"
             }
           },
           "parameters": {
@@ -2622,6 +2639,19 @@
               ]
             },
             {
+              "type": "Microsoft.EventHub/namespaces/authorizationRules",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', parameters('namespaceName'), 'diagnostics-listen')]",
+              "properties": {
+                "rights": [
+                  "Listen"
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.EventHub/namespaces', parameters('namespaceName'))]"
+              ]
+            },
+            {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
               "scope": "[format('Microsoft.EventHub/namespaces/{0}', parameters('namespaceName'))]",
@@ -2662,6 +2692,10 @@
             "sendRuleId": {
               "type": "string",
               "value": "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', parameters('namespaceName'), 'diagnostics-send')]"
+            },
+            "listenRuleName": {
+              "type": "string",
+              "value": "diagnostics-listen"
             }
           }
         }
@@ -61446,7 +61480,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "199999375665995834"
+              "templateHash": "9277295640901288810"
             }
           },
           "parameters": {
@@ -61495,6 +61529,7 @@
             "slowestOpsQuery": "[replace('workspace(\"__APPI_LAW__\").AppRequests\n| summarize AvgDuration = round(avg(DurationMs), 1), Requests = count() by OperationName\n| top 10 by AvgDuration desc\n', '__APPI_LAW__', parameters('appInsightsLawName'))]",
             "appiDetailQuery": "[replace('workspace(\"__APPI_LAW__\").AppRequests\n| summarize Failed = countif(Success == false), OK = countif(Success == true) by bin(TimeGenerated, 5m)\n| render timechart\n', '__APPI_LAW__', parameters('appInsightsLawName'))]",
             "alertActivityQuery": "AzureActivity\n| where CategoryValue == \"Alert\"\n| project TimeGenerated, Operation = OperationNameValue, Status = ActivityStatusValue, Caller\n| order by TimeGenerated desc\n| take 25\n",
+            "fabricCapacityHealthQuery": "[replace('resources\n| where type =~ \"microsoft.fabric/capacities\"\n| where resourceGroup =~ \"__RESOURCE_GROUP__\"\n| extend CapacityState = tostring(properties.state), ProvisioningState = tostring(properties.provisioningState)\n| extend Status = case(\n  ProvisioningState !~ \"Succeeded\", \"🔴\",\n  CapacityState =~ \"Active\", \"🟢\",\n  CapacityState in~ (\"Paused\", \"Suspended\"), \"🟠\",\n  \"⚪\")\n| project Status,\n      ResourceType = \"Microsoft Fabric F2\",\n      Capacity = name,\n      State = CapacityState,\n      Provisioning = ProvisioningState,\n      Region = location,\n          SKU = tostring(sku.name)\n', '__RESOURCE_GROUP__', resourceGroup().name)]",
             "dataIngestionQuery": "Usage\n| summarize IngestedMB = round(sum(Quantity), 2) by DataType\n| where IngestedMB > 0.01\n| top 15 by IngestedMB desc\n| render barchart\n",
             "workbookContent": {
               "version": "Notebook/1.0",
@@ -61763,6 +61798,30 @@
                   },
                   "customWidth": "50",
                   "name": "dataIngestion"
+                },
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "---\n## Microsoft Fabric Real-Time Intelligence Health\n\nThe capacity is discovered dynamically. This section is empty when Stage Fabric is disabled. Eventstream item and data-flow health remain available in the Fabric workspace."
+                  },
+                  "name": "fabricHealthHeader"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "[variables('fabricCapacityHealthQuery')]",
+                    "size": 1,
+                    "title": "Fabric F2 Capacity Health",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "rowLimit": 10,
+                      "filter": true
+                    }
+                  },
+                  "name": "fabricCapacityHealth"
                 },
                 {
                   "type": 1,
@@ -64612,7 +64671,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4309548182300101190"
+              "templateHash": "13632335284258159914"
             }
           },
           "parameters": {
@@ -64636,7 +64695,7 @@
             },
             "dailyCapGb": {
               "type": "int",
-              "defaultValue": 1,
+              "defaultValue": 3,
               "metadata": {
                 "description": "Configured daily ingestion cap (GB) for the central LAW. Set to -1 when disabled."
               }
@@ -64813,7 +64872,11 @@
           "foundryAccountId": "[if(parameters('enableAi'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.accountId.value), createObject('value', ''))]",
           "appInsightsLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
-          }
+          },
+          "enableFabric": {
+            "value": "[parameters('enableFabric')]"
+          },
+          "fabricCapacityId": "[if(parameters('enableFabric'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.id.value), createObject('value', ''))]"
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -64822,7 +64885,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "16649691923988421872"
+              "templateHash": "2388638836634970468"
             }
           },
           "parameters": {
@@ -64932,6 +64995,20 @@
               "defaultValue": "",
               "metadata": {
                 "description": "Resource ID of the App Insights backing Log Analytics workspace (per-agent AI signals). Required when enableAi = true."
+              }
+            },
+            "enableFabric": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Fold Microsoft Fabric Real-Time Intelligence into this model as an optional workload tier."
+              }
+            },
+            "fabricCapacityId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the Microsoft Fabric F2 capacity. Required when enableFabric = true."
               }
             }
           },
@@ -65819,6 +65896,64 @@
               ]
             },
             {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence')]",
+              "properties": {
+                "displayName": "Real-Time Intelligence",
+                "impact": "Standard",
+                "canvasPosition": {
+                  "x": 750,
+                  "y": 200
+                },
+                "icon": {
+                  "iconName": "Analytics"
+                },
+                "signalGroups": {
+                  "dependencies": {
+                    "aggregationType": "WorstOf",
+                    "ignoreUnknown": true
+                  }
+                },
+                "alerts": "[if(empty(parameters('actionGroupId')), null(), createObject('unhealthy', createObject('severity', 'Sev2', 'description', 'AMLAB Real-Time Intelligence workload unhealthy (Fabric capacity rollup).', 'actionGroupIds', variables('actionGroupIds'))))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity')]",
+              "properties": {
+                "displayName": "Microsoft Fabric F2 capacity",
+                "impact": "Standard",
+                "canvasPosition": {
+                  "x": 750,
+                  "y": 450
+                },
+                "icon": {
+                  "iconName": "Analytics"
+                },
+                "signalGroups": {
+                  "azureResource": {
+                    "authenticationSetting": "[variables('authName')]",
+                    "azureResourceId": "[parameters('fabricCapacityId')]",
+                    "azureResourceKind": "capacity",
+                    "resourceHealth": {
+                      "enabled": "Enabled"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), 'systemAssigned')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
               "apiVersion": "2026-01-01-preview",
@@ -66168,6 +66303,36 @@
               ]
             },
             {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/relationships",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence-to-root')]",
+              "properties": {
+                "parentEntityName": "[variables('rootName')]",
+                "childEntityName": "realtimeintelligence",
+                "displayName": "Real-Time Intelligence"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'realtimeintelligence')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/relationships",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity-to-realtimeintelligence')]",
+              "properties": {
+                "parentEntityName": "realtimeintelligence",
+                "childEntityName": "fabriccapacity"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'fabriccapacity')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'realtimeintelligence')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
               "apiVersion": "2026-01-01-preview",
@@ -66238,6 +66403,7 @@
         "[resourceId('Microsoft.Resources/deployments', 'aks')]",
         "[resourceId('Microsoft.Resources/deployments', 'appi')]",
         "[resourceId('Microsoft.Resources/deployments', 'appservice')]",
+        "[resourceId('Microsoft.Resources/deployments', 'fabric-capacity')]",
         "[resourceId('Microsoft.Resources/deployments', 'foundry')]",
         "[resourceId('Microsoft.Resources/deployments', 'keyvault')]",
         "[resourceId('Microsoft.Resources/deployments', 'law-appinsights')]",
@@ -67519,6 +67685,122 @@
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'appi')]"
       ]
+    },
+    {
+      "condition": "[parameters('enableFabric')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "fabric-capacity",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('fabricCapacityName')]"
+          },
+          "location": {
+            "value": "[variables('fabricLocation')]"
+          },
+          "administrators": {
+            "value": [
+              "[variables('validatedFabricAdminEmail')]"
+            ]
+          },
+          "tags": {
+            "value": "[union(variables('commonTags'), createObject('costWarning', 'F2-about-USD-0.36-per-hour-while-active'))]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "3083415661103607337"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 63,
+              "metadata": {
+                "description": "Globally unique Microsoft Fabric capacity name."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "swedencentral",
+              "metadata": {
+                "description": "Fabric capacity region. The lab pins this to swedencentral."
+              }
+            },
+            "skuName": {
+              "type": "string",
+              "defaultValue": "F2",
+              "allowedValues": [
+                "F2"
+              ],
+              "metadata": {
+                "description": "Fabric capacity SKU. F2 is the smallest paid Fabric capacity."
+              }
+            },
+            "administrators": {
+              "type": "array",
+              "minLength": 1,
+              "metadata": {
+                "description": "User principal names that administer the Fabric capacity."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Fabric/capacities",
+              "apiVersion": "2023-11-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('skuName')]",
+                "tier": "Fabric"
+              },
+              "properties": {
+                "administration": {
+                  "members": "[parameters('administrators')]"
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Fabric/capacities', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "location": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Fabric/capacities', parameters('name')), '2023-11-01', 'full').location]"
+            },
+            "sku": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Fabric/capacities', parameters('name')), '2023-11-01', 'full').sku.name]"
+            }
+          }
+        }
+      }
     }
   ],
   "outputs": {

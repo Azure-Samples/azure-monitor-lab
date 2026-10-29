@@ -388,7 +388,7 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 
 | Script | Purpose | Typical command |
 |---|---|---|
-| `start-the-lab.ps1` | Starts stopped or deallocated VMs, VMSS, AKS, and App Service resources. Add `-Wait` to poll until running. | `./scripts/start-the-lab.ps1 -ResourceGroup <rg> -Wait` |
+| `start-the-lab.ps1` | Starts stopped or deallocated VMs, VMSS, AKS, App Service, and the optional paused Fabric F2 capacity. Add `-Wait` to poll until running or Active. | `./scripts/start-the-lab.ps1 -ResourceGroup <rg> -Wait` |
 | `break-the-lab.ps1` | Intentionally degrades the lab: stops VMs, crashloops the AKS frontend, and increases load-generator failures. | `./scripts/break-the-lab.ps1 -ResourceGroup <rg>` |
 | `restore-the-lab.ps1` | Reverses the break scenario by starting VMs, restoring the AKS image, and applying a healthy load generator. | `./scripts/restore-the-lab.ps1 -ResourceGroup <rg>` |
 | `start-ramp.ps1` | Starts a 60-minute AKS load test against the App Service for Smart Detection and autoscale demonstrations. | `./scripts/start-ramp.ps1 -ResourceGroup <rg>` |
@@ -417,6 +417,10 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 
 | Script | Purpose | Typical command |
 |---|---|---|
+| `setup-fabric.ps1` | Creates or reuses the Fabric workspace, Eventhouse, KQL database, Eventstream, Event Hubs connection, and source-to-Eventhouse topology. The Listen-only key is held only in process memory and cleared immediately. If a tenant rejects public API connection creation, create the connection once in Fabric and rerun setup. Use `-SkipEventstreamConnection` for fully manual topology, `-MaxOperationMinutes` to override the 30-minute LRO ceiling, or `-Teardown` to remove the workspace. | `./scripts/setup-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `setup-fabric-cloud-shell.ps1` | Cloud Shell wrapper for the Fabric setup workflow. | `./scripts/setup-fabric-cloud-shell.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `suspend-fabric.ps1` | Suspends the F2 capacity to stop active compute billing. | `./scripts/suspend-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `resume-fabric.ps1` | Resumes the F2 capacity and active compute billing. | `./scripts/resume-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | [setup-ai.ps1](setup-ai.ps1) | Reuses or creates four matching Foundry agents, then starts a finite background batch unless `-SkipTraffic` is supplied. Console bootstrap uses `-SkipTraffic`; the legacy `-BackgroundTraffic` switch is unnecessary. | `./scripts/setup-ai.ps1 -SubscriptionId <sub> -TenantId <tenant> -g <rg> -Conversations 150` |
 | [setup-ai-cloud-shell.ps1](setup-ai-cloud-shell.ps1) | Verifies and forwards subscription/tenant, discovers Foundry and App Insights through core ARM, and uses the same background AI setup. Works locally too. | `./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | `setup-sre-agent.ps1` | Validates the deployed SRE Agent, connectors, and identity-specific RBAC. It discovers the agent identities automatically and is read-only unless `-GrantMissingRoles` is explicitly supplied. | `./scripts/setup-sre-agent.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |

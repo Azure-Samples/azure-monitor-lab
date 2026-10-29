@@ -155,10 +155,21 @@ if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
   Reset-Fixture
   $fixture.Enabled = ''
   Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer } 'explicitly be true or false'
-  Reset-Fixture
-  $fixture.Reply = 'no'
-  Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer } 'not approved'
-  Assert-True ($fixture.Prompts -eq 1 -and $fixture.Events.Count -eq 0) 'Declined approval must stop before any tunnel, token, SQL or publication.'
+  foreach ($reply in @('no', '', '   ', 'y', 'yes please', 'yes no', $null)) {
+    Reset-Fixture
+    $fixture.Reply = $reply
+    Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer } 'not approved'
+    Assert-True ($fixture.Prompts -eq 1 -and $fixture.Events.Count -eq 0) 'Only an explicit yes may approve a tunnel, SQL or publication; blank and declined replies must stop.'
+  }
+
+  foreach ($reply in @(' yes', 'yes ', '  YeS  ', 'YES', "`tyes`t")) {
+    Reset-Fixture
+    $fixture.Reply = $reply
+    & $complete @common -CustomerWebAppName app-test-customer
+    Assert-True ($fixture.Prompts -eq 1) 'Whitespace and case normalization must not bypass the approval prompt.'
+    Assert-True (($fixture.Events -join ',') -eq 'tunnel-start,bootstrap,tunnel-stop,tunnel-remove,publish,upload,functions,products,functions') 'An explicit yes with surrounding whitespace must complete the same approved lifecycle.'
+    Assert-True (-not (Test-Path (Join-Path $root '.artifacts\customer-processor-*'))) 'Whitespace-normalized approval must retain publication cleanup.'
+  }
 
   foreach ($approved in @($false, $true)) {
     Reset-Fixture

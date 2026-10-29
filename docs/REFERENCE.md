@@ -2,7 +2,7 @@
 
 > 👈 **New here? Start with the [README](../README.md).** This is the deep-dive reference: full capability matrix, every deployed resource, the demo walkthrough, cost breakdown, folder layout, operational helpers, and troubleshooting.
 
-A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel** stack. The lab primarily uses one resource group, plus the AKS-managed resource group and optional tenant-scoped artifacts. It provides two IaC paths (Bicep or Terraform), two delivery modes (**one-shot** for internal demos or a staged workshop for customer-facing progressive enablement), and 72 numbered demo scenarios (`0` through `71`), all driven from one central config file.
+A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel** stack. The lab primarily uses one resource group, plus the AKS-managed resource group and optional tenant-scoped artifacts. It provides two IaC paths (Bicep or Terraform), two delivery modes (**one-shot** for internal demos or a staged workshop for customer-facing progressive enablement), and 81 numbered demo scenarios (`0` through `80`), all driven from one central config file.
 
 ## Capabilities
 
@@ -29,6 +29,7 @@ A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel*
 | **Service Groups + Health Models (preview)** | `setup-health-model.ps1` provisions an Azure **Service Group** and links the RG. SLI/SLO scaffolding in `setup-slis.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/health-model) |
 | **GenAI observability (optional AI stage)** | Off-by-default Microsoft **Foundry** workload (account + project pinned to swedencentral) with chat / embedding / optimization / **model-router** deployments; OpenTelemetry `gen_ai.*` tracing into App Insights; **token anomaly + spike** alerts; an **AI FinOps** query pack + workbook; an AI tier folded into the workload health model; demo agents + traffic via `setup-ai.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/trace) · [stage](STAGE-AI.md) |
 | **Azure SRE Agent (optional trial)** | Off-by-default guided SRE Agent evaluation pinned to `swedencentral`; connects Azure Monitor alerts to specialized Review-mode investigators and validates managed identity RBAC with `setup-sre-agent.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/sre-agent/azure-monitor-alerts) · [stage](STAGE-SRE-AGENT.md) |
+| **Fabric Real-Time Intelligence (optional Fabric stage)** | Off-by-default F2 capacity in `swedencentral`; scripted workspace, Eventstream, Eventhouse, and KQL database, with a guided dashboard and mirroring scenario. Capacity health appears in the Azure workbook and Health Model; tenant-scoped items remain in Fabric. | [stage](STAGE-FABRIC.md) |
 | **Azure Copilot Observability Agent (optional preview)** | Off-by-default alert correlation and trace-based investigation over the lab Application Insights resource; includes deterministic broken/fixed agentic-failure telemetry and least-privilege validation. | [docs](https://learn.microsoft.com/azure/azure-monitor/aiops/observability-agent-autonomous-operations) · [stage](STAGE-OBSERVABILITY-AGENT.md) |
 | **"Break the lab" + "Start the lab"** | Scripted incident injection (`break-the-lab.ps1`, `start-the-lab.ps1`, `start-ramp.ps1`) + one-shot restore (`restore-the-lab.ps1`). | — |
 
@@ -107,6 +108,7 @@ rg-azure-monitor-lab/
 > **Optional Observability Agent stage (default off, preview/billable):** an Observability Agent and dedicated Azure Monitor workspace in `observabilityAgentLocation`, one monitored Application Insights child, Issue Contributor on the dedicated workspace, and Monitoring Reader directly on the monitored Application Insights resource. The Monitor service can create managed resource groups for supporting resources. Enable via `enableStageObservabilityAgent`; automatic investigation remains off unless explicitly enabled. See [STAGE-OBSERVABILITY-AGENT.md](STAGE-OBSERVABILITY-AGENT.md).
 
 > **Optional LAW replication (default off, billable):** cross-region replication on the central LAW. Enable during deployment with `enableLawReplication`, or enable it on an existing workspace with `scripts/enable-law-replication.ps1` without redeploying the complete Bicep template.
+> **Optional Fabric stage (default off, billable):** enable `enableStageFabric` / `enable_stage_fabric` and supply `fabricAdminEmail`. Setup creates tenant-scoped items and attempts the Event Hubs connection and topology; follow [Stage Fabric](STAGE-FABRIC.md) for any portal fallback and suspend the F2 capacity when idle.
 
 > **Region placement:** the **App Service** (plan + site) and its diagnostic sinks (dedicated storage + Event Hub) use configurable **`appServiceLocation`** (default `westeurope`); the **Health Model** preview and the **AI stage** are pinned to **`swedencentral`**. Everything else follows the lab region (default `northeurope`).
 
@@ -210,7 +212,7 @@ Walk-through docs:
 
 ## Demo flow
 
-The lab supports **72 numbered demo scenarios** (`0` through `71`), each with a story, a click-path, and a "killer line". See [`DEMO-SCENARIOS.md`](DEMO-SCENARIOS.md) for the full catalogue, including audience-pivoted shortlists (App Service, AKS, Cost, Security, Workload health, and agentic applications).
+The lab supports **81 numbered demo scenarios** (`0` through `80`), each with a story, a click-path, and a "killer line". See [`DEMO-SCENARIOS.md`](DEMO-SCENARIOS.md) for the full catalogue, including audience-pivoted shortlists (App Service, AKS, Cost, Security, Workload health, and agentic applications).
 
 **Suggested 25-minute "first taste" walkthrough** (covers the cross-stack story):
 
@@ -342,7 +344,7 @@ azure-monitor-lab/
 
 ## Ideas to extend beyond current scope
 
-The lab covers 72 numbered scenarios (`0` through `71`) out of the box; here are well-scoped follow-ups for deeper sessions:
+The lab covers 81 numbered scenarios (`0` through `80`) out of the box; here are well-scoped follow-ups for deeper sessions:
 
 - **Multi-region DR drill** — pair the central LAW with a paired region (the `enableLawReplication` parameter wires this up) and walk alert + workbook continuity during a regional outage.
 - **Cross-subscription workbook rollup** — clone the Traffic Lights workbook into a management-group-scoped variant.

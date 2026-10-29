@@ -38,8 +38,8 @@ param deployLinuxVm bool = true
 @description('Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets.')
 param enableVmOtelMetrics bool = true
 
-@description('Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable.')
-param dailyCapGb int = 1
+@description('Daily ingestion cap (GB) on each of the central and Application Insights Log Analytics workspaces. Set to -1 to disable.')
+param dailyCapGb int = 3
 
 @description('VM size (kept small for a demo lab).')
 param vmSize string = 'Standard_B2s'
@@ -127,6 +127,16 @@ param observabilityAgentInstructions string = 'Act as the trace specialist for t
 @description('Model Router deployment version for the AI feature. VERIFY for your region with "az cognitiveservices account list-models".')
 param routerModelVersion string = '2025-08-07'
 
+@description('Enable the optional Microsoft Fabric F2 capacity. Off by default. F2 is pinned to swedencentral and costs about $0.36/hour ($262.80/month PAYG) while active.')
+param enableFabric bool = false
+
+@description('Microsoft Entra user UPN that administers the Fabric capacity. Must be a user in the deployment tenant, not an external notification address.')
+param fabricAdminEmail string = ''
+
+var validatedFabricAdminEmail = !enableFabric || (!empty(fabricAdminEmail) && contains(fabricAdminEmail, '@'))
+  ? fabricAdminEmail
+  : fail('fabricAdminEmail is required when enableFabric is true and must be a Microsoft Entra user UPN in the deployment tenant.')
+
 // ---------------------------------------------------------------------------------
 // Naming
 // ---------------------------------------------------------------------------------
@@ -163,6 +173,7 @@ var costWorkbookName    = 'wb-${namePrefix}-cost'
 var sliUamiName         = 'id-sli-${namePrefix}'
 var platformLogsDcrName = 'dcr-${namePrefix}-platformlogs'
 var metricsExportDcrName = 'dcr-${namePrefix}-metricsexport'
+var fabricCapacityName  = toLower('fab${namePrefix}${take(suffix, 8)}')
 var sreAgentName         = 'sre-${namePrefix}-${take(suffix, 5)}'
 var observabilityAgentName = 'obs-${namePrefix}-${take(suffix, 5)}'
 var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
@@ -170,6 +181,10 @@ var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
 // AI feature (Foundry) is pinned to swedencentral, independent of the lab region —
 // the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth preview are region-limited.
 var aiLocation = 'swedencentral'
+
+// Fabric F2 is pinned independently from the main lab region. The capacity is
+// expensive while active, so it is opt-in and can be suspended after demos.
+var fabricLocation = 'swedencentral'
 
 var commonTags = {
   owner: ownerTag
@@ -1030,6 +1045,9 @@ module healthModel 'modules/health-model.bicep' = {
     enableAi: enableAi
     foundryAccountId: enableAi ? foundry!.outputs.accountId : ''
     appInsightsLawId: lawAppInsights.outputs.id
+    // Fold the Fabric F2 capacity into a Real-Time Intelligence tier when enabled.
+    enableFabric: enableFabric
+    fabricCapacityId: enableFabric ? fabricCapacity!.outputs.id : ''
   }
 }
 
@@ -1093,6 +1111,22 @@ module aiObservability 'modules/ai-observability.bicep' = if (enableAi) {
     location: aiLocation
     appInsightsId: appInsights.outputs.id
     tags: commonTags
+  }
+}
+
+// ---------------------------------------------------------------------------------
+// Optional Microsoft Fabric capacity. Fabric workspace and Real-Time Intelligence
+// items are tenant-scoped SaaS objects created afterward by scripts/setup-fabric.ps1.
+// ---------------------------------------------------------------------------------
+module fabricCapacity 'modules/fabric-capacity.bicep' = if (enableFabric) {
+  name: 'fabric-capacity'
+  params: {
+    name: fabricCapacityName
+    location: fabricLocation
+    administrators: [ validatedFabricAdminEmail ]
+    tags: union(commonTags, {
+      costWarning: 'F2-about-USD-0.36-per-hour-while-active'
+    })
   }
 }
 
@@ -1169,6 +1203,9 @@ output aiFoundryAccountName string     = enableAi ? foundry!.outputs.accountName
 output aiProjectEndpoint string        = enableAi ? foundry!.outputs.projectEndpoint : ''
 output aiChatDeployment string         = enableAi ? foundry!.outputs.chatDeployment : ''
 output aiRouterDeployment string       = enableAi ? foundry!.outputs.routerDeployment : ''
+
+// Fabric setup discovers the ARM capacity by resource type. Keep capacity outputs
+// on the fabric-capacity nested deployment and Stage Fabric: main is at 64 outputs.
 
 // Optional SRE Agent stage (empty unless enableSreAgent = true)
 output sreAgentEnabled bool            = enableSreAgent
