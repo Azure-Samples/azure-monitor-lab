@@ -36,28 +36,7 @@ Optional scenarios need their corresponding stages, permissions, and sometimes m
 
 ## Architecture
 
-The Azure resources share the primary resource group (`rg-azure-monitor-lab`), with telemetry flowing from left to right:
-
-1. Workloads emit signals.
-2. Agents and policies collect them.
-3. The telemetry backplane stores them.
-4. The consumption layer turns them into dashboards, alerts, and responses.
-
-The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can also be deployed on the same telemetry backbone. Observability Agent receives Application Insights and alert context and stores correlated issues in its dedicated Azure Monitor workspace.
-
-**Microsoft Fabric extends this same architecture, rather than replacing Azure Monitor.** The optional analytics path consumes the lab's existing diagnostic Event Hub:
-
-| Layer | Azure Monitor operational path | Optional Fabric analytics path |
-|---|---|---|
-| Workloads and collection | VMs, AKS, the Control Center, and the customer application emit logs, metrics, and traces through agents, SDKs, and diagnostic settings. | App Service and AKS diagnostics fan out to Azure Event Hubs. |
-| Telemetry and analytics | Log Analytics, Application Insights, and Azure Monitor workspaces retain operational telemetry. | Keyless streaming: Event Hubs → Extended Eventstream → Eventhouse / KQL. Mirroring (preview): central and Application Insights Log Analytics Delta tables → read-only OneLake shortcuts → Eventhouse / KQL, without a data copy. |
-| Consumption and response | Grafana, Workbooks, alerts, Health Models, and agents support investigation and approved response. | Three generated Real-Time Dashboards cover live diagnostics, mirrored infrastructure logs, and mirrored Application Insights; labelled synthetic samples illustrate business-event correlation. |
-
-The F2 **capacity is an Azure resource** in `swedencentral`; its **workspace, Eventstream, Eventhouse, KQL databases, dashboards, and mirrored catalogs are tenant-scoped Fabric items**, outside the resource group. The Azure workbook and Health Model report capacity health.
-
-**Stage Fabric is opt-in. Once enabled**, setup defaults to workspace-identity authentication for Event Hubs, mirrors for both Log Analytics workspaces, three dashboards, labelled synthetic business-correlation samples, and daily **20:00 UTC** capacity suspension. Explicit configuration opt-outs are respected. Setup checks recent ingestion and saved mirror queries; synthetic samples or created items alone do not prove that live telemetry works. Its summary distinguishes configured, verified, pending, failed, and action-required steps. Tenant preview enablement, source permissions, and Capacity Metrics app installation/OAuth can still require administrator action. See [Stage Fabric](docs/STAGE-FABRIC.md) and [scenarios 74-80](docs/DEMO-SCENARIOS.md#s74).
-
-> 📦 For a full, resource-by-resource list of what gets created, see [REFERENCE.md → What gets deployed](docs/REFERENCE.md#what-gets-deployed).
+Workloads feed a shared Azure Monitor telemetry backbone for dashboards, alerts, and agent-assisted investigation. Optional Microsoft Fabric extends it with streaming analytics and Azure Monitor mirroring (preview), without replacing operational monitoring. See the [resource inventory](docs/REFERENCE.md#what-gets-deployed) and [Fabric guide](docs/STAGE-FABRIC.md) for details.
 
 [![Azure Monitor Lab architecture: operational telemetry and response, customer application, and optional Event Hubs to Fabric Real-Time Intelligence analytics](docs/architecture-overview-sre.svg)](docs/architecture.drawio)
 
