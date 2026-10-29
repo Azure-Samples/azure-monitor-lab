@@ -6,8 +6,8 @@ A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability
 
 - One primary resource group: Azure resources land in `rg-azure-monitor-lab`; AKS has a managed resource group, and Fabric workspace items and Entra registrations are tenant-scoped.
 - Two ways to deploy it: Bicep or Terraform.
-- Three ways to run it: a single-click [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) button for the Azure portal, a scripted one-shot deployment using PowerShell, or a 5-stage workshop you can walk through piece by piece.
-- 81 demo scenarios that cover Azure Monitor, agentic-application observability, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
+- Three ways to deploy it: a [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) portal wizard, a scripted one-shot deployment using PowerShell, or a five-stage core workshop with optional AI, SRE Agent, Observability Agent, and Fabric extensions.
+- **80 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
 
 It's built for demos, microhacks, and hackathons. Deploy it, poke around, break it, restore it, and tear it down.
 
@@ -19,6 +19,20 @@ It's built for demos, microhacks, and hackathons. Deploy it, poke around, break 
 | **Lab Control Center** | Check infrastructure health, generate traffic, try Foundry agents, and perform approved SRE MCP operations. Open the [Control Center guide](docs/LAB-CONTROL-CENTER.md) for screenshots, access requirements, and linked scenarios. |
 
 These are complementary entry points into the same lab. The Control Center links to the guided scenarios; it does not replace their setup or walkthroughs.
+
+### Scenario coverage
+
+| Scenarios | What you can demonstrate |
+|---|---|
+| [1-52](docs/DEMO-SCENARIOS.md#s1) | Workbooks, VM and AKS insights, Application Insights, OpenTelemetry, alerts, automation, networking, data routing, cost controls, security, and workload Health Models |
+| [53](docs/DEMO-SCENARIOS.md#s53) | GenAI token, trace, and cost observability |
+| [54-59](docs/DEMO-SCENARIOS.md#s54) | Azure SRE Agent readiness, investigation, change correlation, alert merging, and recovery verification |
+| [60](docs/DEMO-SCENARIOS.md#s60) | Cross-stack operations in the Lab Control Center |
+| [61-67](docs/DEMO-SCENARIOS.md#s61) | Agentic failures, customer impact, AI cost spikes, and Observability Agent triage |
+| [68-73](docs/DEMO-SCENARIOS.md#s68) | Evidence-first Copilot investigations, end-to-end Application Insights incidents, customer journeys, broken-slot rollback, and real SQL / Service Bus / Functions dependencies |
+| [74-80](docs/DEMO-SCENARIOS.md#s74) | Fabric streaming, Eventhouse queries, Real-Time Dashboards, business-event correlation, capacity monitoring, suspend/resume, and Azure Monitor mirroring (preview) |
+
+Optional scenarios need their corresponding stages, permissions, and sometimes manual preparation; deploying the core lab does not enable every scenario. Start with the [workload-based scenario index](docs/DEMO-SCENARIOS.md#demo-scenarios--organized-by-workload) to choose a demo path.
 
 ## Architecture
 
@@ -36,10 +50,12 @@ The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can a
 | Layer | Azure Monitor operational path | Optional Fabric analytics path |
 |---|---|---|
 | Workloads and collection | VMs, AKS, the Control Center, and the customer application emit logs, metrics, and traces through agents, SDKs, and diagnostic settings. | App Service and AKS diagnostics fan out to Azure Event Hubs. |
-| Telemetry and analytics | Log Analytics, Application Insights, and Azure Monitor workspaces retain operational telemetry. | Streaming: Event Hubs → Eventstream → Eventhouse / KQL. Mirroring (preview): central Log Analytics Delta tables → read-only OneLake shortcuts → Eventhouse / KQL, without a data copy. |
-| Consumption and response | Grafana, Workbooks, alerts, Health Models, and agents support investigation and approved response. | KQL exploration and a guided Real-Time Dashboard correlate operational events with business data. |
+| Telemetry and analytics | Log Analytics, Application Insights, and Azure Monitor workspaces retain operational telemetry. | Keyless streaming: Event Hubs → Extended Eventstream → Eventhouse / KQL. Mirroring (preview): central and Application Insights Log Analytics Delta tables → read-only OneLake shortcuts → Eventhouse / KQL, without a data copy. |
+| Consumption and response | Grafana, Workbooks, alerts, Health Models, and agents support investigation and approved response. | Three generated Real-Time Dashboards cover live diagnostics, mirrored infrastructure logs, and mirrored Application Insights; labelled synthetic samples illustrate business-event correlation. |
 
-The F2 **capacity is an Azure resource** in `swedencentral`; its **workspace, Eventstream, Eventhouse, KQL database, dashboard, and mirrored item are tenant-scoped Fabric items**, outside the resource group. The Azure workbook and Health Model report capacity health. Setup configures the stream, creates a Real-Time Dashboard and labelled synthetic business-correlation samples, and checks for recent ingestion. Preview mirroring can be automated after opting in and authorizing its Azure Monitor connection; a daily UTC suspension schedule is separately opt-in. The setup summary distinguishes configured, verified, pending, failed, and action-required steps. Connection authorization/tenant restrictions and Capacity Metrics app installation can still require the user. See [Stage Fabric](docs/STAGE-FABRIC.md) and [scenarios 74–80](docs/DEMO-SCENARIOS.md#s74).
+The F2 **capacity is an Azure resource** in `swedencentral`; its **workspace, Eventstream, Eventhouse, KQL databases, dashboards, and mirrored catalogs are tenant-scoped Fabric items**, outside the resource group. The Azure workbook and Health Model report capacity health.
+
+**Stage Fabric is opt-in. Once enabled**, setup defaults to workspace-identity authentication for Event Hubs, mirrors for both Log Analytics workspaces, three dashboards, labelled synthetic business-correlation samples, and daily **20:00 UTC** capacity suspension. Explicit configuration opt-outs are respected. Setup checks recent ingestion and saved mirror queries; synthetic samples or created items alone do not prove that live telemetry works. Its summary distinguishes configured, verified, pending, failed, and action-required steps. Tenant preview enablement, source permissions, and Capacity Metrics app installation/OAuth can still require administrator action. See [Stage Fabric](docs/STAGE-FABRIC.md) and [scenarios 74-80](docs/DEMO-SCENARIOS.md#s74).
 
 > 📦 For a full, resource-by-resource list of what gets created, see [REFERENCE.md → What gets deployed](docs/REFERENCE.md#what-gets-deployed).
 
@@ -55,7 +71,7 @@ The F2 **capacity is an Azure resource** in `swedencentral`; its **workspace, Ev
 - Azure and Microsoft Entra permissions to deploy the lab and configure Control Center access. See [console deployment prerequisites](workloads/webapp/LAB-OPERATIONS.md#prerequisites) for the required roles.
 - Optional AI stage: [Python 3.10+](https://www.python.org/downloads/)
 - Optional SRE Agent stage: [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) and [tar](https://www.gnu.org/software/tar/)
-- Optional Fabric stage: Fabric enabled in the tenant, workspace creation and capacity administration permissions, and `fabricAdminEmail` set to a Microsoft Entra user UPN in that tenant. The F2 capacity bills while active; see [Fabric prerequisites and cost caveats](docs/STAGE-FABRIC.md).
+- Optional Fabric stage: Fabric enabled in the tenant, workspace creation/administration and capacity administration permissions, and `fabricAdminEmail` set to a Microsoft Entra user UPN in that tenant. Automated source authorization also needs Azure RBAC administration at the event hub and source Log Analytics workspaces, plus custom-role administration. Default mirroring requires a tenant administrator to enable the preview; Azure Monitor table/row/column protections do not carry into Fabric, so review workspace access first. Capacity Metrics needs separate installation and eligible Power BI licensing/OAuth. See [Fabric prerequisites and cost caveats](docs/STAGE-FABRIC.md#prerequisites).
 
 ## Deploy
 
@@ -101,7 +117,7 @@ If you enabled the optional AI stage and want to generate AI telemetry, run this
 
 After the wrapper succeeds, deployment is complete. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
 
-For a branch-based portal deployment with Fabric enabled, also run `./scripts/setup-fabric-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup` to complete its tenant-scoped items. Follow the [Fabric completion checklist](docs/STAGE-FABRIC.md#after-deployps1-checklist) and suspend F2 when idle.
+For a portal deployment using the `feature/fabric-stage` templates, run `git switch feature/fabric-stage` after cloning and before running the completion wrappers above. With Fabric enabled, also run `./scripts/setup-fabric-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup` to complete its tenant-scoped items. Follow the [Fabric completion checklist](docs/STAGE-FABRIC.md#after-deployps1-checklist) and suspend F2 when idle.
 
 ### Option 2: Scripted one-shot (Bicep / Terraform, full control)
 
@@ -117,7 +133,7 @@ git switch feature/fabric-stage
 Copy-Item lab.config.json.example lab.config.json
 notepad lab.config.json
 # Save your changes and close Notepad before continuing.
-# One-shot ignores enableStageA-E; enableStageAI, enableStageSreAgent, and enableSlotFailureScenario remain optional.
+# One-shot ignores enableStageA-E; AI, SRE Agent, Observability Agent, and customer scenarios remain optional.
 # Fabric is also opt-in: stageToggles.enableStageFabric plus fabricAdminEmail.
 
 # 3. Deploy (deploy.ps1 calls sync-config.ps1 for you)
@@ -140,15 +156,15 @@ The pre-flight checks *availability and quota*, not *live service capacity*. Tra
 
 A successful `deploy.ps1` run completes the selected setup. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
 
-For Fabric, `deploy.ps1` runs its setup automatically when `stageToggles.enableStageFabric` is true. Complete any reported connection fallback and verify ingestion using the [Fabric checklist](docs/STAGE-FABRIC.md#after-deployps1-checklist).
+For Fabric, set `stageToggles.enableStageFabric` to `true` and supply `fabricAdminEmail`. `deploy.ps1` runs setup automatically. Review `fabricAutomation` in the [config template](lab.config.json.example) for mirroring, sample data, workspace naming, verification timeout, and daily suspension settings. Resolve any reported prerequisites and verify ingestion using the [Fabric checklist](docs/STAGE-FABRIC.md#after-deployps1-checklist). Setup can be rerun safely; it reuses existing items and preserves edited dashboards.
 
 ### Option 3: Staged workshop (progressive deployment)
 
-Use the staged approach when you want to pause between capabilities, walk through the lab with an audience, or deploy only the stages needed for a particular demo. Stages A to E can be toggled in `lab.config.json`. The optional AI and SRE Agent stages can be enabled separately after Stage A. Bicep deploys SRE Agent with `infra/stages/60-sre-agent.bicep`; Terraform deploys the compiled stage when `enable_stage_sre_agent = true`.
+Use the staged approach when you want to pause between capabilities, walk through the lab with an audience, or deploy only the stages needed for a particular demo. Stages A to E can be toggled in `lab.config.json`. The optional AI, SRE Agent, Observability Agent, and Fabric stages have separate toggles and prerequisites. Bicep deploys SRE Agent with `infra/stages/60-sre-agent.bicep`; Terraform deploys the compiled stage when `enable_stage_sre_agent = true`.
 
 Step-by-step guides:
 
-- Optional Fabric uses `infra/stages/60-fabric.bicep` or Terraform's `enable_stage_fabric`; its end-to-end stream requires Stage A's Event Hub.
+- Optional [Stage Fabric](docs/STAGE-FABRIC.md) uses `infra/stages/60-fabric.bicep` or Terraform's `enable_stage_fabric`; its end-to-end stream requires Stage A's Event Hub. For staged Bicep, deploy Fabric before Stage E, or rerun Stage E with `enableFabric=true` to include capacity health in the Health Model. Terraform orders this dependency automatically.
 - [Bicep staged deployment](docs/DEPLOY-BICEP-STEP-BY-STEP.md)
 - [Terraform staged deployment](docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md)
 
@@ -168,7 +184,9 @@ az webapp list --subscription $subscriptionId --resource-group $resourceGroup --
 
 ## Cost and lifecycle
 
-Fabric F2 adds billable active capacity hours, plus possible OneLake storage and other usage charges. The branch's indicative estimate is **USD 0.36/hour** (about **USD 8.64/active day**); verify current regional pricing before deploying. F2 is a cost-controlled light demo choice, below Microsoft's documented F4 recommendation for Eventstreams. When Fabric is enabled, setup defaults to keyless streaming, central/App Insights mirrors and three dashboards, plus daily **20:00 UTC** capacity suspension. Tenant preview enablement, source RBAC administration and Capacity Metrics licensing/OAuth remain prerequisites. Both Log Analytics workspaces default to **3 GB/day each**. Run `./scripts/suspend-fabric.ps1` when idle; see [Fabric setup, permissions and lifecycle](docs/STAGE-FABRIC.md).
+Fabric F2 adds billable active capacity hours, plus possible OneLake storage and other usage charges. The branch's indicative estimate is **USD 0.36/hour** (about **USD 8.64 per 24 active hours**); verify current regional pricing before deploying. F2 is a cost-controlled light demo choice, below Microsoft's documented F4 recommendation for Eventstreams. Both Log Analytics workspaces default to **3 GB/day each**, not a shared budget or total-cost limit.
+
+Fabric setup enables daily **20:00 UTC** suspension unless explicitly disabled. This fixed schedule is **not an idle detector**: it interrupts active queries and ingestion and does not automatically resume capacity. Run `./scripts/suspend-fabric.ps1` when idle and `./scripts/resume-fabric.ps1` before the next Fabric demo; `./scripts/start-the-lab.ps1 -Wait` also resumes F2. See [Fabric setup, permissions and lifecycle](docs/STAGE-FABRIC.md).
 
 > [!WARNING]
 > **Ballpark:** default Stages A-E lab: **EUR 6-10/day** (EUR 180-300/month). Everything enabled with light Foundry and agent use: **EUR 10-25/day** (EUR 300-750/month), assuming an eligible SRE Agent trial and automatic Observability Agent investigations remain off. These September 2026 public-retail estimates are not quotes; heavier token/AAC use, post-trial SRE Agent charges, region, agreement, telemetry, and traffic can exceed the range. See the [cost guide](docs/COST-GUIDE.md).
@@ -183,19 +201,21 @@ $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 ./scripts/teardown.ps1 -ResourceGroup $rg -Yes   # deletes the whole resource group
 ```
 
+For Fabric, the teardown script also attempts to remove the tenant-scoped workspace and its items, generated mirror connections, and source-scoped mirroring permissions before deleting the resource group. Check its output and verify cleanup: deleting the Azure resource group or running `terraform destroy` alone does not remove tenant-scoped Fabric items. Use a distinct `fabricAutomation.workspaceName` for each lab to keep setup and teardown isolated. See [Fabric cleanup](docs/STAGE-FABRIC.md#suspend-and-resume).
+
 ## Documentation
 
 | Doc | What's in it |
 |---|---|
 | [REFERENCE.md](docs/REFERENCE.md) | Full capability matrix · every deployed resource · demo walkthrough · cost breakdown · folder layout · optional add-ons · troubleshooting |
-| [STAGE-FABRIC.md](docs/STAGE-FABRIC.md) | Optional Fabric capacity, Eventstream/Eventhouse setup, connection fallback, ingestion checks, mirroring, and suspend/resume |
+| [STAGE-FABRIC.md](docs/STAGE-FABRIC.md) | Optional F2 capacity, keyless Extended Eventstream, three dashboards, dual-workspace mirroring, verification, administrator prerequisites, scheduled suspension, and tenant-item cleanup |
 | [COST-GUIDE.md](docs/COST-GUIDE.md) | Dated resource inventory · public-rate examples · usage formulas · optional agents · stop-versus-delete guidance |
 | [Lab Control Center](docs/LAB-CONTROL-CENTER.md) | Application guide, screenshot, traffic and agent capabilities, safety boundaries, and links to the guided scenarios |
-| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | Numbered demo scenarios with stories, click-paths, starter prompts, and audience-pivoted shortlists; includes the [application troubleshooting agent](docs/DEMO-SCENARIOS.md#s72) and [real customer PaaS dependencies](docs/DEMO-SCENARIOS.md#s73) |
+| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | 80 numbered scenarios plus an introductory pitch, with stories, click-paths, starter prompts, and workload-based shortlists; includes [application troubleshooting](docs/DEMO-SCENARIOS.md#s72), [real customer PaaS dependencies](docs/DEMO-SCENARIOS.md#s73), and [Fabric Real-Time Intelligence](docs/DEMO-SCENARIOS.md#s74) |
 | [POST-DEPLOYMENT.md](docs/POST-DEPLOYMENT.md) | Manual and optional preparation required by specific demo scenarios after deployment is complete |
 | [PM feature integration guide](docs/PM-FEATURE-INTEGRATION-GUIDE.md) | End-to-end workflow and validation checklist for product managers adding new Azure features to every deployment path |
 | [docs/DEPLOY-BICEP-STEP-BY-STEP.md](docs/DEPLOY-BICEP-STEP-BY-STEP.md) · [docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md](docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md) | Staged deployment tutorials |
-| Stage notes: [A](docs/STAGE-A-FOUNDATION.md) · [B](docs/STAGE-B-WORKLOADS.md) · [C](docs/STAGE-C-ALERTING.md) · [D](docs/STAGE-D-SECURITY-POSTURE.md) · [E](docs/STAGE-E-OPTIONAL-ADVANCED.md) · [AI](docs/STAGE-AI.md) · [SRE Agent](docs/STAGE-SRE-AGENT.md) · [Observability Agent](docs/STAGE-OBSERVABILITY-AGENT.md) | Per-stage speaker notes, including optional AI FinOps and agent evaluation stages |
+| Stage notes: [A](docs/STAGE-A-FOUNDATION.md) · [B](docs/STAGE-B-WORKLOADS.md) · [C](docs/STAGE-C-ALERTING.md) · [D](docs/STAGE-D-SECURITY-POSTURE.md) · [E](docs/STAGE-E-OPTIONAL-ADVANCED.md) · [AI](docs/STAGE-AI.md) · [SRE Agent](docs/STAGE-SRE-AGENT.md) · [Observability Agent](docs/STAGE-OBSERVABILITY-AGENT.md) · [Fabric](docs/STAGE-FABRIC.md) | Per-stage speaker notes, including optional AI FinOps, agent evaluation, and Real-Time Intelligence stages |
 | [docs/CUSTOMER-STAGE-HANDOUT.md](docs/CUSTOMER-STAGE-HANDOUT.md) | Per-stage time + cost cheat sheet |
 
 ## Contributing & license
