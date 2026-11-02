@@ -55,6 +55,9 @@ function Reset-Fixture {
   $fixture.MirrorDefinition = $null
   $fixture.Mirrors = @()
   $fixture.Dashboards = @()
+  $fixture.MonitoringItems = @()
+  $fixture.Agents = @()
+  $fixture.MonitoringState = 'Disabled'
   $fixture.Definitions = @{}
 }
 function az {
@@ -152,6 +155,9 @@ function Invoke-RestMethod {
         return @{ value = $fixture.Tables }
       }
       '*/kqlDashboards' { return @{ value = $fixture.Dashboards } }
+      '*/monitoringItems' { return @{ value = $fixture.MonitoringItems } }
+      '*/operationsAgents' { return @{ value = $fixture.Agents } }
+      '*/monitoringItems/*' { return @{ properties = @{ dataCollectionState = $fixture.MonitoringState } } }
       '*/mirroredCatalogs' { return @{ value = $fixture.Mirrors } }
       '*/mirroringStatus?beta=true' { return @{ status = $fixture.MirrorStatus; error = @{ message = 'source access failed' } } }
     }
@@ -160,17 +166,25 @@ function Invoke-RestMethod {
     $fixture.DeletedWorkspace = $true
     return
   }
-  if ($Method -eq 'Post' -and ($Uri -like '*/kqlDashboards' -or $Uri -like '*/mirroredCatalogs')) {
+  if ($Method -eq 'Post' -and $Uri -like '*/enableDataCollection') {
+    $fixture.MonitoringState = 'Enabled'
+    return
+  }
+  if ($Method -eq 'Post' -and ($Uri -like '*/kqlDashboards' -or $Uri -like '*/mirroredCatalogs' -or
+      $Uri -like '*/monitoringItems' -or $Uri -like '*/operationsAgents')) {
     if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 201 -Scope 1 }
     $request = $Body | ConvertFrom-Json
     $item = @{ id = [guid]::NewGuid().ToString(); displayName = $request.displayName }
-    if ($Uri -like '*/kqlDashboards') { $fixture.Dashboard = $item; $fixture.Dashboards += $item } else {
+    if ($Uri -like '*/monitoringItems') { $fixture.MonitoringItems += $item }
+    elseif ($Uri -like '*/operationsAgents') { $fixture.Agents += $item }
+    elseif ($Uri -like '*/kqlDashboards') { $fixture.Dashboard = $item; $fixture.Dashboards += $item } else {
       $fixture.Mirror = $item; $fixture.Mirrors += $item; $fixture.MirrorDefinition = $request.definition
     }
     $fixture.Definitions[$item.id] = $request.definition
     return $item
   }
-  if ($Method -eq 'Post' -and ($Uri -like '*/mirroredCatalogs/*/getDefinition' -or $Uri -like '*/kqlDashboards/*/getDefinition')) {
+  if ($Method -eq 'Post' -and ($Uri -like '*/mirroredCatalogs/*/getDefinition' -or $Uri -like '*/kqlDashboards/*/getDefinition' -or
+      $Uri -like '*/monitoringItems/*/getDefinition' -or $Uri -like '*/operationsAgents/*/getDefinition')) {
     if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 200 -Scope 1 }
     return @{ definition = $fixture.Definitions[($Uri -split '/')[-2]] }
   }
@@ -335,13 +349,27 @@ $fixture.FullSetup = $true
 if ($fixture.Dashboards.Count -ne 3 -or $fixture.Mirrors.Count -ne 2 -or $fixture.Samples.Count -ne 4) {
   throw 'Full setup must wire dashboard, synthetic correlation and configured mirroring without manual helper calls.'
 }
+if ($fixture.MonitoringItems.Count -ne 1 -or $fixture.MonitoringState -ne 'Enabled' -or $fixture.Agents.Count -ne 1) {
+  throw 'Full setup must enable workspace collection and configure the stopped Operations Agent by default.'
+}
 Write-Output 'PASS: full setup orchestrates supported experiences and explicitly reports incomplete live ingestion and manual Capacity Metrics installation.'
+
+Reset-Fixture
+$fixture.FullSetup = $true
+& (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' `
+  -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -SkipEventstreamConnection -EnableMirroring:$false `
+  -EnableAutoSuspend:$false -SeedSampleData:$false -EnableWorkspaceMonitoring:$false -EnableOperationsAgent:$false
+if ($fixture.MonitoringItems.Count -or $fixture.Agents.Count -or $fixture.MonitoringState -ne 'Disabled') {
+  throw 'Explicit feature opt-outs must skip monitoring/agent API calls without changing existing state.'
+}
+Write-Output 'PASS: full setup honors monitoring and Operations Agent opt-outs.'
 
 Reset-Fixture
 $fixture.FullSetup = $true
 $fixture.CapacityState = 'Suspended'
 & (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -Teardown
-if (-not $fixture.DeletedWorkspace -or $fixture.Dashboard -or $fixture.Samples.Count) {
+if (-not $fixture.DeletedWorkspace -or $fixture.Dashboard -or $fixture.Samples.Count -or
+    $fixture.MonitoringItems.Count -or $fixture.Agents.Count) {
   throw 'Teardown must delete tenant items even after scheduled capacity suspension, without creating any demo items.'
 }
 Write-Output 'PASS: suspended capacity does not prevent tenant-workspace teardown.'

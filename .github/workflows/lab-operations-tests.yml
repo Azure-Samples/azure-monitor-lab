@@ -39,6 +39,8 @@ on:
       - 'scripts/tests/fabric-observability.Tests.ps1'
       - 'scripts/tests/fabric-connections.Tests.ps1'
       - 'scripts/tests/fabric-auto-suspend.Tests.ps1'
+      - 'scripts/tests/fabric-monitoring.Tests.ps1'
+      - 'scripts/tests/fabric-tenant.Tests.ps1'
       - 'scripts/tests/service-group.Tests.ps1'
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
@@ -60,6 +62,8 @@ on:
       - 'scripts/fabric-observability.ps1'
       - 'scripts/fabric-connections.ps1'
       - 'scripts/fabric-mirrored-dashboard.ps1'
+      - 'scripts/fabric-monitoring.ps1'
+      - 'scripts/setup-fabric-tenant.ps1'
       - 'scripts/setup-fabric-auto-suspend.ps1'
       - 'scripts/setup-fabric-cloud-shell.ps1'
       - 'infra/modules/fabric-auto-suspend.*'
@@ -128,6 +132,8 @@ jobs:
           ./scripts/tests/fabric-observability.Tests.ps1
           ./scripts/tests/fabric-connections.Tests.ps1
           ./scripts/tests/fabric-auto-suspend.Tests.ps1
+          ./scripts/tests/fabric-monitoring.Tests.ps1
+          ./scripts/tests/fabric-tenant.Tests.ps1
           ./scripts/tests/service-group.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
           ./scripts/tests/observability-agent-config.Tests.ps1

@@ -8,7 +8,8 @@
   It attempts to create the Event Hubs connection and publish the source-to-Eventhouse
   topology using workspace identity and Extended Event Hubs. By default it also
   provisions both Log Analytics mirrors/dashboards and daily capacity suspension.
-  Tenant preview enablement and Capacity Metrics licensing remain prerequisites.
+  Configures workspace monitoring and a stopped recommendation-only Operations Agent.
+  Tenant settings require a separate administrator opt-in; licensing remains a prerequisite.
 
 .EXAMPLE
   ./scripts/setup-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup rg-azure-monitor-lab
@@ -23,6 +24,8 @@ param(
   [string] $KqlDatabaseName = 'MonitoringTelemetry',
   [string] $EventstreamName = 'AzureMonitorEvents',
   [string] $DestinationTableName = 'AzureDiagnosticsRaw',
+  [bool] $EnableWorkspaceMonitoring = $true,
+  [bool] $EnableOperationsAgent = $true,
   [bool] $SeedSampleData = $true,
   [bool] $EnableMirroring = $true,
   [string] $MirrorConnectionId = '',
@@ -44,6 +47,7 @@ $fabricApi = 'https://api.fabric.microsoft.com/v1'
 . (Join-Path $PSScriptRoot 'fabric-observability.ps1')
 . (Join-Path $PSScriptRoot 'fabric-connections.ps1')
 . (Join-Path $PSScriptRoot 'fabric-mirrored-dashboard.ps1')
+. (Join-Path $PSScriptRoot 'fabric-monitoring.ps1')
 
 $configPath = Join-Path $PSScriptRoot '..' 'lab.config.json'
 if (Test-Path -LiteralPath $configPath) {
@@ -54,6 +58,7 @@ if (Test-Path -LiteralPath $configPath) {
   }
   $options = @{
     WorkspaceName = 'workspaceName'
+    EnableWorkspaceMonitoring = 'enableWorkspaceMonitoring'; EnableOperationsAgent = 'enableOperationsAgent'
     SeedSampleData = 'seedSampleData'; EnableMirroring = 'enableMirroring'
     MirrorConnectionId = 'mirrorConnectionId'; MirrorScope = 'mirrorScope'; MirrorTables = 'mirrorTables'
     AppInsightsMirrorConnectionId = 'appInsightsMirrorConnectionId'; AppInsightsMirrorTables = 'appInsightsMirrorTables'
@@ -64,7 +69,7 @@ if (Test-Path -LiteralPath $configPath) {
     if ($Teardown -and $parameter -ne 'WorkspaceName') { continue }
     $value = $automation.($options[$parameter])
     if (-not $PSBoundParameters.ContainsKey($parameter) -and $null -ne $value) {
-      if ($parameter -in @('SeedSampleData', 'EnableMirroring', 'EnableAutoSuspend') -and $value -isnot [bool]) {
+      if ($parameter -in @('SeedSampleData', 'EnableMirroring', 'EnableAutoSuspend', 'EnableWorkspaceMonitoring', 'EnableOperationsAgent') -and $value -isnot [bool]) {
         throw "fabricAutomation.$($options[$parameter]) must be a JSON boolean."
       }
       Set-Variable -Name $parameter -Value $value
@@ -604,6 +609,30 @@ if ([string]::IsNullOrWhiteSpace($eventHubNamespace)) {
 
 $eventstreamAutomated = $false
 $setupResults = [Collections.Generic.List[object]]::new()
+foreach ($feature in @('Workspace monitoring', 'Operations Agent')) {
+  $enabled = if ($feature -eq 'Workspace monitoring') { $EnableWorkspaceMonitoring } else { $EnableOperationsAgent }
+  if (-not $enabled) {
+    $setupResults.Add([pscustomobject]@{ Feature = $feature; Status = 'Skipped'; Detail = 'Disabled explicitly; existing items and collection/run state are unchanged.' })
+    continue
+  }
+  try {
+    if ($feature -eq 'Workspace monitoring') {
+      $setupResults.Add((Initialize-FabricWorkspaceMonitoring -WorkspaceId $workspace.id))
+      $setupResults.Add([pscustomobject]@{
+        Feature = 'Eventstream activity logging'; Status = 'ActionRequired'
+        Detail = "Workspace monitoring alone does not enable per-stream logging. Check Eventstream '$EventstreamName' > Settings > Monitoring > Log Eventstream activity. No documented public logging-toggle API is used."
+      })
+    } else {
+      $setupResults.Add((Initialize-FabricOperationsAgent -WorkspaceId $workspace.id -DatabaseId $kqlDatabase.id `
+        -TableName $DestinationTableName -Recipient $active.userName))
+    }
+  } catch {
+    $setupResults.Add([pscustomobject]@{
+      Feature = $feature; Status = 'Failed'
+      Detail = "$($_.Exception.Message) Verify workspace-admin access and the feature's Fabric tenant settings. A tenant admin can review settings with scripts/setup-fabric-tenant.ps1 -TenantId $($active.tenantId). Rerun setup after resolving the reported error."
+    })
+  }
+}
 if (-not $SkipEventstreamConnection -and -not [string]::IsNullOrWhiteSpace($eventHubNamespace)) {
   Write-Step 'Connecting the Fabric Eventstream automatically'
   try {
@@ -735,7 +764,7 @@ if ($EnableMirroring) {
 }
 $setupResults.Add([pscustomobject]@{
   Feature = 'Capacity Metrics app'; Status = 'ActionRequired'
-  Detail = 'If not installed, install Capacity Metrics once using a capacity admin with Power BI Pro/PPU/trial: https://learn.microsoft.com/fabric/enterprise/metrics-app-install . No documented public installation API; setup cannot verify installation.'
+  Detail = 'If not installed, install Capacity Metrics once using a capacity admin with Power BI Pro/PPU/trial and connect with OAuth: https://learn.microsoft.com/fabric/enterprise/metrics-app-install . The template-app install-ticket API requires ownership of the Microsoft-published app; it is not available to lab deployers. Installation/data access are not verified.'
 })
 
 Write-Host "Workspace: https://app.fabric.microsoft.com/groups/$($workspace.id)"
