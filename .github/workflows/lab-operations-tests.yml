@@ -25,6 +25,7 @@ on:
       - 'scripts/staged-deploy-helpers.ps1'
       - 'scripts/deployment-slot-recovery.ps1'
       - 'scripts/teardown.ps1'
+      - 'scripts/remove-sre-agent.ps1'
       - 'scripts/remove-lab-entra-identities.ps1'
       - 'scripts/setup-rbac-demo.ps1'
       - 'scripts/wait-webapp-publication.ps1'
@@ -43,6 +44,7 @@ on:
       - 'scripts/tests/fabric-tenant.Tests.ps1'
       - 'scripts/tests/service-group.Tests.ps1'
       - 'scripts/tests/teardown.Tests.ps1'
+      - 'scripts/tests/sre-agent-cleanup.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
       - 'scripts/tests/customer-appinsights.Tests.ps1'
@@ -136,6 +138,7 @@ jobs:
           ./scripts/tests/fabric-tenant.Tests.ps1
           ./scripts/tests/service-group.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
+          ./scripts/tests/sre-agent-cleanup.Tests.ps1
           ./scripts/tests/observability-agent-config.Tests.ps1
           ./scripts/tests/entra-cleanup.Tests.ps1
           ./workloads/webapp/tests/webapp-access.Tests.ps1
