@@ -144,7 +144,7 @@ spec:
             - name: src
               mountPath: /src
           resources:
-            requests: { cpu: "100m", memory: "192Mi" }
+            requests: { cpu: "20m", memory: "192Mi" }
             limits:   { cpu: "500m", memory: "512Mi" }
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }

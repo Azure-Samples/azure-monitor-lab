@@ -52,7 +52,7 @@ spec:
                 - name: script
                   mountPath: /scripts
               resources:
-                requests: { cpu: "50m",  memory: "64Mi"  }
+                requests: { cpu: "20m",  memory: "64Mi"  }
                 limits:   { cpu: "300m", memory: "256Mi" }
           volumes:
             - name: script
