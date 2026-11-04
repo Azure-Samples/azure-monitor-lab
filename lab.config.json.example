@@ -38,6 +38,7 @@
   "vmSize":           "Standard_B2als_v2",
   "aksNodeVmSize":    "Standard_D4as_v5",
   "vmssSize":         "Standard_B2als_v2",
+  "_computeSizingDocs": "These sizes are starting points, not guaranteed for every subscription/region. deploy.ps1 checks eligibility, quota and AKS system-pool minimums, and reports config keys and candidate alternatives on compute failures; it never changes sizes automatically. Edit the copied lab.config.json and rerun. Insufficient quota: request a new total limit in Azure Portal > Quotas > Compute. NotAvailableForSubscription: more quota may not remove SKU restrictions; choose an eligible size/region or request SKU access if needed. AKS system nodes must be non-B-series with at least 4 vCPUs and 4 GiB RAM, with at least two nodes. EC2as_v5 is not a suitable AKS system-node fallback. See README.md for troubleshooting and standalone preflight usage.",
   "grafanaAdminObjectId": "",
   "slotAppServicePlanSku": "S2",
   "sqlEntraAdminObjectId": "",

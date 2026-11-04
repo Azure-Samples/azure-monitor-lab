@@ -10,6 +10,9 @@ on:
       - 'scripts/app-insights-target.ps1'
       - 'scripts/initialize-webapp-console.ps1'
       - 'scripts/deploy.ps1'
+      - 'scripts/preflight-check.ps1'
+      - 'scripts/tests/preflight-guidance.Tests.ps1'
+      - 'scripts/tests/vm-sku-config.Tests.ps1'
       - 'scripts/deploy-webapp.ps1'
       - 'scripts/post-deploy.ps1'
       - 'scripts/post-staged-deploy.ps1'
@@ -123,6 +126,8 @@ jobs:
           ./scripts/tests/lab-operations-execution.Tests.ps1
           ./scripts/tests/console-bootstrap.Tests.ps1
           ./scripts/tests/console-deployment.Tests.ps1
+          ./scripts/tests/preflight-guidance.Tests.ps1
+          ./scripts/tests/vm-sku-config.Tests.ps1
           ./scripts/tests/customer-completion.Tests.ps1
           ./scripts/tests/customer-dependencies.Tests.ps1
           ./scripts/tests/webapp-publication.Tests.ps1
