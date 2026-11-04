@@ -48,29 +48,34 @@ if (Test-Path $targetFile) {
 }
 
 $labConfig = Join-Path $repoRoot 'lab.config.json'
-if (-not $ResourceGroup) {
-  $ResourceGroup = if (Test-Path $labConfig) { (Get-Content -Raw $labConfig | ConvertFrom-Json).resourceGroup } else { 'rg-azure-monitor-lab' }
+$config = if (Test-Path $labConfig) { Get-Content -Raw $labConfig | ConvertFrom-Json } else { $null }
+if (-not $ResourceGroup) { $ResourceGroup = $config.resourceGroup ?? 'rg-azure-monitor-lab' }
+$prefix = $config.namePrefix ?? 'amlab'
+if (-not $Location) {
+  $Location = az group show -n $ResourceGroup --query location -o tsv
+  Assert-NativeCommandSucceeded "Reading resource group '$ResourceGroup'"
 }
-if (-not $Location) { $Location = az group show -n $ResourceGroup --query location -o tsv }
-Assert-NativeCommandSucceeded "Reading resource group '$ResourceGroup'"
 
 Write-Step "Finding lab resources in $ResourceGroup"
-function Get-LabResourceId([string] $Type, [string] $NameLike = '') {
-  $ids = @(az resource list -g $ResourceGroup --resource-type $Type --query "[?contains(name, '$NameLike')].id" -o tsv)
+# $Where is a JMESPath condition on the resource name.
+function Get-LabResourceId([string] $Type, [string] $Where) {
+  $ids = @(az resource list -g $ResourceGroup --resource-type $Type --query "[?$Where].id" -o tsv)
   Assert-NativeCommandSucceeded "Listing $Type"
-  if ($ids.Count -ne 1 -or -not $ids[0]) { throw "Expected one $Type matching '$NameLike' in $ResourceGroup, found $($ids.Count)." }
+  if ($ids.Count -ne 1 -or -not $ids[0]) { throw "Expected one $Type where $Where in $ResourceGroup, found $($ids.Count)." }
   Write-Info $ids[0].Split('/')[-1]
   $ids[0]
 }
 
 $parameters = @{
   location               = @{ value = $Location }
-  webAppId               = @{ value = Get-LabResourceId 'Microsoft.Web/sites' 'app-' }
-  appInsightsWorkspaceId = @{ value = Get-LabResourceId 'Microsoft.OperationalInsights/workspaces' 'appinsights' }
-  centralWorkspaceId     = @{ value = Get-LabResourceId 'Microsoft.OperationalInsights/workspaces' 'central' }
-  monitorWorkspaceId     = @{ value = Get-LabResourceId 'Microsoft.Monitor/accounts' 'amw-' }
-  aksId                  = @{ value = Get-LabResourceId 'Microsoft.ContainerService/managedClusters' }
-  vmssId                 = @{ value = Get-LabResourceId 'Microsoft.Compute/virtualMachineScaleSets' }
+  webAppId               = @{ value = Get-LabResourceId 'Microsoft.Web/sites' "starts_with(name, 'app-$prefix')" }
+  appInsightsWorkspaceId = @{ value = Get-LabResourceId 'Microsoft.OperationalInsights/workspaces' "starts_with(name, 'law-$prefix-appinsights')" }
+  centralWorkspaceId     = @{ value = Get-LabResourceId 'Microsoft.OperationalInsights/workspaces' "starts_with(name, 'law-$prefix-central')" }
+  monitorWorkspaceId     = @{ value = Get-LabResourceId 'Microsoft.Monitor/accounts' "name == 'amw-$prefix'" }
+  aksId                  = @{ value = Get-LabResourceId 'Microsoft.ContainerService/managedClusters' "contains(name, '$prefix')" }
+  vmssId                 = @{ value = Get-LabResourceId 'Microsoft.Compute/virtualMachineScaleSets' "contains(name, '$prefix')" }
+  # One-shot deployment names it avail-<prefix>-appservice, the staged guide test-<prefix>-app.
+  availabilityTestName   = @{ value = (Get-LabResourceId 'Microsoft.Insights/webtests' "name == 'avail-$prefix-appservice' || name == 'test-$prefix-app'").Split('/')[-1] }
   actionGroupId          = @{ value = az monitor action-group list -g $ResourceGroup --query "[?ends_with(name, '-email')] | [0].id" -o tsv }
   vmIds                  = @{ value = @(az vm list -g $ResourceGroup --query '[].id' -o tsv) }
 }

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "14095150590494807791"
+      "templateHash": "5821770274299420623"
     }
   },
   "parameters": {
@@ -52,6 +52,13 @@
       "metadata": {
         "description": "Secondary region for LAW replication."
       }
+    },
+    "appServiceRegion": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription."
+      }
     }
   },
   "variables": {
@@ -74,7 +81,7 @@
       "purpose": "azure-monitor-lab",
       "costCenter": "demo"
     },
-    "appServiceLocation": "westeurope"
+    "appServiceLocation": "[parameters('appServiceRegion')]"
   },
   "resources": [
     {

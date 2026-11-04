@@ -30,6 +30,9 @@ param monitorWorkspaceId string
 param aksId string
 param vmssId string
 
+@description('Name of the lab availability test that loads the console.')
+param availabilityTestName string
+
 @description('Resource IDs of the demo VMs that send heartbeats (Linux and Windows, when deployed).')
 param vmIds array
 
@@ -56,26 +59,22 @@ resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-11-01' = {
 var monitoringReaderRoleId = '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
 var monitoringDataReaderRoleId = 'b0d8363b-8ddd-447d-831f-62ca05bff136'
 
-resource monitoringReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, healthModel.id, monitoringReaderRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', monitoringReaderRoleId)
+// Modules, so the assignment names include the principal: a recreated model gets a new
+// identity, and ARM refuses to move an existing assignment to a new principal.
+module monitoringReader '../modules/lab-console-role.bicep' = {
+  name: '${healthModelName}-monitoring-reader'
+  params: {
     principalId: healthModel.identity.principalId
-    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', monitoringReaderRoleId)
   }
 }
 
-resource monitorWorkspace 'Microsoft.Monitor/accounts@2023-04-03' existing = {
-  name: last(split(monitorWorkspaceId, '/'))
-}
-
-resource monitoringDataReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(monitorWorkspace.id, healthModel.id, monitoringDataReaderRoleId)
-  scope: monitorWorkspace
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', monitoringDataReaderRoleId)
+module monitoringDataReader 'monitor-workspace-role.bicep' = {
+  name: '${healthModelName}-amw-reader'
+  params: {
+    monitorWorkspaceName: last(split(monitorWorkspaceId, '/'))
     principalId: healthModel.identity.principalId
-    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', monitoringDataReaderRoleId)
   }
 }
 
@@ -220,8 +219,9 @@ func resourceGroupOf(resourceId string, signals array) object => {
 }
 
 // Console routes from workloads/webapp/Program.cs. The root URL has an empty path and the
-// static UI is logged as /index.html.
-var consolePathFilter = 'path in ("", "/", "/index.html", "/healthz", "/api/console/config", "/api/console/version", "/api/infra/health") or path startswith "/api/operations/"'
+// static UI is logged as /index.html. /api/operations/* belongs to Lab operations, whose
+// limited impact would mean nothing if Control Center counted the same failures.
+var consolePathFilter = 'path in ("", "/", "/index.html", "/healthz", "/api/console/config", "/api/console/version", "/api/infra/health")'
 var webAppName = last(split(webAppId, '/'))
 var aksName = last(split(aksId, '/'))
 
@@ -271,9 +271,9 @@ AppRequests
 | where ${consolePathFilter}
 | summarize value = countif(ResultCode startswith "5")
 ''', 'PT5M', 'Count', rules('GreaterThan', 0, 5))
-      logSignal('console-availability-failures', 'Test visitor cannot load the console', '''
+      logSignal('console-availability-failures', 'Test visitor cannot load the console', $'''
 AppAvailabilityResults
-| where Name == "avail-amlab-appservice"
+| where Name == "${availabilityTestName}"
 | summarize value = countif(Success == false)
 ''', 'PT15M', 'Count', rules('GreaterThan', 0, 4))
     ])
@@ -423,8 +423,35 @@ var vmEntities = [
     name: 'vm-${i}'
     displayName: 'VM: ${last(split(vmId, '/'))}'
     signalGroups: resourceGroupOf(vmId, definitionSignals(['sd-vm-cpu']))
+    canvasPosition: { x: 1750 + 250 * i - rootX, y: 579 }
   }
 ]
+
+// Where the portal designer and graph draw each entity: one row per layer, each
+// component above its resources, centred under the root entity (drawn at x 0).
+var vmssX = 1750 + 250 * length(vmIds)
+var rootX = (125 + (1000 + vmssX) / 2) / 2
+var canvasLayout = {
+  'operate-lab': { x: 125, y: 193 }
+  'shop-demo': { x: 625, y: 193 }
+  'live-telemetry': { x: (1000 + vmssX) / 2, y: 193 }
+  'control-center': { x: 0, y: 386 }
+  'lab-operations': { x: 250, y: 386 }
+  'shop-api': { x: 500, y: 386 }
+  'synthetic-shoppers': { x: 750, y: 386 }
+  'log-pipeline': { x: 1000, y: 386 }
+  'metrics-pipeline': { x: 1250, y: 386 }
+  'kubernetes-workloads': { x: 1500, y: 386 }
+  'virtual-machines': { x: (1750 + vmssX) / 2, y: 386 }
+  'console-app': { x: 0, y: 579 }
+  'shop-app': { x: 500, y: 579 }
+  'shoppers-aks': { x: 750, y: 579 }
+  'central-law': { x: 1000, y: 579 }
+  'monitor-workspace': { x: 1250, y: 579 }
+  'cluster-aks': { x: 1500, y: 579 }
+  vmss: { x: vmssX, y: 579 }
+}
+var canvas = toObject(items(canvasLayout), item => item.key, item => { x: item.value.x - rootX, y: item.value.y })
 
 resource entityResources 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [
   for e in concat(entities, vmEntities): {
@@ -437,6 +464,7 @@ resource entityResources 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01
       healthObjective: e.?healthObjective
       alerts: e.?alerts
       signalGroups: e.?signalGroups
+      canvasPosition: e.?canvasPosition ?? canvas[e.name]
     }
     dependsOn: [
       authSetting

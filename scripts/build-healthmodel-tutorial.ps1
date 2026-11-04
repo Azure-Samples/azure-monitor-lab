@@ -3,7 +3,7 @@
   Build the Lab Café health model with the az monitor health-models CLI.
 
 .DESCRIPTION
-  Implements docs/healthmodel/plan.md as three layers:
+  Implements docs/healthmodel/cafe/plan.md as three layers:
 
     Lab Café (root)
     ├─ Browse the menu        user flow
@@ -32,6 +32,7 @@
 
 .PARAMETER SubscriptionId
   Subscription to deploy into. Defaults to .azure-target.json, then the active az subscription.
+  When .azure-target.json exists, any other subscription or tenant is blocked.
 #>
 [CmdletBinding()]
 param(
@@ -54,15 +55,20 @@ function Assert-NativeCommandSucceeded([string] $Operation) {
 
 # --- Subscription guardrail ----------------------------------------------------
 $targetFile = Join-Path $PSScriptRoot '..' '.azure-target.json'
-if (-not $SubscriptionId -and (Test-Path $targetFile)) {
-  $target = Get-Content -Raw $targetFile | ConvertFrom-Json
-  $SubscriptionId = $target.expectedSubscriptionId
+$target = if (Test-Path $targetFile) { Get-Content -Raw $targetFile | ConvertFrom-Json } else { $null }
+if ($target -and -not $SubscriptionId) { $SubscriptionId = $target.expectedSubscriptionId }
+if ($target -and $SubscriptionId -ne $target.expectedSubscriptionId) {
+  throw "BLOCKED: -SubscriptionId '$SubscriptionId' does not match .azure-target.json '$($target.expectedSubscriptionId)'."
 }
 if ($SubscriptionId) {
   az account set --subscription $SubscriptionId | Out-Null
   Assert-NativeCommandSucceeded "Selecting subscription '$SubscriptionId'"
 }
-$active = az account show --query "{id:id, name:name}" -o json | ConvertFrom-Json
+$active = az account show --query "{id:id, name:name, tenantId:tenantId}" -o json | ConvertFrom-Json
+Assert-NativeCommandSucceeded 'Reading the active Azure subscription'
+if ($target -and $active.tenantId -ne $target.expectedTenantId) {
+  throw "BLOCKED: active tenant '$($active.tenantId)' does not match .azure-target.json '$($target.expectedTenantId)'."
+}
 Write-Info "Subscription: $($active.name) ($($active.id))"
 
 # --- Workload facts from the deploy step ---------------------------------------
@@ -77,7 +83,7 @@ $workspaceId = $workload.logAnalyticsWorkspaceId.value
 $auth = 'auth-system'
 
 # --- Model data ------------------------------------------------------------------
-# Thresholds marked (assumed) in docs/healthmodel/plan.md: common starting values to tune after a week.
+# Thresholds marked (assumed) in docs/healthmodel/cafe/plan.md: common starting values to tune after a week.
 
 function New-Rules([string] $Operator, [double] $Degraded, [double] $Unhealthy) {
   @{
@@ -156,7 +162,7 @@ AppDependencies
       New-LogSignal 'failed-order-requests' 'Failed order requests' @'
 AppRequests
 | where Url has "/api/orders"
-| summarize value = countif(Success == false)
+| summarize value = countif(ResultCode startswith "5")  // a 404 for a mistyped order ID is not an outage
 '@ 'Count' 'PT5M' $failureRules
       New-LogSignal 'slow-orders' 'Order time for most customers (p95)' @'
 AppRequests
@@ -174,10 +180,10 @@ AppAvailabilityResults
   @{
     name = 'order-store'; displayName = 'Order store'; icon = 'SystemComponent'
     logSignals = @(
-      New-LogSignal 'failed-order-writes' 'Failed order writes to storage' @'
+      New-LogSignal 'failed-order-writes' 'Failed order storage calls' @'
 AppDependencies
 | where Target has "blob.core.windows.net" and Data has "/orders/"
-| summarize value = countif(Success == false)
+| summarize value = countif(Success == false and ResultCode != "404")  // 404: looked-up order doesn't exist
 '@ 'Count' 'PT5M' $failureRules
     )
   }
@@ -267,7 +273,10 @@ try {
   Write-Step '2. Let the model read metrics and logs (Monitoring Reader on the resource group)'
   $principalId = az monitor health-models show -g $ResourceGroup -n $HealthModelName --query identity.principalId -o tsv
   $rgId = az group show -n $ResourceGroup --query id -o tsv
-  $existing = az role assignment list --assignee $principalId --scope $rgId --role 'Monitoring Reader' --query "length(@)" -o tsv
+  Assert-NativeCommandSucceeded 'Reading the model identity and resource group'
+  # --assignee-object-id skips the Graph lookup, which fails while a new identity is still replicating.
+  $existing = az role assignment list --assignee-object-id $principalId --scope $rgId --role 'Monitoring Reader' --query "length(@)" -o tsv
+  Assert-NativeCommandSucceeded 'Listing role assignments of the model identity'
   if ($existing -eq '0') {
     az role assignment create --assignee-object-id $principalId --assignee-principal-type ServicePrincipal `
       --role 'Monitoring Reader' --scope $rgId -o none

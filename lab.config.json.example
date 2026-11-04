@@ -21,7 +21,7 @@
   "vmssVmSize":       "Standard_B1s",
   "appServiceRegion": "westeurope",
   "_appServiceRegionDocs": "Optional. Region for the App Service tier and its diagnostic storage and Event Hub. Change it when westeurope is restricted for your subscription (RequestDisallowedByAzure / location not accepting new customers).",
-  "_vmSizeDocs": "Optional. Override when ./scripts/preflight-check.ps1 reports a size as restricted for your subscription, for example Standard_B2ls_v2 / Standard_B2s_v2 / Standard_B2ts_v2.",
+  "_vmSizeDocs": "Optional. Override when ./scripts/preflight-check.ps1 reports a size as restricted for your subscription, for example Standard_B2ls_v2 or Standard_B2s_v2. aksNodeVmSize runs the AKS system pool and needs at least 2 vCPUs and 4 GiB (Standard_B2s_v2 works); Standard_B2ts_v2 (1 GiB) only fits vmSize and vmssVmSize.",
   "grafanaAdminObjectId": "",
   "_grafanaAdminObjectIdDocs": "Leave empty to grant Grafana Admin to the deploying identity. When a pipeline deploys, set the Microsoft Entra object ID of the human lab operator or group that must access Grafana, not an application client ID.",
   "deployWindowsVm":  true,

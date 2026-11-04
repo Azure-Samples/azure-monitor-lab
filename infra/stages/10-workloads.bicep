@@ -33,6 +33,9 @@ param aksNodeVmSize string = 'Standard_B2s'
 @description('AKS node count.')
 param aksNodeCount int = 1
 
+@description('Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription.')
+param appServiceRegion string = 'westeurope'
+
 @description('Optional Microsoft Entra object ID of the Grafana lab operator or group. Empty grants Grafana Admin to the deployment identity; set explicitly for CI deployments.')
 param grafanaAdminObjectId string = ''
 
@@ -68,10 +71,10 @@ var commonTags = {
   costCenter: 'demo'
 }
 
-// App Service is pinned to westeurope, independent of the lab region — the sponsored
-// lab subscriptions have no Basic (B1) App Service quota in northeurope, so the plan
-// would fail ARM preflight there. westeurope has unlimited Basic quota.
-var appServiceLocation = 'westeurope'
+// App Service runs in appServiceRegion, independent of the lab region. The default westeurope
+// is there because the sponsored lab subscriptions have no Basic (B1) App Service quota in
+// northeurope, so the plan would fail ARM preflight there.
+var appServiceLocation = appServiceRegion
 
 var workloadSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, 'snet-workload')
 

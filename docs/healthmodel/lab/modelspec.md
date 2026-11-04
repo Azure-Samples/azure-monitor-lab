@@ -112,8 +112,8 @@ Log signals on E_CONSOLE, E_LABOPS and E_SHOPAPI run on `law-amlab-appinsights-<
 
 | Signal | Entity | Kind and data source | Measurement | Degraded and unhealthy rule | Sources or gap | Verification | Status |
 |---|---|---|---|---|---|---|---|
-| failed-console-requests | E_CONSOLE | Log Analytics query | `AppRequests`, console paths (S3) plus empty path and `/index.html` (how the static UI is logged), `ResultCode` 5xx, count; 5 min | > 0, > 5 | S3, G1 | 0 (Healthy), S11 | done |
-| console-availability-failures | E_CONSOLE | Log Analytics query | `AppAvailabilityResults`, test `avail-amlab-appservice`, failed runs; 15 min | > 0, > 4 | S6, G1 | 0 (Healthy); 5 of 25 failed while the app was being published, S11 | done |
+| failed-console-requests | E_CONSOLE | Log Analytics query | `AppRequests`, console paths (S3) except `/api/operations/*` (Lab operations counts those, so its limited impact holds) plus empty path and `/index.html` (how the static UI is logged), `ResultCode` 5xx, count; 5 min | > 0, > 5 | S3, G1 | 0 (Healthy), S11 | done |
+| console-availability-failures | E_CONSOLE | Log Analytics query | `AppAvailabilityResults`, the lab's availability test (`avail-<prefix>-appservice`, or `test-<prefix>-app` from the staged guide; the deploy script finds it), failed runs; 15 min | > 0, > 4 | S6, G1 | 0 (Healthy); 5 of 25 failed while the app was being published, S11 | done |
 | failed-operation-requests | E_LABOPS | Log Analytics query | `AppRequests`, `/api/operations/*`, 5xx count; 15 min | > 0, > 2 | S3, G1 | 0 (Healthy), S11 | done |
 | failed-checkouts | E_SHOPAPI | Log Analytics query | `AppRequests`, `/api/checkout`, 5xx count (402 is a business outcome, not a failure); 5 min | > 0, > 2 | S3, G1 | 0 (Healthy); no checkout traffic at all, see completed-checkouts, S11 | done |
 | completed-checkouts | E_SHOPAPI | Log Analytics query | `AppEvents`, `CheckoutCompleted`, count; 15 min | < baseline (see verification), < 1 | S3, S5, G1 | 0 (Unhealthy): `nodeapp-otel`, the only automated caller of `/api/checkout`, crash-loops on an `@azure/monitor-opentelemetry` startup error, G9, S11 | done |

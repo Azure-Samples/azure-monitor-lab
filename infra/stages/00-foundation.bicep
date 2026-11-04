@@ -20,6 +20,9 @@ param enableLawReplication bool = false
 @description('Secondary region for LAW replication.')
 param lawReplicationLocation string = ''
 
+@description('Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription.')
+param appServiceRegion string = 'westeurope'
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var lawAppInsightsName = 'law-${namePrefix}-appinsights-${take(suffix, 5)}'
@@ -41,11 +44,11 @@ var commonTags = {
   costCenter: 'demo'
 }
 
-// App Service (Stage B) is pinned to westeurope (no Basic App Service quota in
-// northeurope on the sponsored subs). The Event Hub below is the App Service's
+// App Service (Stage B) runs in appServiceRegion, westeurope by default (no Basic App Service
+// quota in northeurope on the sponsored subs). The Event Hub below is the App Service's
 // diagnostic fan-out target, and Event Hub diag destinations MUST be in the same
-// region as the monitored resource — so it is co-located in westeurope too.
-var appServiceLocation = 'westeurope'
+// region as the monitored resource, so it is co-located with the App Service.
+var appServiceLocation = appServiceRegion
 
 module lawCentral '../modules/law.bicep' = {
   name: 'law-central'

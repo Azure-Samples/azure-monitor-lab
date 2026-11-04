@@ -18,6 +18,7 @@
 
 .PARAMETER SubscriptionId
   Subscription to deploy into. Defaults to .azure-target.json, then the active az subscription.
+  When .azure-target.json exists, any other subscription or tenant is blocked.
 #>
 [CmdletBinding()]
 param(
@@ -38,15 +39,20 @@ function Assert-NativeCommandSucceeded([string] $Operation) {
 
 # --- Subscription guardrail ----------------------------------------------------
 $targetFile = Join-Path $PSScriptRoot '..' '.azure-target.json'
-if (-not $SubscriptionId -and (Test-Path $targetFile)) {
-  $target = Get-Content -Raw $targetFile | ConvertFrom-Json
-  $SubscriptionId = $target.expectedSubscriptionId
+$target = if (Test-Path $targetFile) { Get-Content -Raw $targetFile | ConvertFrom-Json } else { $null }
+if ($target -and -not $SubscriptionId) { $SubscriptionId = $target.expectedSubscriptionId }
+if ($target -and $SubscriptionId -ne $target.expectedSubscriptionId) {
+  throw "BLOCKED: -SubscriptionId '$SubscriptionId' does not match .azure-target.json '$($target.expectedSubscriptionId)'."
 }
 if ($SubscriptionId) {
   az account set --subscription $SubscriptionId | Out-Null
   Assert-NativeCommandSucceeded "Selecting subscription '$SubscriptionId'"
 }
 $active = az account show --query "{id:id, name:name, tenantId:tenantId}" -o json | ConvertFrom-Json
+Assert-NativeCommandSucceeded 'Reading the active Azure subscription'
+if ($target -and $active.tenantId -ne $target.expectedTenantId) {
+  throw "BLOCKED: active tenant '$($active.tenantId)' does not match .azure-target.json '$($target.expectedTenantId)'."
+}
 Write-Info "Subscription: $($active.name) ($($active.id))"
 Write-Info "Tenant      : $($active.tenantId)"
 

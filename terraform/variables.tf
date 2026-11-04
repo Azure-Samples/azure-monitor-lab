@@ -70,6 +70,17 @@ variable "aks_node_vm_size" {
   default = "Standard_B2s"
 }
 
+variable "vmss_vm_size" {
+  type    = string
+  default = "Standard_B1s"
+}
+
+variable "app_service_region" {
+  type        = string
+  default     = "westeurope"
+  description = "Region for the App Service tier and its diagnostic storage and Event Hub."
+}
+
 variable "aks_node_count" {
   type    = number
   default = 1

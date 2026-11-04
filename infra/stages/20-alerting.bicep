@@ -31,6 +31,12 @@ param deployLinuxVm bool = true
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
+@description('Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription.')
+param appServiceRegion string = 'westeurope'
+
+@description('VMSS instance size (predictive autoscale demo).')
+param vmssVmSize string = 'Standard_B1s'
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var appInsightsName = 'appi-${namePrefix}'
@@ -49,9 +55,9 @@ var commonTags = {
   costCenter: 'demo'
 }
 
-// App Service (Stage B) is pinned to westeurope; metric alerts targeting the web app /
+// App Service (Stage B) runs in appServiceRegion; metric alerts targeting the web app /
 // plan must declare that region as targetResourceRegion.
-var appServiceLocation = 'westeurope'
+var appServiceLocation = appServiceRegion
 
 var workloadSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, 'snet-workload')
 
@@ -156,7 +162,7 @@ module vmss '../modules/vmss.bicep' = {
   params: {
     name: vmssName
     location: location
-    vmSize: 'Standard_B1s'
+    vmSize: vmssVmSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId

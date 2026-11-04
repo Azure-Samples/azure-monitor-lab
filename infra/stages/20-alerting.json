@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11093617091725445620"
+      "templateHash": "14717044818301918761"
     }
   },
   "parameters": {
@@ -71,6 +71,20 @@
       "metadata": {
         "description": "Tag every resource with this owner."
       }
+    },
+    "appServiceRegion": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription."
+      }
+    },
+    "vmssVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_B1s",
+      "metadata": {
+        "description": "VMSS instance size (predictive autoscale demo)."
+      }
     }
   },
   "variables": {
@@ -90,7 +104,7 @@
       "purpose": "azure-monitor-lab",
       "costCenter": "demo"
     },
-    "appServiceLocation": "westeurope",
+    "appServiceLocation": "[parameters('appServiceRegion')]",
     "workloadSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'snet-workload')]"
   },
   "resources": [
@@ -1504,7 +1518,7 @@
             "value": "[parameters('location')]"
           },
           "vmSize": {
-            "value": "Standard_B1s"
+            "value": "[parameters('vmssVmSize')]"
           },
           "adminUsername": {
             "value": "[parameters('vmAdminUsername')]"

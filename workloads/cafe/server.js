@@ -36,7 +36,10 @@ function request(client, options, body) {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+      res.on('error', reject);
+      res.on('close', () => res.complete || reject(new Error(`Response from ${options.hostname} was cut off`)));
     });
+    req.setTimeout(10000, () => req.destroy(new Error(`Request to ${options.hostname} timed out`)));
     req.on('error', reject);
     if (body) req.write(body);
     req.end();

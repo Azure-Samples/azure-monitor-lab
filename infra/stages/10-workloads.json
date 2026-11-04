@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "2243078696645991786"
+      "templateHash": "13786734595659015501"
     }
   },
   "parameters": {
@@ -80,6 +80,13 @@
         "description": "AKS node count."
       }
     },
+    "appServiceRegion": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription."
+      }
+    },
     "grafanaAdminObjectId": {
       "type": "string",
       "defaultValue": "",
@@ -121,7 +128,7 @@
       "purpose": "azure-monitor-lab",
       "costCenter": "demo"
     },
-    "appServiceLocation": "westeurope",
+    "appServiceLocation": "[parameters('appServiceRegion')]",
     "workloadSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'snet-workload')]"
   },
   "resources": [
