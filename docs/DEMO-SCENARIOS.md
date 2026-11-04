@@ -3422,7 +3422,7 @@ After the approved reverse swap, prove:
 
 ### Story
 
-An application is slow, returning errors, or unavailable. Instead of giving a general assistant an unbounded "fix it" request, use the repository's [application-troubleshooter agent](../.github/agents/application-troubleshooter.agent.md). It knows where to look: Application Insights request/dependency spans, exceptions and availability; Azure Monitor site and shared-plan metrics; Azure Activity Logs; and the deployed Azure SRE Agent through MCP. It gathers evidence before proposing one approval-gated mitigation.
+An application is slow, returning errors, or unavailable. Instead of giving a general assistant an unbounded "fix it" request, use the repository's [application-troubleshooter agent](../.github/agents/application-troubleshooter.agent.md). It first presents a numbered investigation plan and waits for your explicit approval before reading configuration, discovering resources, or querying telemetry. Once approved, it knows where to look: Application Insights request/dependency spans, exceptions and availability; Azure Monitor site and shared-plan metrics; Azure Activity Logs; and the deployed Azure SRE Agent through MCP. It gathers evidence before proposing one separately approval-gated mitigation.
 
 The agent is general-purpose within application incident response, not limited to the broken-slot demo. Its configuration contains no fixed subscription, hostname, model, or incident. It discovers the lab targets and distinguishes the Control Center from the customer application.
 
@@ -3472,7 +3472,9 @@ In **Copilot CLI**, use `/agent` and select **application-troubleshooter**, or i
 copilot --agent application-troubleshooter --prompt "Investigate the lab customer's application health for the last 30 minutes. Discover and confirm the targets, gather evidence, and propose next steps without changing Azure."
 ```
 
-The direct command starts an investigation; it is not approval for remediation. Supply a specific app and incident time when known. If several apps or subscriptions match, the agent must clarify the target.
+The direct command requests an investigation plan; it does not authorize the investigation or remediation. The complete numbered plan must appear as a normal chat message before a separate approval question, not only inside a collapsed tool summary or approval form. When another Copilot assistant delegates to this agent, the calling assistant must display the returned plan and collect approval before resuming the specialist. Review the numbered steps and explicitly approve starting the investigation in the conversation. If the invocation cannot collect a reply, continue in an interactive chat with the plan and your approval. SRE investigation-thread creation and any mitigation still require separate explicit consent. Supply a specific app and incident time when known. If several apps or subscriptions match, the agent must clarify the target.
+
+After updating the profile, start a new chat (and restart Copilot CLI if using it) so the updated instructions are loaded. The first response should show **Investigation plan (awaiting approval)** and five numbered steps before asking for approval. A combined symptom/onset/approval form without that visible plan does not satisfy this workflow.
 
 ### Starter prompts
 
