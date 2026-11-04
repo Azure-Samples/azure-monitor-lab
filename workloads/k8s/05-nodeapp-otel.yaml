@@ -26,14 +26,15 @@ data:
       "version": "1.0.0",
       "private": true,
       "dependencies": {
-        "@azure/monitor-opentelemetry": "^1.10.0",
-        "express": "^4.21.0",
-        "axios": "^1.7.7"
+        "@azure/monitor-opentelemetry": "1.20.1",
+        "express": "4.22.3",
+        "axios": "1.21.0"
       }
     }
   app.js: |
     // Single-line opt-in: enable Azure Monitor + auto-instrumentation BEFORE
-    // any other module is loaded. Connection string read from env.
+    // any other module is loaded. Connection string and resource attributes
+    // (OTEL_RESOURCE_ATTRIBUTES) are read from env.
     const { useAzureMonitor } = require("@azure/monitor-opentelemetry");
     useAzureMonitor({
       azureMonitorExporterOptions: {
@@ -41,13 +42,6 @@ data:
       },
       samplingRatio: 1.0,
       enableLiveMetrics: true,
-      resource: {
-        attributes: {
-          "service.name":      "nodeapp-otel-aks",
-          "service.namespace": "demo",
-          "deployment.environment": "lab",
-        },
-      },
     });
 
     const express = require("express");
@@ -112,7 +106,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: node:20-alpine
+          image: node:22-alpine
           workingDir: /app
           command: ["/bin/sh", "-lc"]
           args:
@@ -128,11 +122,13 @@ spec:
               value: "__APPI_CONN_STR__"
             - name: APP_SERVICE_URL
               value: "__APP_SERVICE_URL__"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.name=nodeapp-otel-aks,service.namespace=demo,deployment.environment=lab"
           ports:
             - containerPort: 8080
           resources:
             requests:
-              cpu: "50m"
+              cpu: "20m"
               memory: "128Mi"
             limits:
               cpu: "200m"
