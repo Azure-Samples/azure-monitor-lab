@@ -4,9 +4,16 @@ $repo = Join-Path $root 'repo'
 $scriptDirectory = Join-Path $repo 'scripts'
 $null = New-Item -ItemType Directory -Path $scriptDirectory -Force
 $source = Split-Path $PSScriptRoot -Parent
-foreach ($name in @('invoke-lab-operation.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1')) {
+foreach ($name in @('invoke-lab-operation.ps1', 'slot-health.ps1', 'start-the-lab.ps1', 'stop-the-lab.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1', 'start-ramp.ps1', 'simulate-high-cpu.ps1', 'send-custom-logs.ps1', 'send-release-annotation.ps1', 'trigger-broken-slot.ps1', 'rollback-broken-slot.ps1', 'set-customer-dependency-fault.ps1', 'customer-dependency-helpers.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source $name) -Destination $scriptDirectory
 }
+Copy-Item -LiteralPath (Join-Path $source 'app-insights-target.ps1') -Destination $scriptDirectory
+@'
+[CmdletBinding()]
+param([string] $BaseUrl, [int] $Users, [int] $Concurrency, [int] $RepeatUsers)
+@{ BaseUrl = $BaseUrl; Users = $Users; Concurrency = $Concurrency; RepeatUsers = $RepeatUsers } |
+  ConvertTo-Json | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'usage-parameters.json')
+'@ | Set-Content -LiteralPath (Join-Path $scriptDirectory 'generate-usage-traffic.ps1')
 $workloads = Join-Path $repo 'workloads/k8s'
 $null = New-Item -ItemType Directory -Path $workloads -Force
 foreach ($name in @('02-loadgen.yaml', '03-loadgen-ramp.yaml')) { Copy-Item -LiteralPath (Join-Path $source "../workloads/k8s/$name") -Destination $workloads }
@@ -15,12 +22,19 @@ $fixture = @{
   Calls = [Collections.Generic.List[object]]::new(); Http = [Collections.Generic.List[object]]::new(); Credentials = 0; Conversions = 0
   BadTenant = $false; DenyKubernetes = $false; FailVmStart = $false; FailKubernetes = $false; ObservedTarget = $false
   FailLogin = $false; VmssStopped = $false; AllResourcesStopped = $false; FailVmInventory = $false
+  WebAppFailures = 0; CustomerFailures = 0; Sleeps = [Collections.Generic.List[int]]::new()
+  ProductionStatus = 200; BrokenStatus = 503; SlotSwaps = 0; FailSlotSwap = $false
   CpuMode = $false; CpuMissingWindows = $false; CpuExtraVm = $false; CpuStoppedWindows = $false; CpuAgentUnavailable = $false
   CpuWrongScope = $false; CpuSecondSubmissionFails = $false; CpuCommands = [Collections.Generic.List[object]]::new()
+  DependenciesEnabled = $true; FailFaultRestart = $false; CatalogueMode = 'valid'
+  AppInsightsMode = 'dual'
+  LoadConfigs = [Collections.Generic.List[string]]::new()
 }
 $envValues = @{
   LAB_RUNNER_MODE = 'ContainerAppsJob'; IDENTITY_ENDPOINT = 'http://localhost/identity'; IDENTITY_HEADER = 'test-header'; AZURE_CLIENT_ID = [guid]::NewGuid().ToString()
   LAB_SUBSCRIPTION_ID = $fixture.Subscription; LAB_TENANT_ID = $fixture.Tenant; LAB_RESOURCE_GROUP = 'test-rg'
+  LAB_WEB_APP_NAME = 'app-amlab-test'; LAB_CUSTOMER_WEB_APP_NAME = 'app-amlab-test-customer'
+  LAB_CUSTOMER_WORKER_NAME = 'func-amlab-test-orders'
   RUNNER_TEMP = $root; AZURE_CORE_OUTPUT = 'none'; KUBECONFIG = $env:KUBECONFIG; TEMP = $env:TEMP; TMP = $env:TMP; PATH = $env:PATH
 }
 $previous = @{}
@@ -125,26 +139,73 @@ function Invoke-FakeAzure {
       return
     }
     'webapp list' {
-      if (($args -join ' ') -match 'defaultHostName') { return 'app-test.azurewebsites.net' }
+      if ($fixture.WebAppFailures -gt 0) { $fixture.WebAppFailures--; $global:LASTEXITCODE = 4; return 'private diagnostic output' }
+      if (($args -join ' ') -match 'defaultHostName' -and $args -contains 'tsv') { return 'app-test.azurewebsites.net' }
       if (($args -join ' ') -match '\[0\]\.name') { return 'app-test' }
       if ($fixture.AllResourcesStopped) { return '[{"name":"app-test","state":"Stopped"}]' }
-      return '[{"name":"app-test","state":"Running"}]'
+      return '[{"name":"app-test","state":"Running","defaultHostName":"app-test.azurewebsites.net"}]'
     }
-    'webapp show' { return 'app-test.azurewebsites.net' }
+    'resource show' {
+      if ($args -notcontains 'Microsoft.Web/sites') {
+        if ($args -notcontains 'properties' -or $args -notcontains '2023-03-11') { throw 'Custom-log discovery must use core ARM properties.' }
+        if ($args -contains 'Microsoft.Insights/dataCollectionEndpoints') { return '{"logsIngestion":{"endpoint":"https://test.ingest.monitor.azure.com"}}' }
+        return '{"immutableId":"dcr-test"}'
+      }
+      if ($args -notcontains '2023-12-01' -or ($args -join ' ') -notmatch 'properties\.defaultHostName') { throw 'Web App discovery must use metadata-only ARM reads.' }
+      if ($fixture.WebAppFailures -gt 0) { $fixture.WebAppFailures--; $global:LASTEXITCODE = 4; return 'private diagnostic output' }
+      $nameIndex = [Array]::IndexOf($args, '--name')
+      if ($nameIndex -lt 0) { throw 'Web App discovery must name an explicit target.' }
+      $name = $args[$nameIndex + 1]
+      return @{ name = $name; defaultHostName = "$name.azurewebsites.net"; state = 'Running' } | ConvertTo-Json
+    }
     'webapp stop' { return }
+    'webapp config' {
+      if (($args[2..3] -join ' ') -eq 'appsettings list') { return $(if ($fixture.DependenciesEnabled) { '["true"]' } else { '["false"]' }) }
+      if (($args[2..3] -join ' ') -eq 'appsettings set') { return }
+      throw 'Unexpected customer settings command.'
+    }
+    'functionapp config' { return }
+    'webapp restart' { return }
+    'functionapp restart' {
+      if ($fixture.FailFaultRestart) { $global:LASTEXITCODE = 9; return 'private diagnostic output' }
+      return
+    }
+    'webapp deployment' {
+      if (($args[2..3] -join ' ') -eq 'slot swap') {
+        if ($args[[Array]::IndexOf($args, '--name') + 1] -ne $env:LAB_CUSTOMER_WEB_APP_NAME -or
+            $args[[Array]::IndexOf($args, '--slot') + 1] -ne 'broken' -or
+            $args[[Array]::IndexOf($args, '--target-slot') + 1] -ne 'production') { throw 'Slot swap escaped the configured customer target.' }
+        $fixture.SlotSwaps++
+        if ($fixture.FailSlotSwap) { $global:LASTEXITCODE = 1; return }
+        $fixture.ProductionStatus = 200
+        $fixture.BrokenStatus = 503
+        return
+      }
+      if (($args[2..3] -join ' ') -ne 'slot list') { throw 'Access-only checks must not swap slots.' }
+      return '[{"name":"broken","defaultHostName":"app-amlab-test-customer-broken.azurewebsites.net"}]'
+    }
     'resource list' {
       if ($args -contains 'Microsoft.Insights/components') {
-        if ($args -contains '[0].name') { return 'appi-test' }
-        return '[{"name":"appi-test"}]'
+        if ($args -contains '[0].name') { throw 'Annotation discovery must not choose the first component.' }
+        $core = @{ name = 'appi-amlab-test'; tags = @{} }
+        $customer = @{ name = 'appi-amlab-test-customer'; tags = @{ 'amlab-component' = 'customer-web-app' } }
+        $components = switch ($fixture.AppInsightsMode) {
+          'dual' { @($customer, $core) }
+          'reversed' { @($core, $customer) }
+          'single' { @($core) }
+          'missing' { @($customer) }
+          'empty' { @() }
+          'ambiguous' { @($core, @{ name = 'appi-other'; tags = @{} }) }
+          'duplicate' { @($core, $core) }
+          'tagged-customer' { @(@{ name = $core.name; tags = $customer.tags }) }
+          'failure' { $global:LASTEXITCODE = 9; return 'private diagnostic output' }
+          default { throw 'Unexpected Application Insights fixture.' }
+        }
+        return ConvertTo-Json -InputObject @($components) -Depth 4
       }
       if ($args -contains 'Microsoft.Insights/dataCollectionRules') { return '[{"name":"dcr-customlogs"}]' }
       if ($args -contains 'Microsoft.Insights/dataCollectionEndpoints') { return '[{"name":"dce-customlogs"}]' }
       throw 'Unexpected resource type.'
-    }
-    'resource show' {
-      if ($args -notcontains 'properties' -or $args -notcontains '2023-03-11') { throw 'Custom-log discovery must use core ARM properties.' }
-      if ($args -contains 'Microsoft.Insights/dataCollectionEndpoints') { return '{"logsIngestion":{"endpoint":"https://test.ingest.monitor.azure.com"}}' }
-      return '{"immutableId":"dcr-test"}'
     }
     default { throw "Unexpected command: $command" }
   }
@@ -160,24 +221,139 @@ function Invoke-FakeKubectl {
   if ($fixture.Credentials -ne $fixture.Conversions) { throw 'A renewed kubeconfig was not converted for noninteractive login.' }
   if ($args -notcontains '--context' -or $args -notcontains '--kubeconfig' -or $args -notcontains $env:KUBECONFIG) { throw 'Kubernetes scope not isolated.' }
   if ($args[0] -eq 'auth') { return $(if ($fixture.DenyKubernetes) { 'no' } else { 'yes' }) }
+  if ($args -contains 'apply' -and $args -contains '-f') {
+    $fixture.LoadConfigs.Add((Get-Content -LiteralPath $args[[Array]::IndexOf($args, '-f') + 1] -Raw))
+  }
   if ($fixture.FailKubernetes -and $args -contains 'set') { $global:LASTEXITCODE = 8; return 'private Kubernetes diagnostic' }
   return 'ok'
 }
 function Invoke-RestMethod {
-  param($Method, $Uri, $Headers, $Body)
+  param($Method, $Uri, $Headers, $Body, $MaximumRedirection, $TimeoutSec)
+  if ($Uri -eq 'https://app-amlab-test-customer.azurewebsites.net/api/customer/products') {
+    $products = switch ($fixture.CatalogueMode) {
+      'valid' { @(@{id='monitoring-starter'}, @{id='agent-operations'}, @{id='sre-command'}) }
+      'short' { @(@{id='monitoring-starter'}, @{id='agent-operations'}) }
+      'extra' { @(@{id='monitoring-starter'}, @{id='agent-operations'}, @{id='sre-command'}, @{id='unexpected'}) }
+      'object' { @{Count=3} }
+      default { throw 'Unexpected catalogue fixture.' }
+    }
+    Write-Output -NoEnumerate $products
+    return
+  }
   if (-not $Uri.StartsWith("https://management.azure.com/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg/")) { throw 'Annotation target escaped the lab.' }
   $fixture.Http.Add(@{ Method = $Method; Uri = $Uri; Body = $Body | ConvertFrom-Json })
   return @{}
 }
 function Invoke-WebRequest {
-  param($Method, $Uri, $Headers, $Body)
+  param($Method, $Uri, $Headers, $Body, $MaximumRedirection, $TimeoutSec, [switch] $SkipHttpErrorCheck)
+  if ($Uri -eq 'https://app-amlab-test-customer.azurewebsites.net/healthz') { return @{ StatusCode = $fixture.ProductionStatus } }
+  if ($Uri -eq 'https://app-amlab-test-customer-broken.azurewebsites.net/healthz') { return @{ StatusCode = $fixture.BrokenStatus } }
+  if ($Method -eq 'Get' -and $Uri -eq 'https://app-amlab-test-customer.azurewebsites.net/customer/') {
+    if ($fixture.CustomerFailures -gt 0) { $fixture.CustomerFailures--; return @{ StatusCode = 503 } }
+    $fixture.Http.Add(@{ Method = $Method; Uri = $Uri })
+    return @{ StatusCode = 200 }
+  }
   if (-not $Uri.StartsWith('https://test.ingest.monitor.azure.com/')) { throw 'Unexpected ingestion endpoint.' }
   $fixture.Http.Add(@{ Method = $Method; Uri = $Uri; Body = $Body | ConvertFrom-Json })
   return @{ StatusCode = 204 }
 }
-function Start-Sleep { throw 'Offline fixture should complete without polling.' }
+function Start-Sleep {
+  param([int] $Seconds)
+  $fixture.Sleeps.Add($Seconds)
+}
+
+function az { Invoke-FakeAzure @args --subscription $fixture.Subscription }
 
 try {
+  foreach ($mode in @('dual', 'reversed', 'single', 'ambiguous')) {
+    $fixture.AppInsightsMode = $mode
+    $before = $fixture.Calls.Count
+    $httpBefore = $fixture.Http.Count
+    & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation annotation -Name 'Target check' -Category Deployment -CheckAccessOnly | Out-Null
+    if ($fixture.Http.Count -ne $httpBefore -or @($fixture.Calls | Select-Object -Skip $before | Where-Object { ($_.Arguments -join ' ') -match 'get-access-token|deallocate|restart|slot swap' }).Count) {
+      throw 'Annotation access-only checks must not write or acquire an annotation token.'
+    }
+  }
+  foreach ($mode in @('missing', 'empty', 'duplicate', 'tagged-customer', 'failure')) {
+    $fixture.AppInsightsMode = $mode
+    foreach ($operation in @('annotation', 'break', 'restore')) {
+      $before = $fixture.Calls.Count
+      $httpBefore = $fixture.Http.Count
+      $arguments = @{} + $parameters
+      $arguments.Operation = $operation
+      if ($operation -eq 'annotation') { $arguments.Name = 'Target check'; $arguments.Category = 'Deployment' }
+      $rejected = $false
+      try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @arguments | Out-Null }
+      catch {
+        $rejected = $true
+        if ($_.Exception.Message -notmatch 'annotation preflight' -or $_.Exception.Message -match 'private diagnostic') { throw 'Annotation targeting failure must preserve safe preflight diagnostics.' }
+      }
+      if (-not $rejected -or $fixture.Http.Count -ne $httpBefore -or
+          @($fixture.Calls | Select-Object -Skip $before | Where-Object { ($_.Arguments -join ' ') -match 'vm deallocate|vm start|set image|create job\b|get-access-token' }).Count) {
+        throw 'Invalid annotation target must fail before a disruptive operation or annotation write.'
+      }
+    }
+  }
+  $env:LAB_WEB_APP_NAME = ''
+  . (Join-Path $scriptDirectory 'app-insights-target.ps1')
+  foreach ($mode in @('dual', 'reversed', 'single')) {
+    $fixture.AppInsightsMode = $mode
+    if ((Resolve-LabAppInsightsName -ResourceGroup 'test-rg') -cne 'appi-amlab-test') { throw 'Standalone core discovery changed with inventory order.' }
+  }
+  $fixture.AppInsightsMode = 'ambiguous'
+  foreach ($script in @('send-release-annotation.ps1', 'break-the-lab.ps1', 'restore-the-lab.ps1')) {
+    $before = $fixture.Calls.Count
+    $httpBefore = $fixture.Http.Count
+    $rejected = $false
+    try { & (Join-Path $scriptDirectory $script) -ResourceGroup 'test-rg' | Out-Null }
+    catch { $rejected = $_.Exception.Message -match 'not uniquely resolved' }
+    if (-not $rejected -or $fixture.Http.Count -ne $httpBefore -or $fixture.Calls.Count -ne $before + 1) {
+      throw 'Ambiguous standalone targeting must fail after only metadata discovery, before lab changes.'
+    }
+  }
+  if ((Resolve-LabAppInsightsName -ResourceGroup 'test-rg' -AppInsightsName 'appi-amlab-test') -cne 'appi-amlab-test') { throw 'Explicit standalone targeting failed.' }
+  $rejected = $false
+  try { Resolve-LabAppInsightsName -ResourceGroup 'test-rg' -WebAppName 'app-amlab-test' -AppInsightsName 'appi-other' | Out-Null }
+  catch { $rejected = $_.Exception.Message -match 'does not match' }
+  if (-not $rejected) { throw 'Explicit annotation target must not override the configured Control Center.' }
+  $env:LAB_WEB_APP_NAME = $envValues.LAB_WEB_APP_NAME
+  $fixture.AppInsightsMode = 'dual'
+  $before = $fixture.Calls.Count
+  & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-worker-failure -CheckAccessOnly | Out-Null
+  if (@($fixture.Calls | Select-Object -Skip $before | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' }).Count) { throw 'Fault access-only preflight performed writes.' }
+  foreach ($operation in @('customer-sql-delay', 'customer-worker-failure', 'customer-recover')) {
+    & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation $operation | Out-Null
+  }
+  $faultWrites = @($fixture.Calls | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' })
+  if (@($faultWrites | Where-Object { $_.Arguments -contains 'app-amlab-test' }).Count -or
+      @($faultWrites | Where-Object { ($_.Arguments -join ' ') -match 'CustomerDependencies__SqlDelaySeconds=3' }).Count -ne 1 -or
+      @($faultWrites | Where-Object { ($_.Arguments -join ' ') -match 'CustomerDependencies__FailProcessing=true' }).Count -ne 1) { throw 'Customer fault writes escaped the fixed parameters or dedicated targets.' }
+  $recoveryOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-recover | Out-String
+  if ($recoveryOutput -notmatch 'Customer recovery verified: HTTP 200 and three SQL catalogue products.' -or
+      $recoveryOutput -notmatch "Approved action 'customer-recover' completed") {
+    throw 'Recovery must accept the non-enumerated JSON array returned by native Invoke-RestMethod.'
+  }
+  foreach ($mode in @('short', 'extra', 'object')) {
+    $fixture.CatalogueMode = $mode
+    $rejected = $false
+    try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-recover | Out-Null }
+    catch { $rejected = $_.Exception.Message -match 'customer recovery verification' }
+    if (-not $rejected) { throw "Recovery accepted an invalid $mode catalogue response." }
+  }
+  $fixture.CatalogueMode = 'valid'
+  $fixture.DependenciesEnabled = $false
+  $before = @($fixture.Calls | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' }).Count
+  $rejected = $false
+  try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-sql-delay | Out-Null } catch { $rejected = $true }
+  if (-not $rejected -or @($fixture.Calls | Where-Object { ($_.Arguments -join ' ') -match 'appsettings set|restart' }).Count -ne $before) { throw 'Disabled real dependencies did not reject the fault before writes.' }
+  $fixture.DependenciesEnabled = $true
+  $fixture.FailFaultRestart = $true
+  $rejected = $false
+  try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation customer-worker-failure | Out-Null } catch { $rejected = $_.Exception.Message -match 'approved script execution' }
+  if (-not $rejected) { throw 'Partial fault restart failure was reported as success.' }
+  $fixture.FailFaultRestart = $false
+  $fixture.Http.Clear()
+  $fixture.Calls.Clear()
   $fixture.AllResourcesStopped = $true
   $accessOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation start -CheckAccessOnly | Out-String
   $allowedReads = @('login --identity', 'account set', 'account show', 'group exists', 'vm list', 'vmss list', 'vmss list-instances', 'aks list', 'webapp list')
@@ -233,20 +409,87 @@ try {
   if (@($fixture.CpuCommands | Where-Object { Test-Path -LiteralPath $_.Path }).Count) { throw 'Failed guest submission leaked temporary files.' }
   $fixture.CpuSecondSubmissionFails = $false
   $fixture.CpuMode = $false
-  foreach ($operation in @('start', 'stop', 'break', 'restore', 'ramp', 'logs', 'annotation')) {
+  $fixture.WebAppFailures = 1
+  $fixture.CustomerFailures = 1
+  $retryStart = $fixture.Calls.Count
+  $retryOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation usage -Count 1 -Concurrency 1 -CheckAccessOnly 6>&1 | Out-String
+  if ($retryOutput -notmatch '"phase":"customer web app discovery","state":"retrying"' -or
+      $retryOutput -notmatch '"phase":"customer endpoint readiness","state":"retrying"' -or
+      @($fixture.Calls | Select-Object -Skip $retryStart | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'resource show' }).Count -ne 2 -or
+      @($fixture.Http | Where-Object { $_.Method -eq 'Get' }).Count -ne 1 -or
+      ($fixture.Sleeps -join ',') -notmatch '2,2') {
+    throw 'Customer preflight did not retry transient read-only failures with safe phase diagnostics.'
+  }
+  $slotReadStart = $fixture.Calls.Count
+  $slotOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation slot-failure -CheckAccessOnly 6>&1 | Out-String
+  if ($slotOutput -notmatch 'Runner prerequisites verified' -or
+      @($fixture.Calls | Select-Object -Skip $slotReadStart | Where-Object { ($_.Arguments[0..1] -join ' ') -notin @('login --identity', 'account set', 'account show', 'group exists', 'resource show', 'webapp deployment') }).Count) {
+    throw 'Armed customer slot access verification must use only scoped reads.'
+  }
+  foreach ($statuses in @(@(200, 503), @(503, 200))) {
+    $fixture.ProductionStatus = $statuses[0]
+    $fixture.BrokenStatus = $statuses[1]
+    $slotOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation slot-restore -CheckAccessOnly | Out-String
+    if ($slotOutput -notmatch 'Runner prerequisites verified' -or $fixture.SlotSwaps -ne 0) { throw 'Working-slot access-only mode must never swap.' }
+  }
+  foreach ($statuses in @(@(200, 200), @(503, 503), @(404, 200))) {
+    $fixture.ProductionStatus = $statuses[0]
+    $fixture.BrokenStatus = $statuses[1]
+    $rejected = $false
+    try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation slot-restore | Out-Null } catch { $rejected = $true }
+    if (-not $rejected -or $fixture.SlotSwaps -ne 0) { throw 'Working-slot changes must reject ambiguous state without swapping.' }
+  }
+  $fixture.ProductionStatus = 503
+  $fixture.BrokenStatus = 200
+  $slotOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation slot-restore | Out-String
+  if ($slotOutput -notmatch "Approved action 'slot-restore' completed" -or $fixture.SlotSwaps -ne 1) { throw 'Working-slot recovery must execute exactly one scoped rollback.' }
+  & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation slot-restore | Out-Null
+  if ($fixture.SlotSwaps -ne 1) { throw 'Already healthy production must not be swapped.' }
+  $fixture.ProductionStatus = 503
+  $fixture.BrokenStatus = 200
+  $fixture.FailSlotSwap = $true
+  $rejected = $false
+  try { & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation slot-restore | Out-Null } catch { $rejected = $true }
+  if (-not $rejected -or $fixture.SlotSwaps -ne 2) { throw 'Failed rollback must be surfaced without retry.' }
+  $fixture.FailSlotSwap = $false
+  $fixture.ProductionStatus = 200
+  $fixture.BrokenStatus = 503
+  foreach ($operation in @('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'logs', 'annotation')) {
     $arguments = $parameters.Clone()
+    $webAppShowCalls = @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'resource show' -and $_.Arguments -contains 'Microsoft.Web/sites' }).Count
     $arguments.Operation = $operation
     if ($operation -eq 'logs') { $arguments.Count = 12 }
+    if ($operation -eq 'usage') { $arguments.Count = 24; $arguments.Concurrency = 4; $arguments.RepeatUsers = 6 }
     if ($operation -eq 'annotation') { $arguments.Name = 'Release 1.2'; $arguments.Category = 'Incident' }
     try { $output = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @arguments 6>&1 | Out-String }
     catch { throw "Offline $operation failed: $(($Error | Select-Object -First 4 | ForEach-Object { $_.Exception.Message }) -join ' / ')" }
     if ($output -notmatch "Approved action '$operation' completed") { throw "The $operation script was not completed." }
+    if ($operation -eq 'ramp') {
+      $rampWebAppCalls = @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq 'resource show' -and $_.Arguments -contains 'Microsoft.Web/sites' } | Select-Object -Skip $webAppShowCalls)
+      if ($rampWebAppCalls.Count -ne 1 -or
+          $rampWebAppCalls[0].Arguments[[Array]::IndexOf($rampWebAppCalls[0].Arguments, '--name') + 1] -ne $env:LAB_WEB_APP_NAME -or
+          @($fixture.Calls | Where-Object { ($_.Arguments[0..2] -join ' ') -eq 'webapp deployment list-publishing-profiles' }).Count -ne 0) {
+        throw 'Ramp target discovery must read the configured Control Center Web App metadata without requesting publishing-profile credentials.'
+      }
+    }
     if ($output -match 'fake-session-token|private diagnostic') { throw 'Raw command output leaked.' }
     if (Test-Path (Join-Path $repo '.azure-target.json')) { throw 'Runner target file was not cleaned up.' }
   }
   if ($fixture.Credentials -ne $fixture.Conversions -or $fixture.Credentials -lt 4) { throw 'Repeated AKS credentials were not isolated and converted.' }
   if (@($fixture.Http | Where-Object { $_.Method -eq 'POST' })[0].Body.Count -ne 12) { throw 'Custom log count was not passed to the existing script.' }
+  $usageParameters = Get-Content -LiteralPath (Join-Path $root 'usage-parameters.json') -Raw | ConvertFrom-Json
+  if ($usageParameters.BaseUrl -ne 'https://app-amlab-test-customer.azurewebsites.net' -or $usageParameters.Users -ne 24 -or $usageParameters.Concurrency -ne 4 -or $usageParameters.RepeatUsers -ne 6) {
+    throw 'Customer traffic parameters were not passed to the bounded browser generator.'
+  }
   if ($fixture.Http[-1].Body.AnnotationName -ne 'Release 1.2') { throw 'Marker parameters were not passed to the existing script.' }
+  $annotations = @($fixture.Http | Where-Object { $_.Uri -like '*Annotations?*' })
+  if ($annotations.Count -ne 3 -or @($annotations | Where-Object { $_.Uri -notlike '*/components/appi-amlab-test/Annotations?*' }).Count) {
+    throw 'Break, restore, and release markers must all target the exact Control Center component with customer telemetry present.'
+  }
+  if (@($fixture.LoadConfigs | Where-Object { $_ -match 'https://app-amlab-test\.azurewebsites\.net' }).Count -lt 2 -or
+      @($fixture.LoadConfigs | Where-Object { $_ -match 'app-amlab-test-customer' }).Count) {
+    throw 'Break and restore load-generator configuration must target the Control Center, not the customer app.'
+  }
   if (@($fixture.Calls | Where-Object { $_.Tool -eq 'az' -and ($_.Arguments[0..1] -join ' ') -eq 'vmss start' }).Count) { throw 'An already-running VMSS was started.' }
   $fixture.VmssStopped = $true
   & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation start | Out-Null
@@ -275,7 +518,7 @@ try {
       throw "Stop Lab did not issue '$expectedStop'."
     }
   }
-  Write-Output 'PASS: all eight scripts execute only through fake scoped commands; Stop Lab cost controls, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls or CPU load executed.'
+  Write-Output 'PASS: scoped runner scripts, working-slot recovery/no-op/ambiguous-state guards, Stop Lab cost controls, bounded customer traffic, read-only preflight retries, safe phase diagnostics, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls, browser traffic, or CPU load executed.'
 } finally {
   foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name]) }
   if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force }

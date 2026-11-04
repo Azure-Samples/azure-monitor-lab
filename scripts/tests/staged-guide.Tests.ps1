@@ -114,6 +114,13 @@ try {
   }
   $originalInputs = @($sub, $tenant, $rg, $sourceParameters) | ConvertTo-Json -Depth 30 -Compress
   . ([scriptblock]::Create($helperImport))
+  $recoveryImplementation = ${function:Invoke-LabDeployment}
+  function Invoke-LabDeployment {
+    param($Arguments, $SubscriptionId, $ResourceGroup, $DeploymentName)
+    $fixture.RecoveryCalls++
+    & $recoveryImplementation -Arguments $Arguments -SubscriptionId $SubscriptionId `
+      -ResourceGroup $ResourceGroup -DeploymentName $DeploymentName
+  }
   if ($fixture.AccountChecks -ne 0 -or $fixture.Events.Count -ne 0 -or
       (@($sub, $tenant, $rg, $sourceParameters) | ConvertTo-Json -Depth 30 -Compress) -cne $originalInputs) {
     throw 'Reloading stage helpers must not make Azure calls or change existing deployment inputs.'
@@ -137,8 +144,11 @@ try {
     $fixture.Stage = $stage
     $fixture.Events.Clear()
     $fixture.AccountChecks = 0
+    $fixture.RecoveryCalls = 0
     Invoke-LabStage -Stage $stage
     if (($fixture.Events -join ',') -ne 'what-if,create' -or $fixture.AccountChecks -ne 2) { throw 'Every stage must preview, confirm, and reverify account before deployment.' }
+    $expectedRecoveryCalls = if ($stage -eq '10-workloads') { 1 } else { 0 }
+    if ($fixture.RecoveryCalls -ne $expectedRecoveryCalls) { throw 'Only Stage B must use customer-slot deployment recovery.' }
   }
   $fixture.Stage = '50-ai'
   $fixture.Overrides = @{ enableHealthModel = $true; routerModelVersion = 'offline-version' }

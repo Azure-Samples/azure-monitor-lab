@@ -26,6 +26,8 @@ param subnetId string
 @description('Resource tags.')
 param tags object = {}
 
+var useConfidentialVm = startsWith(toLower(vmSize), 'standard_ec') && (endsWith(toLower(vmSize), 'as_v5') || endsWith(toLower(vmSize), 'ads_v5'))
+
 // ---------------------------------------------------------------------------------
 // VMSS — Ubuntu 22.04, single instance, Flexible orchestration
 // ---------------------------------------------------------------------------------
@@ -42,7 +44,7 @@ resource vmss 'Microsoft.Compute/virtualMachineScaleSets@2024-03-01' = {
   properties: {
     overprovision: false
     upgradePolicy: { mode: 'Automatic' }
-    virtualMachineProfile: {
+    virtualMachineProfile: union({
       osProfile: {
         computerNamePrefix: take(name, 9)
         adminUsername: adminUsername
@@ -55,13 +57,18 @@ resource vmss 'Microsoft.Compute/virtualMachineScaleSets@2024-03-01' = {
       storageProfile: {
         imageReference: {
           publisher: 'Canonical'
-          offer: '0001-com-ubuntu-server-jammy'
-          sku: '22_04-lts-gen2'
+          offer: useConfidentialVm ? '0001-com-ubuntu-confidential-vm-jammy' : '0001-com-ubuntu-server-jammy'
+          sku: useConfidentialVm ? '22_04-lts-cvm' : '22_04-lts-gen2'
           version: 'latest'
         }
         osDisk: {
           createOption: 'FromImage'
-          managedDisk: { storageAccountType: 'Standard_LRS' }
+          managedDisk: {
+            storageAccountType: 'Standard_LRS'
+            securityProfile: useConfidentialVm ? {
+              securityEncryptionType: 'VMGuestStateOnly'
+            } : null
+          }
         }
       }
       networkProfile: {
@@ -83,9 +90,17 @@ resource vmss 'Microsoft.Compute/virtualMachineScaleSets@2024-03-01' = {
           }
         ]
       }
+    }, useConfidentialVm ? {
+        securityProfile: {
+          securityType: 'ConfidentialVM'
+          uefiSettings: {
+            secureBootEnabled: true
+            vTpmEnabled: true
+          }
+        }
+      } : {})
     }
   }
-}
 
 // ---------------------------------------------------------------------------------
 // Autoscale setting with reactive rules + predictive autoscale (ForecastOnly)

@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region of the App Service resources targeted by alerts.')
+param appServiceLocation string = 'westeurope'
+
 @description('Short prefix used to build resource names.')
 @minLength(3)
 @maxLength(8)
@@ -22,29 +25,30 @@ param vmAdminUsername string = 'azureuser'
 @secure()
 param vmAdminPassword string
 
+@description('Predictive-autoscale VMSS instance size.')
+param vmssSize string = 'Standard_B1s'
+
 @description('Deploy the Windows demo VM.')
 param deployWindowsVm bool = true
 
 @description('Deploy the Linux demo VM.')
 param deployLinuxVm bool = true
 
+@description('Enable alerts for the isolated customer Web App slot-recovery scenario.')
+param enableSlotFailureScenario bool = false
+
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
-@description('Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription.')
-param appServiceRegion string = 'westeurope'
-
-@description('VMSS instance size (predictive autoscale demo).')
-param vmssVmSize string = 'Standard_B1s'
-
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var linuxVmName = 'vm-${namePrefix}-lin'
 var windowsVmName = 'vmwin${take(suffix, 4)}'
 var aksName = 'aks-${namePrefix}'
 var appPlanName = 'plan-${namePrefix}'
 var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
+var customerWebAppName = 'app-${namePrefix}-${take(suffix, 5)}-customer'
 var actionGroupName = 'ag-${namePrefix}-email'
 var vmssName = 'vmss-${namePrefix}'
 var vnetName = 'vnet-${namePrefix}'
@@ -54,10 +58,6 @@ var commonTags = {
   purpose: 'azure-monitor-lab'
   costCenter: 'demo'
 }
-
-// App Service (Stage B) runs in appServiceRegion; metric alerts targeting the web app /
-// plan must declare that region as targetResourceRegion.
-var appServiceLocation = appServiceRegion
 
 var workloadSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, 'snet-workload')
 
@@ -77,6 +77,10 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' existing = {
   name: webAppName
 }
 
+resource customerWebApp 'Microsoft.Web/sites@2023-12-01' existing = if (enableSlotFailureScenario) {
+  name: customerWebAppName
+}
+
 resource appPlan 'Microsoft.Web/serverfarms@2023-12-01' existing = {
   name: appPlanName
 }
@@ -94,6 +98,8 @@ module automitigation '../modules/automitigation-logicapp.bicep' = {
   params: {
     name: 'la-${namePrefix}-automitigate'
     location: location
+    linuxVmId: deployLinuxVm ? vmLinux.id : ''
+    windowsVmId: deployWindowsVm ? vmWindows.id : ''
     tags: commonTags
   }
 }
@@ -116,6 +122,7 @@ module alerts '../modules/alerts.bicep' = {
     actionGroupId: actionGroup.outputs.id
     aksId: aks.id
     webAppId: webApp.id
+    customerWebAppId: enableSlotFailureScenario ? customerWebApp!.id : ''
     webAppRegion: appServiceLocation
     appInsightsId: appInsights.id
     linuxVmId: deployLinuxVm ? vmLinux.id : ''
@@ -162,7 +169,7 @@ module vmss '../modules/vmss.bicep' = {
   params: {
     name: vmssName
     location: location
-    vmSize: vmssVmSize
+    vmSize: vmssSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId

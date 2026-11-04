@@ -3,7 +3,7 @@
 This guide maps the resources deployed by the lab to the meters that can appear on an Azure bill. It is a planning aid, not a quote. Public retail prices, negotiated agreements, currencies, taxes, free allowances, preview terms, and regional availability change over time.
 
 **Price check date:** September 27, 2026.  
-**Default regions:** North Europe, with App Service and its diagnostic Event Hub in West Europe; optional AI, SRE Agent, and Health Model resources in Sweden Central; the optional Observability Agent workspace in a supported region selected at deployment.
+**Default regions:** North Europe, with App Service and its diagnostic Storage and Event Hub in configurable `appServiceLocation` (West Europe by default); optional AI, SRE Agent, and Health Model resources in Sweden Central; the optional Observability Agent workspace in a supported region selected at deployment.
 
 Use the [Azure pricing calculator](https://azure.microsoft.com/pricing/calculator/) for a pre-deployment estimate and [Azure Cost Management](https://learn.microsoft.com/azure/cost-management-billing/costs/quick-acm-cost-analysis) for actual and forecast charges. The public [Azure Retail Prices API](https://prices.azure.com/api/retail/prices) is useful for reproducible list-price checks but does not represent a customer-specific quote.
 
@@ -29,18 +29,18 @@ The table reflects the current Bicep defaults. Optional stages are excluded unle
 
 | Area | Current deployment | How it is billed | Lifecycle note |
 |---|---|---|---|
-| AKS | Free-tier control plane; **1 x Standard_B2s** node | Node VM, OS disk, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | `az aks stop` stops node compute, but retained disks, IPs, and telemetry can still bill |
+| AKS | Free-tier control plane; **1 configured node by default** (`aksNodeVmSize`) | Node VM, OS disk, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | `az aks stop` stops node compute, but retained disks, IPs, and telemetry can still bill |
 | Demo VMs | **1 Linux B2s + 1 Windows B2s** | VM hours, managed OS/data disks, public IPs, bandwidth, monitoring | Deallocation stops VM compute; disks, IPs, and monitoring remain |
-| VM scale set | **1 Linux Standard_B1s** instance | VM hours, disk, public IP/load-balancing as applicable, monitoring | Scaling to zero stops instance compute, not retained resources |
-| App Service | Linux Basic B1 plan and web app | App Service plan instance-hours, even when the web app is stopped | Delete the plan to stop plan billing |
+| VM scale set | **1 configured Linux instance** (`vmssSize`) | VM hours, disk, public IP/load-balancing as applicable, monitoring | Scaling to zero stops instance compute, not retained resources |
+| App Service | Linux Basic B1 plan and web app by default; optional broken-slot scenario uses Standard S1 plus one deployment slot | App Service plan instance-hours, even when the web app is stopped. Enabling `enableSlotFailureScenario` raises the plan tier and cost | Delete the plan to stop plan billing; disabling the toggle does not guarantee an automatic downgrade or slot deletion in incremental deployments |
 | Managed Grafana | **Standard**, not Essential | Standard instance/node-hours plus active users | Continues billing while provisioned |
 | Event Hubs | **Basic**, 1 throughput unit | TU-hours, ingress events, retention/operations where applicable | Continues billing while provisioned |
 | Container Registry | Basic | Registry-days, storage, data transfer, and ACR Tasks build vCPU-seconds | Continues billing while provisioned |
 | Control Center runner | Container Apps job, 1 vCPU/2 GiB, at most 1,800 seconds per execution | Job vCPU-seconds, GiB-seconds, executions, logs; image builds use ACR Tasks | No always-running app replica, but each run/build is billable |
 | Storage and Key Vault | Two LRS storage accounts and Standard Key Vault | Capacity, transactions, retrieval, data transfer, and Key Vault operations | Continue billing while data/resources remain |
 | Network monitoring | Network Watcher features, Connection Monitor, NSG flow logs, Traffic Analytics | Test/monitoring operations, flow-log GB, storage, and Traffic Analytics processed GB | Disabling one workload does not remove stored logs |
-| Azure Monitor | Two Log Analytics workspaces, Application Insights, Azure Monitor workspace, DCRs, workbooks | Logs, classic/custom metrics, Prometheus samples/query processing, retention, archive, search, restore, export, replication | The default 1 GB/day cap is set independently on each LAW; it is not a total-spend cap |
-| Alerts and tests | Metric, log-search, activity-log, dynamic-threshold alerts; standard web test; action/automation paths | Rule/series evaluations, web-test executions, notifications, Logic Apps or other actions as applicable | Cost depends on frequency, dimensions, and executions |
+| Azure Monitor | Two Log Analytics workspaces, Application Insights, Azure Monitor workspace, DCRs, query packs, and workbooks | Server/browser/agent logs and traces, classic/custom metrics, Prometheus samples/query processing, retention, archive, search, restore, export, replication | Browser correlation, customer-journey events, and deterministic scenario spans add ingestion; the optional multi-user generator increases telemetry in proportion to users and repeat sessions. The default 1 GB/day cap is set independently on each LAW and is not a total-spend cap |
+| Alerts and tests | Metric, log-search, activity-log, dynamic-threshold alerts; root and agent-task standard web tests; action/automation paths | Rule/series evaluations, web-test executions, notifications, Logic Apps or other actions as applicable | Two five-location tests run every five minutes; cost depends on frequency, dimensions, and executions |
 | Sentinel (optional) | Onboards the central LAW | Sentinel analysis plus applicable Log Analytics ingestion/retention and optional automation/features | There is no unconditional “Sentinel is free” state |
 | Advanced log features (optional) | Export, archive/search/restore, replication, metrics export | Exported/replicated/scanned/restored GB, retention GB-month, metric samples | These meters are additive |
 

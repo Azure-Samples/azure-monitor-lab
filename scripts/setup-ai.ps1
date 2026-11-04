@@ -41,6 +41,14 @@
   Compatibility switch. Traffic always starts in a separate background process
   unless SkipTraffic is supplied. Returns after startup with log/status paths.
 
+.PARAMETER SubscriptionId
+  Azure subscription ID (aliases -Subscription, -s). When TenantId is omitted,
+  the expected tenant is read from .azure-target.json for the same subscription.
+
+.PARAMETER TenantId
+  Expected Microsoft Entra tenant ID. Required when SubscriptionId is not the
+  subscription configured in .azure-target.json.
+
 .EXAMPLE
   ./scripts/setup-ai.ps1
 
@@ -48,9 +56,12 @@
   ./scripts/setup-ai.ps1 -g rg-azure-monitor-lab-bicep-staged
 
 .EXAMPLE
+  ./scripts/setup-ai.ps1 --subscription 00000000-0000-0000-0000-000000000000
+
+.EXAMPLE
   ./scripts/setup-ai.ps1 -Conversations 300
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
   [Alias('g')]
   [string] $ResourceGroup,
@@ -62,13 +73,31 @@ param(
   [ValidateRange(1, 2147483647)] [int] $Conversations = 150,
   [switch] $SkipTraffic,
   [switch] $BackgroundTraffic,
+  [Alias('s', 'subscription')]
   [guid] $SubscriptionId,
-  [guid] $TenantId
+  [guid] $TenantId,
+  [Parameter(ValueFromRemainingArguments, DontShow)]
+  [string[]] $RemainingArguments
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
+
+if ($RemainingArguments.Count -gt 0) {
+  if ($RemainingArguments.Count -ne 2 -or $RemainingArguments[0] -ne '--subscription') {
+    throw "Unknown argument(s): $($RemainingArguments -join ' ')"
+  }
+  if ($null -ne $SubscriptionId -and $SubscriptionId -ne [guid]::Empty) {
+    throw 'Specify the subscription only once.'
+  }
+  $parsedSubscriptionId = [guid]::Empty
+  if (-not [guid]::TryParse($RemainingArguments[1], [ref] $parsedSubscriptionId)) {
+    throw "'$($RemainingArguments[1])' is not a valid subscription ID."
+  }
+  $SubscriptionId = $parsedSubscriptionId
+}
+
 if ($SkipTraffic -and $BackgroundTraffic) { throw 'Choose SkipTraffic or BackgroundTraffic, not both.' }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
@@ -88,13 +117,21 @@ if ([string]::IsNullOrWhiteSpace($NamePrefix))    { $NamePrefix    = 'amlab' }
 
 # Subscription guardrail — same gate as deploy.ps1 / post-deploy.ps1.
 $targetFile = Join-Path $repoRoot '.azure-target.json'
-if ($SubscriptionId -ne [guid]::Empty) {
-  if ($TenantId -eq [guid]::Empty) { throw 'An expected tenant is required with an explicit subscription.' }
-  az account set --subscription $SubscriptionId --only-show-errors
+$target = if (Test-Path $targetFile) { Get-Content -Raw $targetFile | ConvertFrom-Json } else { $null }
+if ($null -ne $SubscriptionId -and $SubscriptionId -ne [guid]::Empty) {
+  $subscriptionIdText = $SubscriptionId.ToString()
+  if ($null -eq $TenantId -or $TenantId -eq [guid]::Empty) {
+    if ($null -ne $target -and $target.expectedSubscriptionId -eq $subscriptionIdText) {
+      $TenantId = [guid] $target.expectedTenantId
+    } else {
+      throw 'An expected tenant is required with an explicit subscription that does not match .azure-target.json.'
+    }
+  }
+  $tenantIdText = $TenantId.ToString()
+  az account set --subscription $subscriptionIdText --only-show-errors
   $active = az account show --query '{id:id,tenantId:tenantId}' --output json --only-show-errors | ConvertFrom-Json
-  if ($LASTEXITCODE -ne 0 -or $active.id -ne $SubscriptionId.ToString() -or $active.tenantId -ne $TenantId.ToString()) { throw 'AI setup subscription or tenant mismatch.' }
-} elseif (Test-Path $targetFile) {
-  $target = Get-Content -Raw $targetFile | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or $active.id -ne $subscriptionIdText -or $active.tenantId -ne $tenantIdText) { throw 'AI setup subscription or tenant mismatch.' }
+} elseif ($null -ne $target) {
   az account set --subscription $target.expectedSubscriptionId | Out-Null
   $active = az account show --query "{id:id, tenantId:tenantId}" -o json | ConvertFrom-Json
   if ($active.id -ne $target.expectedSubscriptionId -or $active.tenantId -ne $target.expectedTenantId) {
@@ -130,11 +167,14 @@ Write-Host "   Endpoint: $ProjectEndpoint" -ForegroundColor Green
 
 # --- App Insights connection string (enables tracing export) ---
 if ([string]::IsNullOrWhiteSpace($AppInsightsConnectionString)) {
-  Write-Step "Looking up Application Insights connection string (appi-$NamePrefix)"
-  $AppInsightsConnectionString = az monitor app-insights component show -g $ResourceGroup -a "appi-$NamePrefix" --query connectionString -o tsv 2>$null
+  Write-Step "Looking up Application Insights connection string (appi-$NamePrefix-<suffix>)"
+  $appInsightsName = az resource list -g $ResourceGroup --resource-type Microsoft.Insights/components --query "[?starts_with(name, 'appi-$NamePrefix-')] | sort_by(@, &name) | [0].name" -o tsv 2>$null
+  if (-not [string]::IsNullOrWhiteSpace($appInsightsName)) {
+    $AppInsightsConnectionString = az monitor app-insights component show -g $ResourceGroup -a $appInsightsName --query connectionString -o tsv 2>$null
+  }
 }
 if ([string]::IsNullOrWhiteSpace($AppInsightsConnectionString)) {
-  Write-Host "   appi-$NamePrefix not found — traffic will run without tracing export." -ForegroundColor Yellow
+  Write-Host "   appi-$NamePrefix-<suffix> not found — traffic will run without tracing export." -ForegroundColor Yellow
 }
 
 # --- Environment for the Python steps ---

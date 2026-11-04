@@ -32,6 +32,8 @@ $monitorWorkspaceId = "$resourceGroupId/providers/Microsoft.Monitor/accounts/amw
 $observabilityAgentId = "$resourceGroupId/providers/Microsoft.Monitor/observabilityAgents/obs-amlab-test"
 $observabilityPrincipalId = [guid]::NewGuid().ToString()
 $observabilityRoleAssignmentId = "/subscriptions/$($fixture.Subscription)/providers/Microsoft.Authorization/roleAssignments/obs-monitoring-reader"
+$appInsightsId = "$resourceGroupId/providers/Microsoft.Insights/components/appi-test"
+$appInsightsRoleAssignmentId = "/subscriptions/$($fixture.Subscription)/providers/Microsoft.Authorization/roleAssignments/appi-monitoring-reader"
 $serviceGroupId = '/providers/Microsoft.Management/serviceGroups/amlab-workload'
 $fixture.ServiceGroupResourceId = $serviceGroupId
 $tenantDeleteApis = [ordered]@{}
@@ -155,8 +157,9 @@ function az {
       }
       return ConvertTo-Json -InputObject @(@{ id = $workspaceId; name = 'law-test' }, @{ id = $unsupportedId; name = 'ContainerInsights(law-test)' })
     }
-    'rest --method' {
-      if ($args[2] -eq 'delete' -and $fixture.RealTenantCleanup) {
+    { $_ -in @('rest --method', 'rest --subscription') } {
+      $method = $args[[Array]::IndexOf($args, '--method') + 1]
+      if ($method -eq 'delete' -and $fixture.RealTenantCleanup) {
         $uri = [uri]$args[[Array]::IndexOf($args, '--url') + 1]
         if ($uri.Host -ne 'management.azure.com' -or -not $tenantDeleteApis.Contains($uri.AbsolutePath) -or
             $uri.Query -ne "?api-version=$($tenantDeleteApis[$uri.AbsolutePath])" -or
@@ -171,8 +174,18 @@ function az {
         }
         return
       }
-      if ($args[2] -ne 'get') { throw 'Only read-only association discovery is expected.' }
+      if ($method -ne 'get') { throw 'Only read-only association discovery is expected.' }
       $url = $args[[Array]::IndexOf($args, '--url') + 1]
+      if ($url -eq "https://management.azure.com$observabilityAgentId/monitoredResources?api-version=2026-05-01-preview") {
+        return @{
+          value = @(@{
+            properties = @{
+              enabled = $true
+              resourceId = $appInsightsId
+            }
+          })
+        } | ConvertTo-Json -Depth 5
+      }
       if ($url -eq "$workspaceId/providers/Microsoft.Insights/dataCollectionRuleAssociations?api-version=2023-03-11") {
         return @{ value = @(@{ id = $associationId }, @{ id = $associationId }) } | ConvertTo-Json -Depth 4
       }
@@ -205,14 +218,22 @@ function az {
         throw 'Observability Agent RBAC cleanup lost the verified subscription.'
       }
       if ($operation -eq 'list') {
-        if ($args[[Array]::IndexOf($args, '--assignee-object-id') + 1] -ne $observabilityPrincipalId -or
-            $args[[Array]::IndexOf($args, '--scope') + 1] -ne "/subscriptions/$($fixture.Subscription)") {
+        if ($args[[Array]::IndexOf($args, '--assignee-object-id') + 1] -ne $observabilityPrincipalId -or $args -contains '--all') {
           throw 'Unexpected Observability Agent RBAC lookup.'
         }
-        return $observabilityRoleAssignmentId
+        $scope = $args[[Array]::IndexOf($args, '--scope') + 1]
+        if ($scope -eq "/subscriptions/$($fixture.Subscription)") { return $observabilityRoleAssignmentId }
+        if ($scope -eq $appInsightsId) {
+          return @(@{
+            id = $appInsightsRoleAssignmentId
+            scope = $appInsightsId
+            roleDefinitionId = "/subscriptions/$($fixture.Subscription)/providers/Microsoft.Authorization/roleDefinitions/43d0d8ad-25c7-4714-9337-8ba259a9fe05"
+          }) | ConvertTo-Json -Depth 3
+        }
+        throw 'Unexpected Observability Agent RBAC scope.'
       }
-      if ($operation -eq 'delete' -and $args[[Array]::IndexOf($args, '--ids') + 1] -eq $observabilityRoleAssignmentId) {
-        $fixture.Deletes.Add("role:$observabilityRoleAssignmentId")
+      if ($operation -eq 'delete' -and $args[[Array]::IndexOf($args, '--ids') + 1] -in @($observabilityRoleAssignmentId, $appInsightsRoleAssignmentId)) {
+        $fixture.Deletes.Add("role:$($args[[Array]::IndexOf($args, '--ids') + 1])")
         return
       }
       throw 'Unexpected role assignment operation.'
@@ -278,8 +299,8 @@ try {
   $fixture.Deletes.Clear()
   $fixture.TenantCleanup.Clear()
   & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null
-  if (($fixture.Deletes[0..1] -join ',') -ne "role:$observabilityRoleAssignmentId,$observabilityAgentId") {
-    throw 'Observability Agent subscription RBAC and resource must be deleted before monitoring dependencies and resource groups.'
+  if (($fixture.Deletes[0..2] -join ',') -ne "role:$observabilityRoleAssignmentId,role:$appInsightsRoleAssignmentId,$observabilityAgentId") {
+    throw 'Observability Agent subscription and Application Insights RBAC and resource must be deleted before monitoring dependencies and resource groups.'
   }
   $fixture.ObservabilityAgentExists = $false
   if ($fixture.ActivityDiagnosticDeletes -eq 0) { throw 'Teardown must remove Activity Log routing owned by the selected lab.' }

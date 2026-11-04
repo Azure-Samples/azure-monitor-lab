@@ -7,6 +7,8 @@ out/
 bin/
 obj/
 node_modules/
+scripts/customer-sql-bootstrap/__pycache__/
+scripts/tests/__pycache__/
 # Central per-user config (single source of truth — feeds sync-config.ps1)
 lab.config.json
 
@@ -41,4 +43,3 @@ infra/*.terraform-test.json
 
 # Ad-hoc scratch scripts (not for source control)
 scripts/temp.ps1
-

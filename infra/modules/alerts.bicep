@@ -10,6 +10,9 @@ param aksId string
 @description('Web App resource ID.')
 param webAppId string
 
+@description('Optional customer-facing Web App resource ID for the slot-recovery scenario.')
+param customerWebAppId string = ''
+
 @description('Region of the Web App / App Service Plan (metric alert targetResourceRegion must match the target).')
 param webAppRegion string = location
 
@@ -99,6 +102,39 @@ resource alertWebApp5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
+resource alertCustomerWebApp5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = if (!empty(customerWebAppId)) {
+  name: 'alert-customer-app-5xx'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Customer Web App returned at least one HTTP 5xx in the last minute.'
+    severity: 1
+    enabled: true
+    scopes: [customerWebAppId]
+    targetResourceType: 'Microsoft.Web/sites'
+    targetResourceRegion: webAppRegion
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT1M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'CustomerHttp5xx'
+          metricNamespace: 'Microsoft.Web/sites'
+          metricName: 'Http5xx'
+          operator: 'GreaterThan'
+          threshold: 0
+          timeAggregation: 'Total'
+          criterionType: 'StaticThresholdCriterion'
+        }
+      ]
+    }
+    actions: [
+      { actionGroupId: actionGroupId }
+    ]
+  }
+}
+
 // ---------------------------------------------------------------------------
 // AKS: Container CPU > 80% (multi-dimensional metric, Container Insights namespace)
 // ---------------------------------------------------------------------------
@@ -156,6 +192,70 @@ resource alertAppInsightsFailures 'Microsoft.Insights/scheduledQueryRules@2023-0
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 10
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: {
+      actionGroups: [ actionGroupId ]
+    }
+  }
+}
+
+resource alertAgentTaskFailures 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-agent-task-failures'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Agent tasks are technically available but fail semantic task completion.'
+    enabled: true
+    severity: 2
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: 'dependencies | where type == "GenAI" | extend TaskSuccess = tostring(customDimensions["task.success"]) | where TaskSuccess == "false" | summarize FailedTasks = count()'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 2
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: {
+      actionGroups: [ actionGroupId ]
+    }
+  }
+}
+
+resource alertAgentEfficiencyRegression 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-agent-efficiency-regression'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Agent tasks exceed performance budgets or amplify work through retries.'
+    enabled: true
+    severity: 3
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: 'dependencies | where type == "GenAI" | extend PerformanceSuccess = tostring(customDimensions["performance.success"]), RetryCount = toint(customDimensions["retry.count"]) | where PerformanceSuccess == "false" or RetryCount > 1 | summarize DegradedTasks = count()'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 5
           failingPeriods: {
             numberOfEvaluationPeriods: 1
             minFailingPeriodsToAlert: 1

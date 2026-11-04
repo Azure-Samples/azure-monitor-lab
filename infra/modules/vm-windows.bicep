@@ -27,10 +27,11 @@ param otelDcrId string = ''
 @description('Resource tags.')
 param tags object = {}
 
+var useConfidentialVm = startsWith(toLower(vmSize), 'standard_ec') && (endsWith(toLower(vmSize), 'as_v5') || endsWith(toLower(vmSize), 'ads_v5'))
+
 resource pip 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
   name: 'pip-${vmName}'
   location: location
-  tags: tags
   sku: { name: 'Standard' }
   properties: {
     publicIPAllocationMethod: 'Static'
@@ -61,7 +62,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
   location: location
   tags: tags
   identity: { type: 'SystemAssigned' }
-  properties: {
+  properties: union({
     hardwareProfile: { vmSize: vmSize }
     osProfile: {
       computerName: vmName
@@ -84,7 +85,12 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
       }
       osDisk: {
         createOption: 'FromImage'
-        managedDisk: { storageAccountType: 'Standard_LRS' }
+        managedDisk: {
+          storageAccountType: 'Standard_LRS'
+          securityProfile: useConfidentialVm ? {
+            securityEncryptionType: 'VMGuestStateOnly'
+          } : null
+        }
       }
     }
     networkProfile: {
@@ -93,7 +99,15 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
     diagnosticsProfile: {
       bootDiagnostics: { enabled: true }
     }
-  }
+  }, useConfidentialVm ? {
+    securityProfile: {
+      securityType: 'ConfidentialVM'
+      uefiSettings: {
+        secureBootEnabled: true
+        vTpmEnabled: true
+      }
+    }
+  } : {})
 }
 
 resource autoShutdown 'Microsoft.DevTestLab/schedules@2018-09-15' = {

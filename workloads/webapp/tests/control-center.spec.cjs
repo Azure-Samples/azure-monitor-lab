@@ -7,6 +7,56 @@ const docsUrl = 'https://github.com/Azure-Samples/azure-monitor-lab/blob/main/do
 const context = { resourceGroup: 'rg-azure-monitor-lab', appService: 'app-amlab-demo', sreUrl: null, foundryUrl: null };
 const catalog = { available: true, message: 'Connected to existing lab agents', agents: [{ key: 'triage', name: 'Support Triage', model: 'example-model' }] };
 
+for (const width of [1440, 820, 390, 320]) {
+  test(`Control Center tabs and card controls have breathing room at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto('/');
+    await page.evaluate(() => document.fonts.ready);
+    const tabs = await page.locator('[role="tab"]').evaluateAll(items => items.map(item => {
+      const style = getComputedStyle(item);
+      const bounds = item.getBoundingClientRect();
+      const container = item.parentElement.getBoundingClientRect();
+      return {
+        padding: parseFloat(style.paddingLeft),
+        height: bounds.height,
+        insetTop: bounds.top - container.top,
+        insetBottom: container.bottom - bounds.bottom,
+        clipped: item.scrollWidth > item.clientWidth + 2
+      };
+    }));
+    for (const tab of tabs) {
+      expect(tab.padding).toBeGreaterThanOrEqual(12);
+      expect(tab.height).toBeGreaterThanOrEqual(48);
+      expect(tab.insetTop).toBeGreaterThanOrEqual(9);
+      expect(tab.insetBottom).toBeGreaterThanOrEqual(9);
+      expect(tab.clipped).toBe(false);
+    }
+    for (const id of ['health', 'console', 'operations', 'sre', 'foundry']) {
+      await page.locator(`#tab-${id}`).click();
+      const panel = page.locator(`#panel-${id}`);
+      await expect(panel).toBeVisible();
+      const clipped = await panel.locator('button, .button').evaluateAll(items => items
+        .filter(item => item.clientWidth > 0 && item.scrollWidth > item.clientWidth + 2)
+        .map(item => item.textContent));
+      expect(clipped).toEqual([]);
+    }
+    const insets = await page.locator('#panel-health, .workspace > aside, .workspace > .results, #panel-operations, #panel-sre, #panel-foundry')
+      .evaluateAll(items => items.map(item => parseFloat(getComputedStyle(item).paddingLeft)));
+    expect(insets.every(inset => inset >= 16)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+test('Control Center uses brief panel motion and respects reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await page.locator('#tab-console').click();
+  expect(await page.locator('#panel-console').evaluate(item => getComputedStyle(item).animationName)).toBe('lab-panel-enter');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.locator('#tab-health').click();
+  expect(await page.locator('#panel-health').evaluate(item => getComputedStyle(item).animationName)).toBe('none');
+});
+
 async function prepare(page) {
   await page.route('**/api/agents/context', route => route.fulfill({ json: context }));
   await page.route('**/api/agents/catalog', route => route.fulfill({ json: catalog }));
@@ -25,7 +75,7 @@ test('Control Center presents two documentation entry points and valid contextua
   await expect(page.getByRole('link', { name: 'Guide', exact: true })).toHaveAttribute('href', `${docsUrl}LAB-CONTROL-CENTER.md`);
   await expect(page.getByRole('link', { name: 'Scenarios', exact: true })).toHaveAttribute('href', `${docsUrl}DEMO-SCENARIOS.md`);
   const links = await page.locator('[data-documentation]').evaluateAll(items => items.map(item => ({ href: item.href, target: item.target, rel: item.rel })));
-  expect(links.length).toBe(15);
+  expect(links.length).toBe(16);
   for (const link of links) {
     expect(link.href.startsWith(docsUrl)).toBe(true);
     expect(link.target).toBe('_blank');
@@ -89,8 +139,11 @@ for (const width of [1440, 390, 320]) {
     await prepare(page);
     await page.evaluate(() => document.fonts.ready);
     if (width <= 760) {
-      expect(await page.evaluate(() => document.querySelector('[data-action="health"]').getBoundingClientRect().bottom
-        <= document.querySelector('.mobile-feedback').getBoundingClientRect().top)).toBe(true);
+      await page.locator('[data-action="health"]').scrollIntoViewIfNeeded();
+      await expect.poll(() => page.evaluate(() => {
+        const action = document.querySelector('[data-action="health"]').getBoundingClientRect();
+        return action.top >= 0 && action.bottom <= document.querySelector('.mobile-feedback').getBoundingClientRect().top;
+      })).toBe(true);
     }
     await page.getByRole('button', { name: /Check Health/ }).click();
     await expect(page.locator('#total')).toHaveText('1');
@@ -101,6 +154,7 @@ for (const width of [1440, 390, 320]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const clipped = await page.locator('button, select, h1, h2, .environment-strip dd').evaluateAll(items => items.filter(item => item.clientWidth > 0 && item.scrollWidth > item.clientWidth + 2).map(item => item.textContent));
     expect(clipped).toEqual([]);
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
     const overlap = await page.evaluate(() => {
       const header = document.querySelector('.topbar').getBoundingClientRect();
       const intro = document.querySelector('.intro').getBoundingClientRect();

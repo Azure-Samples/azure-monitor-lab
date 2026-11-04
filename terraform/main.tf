@@ -11,6 +11,13 @@ data "azurerm_resource_group" "lab" {
   name = var.resource_group_name
 }
 
+check "slot_failure_requires_workloads" {
+  assert {
+    condition     = !var.enable_slot_failure_scenario || var.enable_stage_b
+    error_message = "enable_slot_failure_scenario requires enable_stage_b=true."
+  }
+}
+
 resource "azapi_resource" "stage_a" {
   count     = var.enable_stage_a ? 1 : 0
   type      = "Microsoft.Resources/deployments@2022-09-01"
@@ -23,12 +30,12 @@ resource "azapi_resource" "stage_a" {
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/00-foundation.json")))
       parameters = {
         location               = { value = var.location }
+        appServiceLocation     = { value = var.app_service_location }
         namePrefix             = { value = var.name_prefix }
         dailyCapGb             = { value = var.daily_cap_gb }
         ownerTag               = { value = var.owner_tag }
         enableLawReplication   = { value = var.enable_law_replication }
         lawReplicationLocation = { value = var.law_replication_location }
-        appServiceRegion       = { value = var.app_service_region }
       }
     }
   }
@@ -48,19 +55,20 @@ resource "azapi_resource" "stage_b" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/10-workloads.json")))
       parameters = {
-        location             = { value = var.location }
-        namePrefix           = { value = var.name_prefix }
-        vmAdminUsername      = { value = var.vm_admin_username }
-        vmAdminPassword      = { value = var.vm_admin_password }
-        deployWindowsVm      = { value = var.deploy_windows_vm }
-        deployLinuxVm        = { value = var.deploy_linux_vm }
-        enableVmOtelMetrics  = { value = var.enable_vm_otel_metrics }
-        vmSize               = { value = var.vm_size }
-        aksNodeVmSize        = { value = var.aks_node_vm_size }
-        aksNodeCount         = { value = var.aks_node_count }
-        grafanaAdminObjectId = { value = var.grafana_admin_object_id }
-        ownerTag             = { value = var.owner_tag }
-        appServiceRegion     = { value = var.app_service_region }
+        location                  = { value = var.location }
+        appServiceLocation        = { value = var.app_service_location }
+        namePrefix                = { value = var.name_prefix }
+        vmAdminUsername           = { value = var.vm_admin_username }
+        vmAdminPassword           = { value = var.vm_admin_password }
+        deployWindowsVm           = { value = var.deploy_windows_vm }
+        deployLinuxVm             = { value = var.deploy_linux_vm }
+        enableVmOtelMetrics       = { value = var.enable_vm_otel_metrics }
+        vmSize                    = { value = var.vm_size }
+        aksNodeVmSize             = { value = var.aks_node_vm_size }
+        aksNodeCount              = { value = var.aks_node_count }
+        grafanaAdminObjectId      = { value = var.grafana_admin_object_id }
+        enableSlotFailureScenario = { value = var.enable_slot_failure_scenario }
+        ownerTag                  = { value = var.owner_tag }
       }
     }
   }
@@ -80,17 +88,17 @@ resource "azapi_resource" "stage_c" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/20-alerting.json")))
       parameters = {
-        location         = { value = var.location }
-        namePrefix       = { value = var.name_prefix }
-        alertEmail       = { value = var.alert_email }
-        siemWebhookUrl   = { value = var.siem_webhook_url }
-        vmAdminUsername  = { value = var.vm_admin_username }
-        vmAdminPassword  = { value = var.vm_admin_password }
-        deployWindowsVm  = { value = var.deploy_windows_vm }
-        deployLinuxVm    = { value = var.deploy_linux_vm }
-        ownerTag         = { value = var.owner_tag }
-        appServiceRegion = { value = var.app_service_region }
-        vmssVmSize       = { value = var.vmss_vm_size }
+        location           = { value = var.location }
+        appServiceLocation = { value = var.app_service_location }
+        namePrefix         = { value = var.name_prefix }
+        alertEmail         = { value = var.alert_email }
+        siemWebhookUrl     = { value = var.siem_webhook_url }
+        vmAdminUsername    = { value = var.vm_admin_username }
+        vmAdminPassword    = { value = var.vm_admin_password }
+        vmssSize           = { value = var.vmss_size }
+        deployWindowsVm    = { value = var.deploy_windows_vm }
+        deployLinuxVm      = { value = var.deploy_linux_vm }
+        ownerTag           = { value = var.owner_tag }
       }
     }
   }
@@ -208,15 +216,16 @@ resource "azapi_resource" "stage_sre_agent" {
   name      = "stage-sre-agent"
   parent_id = data.azurerm_resource_group.lab.id
 
-  depends_on = [azapi_resource.stage_a]
+  depends_on = [azapi_resource.stage_a, azapi_resource.stage_b]
 
   body = {
     properties = {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/60-sre-agent.json")))
       parameters = {
-        namePrefix = { value = var.name_prefix }
-        ownerTag   = { value = var.owner_tag }
+        namePrefix                = { value = var.name_prefix }
+        ownerTag                  = { value = var.owner_tag }
+        enableSlotFailureScenario = { value = var.enable_slot_failure_scenario }
       }
     }
   }

@@ -8,7 +8,9 @@
 [CmdletBinding()]
 param(
   [string] $ResourceGroup = 'rg-azure-monitor-lab',
-  [string] $WebAppName    = ''   # optional; auto-detected if empty
+  [string] $WebAppName = '',
+  [ValidatePattern('^[a-z0-9][a-z0-9.-]{1,252}\.azurewebsites\.net$')]
+  [string] $WebAppHost = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -23,11 +25,20 @@ if (Test-Path $targetFile) {
   }
 }
 
-if (-not $WebAppName) {
-  $WebAppName = az webapp list -g $ResourceGroup --query "[?starts_with(name,'app-')] | [0].name" -o tsv
+if (-not $WebAppHost) {
+  $apps = @(az webapp list -g $ResourceGroup -o json | ConvertFrom-Json)
+  $matches = if ($WebAppName) {
+    @($apps | Where-Object { $_.name -ceq $WebAppName })
+  } else {
+    @($apps | Where-Object { $_.name -like 'app-*' })
+  }
+  if ($matches.Count -ne 1 -or [string]::IsNullOrWhiteSpace($matches[0].defaultHostName)) {
+    throw 'Exactly one matching Web App with a default host is required.'
+  }
+  $WebAppName = $matches[0].name
+  $WebAppHost = $matches[0].defaultHostName
 }
-$host_ = az webapp show -g $ResourceGroup -n $WebAppName --query "defaultHostName" -o tsv
-$url = "https://$host_"
+$url = "https://$WebAppHost"
 Write-Host "Target App Service URL: $url" -ForegroundColor Cyan
 
 # Delete any prior ramp job + configmap so we get a clean 60-min run

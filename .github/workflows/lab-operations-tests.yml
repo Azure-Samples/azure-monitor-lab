@@ -7,13 +7,23 @@ on:
       - 'workloads/webapp/**'
       - 'workloads/webapp.Tests/**'
       - 'scripts/invoke-lab-operation.ps1'
+      - 'scripts/app-insights-target.ps1'
       - 'scripts/initialize-webapp-console.ps1'
       - 'scripts/deploy.ps1'
       - 'scripts/deploy-webapp.ps1'
       - 'scripts/post-deploy.ps1'
       - 'scripts/post-staged-deploy.ps1'
       - 'scripts/post-cloud-shell-deploy.ps1'
+      - 'scripts/complete-customer-dependencies.ps1'
+      - 'scripts/deploy-customer-dependencies.ps1'
+      - 'scripts/bootstrap-customer-sql.ps1'
+      - 'scripts/customer-dependency-helpers.ps1'
+      - 'scripts/customer-sql-bootstrap/**'
+      - 'scripts/test-customer-dependencies.ps1'
+      - 'scripts/tests/customer-completion.Tests.ps1'
+      - 'scripts/tests/customer-dependencies.Tests.ps1'
       - 'scripts/staged-deploy-helpers.ps1'
+      - 'scripts/deployment-slot-recovery.ps1'
       - 'scripts/teardown.ps1'
       - 'scripts/remove-lab-entra-identities.ps1'
       - 'scripts/setup-rbac-demo.ps1'
@@ -23,11 +33,13 @@ on:
       - 'scripts/tests/console-deployment.Tests.ps1'
       - 'scripts/tests/ai-traffic.Tests.ps1'
       - 'scripts/tests/staged-guide.Tests.ps1'
+      - 'scripts/tests/deployment-slot-recovery.Tests.ps1'
       - 'scripts/tests/sli-setup.Tests.ps1'
       - 'scripts/tests/service-group.Tests.ps1'
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
+      - 'scripts/tests/customer-appinsights.Tests.ps1'
       - 'scripts/tests/vm-otel-metrics.Tests.ps1'
       - 'scripts/tests/vm-otel-config.Tests.ps1'
       - 'scripts/sync-config.ps1'
@@ -65,6 +77,7 @@ on:
       - 'scripts/break-the-lab.ps1'
       - 'scripts/restore-the-lab.ps1'
       - 'scripts/start-ramp.ps1'
+      - 'scripts/generate-usage-traffic.ps1'
       - 'scripts/simulate-high-cpu.ps1'
       - 'scripts/send-custom-logs.ps1'
       - 'scripts/send-release-annotation.ps1'
@@ -93,9 +106,12 @@ jobs:
           ./scripts/tests/lab-operations-execution.Tests.ps1
           ./scripts/tests/console-bootstrap.Tests.ps1
           ./scripts/tests/console-deployment.Tests.ps1
+          ./scripts/tests/customer-completion.Tests.ps1
+          ./scripts/tests/customer-dependencies.Tests.ps1
           ./scripts/tests/webapp-publication.Tests.ps1
           ./scripts/tests/ai-traffic.Tests.ps1
           ./scripts/tests/staged-guide.Tests.ps1
+          ./scripts/tests/deployment-slot-recovery.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
           ./scripts/tests/service-group.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
@@ -130,6 +146,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/tests/compiled-templates.Tests.ps1
+          ./scripts/tests/customer-appinsights.Tests.ps1
           ./scripts/tests/amba.Tests.ps1
           ./scripts/tests/grafana-access.Tests.ps1
           ./scripts/tests/grafana-config.Tests.ps1

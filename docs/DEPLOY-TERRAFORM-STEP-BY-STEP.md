@@ -97,6 +97,7 @@ This repo ships a working staged Terraform scaffold at `terraform/` and pre-comp
 | `enable_stage_e` | `infra/stages/40-optional-advanced.json` and, when Sentinel is enabled, `infra/stages/41-sentinel-content.json` |
 | `enable_stage_ai` | `infra/stages/50-ai.json` |
 | `enable_stage_sre_agent` | `infra/stages/60-sre-agent.json` |
+| `enable_slot_failure_scenario` | Upgrades Stage B App Service to S1, provisions the `broken` slot, and grants Stage SRE Agent bounded rollback access |
 
 Each toggle gates its own `azapi_resource "Microsoft.Resources/deployments@2022-09-01"` block. Disabling a flag removes its deployment record, not the nested Azure resources. Console and SRE completion also follow explicit Terraform selections; they do not require matching flags in a local central config.
 
@@ -111,6 +112,12 @@ Folder layout:
 ### Regenerating stage templates from Bicep
 
 If you change anything under `infra/stages/*.bicep`, recompile the JSON templates that Terraform consumes:
+
+Use the pinned Bicep version `0.37.4` and preserve LF line endings in embedded
+KQL/workbook inputs, as specified by `.gitattributes`. `loadTextContent` embeds
+those bytes in ARM JSON, so stale CRLF working copies can produce template drift
+even when query behavior is unchanged. After regeneration, run
+`./scripts/tests/compiled-templates.Tests.ps1` before committing.
 
 ```powershell
 az bicep build --file infra/stages/00-foundation.bicep        --outfile infra/stages/00-foundation.json

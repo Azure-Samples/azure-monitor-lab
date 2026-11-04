@@ -55,7 +55,7 @@ Use this as the workshop script: each stage adds a bounded set of capabilities a
 | Stage E - Optional advanced/security add-ons | Layer advanced SOC and reliability preview capabilities. | 43, 44, 45, 46 | Optional Sentinel onboarding + analytics rule, Heartbeat data export, Managed Prometheus rule group, availability test, workload health model, SLI identity prerequisites, and optional platform-logs/metrics-export DCRs. Completion configures the Service Group and verifies SLI prerequisites; preview SLIs remain a portal step. |
 | Stage AI - Optional GenAI workload | Add a Microsoft Foundry workload emitting token/trace/cost telemetry, with AI FinOps observability. Off by default (billable models, region-limited). | - | Foundry account + project in swedencentral by default, four model deployments (gpt-5-mini, text-embedding-3-small, gpt-5.4, model-router), App Insights connection, token alerts, AI FinOps query pack + workbook. Stage E can add the AI health tier after AI is deployed; a standalone AI health model is separately opt-in. Agent setup starts a finite background traffic batch unless skipped. |
 | Stage SRE Agent - Optional incident investigation | Add Azure SRE Agent investigation and Review-mode response workflows. Off by default (preview and billable). | 54, 55, 56, 57, 58 | Azure SRE Agent hard pinned to swedencentral, system-assigned and user-assigned managed identities, Azure Monitor, Application Insights, and Log Analytics connectors, resource-group reader roles, and subscription-scope Monitoring Contributor. |
-| Stage Observability Agent - Optional autonomous operations | Correlate agentic-application alerts, create issues, investigate failures, and compare broken/fixed trace evidence. Off by default (preview; investigations consume Azure Agent Credits). | 61, 62, 63, 64, 65, 66, 67 | Azure Copilot Observability Agent and a dedicated Azure Monitor workspace in a supported region, one monitored Application Insights resource, system-assigned identity, Issue Contributor on the workspace, and subscription-scope Monitoring Reader. |
+| Stage Observability Agent - Optional autonomous operations | Correlate agentic-application alerts, create issues, investigate failures, and compare broken/fixed trace evidence. Off by default (preview; investigations consume Azure Agent Credits). | 61, 62, 63, 64, 65, 66, 67 | Azure Copilot Observability Agent and a dedicated Azure Monitor workspace in a supported region, one monitored Application Insights resource, system-assigned identity, Issue Contributor on the workspace, and Monitoring Reader directly on the monitored Application Insights resource. |
 
 ### Stage dependency chain
 
@@ -64,7 +64,7 @@ Use this as the workshop script: each stage adds a bounded set of capabilities a
 3. Stage C depends on Stage B resources for alert scopes.
 4. Stage D depends on Stage A ingestion and Stage C action routing.
 5. Stage E depends on A, B, and C. Its AI health tier additionally requires Stage AI to have been deployed.
-6. Stage AI depends only on Stage A (it connects to `appi-amlab`); deploy it any time after Stage A.
+6. Stage AI depends only on Stage A (it connects to `appi-amlab-<suffix>`); deploy it any time after Stage A.
 7. Stage SRE Agent depends only on Stage A (Application Insights and central LAW); deploy it any time after Stage A.
 8. Stage Observability Agent depends only on Stage A (Application Insights); deploy it any time after Stage A. Its Control Center scenario runner additionally requires Stage B.
 
@@ -178,6 +178,19 @@ az deployment group create `
 ```
 
 Completion publishes and verifies the App Service, initializes the Control Center and approved operator access, applies AKS workloads, and creates the summary rule. It prepares available AI agents without traffic and validates any deployed SRE Agent. Stage E is explicitly off here because it has not been deployed yet. For noninteractive setup, pass approved user IDs through `-ConsoleOperatorObjectIds`; otherwise existing operators or the signed-in user are used.
+
+When `enableCustomerDependencies=true`, completion also requests approval to
+initialize the SQL schema, seed products and least-privilege users through a
+temporary private App Service tunnel, publish the orders worker, and verify
+readiness. Run as the configured SQL Entra administrator with .NET 8 SDK, Python
+and `paramiko` installed. For an explicitly preapproved run, pass
+`-ApproveCustomerDependencies` to the completion wrapper. Use
+`-CustomerDependencyDeploymentName stage-10-workloads` to select this deployment
+explicitly; otherwise the wrapper discovers the latest successful deployment for
+the exact customer app and validates its enabled context. Declined approval or
+failed readiness stops completion rather than leaving a successful-looking,
+uninitialized catalogue. SQL public access and firewall rules remain unchanged.
+See [customer backend lifecycle](../scripts/README.md#opt-in-customer-dependencies-bicep-only).
 
 ### Stage C deploy
 

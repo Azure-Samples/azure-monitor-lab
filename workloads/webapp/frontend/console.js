@@ -1,6 +1,7 @@
 import '@fontsource-variable/manrope';
 import './console.css';
 import { initializeAgentViews } from './agents.js';
+import { initializeBrowserTelemetry } from './telemetry.js';
 import labLogo from '../../../docs/azure-monitor-lab-logo.svg';
 import { createIcons, Activity, ArrowRight, ArrowUpRight, BookOpen, ChartNoAxesCombined, Check, ChevronDown, ChevronUp, CircleHelp, Copy, Cpu, Download, ExternalLink, FlaskConical, HeartPulse, Inbox, Logs, MessagesSquare, Network, PanelsTopLeft, Play, RefreshCw, ScanLine, Send, ShoppingCart, Square, Timer, Trash2, TriangleAlert, X } from 'lucide';
 import { Chart, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip } from 'chart.js';
@@ -26,6 +27,7 @@ let toastTimer;
 let healthCheckVersion = 0;
 let configuration = { links: {}, performanceCooldownSeconds: 30 };
 
+initializeBrowserTelemetry();
 byId('brand-mark').src = labLogo;
 refreshIcons();
 Chart.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip);
@@ -315,7 +317,7 @@ async function loadConfiguration() {
         link.rel = 'noopener noreferrer';
         link.removeAttribute('aria-disabled');
         link.title = 'Open in Azure; your account permissions apply';
-        configured.add(link.dataset.link);
+        if (!link.hasAttribute('data-link-optional')) configured.add(link.dataset.link);
       } catch { link.title = 'Not configured for this deployment'; }
     });
     byId('links-status').textContent = configured.size === 4 ? '' : `${4 - configured.size} destinations not configured`;
