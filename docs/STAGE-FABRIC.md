@@ -204,6 +204,8 @@ The daily 20:00 UTC schedule is enabled by default by Fabric setup. It is not an
 
 `start-the-lab.ps1 -Wait` also detects and resumes the optional F2 capacity together with the lab's VMs, VMSS, AKS, and App Service resources.
 
+The Control Center runner receives a separate read/resume role assigned only on this capacity. If Fabric is added after console setup, refresh console bootstrap using the [console setup instructions](../workloads/webapp/LAB-OPERATIONS.md) before using **Start Lab**. Older runner roles without Fabric resume permission can leave Azure workloads running while F2 remains paused.
+
 ## Automation settings
 
 The setup helpers read `fabricAutomation` directly from `lab.config.json`; these settings do not need ARM/Terraform parameter projection. Explicit script parameters override config. The Cloud Shell wrapper exposes the same options.

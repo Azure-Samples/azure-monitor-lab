@@ -590,6 +590,7 @@ module consolePlatform 'modules/lab-console-platform.bicep' = {
   params: {
     webAppName: appService.outputs.webAppName
     centralLawId: lawCentral.outputs.id
+    fabricCapacityName: enableFabric ? fabricCapacity!.outputs.name : ''
     location: appServiceLocation
     tags: commonTags
     cpuVmNames: deployLinuxVm && deployWindowsVm ? [vmLinux!.outputs.vmName, vmWindows!.outputs.vmName] : []

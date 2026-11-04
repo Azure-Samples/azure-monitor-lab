@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "2357189288868899604"
+      "templateHash": "8753364321644587966"
     }
   },
   "parameters": {
@@ -52543,6 +52543,7 @@
           "centralLawId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
           },
+          "fabricCapacityName": "[if(parameters('enableFabric'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.name.value), createObject('value', ''))]",
           "location": {
             "value": "[parameters('appServiceLocation')]"
           },
@@ -52563,7 +52564,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "8160018899608542539"
+              "templateHash": "15909413640873189571"
             }
           },
           "parameters": {
@@ -52623,6 +52624,13 @@
               "defaultValue": "",
               "metadata": {
                 "description": "Exact customer orders worker name. Empty disables dependency fault permissions."
+              }
+            },
+            "fabricCapacityName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Existing lab F2 capacity name. Empty disables capacity resume permissions."
               }
             }
           },
@@ -59664,6 +59672,95 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
               ]
+            },
+            {
+              "condition": "[not(empty(parameters('fabricCapacityName')))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "console-runner-fabric-access",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "capacityName": {
+                    "value": "[parameters('fabricCapacityName')]"
+                  },
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "2914668496453868903"
+                    }
+                  },
+                  "parameters": {
+                    "capacityName": {
+                      "type": "string",
+                      "minLength": 3,
+                      "metadata": {
+                        "description": "Existing lab F2 capacity name."
+                      }
+                    },
+                    "principalId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Lab Operations runner managed identity principal ID."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "name": "[guid(resourceGroup().id, 'lab-console-fabric-resume-role')]",
+                      "properties": {
+                        "roleName": "[format('Lab Console Fabric Resume {0}', take(uniqueString(resourceGroup().id), 8))]",
+                        "description": "Read and resume the lab Fabric capacity; assigned only on that capacity.",
+                        "type": "CustomRole",
+                        "assignableScopes": [
+                          "[resourceGroup().id]"
+                        ],
+                        "permissions": [
+                          {
+                            "actions": [
+                              "Microsoft.Fabric/capacities/read",
+                              "Microsoft.Fabric/capacities/resume/action"
+                            ],
+                            "notActions": [],
+                            "dataActions": [],
+                            "notDataActions": []
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[format('Microsoft.Fabric/capacities/{0}', parameters('capacityName'))]",
+                      "name": "[guid(resourceId('Microsoft.Fabric/capacities', parameters('capacityName')), parameters('principalId'), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role')))]",
+                      "properties": {
+                        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]",
+                        "principalId": "[parameters('principalId')]",
+                        "principalType": "ServicePrincipal"
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
+              ]
             }
           ],
           "outputs": {
@@ -59698,6 +59795,7 @@
         "[resourceId('Microsoft.Resources/deployments', 'appservice')]",
         "[resourceId('Microsoft.Resources/deployments', 'customer-dependencies')]",
         "[resourceId('Microsoft.Resources/deployments', 'customer-webapp')]",
+        "[resourceId('Microsoft.Resources/deployments', 'fabric-capacity')]",
         "[resourceId('Microsoft.Resources/deployments', 'law-central')]",
         "[resourceId('Microsoft.Resources/deployments', 'vm-linux')]",
         "[resourceId('Microsoft.Resources/deployments', 'vm-windows')]"

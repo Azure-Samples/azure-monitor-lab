@@ -65,6 +65,26 @@ if ($cpuRole.Count -ne 1 -or @($cpuRole[0].properties.permissions.actions).Count
 $cpuAssignments = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -like '*lab-console-cpu-run-command-role*' })
 if ($cpuAssignments.Count -ne 1 -or $cpuAssignments[0].scope -notmatch 'Microsoft.Compute/virtualMachines/' -or $cpuAssignments[0].copy.count -cne "[length(parameters('cpuVmNames'))]" -or $cpuAssignments[0].properties.principalType -ne 'ServicePrincipal') { throw 'CPU role assignments must target only the selected individual VMs.' }
 if ($platformTemplate.parameters.cpuVmNames.maxLength -ne 2 -or @($platformTemplate.parameters.cpuVmNames.defaultValue).Count -ne 0) { throw 'CPU execution access must default to no VM and allow at most the demo pair.' }
+$fabricModule = @($platformTemplate.resources | Where-Object name -eq 'console-runner-fabric-access')
+$fabricRole = @($fabricModule.properties.template.resources | Where-Object type -eq 'Microsoft.Authorization/roleDefinitions')
+$fabricAssignment = @($fabricModule.properties.template.resources | Where-Object type -eq 'Microsoft.Authorization/roleAssignments')
+$fabricActions = @($fabricRole.properties.permissions.actions)
+if ($fabricModule.Count -ne 1 -or $platformTemplate.parameters.fabricCapacityName.defaultValue -cne '' -or
+    $fabricModule[0].condition -cne "[not(empty(parameters('fabricCapacityName')))]" -or
+    $fabricRole.Count -ne 1 -or $fabricActions.Count -ne 2 -or
+    $fabricActions -notcontains 'Microsoft.Fabric/capacities/read' -or
+    $fabricActions -notcontains 'Microsoft.Fabric/capacities/resume/action' -or
+    $fabricAssignment.Count -ne 1 -or $fabricAssignment[0].scope -notmatch 'Microsoft.Fabric/capacities/' -or
+    $fabricAssignment[0].properties.principalType -ne 'ServicePrincipal' -or $runnerActions -match 'Microsoft.Fabric') {
+  throw 'Fabric resume must be opt-in and assigned only on the exact capacity, never through the resource-group runner role.'
+}
+$mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
+$mainPlatform = @($mainTemplate.resources | Where-Object name -eq 'lab-console-platform')[0]
+$fabricParameter = $mainPlatform.properties.parameters.fabricCapacityName
+$fabricExpression = if ($fabricParameter -is [string]) { $fabricParameter } else { $fabricParameter.value }
+if ($fabricExpression -notmatch "if\(parameters\('enableFabric'\).*fabric-capacity.*outputs\.name\.value") {
+  throw 'One-shot deployment must pass the optional deployed capacity to the runner.'
+}
 foreach ($templatePath in @('infra/modules/lab-console-platform.json', 'infra/modules/lab-console-job.json')) {
   $runnerTemplate = Get-Content -LiteralPath (Join-Path $source $templatePath) -Raw | ConvertFrom-Json
   foreach ($runnerModule in @($runnerTemplate.resources | Where-Object { $_.name -in @('console-runner-identity', 'console-runner-registry', 'console-runner-environment', 'console-runner-job') })) {
@@ -133,6 +153,7 @@ $fixture = @{
   DeletePreview = $false; LastPreview = ''; Deployments = 0
   ExistingTags = $true; FailTagRead = $false
   NoCpuPair = $false; FailCpuInventory = $false; CpuScopeEscape = $false
+  WithFabric = $false; FabricScopeEscape = $false; MultipleFabric = $false; WrongFabricSku = $false
   AcrRolePolls = 0; AcrRoleVisibleAfter = 2; FailAcrRole = $false; SleepCalls = 0; AcrBuilds = 0; JobDeployments = 0
 }
 $scope = "/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg"
@@ -178,6 +199,8 @@ function az {
           if (@($tagParameters.cpuVmNames.value).Count -ne $expectedCpuNames.Count -or @($tagParameters.cpuVmNames.value | Where-Object { $_ -notin $expectedCpuNames }).Count) { throw 'CPU role target selection is incorrect.' }
           if ($tagParameters.enableSlotFailureScenario.value -ne $true) { throw 'The enabled slot scenario was not propagated to the runner role.' }
           if ($tagParameters.customerWebAppName.value -ne 'test-app-customer') { throw 'The exact customer Web App target was not propagated to the runner platform.' }
+          $expectedCapacity = if ($fixture.WithFabric) { 'fabtest' } else { '' }
+          if ($tagParameters.fabricCapacityName.value -cne $expectedCapacity) { throw 'The exact optional Fabric capacity was not propagated to the runner platform.' }
         } elseif ($tagParameters.ContainsKey('cpuVmNames')) { throw 'VM role parameters must not leak into the job deployment schema.' }
       }
       if ($args[2] -eq 'what-if') {
@@ -210,6 +233,13 @@ function az {
     'resource list' {
       if ($fixture.FailTagRead) { $global:LASTEXITCODE = 1; return '[]' }
       $resources = @()
+      if ($fixture.WithFabric) {
+        $capacity = @{ type = 'Microsoft.Fabric/capacities'; name = 'fabtest'; id = "$scope/providers/Microsoft.Fabric/capacities/fabtest"; sku = @{ name = 'F2' } }
+        if ($fixture.FabricScopeEscape) { $capacity.id = '/subscriptions/other/resourceGroups/other/providers/Microsoft.Fabric/capacities/fabtest' }
+        if ($fixture.WrongFabricSku) { $capacity.sku.name = 'F4' }
+        $resources += $capacity
+        if ($fixture.MultipleFabric) { $resources += $capacity }
+      }
       if ($fixture.ExistingTags) {
         $resources += @{ type = 'Microsoft.ContainerRegistry/registries'; name = 'acrlabtest'; id = "$scope/providers/Microsoft.ContainerRegistry/registries/acrlabtest"; tags = @{ custom = 'keep-me'; owner = 'old-owner' } }
       }
@@ -317,6 +347,19 @@ try {
   $fixture.NoCpuPair = $true
   & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
   $fixture.NoCpuPair = $false
+  Reset-Configuration
+  $fixture.WithFabric = $true
+  & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
+  foreach ($failure in @('FabricScopeEscape', 'MultipleFabric', 'WrongFabricSku')) {
+    Reset-Configuration
+    $fixture[$failure] = $true
+    $beforeDeployments = $fixture.Deployments
+    $caught = $false
+    try { & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null } catch { $caught = $true }
+    if (-not $caught -or $fixture.Deployments -ne $beforeDeployments) { throw "Invalid Fabric discovery must stop before granting capacity access: $failure" }
+    $fixture[$failure] = $false
+  }
+  $fixture.WithFabric = $false
   Reset-Configuration
   $fixture.MissingLogs = $true
   & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
