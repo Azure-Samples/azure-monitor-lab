@@ -35,7 +35,7 @@
    Standard web tests are billed per execution; the public retail row checked September 27, 2026 was EUR 0.0005/execution. Price the configured frequency and probe locations using the current [Azure Monitor pricing](https://azure.microsoft.com/pricing/details/monitor/). Show the *Availability* blade in App Insights — green/red world map.
 
 6. **"Health model is a preview — frame it correctly."**
-   Pitch as "executive dashboarding for your service graph." Don't oversell — the entity types and API are still moving. Show the visual graph and the health states; that's the demoable surface area.
+   Pitch as "executive dashboarding for your service graph." Don't oversell: the entity types and API are still moving. Show the visual graph and the health states; that's the demoable surface area. If the audience asks how to design one for their own app, point them to the standalone [health model tutorial](HEALTH-MODEL-TUTORIAL.md) and the [lab user-flow model](healthmodel/lab/plan.md).
 
 7. **"SLI identity is plumbing for SLOs."**
    Not a flashy demo on its own. Mention that the `scripts/setup-slis.ps1` and Grafana service connections rely on this identity existing.

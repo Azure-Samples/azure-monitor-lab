@@ -13,7 +13,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | Workload / theme | Scenarios |
 |---|---|
 | **Cross-stack — single pane of glass** | <ul><li>[1](#s1) Traffic-Lights workbook</li><li>[60](#s60) Lab Control Center</li></ul> |
-| **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[46](#s46) SLIs / SLOs</li></ul> |
+| **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[Tutorial](HEALTH-MODEL-TUTORIAL.md) design a user-flow model (standalone)</li><li>[46](#s46) SLIs / SLOs</li></ul> |
 | **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li></ul> |
 | **AKS (`aks-amlab`)** | <ul><li>[4](#s4) Container Insights + Prom + Grafana</li><li>[14](#s14) OTel tracing AKS→App Service</li><li>[30](#s30) Node.js OTel</li><li>[31](#s31) Prom rule group</li><li>[32](#s32) Grafana alert rule</li></ul> |
 | **Azure VMs (Linux + Windows)** | <ul><li>[2](#s2) VM Insights cross-OS</li></ul> |
@@ -2064,7 +2064,7 @@ Health Model alert: *"Root entity health = Unhealthy for 10 min"* — **one** al
 | Permission inheritance | No (parent/child SG only) | Yes (policies + RBAC) | Yes | No |
 | Designed for data-aggregation / views | Yes | No | No | metadata only |
 
-Health Models *require* Service Groups precisely because the same resource may have **different** roles (and therefore different signals + thresholds) in different workloads — that's something the RG / MG hierarchy can't express.
+Service Groups suit Health Models because the same resource may have **different** roles (and therefore different signals + thresholds) in different workloads, which the RG / MG hierarchy can't express. A model doesn't need one, though: you can also author entities directly, as `hm-amlab-workload` and the [health model tutorial](HEALTH-MODEL-TUTORIAL.md) do.
 
 ### Teardown
 
@@ -2079,6 +2079,10 @@ Health Models *require* Service Groups precisely because the same resource may h
 > *"Every other alert in this lab fires on a signal. **This one fires on the workload.** Service Groups give you a hierarchy that matches the **application**, not the resource tree — and Health Models turn 30 signals into one answer: is my workload healthy?"*
 
 ---
+
+### Go further: model user flows
+
+`hm-amlab-workload` groups health by Azure resource tier, which is great for showing the graph. To design a model from what people *do* with the lab (open the Control Center, keep the app answering, get telemetry in), see the [lab user-flow model](healthmodel/lab/plan.md), deployed with `./scripts/deploy-lab-healthmodel.ps1`. To learn the method hands-on on a small workload, run the [health model tutorial](HEALTH-MODEL-TUTORIAL.md).
 
 <a id="s46"></a>
 ## 46 · Service Level Indicators (SLIs / SLOs) - error budgets on the workload (preview)

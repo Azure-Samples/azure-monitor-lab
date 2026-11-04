@@ -44,6 +44,12 @@ param vmSize string = 'Standard_B2s'
 @description('AKS node VM size.')
 param aksNodeVmSize string = 'Standard_B2s'
 
+@description('Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription.')
+param appServiceRegion string = 'westeurope'
+
+@description('VMSS instance size (predictive autoscale demo).')
+param vmssVmSize string = 'Standard_B1s'
+
 @description('AKS node count.')
 param aksNodeCount int = 1
 
@@ -150,10 +156,10 @@ var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
 // the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth preview are region-limited.
 var aiLocation = 'swedencentral'
 
-// App Service is pinned to westeurope, independent of the lab region — the sponsored
+// App Service defaults to westeurope, independent of the lab region: the sponsored
 // lab subscriptions have no Basic (B1) App Service quota in northeurope, so the plan
 // would fail ARM preflight there. westeurope has unlimited Basic quota.
-var appServiceLocation = 'westeurope'
+var appServiceLocation = appServiceRegion
 
 var commonTags = {
   owner: ownerTag
@@ -626,7 +632,7 @@ module vmss 'modules/vmss.bicep' = {
   params: {
     name: vmssName
     location: location
-    vmSize: 'Standard_B1s'
+    vmSize: vmssVmSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId

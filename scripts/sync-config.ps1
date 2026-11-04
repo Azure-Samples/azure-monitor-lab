@@ -71,6 +71,10 @@ function Coalesce($a, $b) { if ($null -ne $a -and $a -ne '') { $a } else { $b } 
 $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
 $dailyCapGb       = Coalesce $cfg.dailyCapGb       1
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
+$vmSize           = Coalesce $cfg.vmSize           'Standard_B2s'
+$aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_B2s'
+$vmssVmSize       = Coalesce $cfg.vmssVmSize       'Standard_B1s'
+$appServiceRegion = Coalesce $cfg.appServiceRegion 'westeurope'
 $deployWindowsVm  = if ($null -eq $cfg.deployWindowsVm) { $true } else { [bool]$cfg.deployWindowsVm }
 $deployLinuxVm    = if ($null -eq $cfg.deployLinuxVm)   { $true } else { [bool]$cfg.deployLinuxVm }
 $enableVmOtelMetrics = $true
@@ -160,6 +164,10 @@ $bicepParams = [ordered]@{
     'enableVmOtelMetrics' = @{ value = $enableVmOtelMetrics }
     'dailyCapGb'      = @{ value = [int]$dailyCapGb }
     'aksNodeCount'    = @{ value = [int]$aksNodeCount }
+    'vmSize'          = @{ value = $vmSize }
+    'aksNodeVmSize'   = @{ value = $aksNodeVmSize }
+    'vmssVmSize'      = @{ value = $vmssVmSize }
+    'appServiceRegion' = @{ value = $appServiceRegion }
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
     'enableAi'        = @{ value = $enableStageAI }
     'enableSreAgent'  = @{ value = $enableStageSreAgent }

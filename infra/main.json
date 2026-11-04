@@ -86,6 +86,20 @@
         "description": "AKS node VM size."
       }
     },
+    "appServiceRegion": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Region for the App Service tier and its diagnostic storage and Event Hub. Override when westeurope is restricted for your subscription."
+      }
+    },
+    "vmssVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_B1s",
+      "metadata": {
+        "description": "VMSS instance size (predictive autoscale demo)."
+      }
+    },
     "aksNodeCount": {
       "type": "int",
       "defaultValue": 1,
@@ -252,7 +266,7 @@
     "observabilityAgentName": "[format('obs-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "observabilityAgentMonitoringAccountName": "[format('amw-{0}-obs', parameters('namePrefix'))]",
     "aiLocation": "swedencentral",
-    "appServiceLocation": "westeurope",
+    "appServiceLocation": "[parameters('appServiceRegion')]",
     "commonTags": {
       "owner": "[parameters('ownerTag')]",
       "purpose": "azure-monitor-lab",
@@ -13158,7 +13172,7 @@
             "value": "[parameters('location')]"
           },
           "vmSize": {
-            "value": "Standard_B1s"
+            "value": "[parameters('vmssVmSize')]"
           },
           "adminUsername": {
             "value": "[parameters('vmAdminUsername')]"

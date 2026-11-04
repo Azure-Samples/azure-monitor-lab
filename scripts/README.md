@@ -74,6 +74,17 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 | [setup-rbac-demo.ps1](setup-rbac-demo.ps1) | Creates three lab-specific, ownership-tagged app registrations and service principals for the granular RBAC demonstration. A stable scope suffix separates labs; repeated setup reuses the same lab's identities. | `./scripts/setup-rbac-demo.ps1 -ResourceGroup <rg>` |
 | `demo-granular-rbac.ps1` | Runs the granular RBAC demonstration query using the generated local RBAC configuration. | `./scripts/demo-granular-rbac.ps1` |
 
+## Health model tutorial and lab user-flow model
+
+The tutorial scripts are standalone: they use their own resource group and don't need the lab. See [docs/HEALTH-MODEL-TUTORIAL.md](../docs/HEALTH-MODEL-TUTORIAL.md).
+
+| Script | Purpose | Example |
+|---|---|---|
+| `deploy-healthmodel-tutorial.ps1` | Deploys the Lab Café workload (`infra/healthmodel-tutorial/workload.bicep`, `workloads/cafe`). | `./scripts/deploy-healthmodel-tutorial.ps1` |
+| `build-healthmodel-tutorial.ps1` | Builds the café health model with the `az monitor health-models` CLI. | `./scripts/build-healthmodel-tutorial.ps1` |
+| `break-healthmodel-tutorial.ps1` | Breaks or restores the café: `BaristaQueue`, `BadRelease`, `NetworkCut`. | `./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease [-Restore]` |
+| `deploy-lab-healthmodel.ps1` | Deploys the lab's user-flow health model `hm-amlab-flows` (`infra/healthmodel-lab/main.bicep`) next to `hm-amlab-workload`. Needs a deployed lab. | `./scripts/deploy-lab-healthmodel.ps1 -ResourceGroup <rg>` |
+
 ## Recommended sequence after deployment
 
 Start with the [deployment option](../README.md#deploy) you used. Its instructions state when setup is complete, and the staged guides include their own completion commands. Use the [manual scenario setup](../docs/POST-DEPLOYMENT.md) only for scenarios you plan to present. The commands below generate optional demo telemetry; they are not required after every deployment. AI traffic always returns after background startup; keep the deployment host and sign-in available until the finite batch ends. The printed PID and log/status paths identify the run.

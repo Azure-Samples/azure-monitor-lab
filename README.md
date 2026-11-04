@@ -17,8 +17,9 @@ It's built for demos, microhacks, and hackathons. Deploy it, poke around, break 
 |---|---|
 | **Guided Scenarios** | Follow the existing [scenario walkthroughs](docs/DEMO-SCENARIOS.md) for the story, Azure portal steps, queries, and expected results. |
 | **Lab Control Center** | Check infrastructure health, generate traffic, try Foundry agents, and perform approved SRE MCP operations. Open the [Control Center guide](docs/LAB-CONTROL-CENTER.md) for screenshots, access requirements, and linked scenarios. |
+| **Health Model Tutorial** | A separate short course in its own resource group: open a tiny café on Azure, design its health model from user flows down, build it with the `az monitor health-models` CLI and break it on purpose. About 60 minutes (short path) or 2 hours (full path), no lab deployment needed: [health model tutorial](docs/HEALTH-MODEL-TUTORIAL.md). |
 
-These are complementary entry points into the same lab. The Control Center links to the guided scenarios; it does not replace their setup or walkthroughs.
+The guided scenarios and the Control Center are complementary entry points into the same lab. The Control Center links to the guided scenarios; it does not replace their setup or walkthroughs. The health model tutorial is a standalone course with its own small workload.
 
 ## Architecture
 
@@ -166,6 +167,7 @@ $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 | [REFERENCE.md](docs/REFERENCE.md) | Full capability matrix · every deployed resource · demo walkthrough · cost breakdown · folder layout · optional add-ons · troubleshooting |
 | [COST-GUIDE.md](docs/COST-GUIDE.md) | Dated resource inventory · public-rate examples · usage formulas · optional agents · stop-versus-delete guidance |
 | [Lab Control Center](docs/LAB-CONTROL-CENTER.md) | Application guide, screenshot, traffic and agent capabilities, safety boundaries, and links to the guided scenarios |
+| [HEALTH-MODEL-TUTORIAL.md](docs/HEALTH-MODEL-TUTORIAL.md) | Standalone course: design, build and break a user-flow health model on a small café workload; [lab user-flow model plan](docs/healthmodel/lab/plan.md) applies the same method to this lab |
 | [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | All 69 demo scenarios, each with a story, a click-path, and a "killer line", plus audience-pivoted shortlists |
 | [POST-DEPLOYMENT.md](docs/POST-DEPLOYMENT.md) | Manual and optional preparation required by specific demo scenarios after deployment is complete |
 | [PM feature integration guide](docs/PM-FEATURE-INTEGRATION-GUIDE.md) | End-to-end workflow and validation checklist for product managers adding new Azure features to every deployment path |

@@ -48,6 +48,10 @@ function Write-Step($msg) {
 # Deployment sizing used by the pre-flight availability/quota check. Defaults match the
 # Bicep defaults; overridden from lab.config.json below when present.
 $pfAksNodeCount    = 1
+$pfVmSize          = 'Standard_B2s'
+$pfAksNodeVmSize   = 'Standard_B2s'
+$pfVmssSize        = 'Standard_B1s'
+$pfAppServiceLocation = 'westeurope'
 $pfDeployWindowsVm = $true
 $pfDeployLinuxVm   = $true
 $pfDeployObservabilityAgent = $false
@@ -77,6 +81,10 @@ if (Test-Path $labConfigPath) {
 
   # Mirror the deployment sizing so the pre-flight check validates the real footprint.
   if ($null -ne $labCfg.aksNodeCount)    { $pfAksNodeCount    = [int]$labCfg.aksNodeCount }
+  if ($labCfg.vmSize)                    { $pfVmSize          = $labCfg.vmSize }
+  if ($labCfg.aksNodeVmSize)             { $pfAksNodeVmSize   = $labCfg.aksNodeVmSize }
+  if ($labCfg.vmssVmSize)                { $pfVmssSize        = $labCfg.vmssVmSize }
+  if ($labCfg.appServiceRegion)          { $pfAppServiceLocation = $labCfg.appServiceRegion }
   if ($null -ne $labCfg.deployWindowsVm) { $pfDeployWindowsVm = [bool]$labCfg.deployWindowsVm }
   if ($null -ne $labCfg.deployLinuxVm)   { $pfDeployLinuxVm   = [bool]$labCfg.deployLinuxVm }
   if ($null -ne $labCfg.stageToggles.enableStageObservabilityAgent) {
@@ -123,6 +131,10 @@ if ($SkipPreflight) {
   $preflight = Join-Path $PSScriptRoot 'preflight-check.ps1'
   & $preflight -Location $Location `
                -AksNodeCount $pfAksNodeCount `
+               -VmSize $pfVmSize `
+               -AksNodeVmSize $pfAksNodeVmSize `
+               -VmssSize $pfVmssSize `
+               -AppServiceLocation $pfAppServiceLocation `
                -DeployWindowsVm $pfDeployWindowsVm `
                -DeployLinuxVm $pfDeployLinuxVm `
                -DeployObservabilityAgent $pfDeployObservabilityAgent `
