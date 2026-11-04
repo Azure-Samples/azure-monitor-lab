@@ -226,6 +226,14 @@ Scenarios 54 through 59 in `DEMO-SCENARIOS.md` form one 23-minute SRE Agent flow
 5. Demonstrate repeated-alert merging, restore the lab, and verify recovery.
 6. Show the incident command brief generated automatically by the response-plan investigator.
 
+### Repeating an alert-driven demo
+
+Confirm each original alert reaches **Resolved** before triggering the next failure. Re-running Break while an alert remains **Fired**, or changing its workflow state back to **New**, does not prove a new incident will be ingested. Alerts acknowledged before the response plan was configured may not be replayed. Confirm each enabled plan also has its response handler.
+
+The default restored load generator and optional `demo/otel-caller` both send intentional HTTP 5xx requests, which can keep `alert-webapp-5xx` above its threshold. For a clean repeat, temporarily suspend the `demo/loadgen` CronJob and scale `demo/otel-caller` to zero if deployed, recording its original replica count first. Allow active load-generator jobs to finish and wait for alert resolution. After triggering the next failure, resume the CronJob and restore the caller's original replica count. Do not leave either generator paused unintentionally.
+
+The AKS restart alert measures per-container counter increases over 15 minutes, counting restarts since creation for new pods. It must not sum cumulative counters across inventory samples: even an unchanged historical restart count would otherwise keep the alert firing. AKS recovery and fresh firings also require ingestion and alert-evaluation time.
+
 ## 8. Done when
 
 1. The trial banner and creation date are recorded.

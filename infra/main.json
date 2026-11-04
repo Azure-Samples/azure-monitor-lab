@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "8753364321644587966"
+      "templateHash": "7331232495192763243"
     }
   },
   "parameters": {
@@ -60226,7 +60226,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "1425053957084465378"
+              "templateHash": "1152640100182684224"
             }
           },
           "parameters": {
@@ -60581,7 +60581,7 @@
                 "criteria": {
                   "allOf": [
                     {
-                      "query": "KubePodInventory | where TimeGenerated > ago(15m) | summarize Restarts = sum(toint(ContainerRestartCount)) by Name | where Restarts > 5",
+                      "query": "let windowStart = ago(15m);\nKubePodInventory\n| where TimeGenerated > windowStart\n| summarize Baseline = min(toint(ContainerRestartCount)), Latest = max(toint(ContainerRestartCount)), Created = min(PodCreationTimeStamp) by _ResourceId, Namespace, PodUid, Name, ContainerName\n| extend Restarts = Latest - iff(Created >= windowStart, 0, Baseline)\n| summarize Restarts = sum(Restarts) by _ResourceId, Namespace, PodUid, Name\n| where Restarts > 5\n",
                       "timeAggregation": "Count",
                       "operator": "GreaterThan",
                       "threshold": 0,

@@ -66,6 +66,17 @@ $alertsModule = @($mainTemplate.resources | Where-Object name -eq 'alerts')
 $agentAlerts = @($alertsModule[0].properties.template.resources | Where-Object name -in @('alert-agent-task-failures', 'alert-agent-efficiency-regression'))
 if ($alertsModule.Count -ne 1 -or $agentAlerts.Count -ne 2) { throw 'The main template must contain task correctness and efficiency alerts.' }
 Write-Output 'PASS: suffixed Application Insights, investigation and usage content, task availability, and agent alerts are compiled.'
+$aksRestartAlert = @($alertsModule[0].properties.template.resources | Where-Object name -eq 'alert-aks-pod-restart-spike')
+$restartQuery = $aksRestartAlert[0].properties.criteria.allOf[0].query
+if ($aksRestartAlert.Count -ne 1 -or
+    $restartQuery -notmatch 'Baseline = min\(toint\(ContainerRestartCount\)\), Latest = max\(toint\(ContainerRestartCount\)\)' -or
+    $restartQuery -notmatch 'by _ResourceId, Namespace, PodUid, Name, ContainerName' -or
+    $restartQuery -notmatch 'Latest - iff\(Created >= windowStart, 0, Baseline\)' -or
+    $restartQuery -notmatch 'where Restarts > 5' -or
+    $restartQuery -match 'sum\(toint\(ContainerRestartCount\)\)') {
+  throw 'The AKS restart alert must count per-container increases, including new pods, instead of summing repeated cumulative inventory readings.'
+}
+Write-Output 'PASS: the AKS restart alert counts restart increases and isolates pod/container identities.'
 $vmModules = @($mainTemplate.resources | Where-Object name -in @('vm-linux', 'vm-windows'))
 if ($vmModules.Count -ne 2) { throw 'The main template must contain both demo VM modules.' }
 foreach ($vmModule in $vmModules) {
