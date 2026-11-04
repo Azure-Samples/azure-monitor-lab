@@ -124,6 +124,8 @@ notepad lab.config.json
 
 Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`. Override them with `-ResourceGroup` / `-Location` (explicit args win over `lab.config.json`, then defaults). The group is created or reused. Infrastructure provisioning, native packaging, and the cloud runner build can take tens of minutes. A successful run includes console sign-in, health, the eight-operation Azure runner, and access to selected optional agents. See [deployment reference](docs/REFERENCE.md#deploy) for config and guardrails.
 
+The [config example](lab.config.json.example) selects `Standard_B2als_v2` (2 vCPUs, 4 GiB RAM) for the demo VMs and VMSS, and two `Standard_D4as_v5` AKS system nodes (4 vCPUs, 16 GiB RAM each). Burstable demo VMs keep costs down but can throttle under sustained load; AKS uses non-burstable nodes. These example choices do not change existing local configurations or the defaults used without this config. SKU eligibility, quota, and capacity vary by subscription and region: adjust `vmSize`, `aksNodeVmSize`, and `vmssSize` in your local config if needed, retain an AKS-supported system-node size, and rerun deployment. Pre-flight checks generic VM availability and quota, not all AKS-specific size requirements; it does not select replacement SKUs automatically.
+
 <details>
 <summary><b>Pre-flight check</b> (region SKU / quota validation before deploy)</summary>
 

@@ -44,6 +44,17 @@ try {
   }
 
   $example = Get-Content -LiteralPath (Join-Path $repoRoot 'lab.config.json.example') -Raw | ConvertFrom-Json
+  $exampleSizes = @{
+    vmSize = 'Standard_B2als_v2'
+    aksNodeVmSize = 'Standard_D4as_v5'
+    vmssSize = 'Standard_B2als_v2'
+  }
+  foreach ($name in $exampleSizes.Keys) {
+    if ($example.$name -ne $exampleSizes[$name]) {
+      throw "Example '$name' must use the recommended economical SKU '$($exampleSizes[$name])'."
+    }
+  }
+  if ($example.aksNodeCount -ne 2) { throw 'The example must configure two AKS system nodes.' }
   $template = Get-Content -LiteralPath (Join-Path $repoRoot 'infra\main.parameters.json.template') -Raw | ConvertFrom-Json
   foreach ($name in @('vmSize', 'aksNodeVmSize', 'vmssSize')) {
     if ([string]::IsNullOrWhiteSpace($example.$name) -or [string]::IsNullOrWhiteSpace($template.parameters.$name.value)) {
