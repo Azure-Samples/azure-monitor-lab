@@ -4,7 +4,7 @@ const path = require('node:path');
 const now = new Date('2026-09-11T12:00:00Z');
 const target = { jobResourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-azure-monitor-lab/providers/Microsoft.App/jobs/job-labops-demo', image: 'acrlabopsdemo.azurecr.io/lab-operations@sha256:' + 'a'.repeat(64), subscriptionId: '00000000-0000-0000-0000-000000000000', tenantId: '00000000-0000-0000-0000-000000000000', resourceGroup: 'rg-azure-monitor-lab' };
 const actions = [
-  ['start', 'Start Lab', 'start-the-lab.ps1', 'Starts stopped lab resources. Running resources incur charges.'],
+  ['start', 'Start Lab', 'start-the-lab.ps1', 'Starts stopped VMs, VMSS instances, AKS, and web apps; resumes the optional Fabric F2 capacity. Running resources and active F2 incur charges.'],
   ['stop', 'Stop Lab', 'stop-the-lab.ps1', 'Deallocates VMs and VMSS instances, stops AKS, then stops the Web App hosting this Control Center.'],
   ['break', 'Break Lab', 'break-the-lab.ps1', 'Deallocates lab VMs, disrupts the AKS frontend, and increases application failures.'],
   ['restore', 'Restore Lab', 'restore-the-lab.ps1', 'Starts VMs and restores the demo frontend and load generator.'],
@@ -348,12 +348,25 @@ test('Lab Operations reports disabled/sign-in states and renders runner results 
   expect(await page.evaluate(() => window.injected)).toBeUndefined();
 });
 
+test('Start Lab discloses optional Fabric resume and billing before approval', async ({ page }) => {
+  const calls = await prepare(page);
+  await page.getByRole('button', { name: 'Start Lab', exact: true }).click();
+  await expect(page.locator('#operation-impact')).toHaveText(actions.find(action => action.id === 'start').impact);
+  await page.getByRole('button', { name: 'Review Operation', exact: true }).click();
+  await expect(page.locator('#operation-approve-form')).toBeVisible();
+  await expect(page.locator('#operation-impact')).toContainText('resumes the optional Fabric F2 capacity');
+  await expect(page.locator('#operation-impact')).toContainText('active F2 incur charges');
+  expect(calls.approvals).toEqual([]);
+});
+
 test('Lab Operations API is disabled by default and enforces operator and same-origin guards', async ({ request }) => {
   const headers = { 'X-Amlab-Agent-Request': 'true' };
   const catalog = await request.get('/api/operations/catalog');
   expect(catalog.status()).toBe(200);
   expect((await catalog.json()).available).toBe(false);
-  expect((await catalog.json()).actions).toHaveLength(9);
+  const catalogActions = (await catalog.json()).actions;
+  expect(catalogActions).toHaveLength(9);
+  expect(catalogActions.find(action => action.id === 'start').impact).toBe(actions.find(action => action.id === 'start').impact);
   expect(catalog.headers()['cache-control']).toBe('no-store');
   expect((await request.post('/api/operations/prepare', { data: { operation: 'start' } })).status()).toBe(403);
   expect((await request.post('/api/operations/prepare', { headers: { ...headers, Host: 'attacker.example' }, data: { operation: 'start' } })).status()).toBe(401);

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "4933649445731961050"
+      "templateHash": "14687560473588598082"
     }
   },
   "parameters": {
@@ -76,6 +76,13 @@
       "defaultValue": false,
       "metadata": {
         "description": "Fold the AI (Foundry) workload into the workload health model as a fourth \"AI\" tier. Requires the AI stage (50-ai) to have run."
+      }
+    },
+    "enableFabric": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Fold the Microsoft Fabric F2 capacity into the workload health model. Requires Stage Fabric (60-fabric) to have run."
       }
     }
   },
@@ -854,6 +861,10 @@
           "appInsightsLawId": {
             "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').WorkspaceResourceId]"
           },
+          "enableFabric": {
+            "value": "[parameters('enableFabric')]"
+          },
+          "fabricCapacityId": "[if(parameters('enableFabric'), createObject('value', resourceId('Microsoft.Fabric/capacities', toLower(format('fab{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8))))), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -865,7 +876,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "16649691923988421872"
+              "templateHash": "2388638836634970468"
             }
           },
           "parameters": {
@@ -975,6 +986,20 @@
               "defaultValue": "",
               "metadata": {
                 "description": "Resource ID of the App Insights backing Log Analytics workspace (per-agent AI signals). Required when enableAi = true."
+              }
+            },
+            "enableFabric": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Fold Microsoft Fabric Real-Time Intelligence into this model as an optional workload tier."
+              }
+            },
+            "fabricCapacityId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the Microsoft Fabric F2 capacity. Required when enableFabric = true."
               }
             }
           },
@@ -1862,6 +1887,64 @@
               ]
             },
             {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence')]",
+              "properties": {
+                "displayName": "Real-Time Intelligence",
+                "impact": "Standard",
+                "canvasPosition": {
+                  "x": 750,
+                  "y": 200
+                },
+                "icon": {
+                  "iconName": "Analytics"
+                },
+                "signalGroups": {
+                  "dependencies": {
+                    "aggregationType": "WorstOf",
+                    "ignoreUnknown": true
+                  }
+                },
+                "alerts": "[if(empty(parameters('actionGroupId')), null(), createObject('unhealthy', createObject('severity', 'Sev2', 'description', 'AMLAB Real-Time Intelligence workload unhealthy (Fabric capacity rollup).', 'actionGroupIds', variables('actionGroupIds'))))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity')]",
+              "properties": {
+                "displayName": "Microsoft Fabric F2 capacity",
+                "impact": "Standard",
+                "canvasPosition": {
+                  "x": 750,
+                  "y": 450
+                },
+                "icon": {
+                  "iconName": "Analytics"
+                },
+                "signalGroups": {
+                  "azureResource": {
+                    "authenticationSetting": "[variables('authName')]",
+                    "azureResourceId": "[parameters('fabricCapacityId')]",
+                    "azureResourceKind": "capacity",
+                    "resourceHealth": {
+                      "enabled": "Enabled"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), 'systemAssigned')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
               "apiVersion": "2026-01-01-preview",
@@ -2207,6 +2290,36 @@
               "dependsOn": [
                 "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'platform')]",
                 "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'storage')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/relationships",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence-to-root')]",
+              "properties": {
+                "parentEntityName": "[variables('rootName')]",
+                "childEntityName": "realtimeintelligence",
+                "displayName": "Real-Time Intelligence"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'realtimeintelligence')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/relationships",
+              "apiVersion": "2026-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity-to-realtimeintelligence')]",
+              "properties": {
+                "parentEntityName": "realtimeintelligence",
+                "childEntityName": "fabriccapacity"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'fabriccapacity')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'realtimeintelligence')]",
                 "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
               ]
             },

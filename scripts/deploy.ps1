@@ -106,7 +106,7 @@ if (Test-Path $labConfigPath) {
 function Assert-AllowedSubscription {
   $targetFile = Join-Path $PSScriptRoot '..' '.azure-target.json'
   if (-not (Test-Path $targetFile)) { throw ".azure-target.json not found at $targetFile. Bootstrap with: Copy-Item lab.config.json.example lab.config.json; edit it; re-run this script." }
-  $target = Get-Content -Raw $targetFile | ConvertFrom-Json
+  $script:target = Get-Content -Raw $targetFile | ConvertFrom-Json
 
   Write-Host "==> Pinning active az subscription to $($target.expectedSubscriptionName) ($($target.expectedSubscriptionId))" -ForegroundColor Cyan
   az account set --subscription $target.expectedSubscriptionId | Out-Null
@@ -197,6 +197,15 @@ if ($pfCustomerDependencies) {
   Register-ResourceProvider -Namespace 'Microsoft.App'
 }
 
+$fabricEnabled = $false
+if ($null -ne $labCfg -and $null -ne $labCfg.stageToggles -and $null -ne $labCfg.stageToggles.enableStageFabric) {
+  $fabricEnabled = [bool]$labCfg.stageToggles.enableStageFabric
+}
+if ($fabricEnabled) {
+  Write-Step "Fabric feature enabled - ensuring Microsoft.Fabric is registered"
+  Register-ResourceProvider -Namespace 'Microsoft.Fabric'
+}
+
 # 2. Deploy
 Write-Step "Deploying main.bicep (this takes about 5 minutes: AKS + VMs + Grafana)"
 $deploymentName = "amlab-$(Get-Date -Format 'yyyyMMddHHmmss')"
@@ -230,6 +239,7 @@ $attempt = 0
 $sentinelRetryCount = 0
 $appServiceCapacityRetryCount = 0
 $ambaMetricRetryCount = 0
+$foundrySoftDeleteRetryCount = 0
 while ($true) {
   $attempt++
   if ($attempt -gt 1) {
@@ -252,6 +262,36 @@ while ($true) {
   $sentinelQueryNotReady = $failMessages -match 'Failed to run the analytics rule query.*workspace.*could not be found'
   $appServiceCapacityNotReady = $failMessages -match 'No available instances to satisfy this request|App Service is attempting to increase capacity'
   $ambaMetricNotReady = $failMessages -match "Couldn't find a metric named (Http4xx|Http5xx|HttpResponseTime)"
+  $foundrySoftDeleted = $failMessages -match 'FlagMustBeSetForRestore'
+
+  if ($foundrySoftDeleted -and $foundrySoftDeleteRetryCount -lt 1) {
+    $foundrySoftDeleteRetryCount++
+    $deletedAccountMatch = [regex]::Match($failMessages, 'Microsoft\.CognitiveServices/accounts/([a-zA-Z0-9-]+)')
+    if (-not $deletedAccountMatch.Success) {
+      throw "Foundry deployment is blocked by a soft-deleted account, but its name could not be extracted from the failed operation details:`n$failMessages"
+    }
+
+    $deletedAccountName = $deletedAccountMatch.Groups[1].Value
+    $deletedAccount = az cognitiveservices account list-deleted `
+      --subscription $target.expectedSubscriptionId `
+      --query "[?name=='$deletedAccountName' && location=='swedencentral'] | [0].{name:name,location:location}" `
+      -o json | ConvertFrom-Json
+    if (-not $deletedAccount) {
+      throw "Foundry account '$deletedAccountName' reported a soft-delete collision but was not found in the deleted accounts list. Failed operation details:`n$failMessages"
+    }
+
+    Write-Host "`n   Foundry account '$deletedAccountName' is soft-deleted. Purging that exact lab account before one retry..." -ForegroundColor Yellow
+    az cognitiveservices account purge `
+      --subscription $target.expectedSubscriptionId `
+      --name $deletedAccountName `
+      --resource-group $ResourceGroup `
+      --location swedencentral `
+      --only-show-errors
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to purge soft-deleted Foundry account '$deletedAccountName'. Purge it manually, then rerun deployment."
+    }
+    continue
+  }
 
   if ($sentinelQueryNotReady -and $sentinelRetryCount -lt 2) {
     $sentinelRetryCount++
@@ -431,6 +471,22 @@ if ($aiEnabled) {
   } catch {
     Write-Host "  Optional AI traffic could not start: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host '  Console agent provisioning completed earlier. This warning concerns optional demo traffic.' -ForegroundColor Yellow
+  }
+}
+
+# 8. Optional Fabric feature - create the tenant-scoped workspace and Real-Time
+#    Intelligence items after the ARM capacity is ready.
+if ($fabricEnabled) {
+  Write-Step "Fabric feature enabled - creating workspace and Real-Time Intelligence items"
+  $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
+  try {
+    $fabricNamePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+    & $setupFabric -SubscriptionId $target.expectedSubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $fabricNamePrefix
+  } catch {
+    Write-Host "  Fabric SaaS setup failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  The F2 capacity may still be active and billable. Re-run setup manually or suspend it:" -ForegroundColor Yellow
+    Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+    Write-Host "  ./scripts/suspend-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
   }
 }
 

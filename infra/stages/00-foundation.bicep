@@ -11,8 +11,8 @@ param appServiceLocation string = 'westeurope'
 @maxLength(8)
 param namePrefix string = 'amlab'
 
-@description('Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable.')
-param dailyCapGb int = 1
+@description('Daily ingestion cap (GB) on each of the central and Application Insights Log Analytics workspaces. Set to -1 to disable.')
+param dailyCapGb int = 3
 
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'

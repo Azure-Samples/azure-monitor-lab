@@ -37,6 +37,11 @@ run "foundation_without_console" {
     condition     = length(terraform_data.sre_ready) == 0
     error_message = "Stage A alone must not run SRE validation."
   }
+
+  assert {
+    condition     = length(azapi_resource.stage_fabric) == 0
+    error_message = "Fabric must remain off by default."
+  }
 }
 
 run "workloads_include_console" {
@@ -127,6 +132,58 @@ run "sre_without_workloads_is_validated" {
     condition     = terraform_data.sre_ready[0].triggers_replace.resource_group == data.azurerm_resource_group.lab.id
     error_message = "Standalone SRE validation must target the selected resource group."
   }
+}
+
+run "fabric_without_workloads" {
+  command = plan
+
+  variables {
+    enable_stage_fabric = true
+    fabric_admin_email  = "operator@example.com"
+  }
+
+  assert {
+    condition     = length(azapi_resource.stage_fabric) == 1 && length(azapi_resource.stage_sre_agent) == 0 && length(terraform_data.console_ready) == 0
+    error_message = "Fabric must deploy independently without enabling SRE or the Web App console."
+  }
+
+  assert {
+    condition     = azapi_resource.stage_fabric[0].parent_id == data.azurerm_resource_group.lab.id && azapi_resource.stage_fabric[0].body.properties.parameters.fabricAdminEmail.value == var.fabric_admin_email
+    error_message = "Fabric must retain the selected resource group and administrator input."
+  }
+}
+
+run "fabric_and_sre_coexist" {
+  command = plan
+
+  variables {
+    enable_stage_b         = true
+    enable_stage_e         = true
+    enable_stage_sre_agent = true
+    enable_stage_fabric    = true
+    fabric_admin_email     = "operator@example.com"
+  }
+
+  assert {
+    condition     = length(azapi_resource.stage_fabric) == 1 && length(azapi_resource.stage_sre_agent) == 1 && length(terraform_data.console_ready) == 1
+    error_message = "Fabric and SRE stages must coexist with integration console completion."
+  }
+
+  assert {
+    condition     = azapi_resource.stage_e[0].body.properties.parameters.enableFabric.value
+    error_message = "Stage E must retain the optional Fabric health tier."
+  }
+}
+
+run "reject_missing_fabric_administrator" {
+  command = plan
+
+  variables {
+    enable_stage_fabric = true
+    fabric_admin_email  = ""
+  }
+
+  expect_failures = [var.fabric_admin_email]
 }
 
 run "reject_invalid_operator" {

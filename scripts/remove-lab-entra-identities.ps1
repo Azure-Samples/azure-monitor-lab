@@ -158,7 +158,7 @@ try {
       $identity = Get-VerifiedIdentity -AppId $appId
       if ($identity) { $identity }
     }
-    Write-Warning 'Entra cleanup preserves untagged registrations from older setup versions. Those require a separate ownership review; they are never deleted by display name.'
+    Write-Warning 'Untagged legacy Entra registrations are preserved. Only identities with verified lab ownership are deleted.'
     return
   }
 

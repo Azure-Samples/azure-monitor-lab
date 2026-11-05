@@ -22,6 +22,7 @@ $fixture = @{
   Calls = [Collections.Generic.List[object]]::new(); Http = [Collections.Generic.List[object]]::new(); Credentials = 0; Conversions = 0
   BadTenant = $false; DenyKubernetes = $false; FailVmStart = $false; FailKubernetes = $false; ObservedTarget = $false
   FailLogin = $false; VmssStopped = $false; AllResourcesStopped = $false; FailVmInventory = $false
+  FabricState = 'Paused'; FabricResumes = 0
   WebAppFailures = 0; CustomerFailures = 0; Sleeps = [Collections.Generic.List[int]]::new()
   ProductionStatus = 200; BrokenStatus = 503; SlotSwaps = 0; FailSlotSwap = $false
   CpuMode = $false; CpuMissingWindows = $false; CpuExtraVm = $false; CpuStoppedWindows = $false; CpuAgentUnavailable = $false
@@ -146,6 +147,7 @@ function Invoke-FakeAzure {
       return '[{"name":"app-test","state":"Running","defaultHostName":"app-test.azurewebsites.net"}]'
     }
     'resource show' {
+      if ($args -contains '2023-11-01' -and $args -contains 'properties.state') { return $fixture.FabricState }
       if ($args -notcontains 'Microsoft.Web/sites') {
         if ($args -notcontains 'properties' -or $args -notcontains '2023-03-11') { throw 'Custom-log discovery must use core ARM properties.' }
         if ($args -contains 'Microsoft.Insights/dataCollectionEndpoints') { return '{"logsIngestion":{"endpoint":"https://test.ingest.monitor.azure.com"}}' }
@@ -185,6 +187,9 @@ function Invoke-FakeAzure {
       return '[{"name":"broken","defaultHostName":"app-amlab-test-customer-broken.azurewebsites.net"}]'
     }
     'resource list' {
+      if ($args -contains 'Microsoft.Fabric/capacities') {
+        return @(@{ name = 'fabtest'; id = "/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg/providers/Microsoft.Fabric/capacities/fabtest"; sku = 'F2' }) | ConvertTo-Json -AsArray
+      }
       if ($args -contains 'Microsoft.Insights/components') {
         if ($args -contains '[0].name') { throw 'Annotation discovery must not choose the first component.' }
         $core = @{ name = 'appi-amlab-test'; tags = @{} }
@@ -206,6 +211,13 @@ function Invoke-FakeAzure {
       if ($args -contains 'Microsoft.Insights/dataCollectionRules') { return '[{"name":"dcr-customlogs"}]' }
       if ($args -contains 'Microsoft.Insights/dataCollectionEndpoints') { return '[{"name":"dce-customlogs"}]' }
       throw 'Unexpected resource type.'
+    }
+    'rest --method' {
+      $expectedUri = "https://management.azure.com/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg/providers/Microsoft.Fabric/capacities/fabtest/resume?api-version=2023-11-01"
+      if ($args -notcontains 'post' -or $args -notcontains $expectedUri) { throw 'Unexpected Fabric mutation.' }
+      $fixture.FabricState = 'Active'
+      $fixture.FabricResumes++
+      return
     }
     default { throw "Unexpected command: $command" }
   }
@@ -356,14 +368,15 @@ try {
   $fixture.Calls.Clear()
   $fixture.AllResourcesStopped = $true
   $accessOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation start -CheckAccessOnly | Out-String
-  $allowedReads = @('login --identity', 'account set', 'account show', 'group exists', 'vm list', 'vmss list', 'vmss list-instances', 'aks list', 'webapp list')
+  $allowedReads = @('login --identity', 'account set', 'account show', 'group exists', 'vm list', 'vmss list', 'vmss list-instances', 'aks list', 'webapp list', 'resource list', 'resource show')
   if ($accessOutput -notmatch 'Runner prerequisites verified' -or $fixture.Http.Count -ne 0 -or
       @($fixture.Calls | Where-Object { $_.Tool -ne 'az' -or ($_.Arguments[0..1] -join ' ') -notin $allowedReads }).Count) {
     throw 'Read-only preflight executed a workload operation.'
   }
-  foreach ($expectedRead in @('vm list', 'vmss list-instances', 'aks list', 'webapp list')) {
+  foreach ($expectedRead in @('vm list', 'vmss list-instances', 'aks list', 'webapp list', 'resource list', 'resource show')) {
     if (-not @($fixture.Calls | Where-Object { ($_.Arguments[0..1] -join ' ') -eq $expectedRead }).Count) { throw 'Access-only mode missed part of Start Lab resource discovery.' }
   }
+  if ($fixture.FabricResumes -ne 0 -or $fixture.FabricState -ne 'Paused') { throw 'Read-only preflight resumed a Fabric capacity.' }
   $stopReadStart = $fixture.Calls.Count
   $stopAccessOutput = & (Join-Path $scriptDirectory 'invoke-lab-operation.ps1') @parameters -Operation stop -CheckAccessOnly | Out-String
   if ($stopAccessOutput -notmatch 'Runner prerequisites verified' -or
@@ -497,6 +510,7 @@ try {
       -not @($fixture.Calls | Where-Object { $_.Tool -eq 'az' -and ($_.Arguments[0..1] -join ' ') -eq 'vmss list-instances' -and ($_.Arguments -join ' ') -match 'length' }).Count) {
     throw 'A stopped VMSS was not started and verified through expanded instance view.'
   }
+  if ($fixture.FabricResumes -ne 1 -or $fixture.FabricState -ne 'Active') { throw 'Fabric was not resumed once, or an active capacity was resumed again.' }
   foreach ($failure in @('BadTenant', 'DenyKubernetes', 'FailVmStart', 'FailKubernetes', 'FailLogin')) {
     $fixture[$failure] = $true
     if ($failure -eq 'FailVmStart') { $fixture.AllResourcesStopped = $true }

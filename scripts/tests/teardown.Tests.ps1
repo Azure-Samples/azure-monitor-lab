@@ -6,16 +6,19 @@ $null = New-Item -ItemType Directory -Path $directory -Force
 Copy-Item -LiteralPath (Join-Path $source 'scripts/teardown.ps1') -Destination $directory
 $fixture = @{
   Subscription = [guid]::NewGuid(); Tenant = [guid]::NewGuid()
-  ResourceGroup = 'rg-teardown-test'; BadTenant = $false; Confirm = 'DELETE'
+  ResourceGroup = 'rg-teardown-test'; BadTenant = $false; Confirm = 'DELETE'; ConfirmationReads = 0
+  CliStderr = ''
   DiscoveryError = ''; GroupLists = 0
   Deletes = [Collections.Generic.List[string]]::new()
   TenantCleanup = [Collections.Generic.List[string]]::new()
   PrimaryGroupExists = $true; AuxiliaryGroupExists = $true; MonitorGroupExists = $true
-  GroupInventoryFails = $false; MonitorDeleteFails = $false; MonitorCascadeDuringDelete = $false
-  MonitorOwnerChanged = $false
+  GroupInventoryFails = $false; GroupDeleteError = ''
+  MonitorOwnerChanged = $false; MonitorOwnerChangeAfterChecks = 0; MonitorWrongId = $false
+  MonitorChecks = 0; MonitorSleeps = 0; MonitorCleanupAfterChecks = 2; MonitorLookupError = ''
   RealTenantCleanup = $false; TenantDeleteError = ''
   ServiceGroupMembershipExists = $true
   ObservabilityAgentExists = $false
+  SreAgentExists = $false; SreDiscoveryFails = $false; SreCleanupFails = $false
   ActivityWorkspaceId = ''; ActivityDiagnosticDeletes = 0
   EntraPlan = @(); EntraCalls = [Collections.Generic.List[string]]::new(); EntraFails = ''
 }
@@ -30,6 +33,7 @@ $auxiliaryGroup = "MC_$($fixture.ResourceGroup)_aks-test_northeurope"
 $monitorGroup = 'MA_amw-amlab_northeurope_managed_3'
 $monitorWorkspaceId = "$resourceGroupId/providers/Microsoft.Monitor/accounts/amw-amlab"
 $observabilityAgentId = "$resourceGroupId/providers/Microsoft.Monitor/observabilityAgents/obs-amlab-test"
+$sreAgentId = "$resourceGroupId/providers/Microsoft.App/agents/sre-test"
 $observabilityPrincipalId = [guid]::NewGuid().ToString()
 $observabilityRoleAssignmentId = "/subscriptions/$($fixture.Subscription)/providers/Microsoft.Authorization/roleAssignments/obs-monitoring-reader"
 $appInsightsId = "$resourceGroupId/providers/Microsoft.Insights/components/appi-test"
@@ -66,15 +70,26 @@ $fixture.TenantCleanup.Add([IO.Path]::GetFileName($PSCommandPath))
 }
 
 @'
+[CmdletBinding(SupportsShouldProcess)]
 param($SubscriptionId, $TenantId, $ResourceGroup, [switch]$PlanOnly, $Identities)
 if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or $ResourceGroup -ne $fixture.ResourceGroup) { throw 'Entra cleanup lost the verified lab target.' }
 $step = if ($PlanOnly) { 'plan' } else { 'delete' }
 $fixture.EntraCalls.Add($step)
 if ($fixture.EntraFails -eq $step) { throw 'Entra cleanup denied.' }
 if ($PlanOnly) { $fixture.EntraPlan; return }
+if (-not $PSBoundParameters.ContainsKey('Confirm') -or $PSBoundParameters.Confirm) { throw 'Confirmed teardown must suppress nested Entra approval.' }
 if ($fixture.Deletes.Count -or $fixture.TenantCleanup.Count) { throw 'Entra cleanup must run before resource or shared-tenant cleanup.' }
 if (($Identities | ConvertTo-Json -Depth 5 -Compress) -ne ($fixture.EntraPlan | ConvertTo-Json -Depth 5 -Compress)) { throw 'Only the confirmed Entra identity plan may be deleted.' }
 '@ | Set-Content -LiteralPath (Join-Path $directory 'remove-lab-entra-identities.ps1')
+
+@'
+[CmdletBinding(SupportsShouldProcess)]
+param($SubscriptionId, $TenantId, $ResourceId)
+if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or $ResourceId -ne $sreAgentId) { throw 'SRE cleanup lost the verified target.' }
+if ($fixture.SreCleanupFails) { throw 'SRE Agent stop failed: currently being processed. No delete submitted.' }
+$fixture.Deletes.Add($ResourceId)
+return $true
+'@ | Set-Content -LiteralPath (Join-Path $directory 'remove-sre-agent.ps1')
 
 if ($IsWindows) {
   $argumentScript = Join-Path $directory 'capture-arguments.ps1'
@@ -89,18 +104,33 @@ if exist "$nativePowerShell" (
 "@ | Set-Content -LiteralPath $argumentShim -Encoding ascii
 }
 
-function Read-Host { return $fixture.Confirm }
+function Read-Host {
+  $fixture.ConfirmationReads++
+  return $fixture.Confirm
+}
+function Start-Sleep {
+  param([int] $Seconds)
+  if ($Seconds -ne 10) { throw 'Unexpected managed-group polling interval.' }
+  $fixture.MonitorSleeps++
+}
 function az {
   $global:LASTEXITCODE = 0
   switch ($args[0..1] -join ' ') {
     'account set' {
       if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Wrong teardown subscription.' }
+      if ($fixture.CliStderr) {
+        $errorText = $fixture.CliStderr.Replace("'", "''")
+        & (Join-Path $PSHOME 'pwsh') -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('$errorText'); exit 0"
+        $global:LASTEXITCODE = $LASTEXITCODE
+      }
     }
     'account show' {
       return @{ id = $fixture.Subscription; tenantId = $(if ($fixture.BadTenant) { [guid]::NewGuid() } else { $fixture.Tenant }) } | ConvertTo-Json
     }
     'group list' {
       $fixture.GroupLists++
+      $fixture.MonitorChecks = 0; $fixture.MonitorSleeps = 0
+      $fixture.ConfirmationReads = 0
       if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Group discovery lost the verified subscription.' }
       if ($fixture.GroupInventoryFails) { $global:LASTEXITCODE = 1; return '[]' }
       $groups = @($groupInventory | Where-Object {
@@ -118,20 +148,39 @@ function az {
       return $fixture.MonitorGroupExists.ToString().ToLowerInvariant()
     }
     'group show' {
-      if ($args[[Array]::IndexOf($args, '-n') + 1] -ne $monitorGroup -or $args -notcontains 'managedBy' -or
+      if ($args[[Array]::IndexOf($args, '-n') + 1] -ne $monitorGroup -or $args -notcontains '{id:id,managedBy:managedBy}' -or
           $args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Unexpected managed-group owner check.' }
-      if ($fixture.MonitorOwnerChanged) { return "/subscriptions/$($fixture.Subscription)/resourceGroups/rg-other-lab/providers/Microsoft.Monitor/accounts/amw-amlab" }
-      return $monitorWorkspaceId
+      if ($fixture.PrimaryGroupExists -and $fixture.Deletes -notcontains "group:$($fixture.ResourceGroup)") {
+        throw 'Monitor cascade verification must follow the owning lab deletion request.'
+      }
+      $fixture.MonitorChecks++
+      if ($fixture.MonitorLookupError) {
+        & (Join-Path $PSHOME 'pwsh') -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('$($fixture.MonitorLookupError)'); exit 1"
+        $global:LASTEXITCODE = $LASTEXITCODE
+        return
+      }
+      if (-not $fixture.MonitorGroupExists -or
+          ($fixture.MonitorCleanupAfterChecks -gt 0 -and $fixture.MonitorChecks -gt $fixture.MonitorCleanupAfterChecks)) {
+        $global:LASTEXITCODE = 3
+        return "ERROR: (ResourceGroupNotFound) Resource group '$monitorGroup' could not be found."
+      }
+      $owner = $monitorWorkspaceId
+      if ($fixture.MonitorOwnerChanged -or
+          ($fixture.MonitorOwnerChangeAfterChecks -gt 0 -and $fixture.MonitorChecks -ge $fixture.MonitorOwnerChangeAfterChecks)) {
+        $owner = "/subscriptions/$($fixture.Subscription)/resourceGroups/rg-other-lab/providers/Microsoft.Monitor/accounts/amw-amlab"
+      }
+      $id = "/subscriptions/$($fixture.Subscription)/resourceGroups/$monitorGroup"
+      if ($fixture.MonitorWrongId) { $id = "/subscriptions/$otherSubscription/resourceGroups/$monitorGroup" }
+      return @{ id = $id; managedBy = $owner } | ConvertTo-Json
     }
     'group delete' {
       $name = $args[[Array]::IndexOf($args, '-n') + 1]
-      if ($name -notin @($fixture.ResourceGroup, $auxiliaryGroup, $monitorGroup) -or $args -notcontains '--no-wait' -or $args -notcontains '--yes') { throw 'Unexpected resource group deletion.' }
+      if ($name -eq $monitorGroup) { throw 'DenyAssignmentAuthorizationFailed: Monitor-managed groups must never be deleted directly.' }
+      if ($name -notin @($fixture.ResourceGroup, $auxiliaryGroup) -or $args -notcontains '--no-wait' -or $args -notcontains '--yes') { throw 'Unexpected resource group deletion.' }
       if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Group deletion lost the verified subscription.' }
       $fixture.Deletes.Add("group:$name")
-      if ($name -eq $monitorGroup -and $fixture.MonitorDeleteFails) {
-        if ($fixture.MonitorCascadeDuringDelete) { $fixture.MonitorGroupExists = $false }
-        $message = if ($fixture.MonitorCascadeDuringDelete) { 'ResourceGroupNotFound' } else { 'AuthorizationFailed: managed group deletion was denied.' }
-        & (Join-Path $PSHOME 'pwsh') -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('$message'); exit 1"
+      if ($fixture.GroupDeleteError) {
+        & (Join-Path $PSHOME 'pwsh') -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('$($fixture.GroupDeleteError)'); exit 1"
         $global:LASTEXITCODE = $LASTEXITCODE
       }
     }
@@ -143,7 +192,12 @@ function az {
             if ($fixture.ServiceGroupMembershipExists) { return ConvertTo-Json -InputObject @(@{ id = "$resourceGroupId/providers/Microsoft.Relationships/serviceGroupMember/sgm-amlab-rg" }) }
             return '[]'
           }
-          'Microsoft.App/agents' { return '[]' }
+          'Microsoft.App/agents' {
+            if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'SRE discovery lost the verified subscription.' }
+            if ($fixture.SreDiscoveryFails) { $global:LASTEXITCODE = 1; return '[]' }
+            if ($fixture.SreAgentExists) { return ConvertTo-Json -InputObject @(@{ id = $sreAgentId; name = 'sre-test' }) }
+            return '[]'
+          }
           'Microsoft.Monitor/observabilityAgents' {
             if ($fixture.ObservabilityAgentExists) { return ConvertTo-Json -InputObject @(@{ id = $observabilityAgentId; name = 'obs-amlab-test' }) }
             return '[]'
@@ -250,7 +304,8 @@ function az {
       $operation = $args[3]
       if ($operation -eq 'list') { return $fixture.ActivityWorkspaceId }
       if ($operation -ne 'delete' -or $args[[Array]::IndexOf($args, '--name') + 1] -ne 'amlab-activity-to-law' -or
-          $args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) {
+          $args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString() -or
+          $args -notcontains '--yes') {
         throw 'Unexpected subscription diagnostic-setting cleanup.'
       }
       $fixture.ActivityDiagnosticDeletes++
@@ -261,6 +316,22 @@ function az {
 }
 
 try {
+  $fixture.DiscoveryError = 'ERROR: (UnsupportedResourceType) Associations unsupported for this resource.'
+  $warningExample = '  az monitor data-collection rule create --resource-group "myResourceGroup" --location "eastus" --name "myCollectionRule" --rule-file "C:\samples\dcrEx1.json"'
+  foreach ($noiseCase in @(
+    @{ Text = 'WARNING: Unrelated CLI diagnostic.'; Expected = 'WARNING: Unrelated CLI diagnostic.' },
+    @{ Text = $warningExample; Expected = $warningExample },
+    @{ Text = 'other_module.py:21: SyntaxWarning: "\s" is an invalid escape sequence.'; Expected = 'other_module.py:21: SyntaxWarning:' }
+  )) {
+    $fixture.CliStderr = $noiseCase.Text
+    $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+    $messages = & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes 2>&1 6>&1 | Out-String
+    if (-not $messages.Contains($noiseCase.Expected) -or $fixture.ConfirmationReads) {
+      throw 'Teardown must preserve unrelated CLI diagnostics and never prompt with -Yes.'
+    }
+  }
+  $fixture.CliStderr = ''
+  Write-Output 'PASS: unrelated CLI diagnostics and standalone sample text remain visible; -Yes does not prompt. No Azure calls.'
   foreach ($nativePreference in @($true, $false)) {
     foreach ($discoveryCase in @(
       @{ Error = 'ERROR: Bad Request({"error":{"code":"UnsupportedResourceType","message":"Association cannot be created for this resource type."}})'; Skip = $true },
@@ -284,7 +355,7 @@ try {
         if ($PSNativeCommandUseErrorActionPreference -ne $nativePreference) { throw 'Teardown changed the caller native-error preference.' }
         if ($discoveryCase.Skip) {
           if ($failure) { throw "Expected missing association discovery must not abort teardown: $failure" }
-          $expectedDeletes = @($associationId, $dcrId, $dceId, "group:$($fixture.ResourceGroup)", "group:$auxiliaryGroup", "group:$monitorGroup")
+          $expectedDeletes = @($associationId, $dcrId, $dceId, "group:$($fixture.ResourceGroup)", "group:$auxiliaryGroup")
           if (($fixture.Deletes -join ',') -ne ($expectedDeletes -join ',')) { throw 'Associations must be deduplicated and monitoring cleanup must precede only the matched group deletions.' }
             if (($fixture.TenantCleanup -join ',') -ne 'setup-slis.ps1,setup-health-model.ps1') { throw 'Normal teardown must retain its tenant cleanup order.' }
         } elseif ($failure -notlike '*DCR association discovery failed*' -or -not $failure.Contains($unsupportedId) -or
@@ -303,6 +374,26 @@ try {
     throw 'Observability Agent subscription and Application Insights RBAC and resource must be deleted before monitoring dependencies and resource groups.'
   }
   $fixture.ObservabilityAgentExists = $false
+  foreach ($sreCase in @(
+    @{ DiscoveryFails = $false; CleanupFails = $false; Expected = '' },
+    @{ DiscoveryFails = $true; CleanupFails = $false; Expected = '*Could not inspect SRE Agents*' },
+    @{ DiscoveryFails = $false; CleanupFails = $true; Expected = '*currently being processed*' }
+  )) {
+    $fixture.SreAgentExists = $true
+    $fixture.SreDiscoveryFails = $sreCase.DiscoveryFails
+    $fixture.SreCleanupFails = $sreCase.CleanupFails
+    $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+    $failure = ''
+    try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null }
+    catch { $failure = $_.Exception.Message }
+    if ($sreCase.Expected) {
+      if ($failure -notlike $sreCase.Expected -or $fixture.Deletes.Count) { throw "SRE failures must block monitoring and resource-group deletion: $failure" }
+    } elseif ($failure -or $fixture.Deletes[0] -ne $sreAgentId) {
+      throw "Verified SRE cleanup must precede monitoring/resource-group deletion: $failure"
+    }
+  }
+  $fixture.SreAgentExists = $false; $fixture.SreDiscoveryFails = $false; $fixture.SreCleanupFails = $false
+  Write-Output 'PASS: SRE discovery is subscription-scoped, uses guarded removal, and blocks resource-group cleanup on discovery/stop/delete failures. No Azure calls.'
   if ($fixture.ActivityDiagnosticDeletes -eq 0) { throw 'Teardown must remove Activity Log routing owned by the selected lab.' }
   $ownedDiagnosticDeletes = $fixture.ActivityDiagnosticDeletes
   $fixture.ActivityWorkspaceId = "/subscriptions/$($fixture.Subscription)/resourceGroups/rg-other-lab/providers/Microsoft.OperationalInsights/workspaces/law-other"
@@ -312,7 +403,7 @@ try {
   $fixture.Deletes.Clear()
   $fixture.TenantCleanup.Clear()
   & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -KeepServiceGroup -Yes | Out-Null
-  if ($fixture.TenantCleanup.Count -or ($fixture.Deletes -join ',') -ne (@($associationId, $dcrId, $dceId, "group:$($fixture.ResourceGroup)", "group:$auxiliaryGroup", "group:$monitorGroup") -join ',')) {
+  if ($fixture.TenantCleanup.Count -or ($fixture.Deletes -join ',') -ne (@($associationId, $dcrId, $dceId, "group:$($fixture.ResourceGroup)", "group:$auxiliaryGroup") -join ',')) {
     throw 'KeepServiceGroup must preserve tenant resources while still removing the selected lab.'
   }
   foreach ($monitorGroupExists in @($true, $false)) {
@@ -321,39 +412,88 @@ try {
     $fixture.MonitorGroupExists = $monitorGroupExists
     $fixture.Deletes.Clear()
     $fixture.TenantCleanup.Clear()
-    & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null
-    $expectedDeletes = @()
-    if ($monitorGroupExists) { $expectedDeletes += "group:$monitorGroup" }
-    if (($fixture.Deletes -join ',') -ne ($expectedDeletes -join ',') -or $fixture.TenantCleanup.Count) {
-      throw 'A rerun must clean up only the orphaned owned groups, allowing Azure to have already removed the Monitor group.'
+    $messages = & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes 6>&1 | Out-String
+    if ($fixture.Deletes.Count -or $fixture.TenantCleanup.Count -or $messages -notmatch 'absence verified \(ResourceGroupNotFound\)') {
+      throw 'A rerun must verify Azure-managed cleanup without directly deleting the protected group.'
+    }
+    $expectedChecks = if ($monitorGroupExists) { 3 } else { 1 }
+    if ($fixture.MonitorChecks -ne $expectedChecks -or $fixture.MonitorSleeps -ne ($expectedChecks - 1)) {
+      throw 'Managed-group cleanup must poll only until authoritative absence.'
     }
   }
-  foreach ($cascadeDuringDelete in @($true, $false)) {
-    $fixture.MonitorGroupExists = $true
-    $fixture.MonitorDeleteFails = $true
-    $fixture.MonitorCascadeDuringDelete = $cascadeDuringDelete
+  $fixture.MonitorGroupExists = $true
+  $fixture.MonitorCleanupAfterChecks = 0
+  $fixture.Deletes.Clear()
+  $failure = ''
+  try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null }
+  catch { $failure = $_.Exception.Message }
+  if ($failure -notlike '*not removed*within 600s*' -or -not $failure.Contains($monitorGroup) -or
+      -not $failure.Contains($monitorWorkspaceId) -or $fixture.MonitorChecks -ne 60 -or
+      $fixture.MonitorSleeps -ne 59 -or $fixture.Deletes.Count) {
+    throw "Stalled Azure-managed cleanup must fail within bounded checks without directly deleting the group: $failure"
+  }
+  $fixture.MonitorCleanupAfterChecks = 2
+  foreach ($nativePreference in @($true, $false)) {
+    foreach ($lookupError in @(
+      'ERROR: (AuthorizationFailed) Cannot inspect the protected managed group.',
+      'ERROR: (AuthorizationFailed) ResourceGroupNotFound appears in this message, but is not the error code.',
+      'ERROR: (InternalServerError) Managed group lookup failed.'
+    )) {
+      $fixture.MonitorLookupError = $lookupError
+      $fixture.Deletes.Clear()
+      & {
+        $PSNativeCommandUseErrorActionPreference = $nativePreference
+        $failure = ''
+        try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null }
+        catch { $failure = $_.Exception.Message }
+        if ($PSNativeCommandUseErrorActionPreference -ne $nativePreference -or
+            $failure -notlike '*Could not verify Azure-managed cleanup*No absence was assumed*' -or
+            -not $failure.Contains($lookupError) -or $fixture.MonitorChecks -ne 1 -or $fixture.Deletes.Count) {
+          throw "Managed-group lookup errors must retain diagnostics and never imply absence: $failure"
+        }
+      }
+    }
+  }
+  $fixture.MonitorLookupError = ''
+  foreach ($ownershipCase in @(
+    @{ Changed = $true; AfterChecks = 0; WrongId = $false; ExpectedChecks = 1 },
+    @{ Changed = $false; AfterChecks = 2; WrongId = $false; ExpectedChecks = 2 },
+    @{ Changed = $false; AfterChecks = 0; WrongId = $true; ExpectedChecks = 1 }
+  )) {
+    $fixture.MonitorOwnerChanged = $ownershipCase.Changed
+    $fixture.MonitorOwnerChangeAfterChecks = $ownershipCase.AfterChecks
+    $fixture.MonitorWrongId = $ownershipCase.WrongId
     $fixture.Deletes.Clear()
     $failure = ''
     try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null }
     catch { $failure = $_.Exception.Message }
-    if ($cascadeDuringDelete -and $failure) { throw "Automatic cleanup racing managed-group deletion must not fail: $failure" }
-    if (-not $cascadeDuringDelete -and ($failure -notlike '*failed to submit deletion*AuthorizationFailed*' -or -not $failure.Contains($monitorGroup))) {
-      throw 'Managed-group deletion errors must be reported when the group still exists.'
+    if ($failure -notlike '*no longer owned*Refusing further cleanup*' -or $fixture.Deletes.Count -or
+        $fixture.MonitorChecks -ne $ownershipCase.ExpectedChecks) {
+      throw "Ownership changes and unexpected resource IDs must stop managed-group polling: $failure"
     }
   }
-  $fixture.MonitorDeleteFails = $false
-  $fixture.MonitorCascadeDuringDelete = $false
-  $fixture.MonitorOwnerChanged = $true
-  $fixture.MonitorGroupExists = $true
-  $fixture.Deletes.Clear()
-  $rejected = $false
-  try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null }
-  catch { $rejected = $_.Exception.Message -like '*no longer owned*Refusing deletion*' }
-  if (-not $rejected -or $fixture.Deletes.Count) { throw 'Ownership changes since discovery must stop managed-group deletion.' }
   $fixture.MonitorOwnerChanged = $false
+  $fixture.MonitorOwnerChangeAfterChecks = 0; $fixture.MonitorWrongId = $false
+  Write-Output 'PASS: Monitor-managed groups are never directly deleted; cascade verification handles absence, delayed cleanup, bounded timeouts, lookup errors, and ownership changes. No Azure calls.'
   $fixture.PrimaryGroupExists = $true
   $fixture.AuxiliaryGroupExists = $true
   $fixture.MonitorGroupExists = $true
+  $fixture.GroupDeleteError = 'ERROR: (AuthorizationFailed) Lab resource group deletion was denied.'
+  foreach ($nativePreference in @($true, $false)) {
+    $fixture.Deletes.Clear()
+    & {
+      $PSNativeCommandUseErrorActionPreference = $nativePreference
+      $failure = ''
+      try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null }
+      catch { $failure = $_.Exception.Message }
+      if ($PSNativeCommandUseErrorActionPreference -ne $nativePreference -or
+          $failure -notlike '*failed to submit deletion*' -or -not $failure.Contains($fixture.GroupDeleteError) -or
+          $fixture.Deletes -contains "group:$auxiliaryGroup" -or $fixture.MonitorChecks) {
+        throw "Ordinary resource-group deletion errors must block subsequent deletion and cascade verification: $failure"
+      }
+    }
+  }
+  $fixture.GroupDeleteError = ''
   $fixture.GroupInventoryFails = $true
   $fixture.Deletes.Clear()
   $rejected = $false
@@ -371,7 +511,7 @@ try {
   $fixture.BadTenant = $false
   $fixture.Confirm = 'cancel'
   $confirmationOutput = & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup 6>&1 | Out-String
-  if ($fixture.Deletes.Count) { throw 'Cancelled teardown must not delete resources.' }
+  if ($fixture.Deletes.Count -or $fixture.ConfirmationReads -ne 1) { throw 'Cancelled teardown must ask once and not delete resources.' }
   if (-not $confirmationOutput.Contains($monitorGroup) -or $confirmationOutput.Contains('MA_amw-amlab_northeurope_managed_2')) {
     throw 'Confirmation must list the owned managed group and exclude another lab sharing the workspace name.'
   }
@@ -429,7 +569,7 @@ try {
           throw "Tenant cleanup failure must stop before resource group deletion with Azure diagnostics: $failure"
         }
       } else {
-        $expectedDeletes = @($associationId, $dcrId, $dceId, "group:$($fixture.ResourceGroup)", "group:$auxiliaryGroup", "group:$monitorGroup")
+        $expectedDeletes = @($associationId, $dcrId, $dceId, "group:$($fixture.ResourceGroup)", "group:$auxiliaryGroup")
         $expectedTenantDeletes = if ($tenantCase.Keep -or -not $tenantCase.Membership) { @() } else { @($tenantDeleteApis.Keys) }
         if ($failure -or ($fixture.Deletes -join ',') -ne ($expectedDeletes -join ',') -or
             ($fixture.TenantCleanup -join ',') -ne ($expectedTenantDeletes -join ',')) {
@@ -444,7 +584,7 @@ try {
   Write-Output 'PASS: cleanup order, deduplication, matched group scope, tenant guard, and cancellation are preserved. No Azure calls.'
   Write-Output 'PASS: Observability Agent subscription RBAC and resource are explicitly deleted before asynchronous resource-group cleanup. No Azure calls.'
   Write-Output 'PASS: KeepServiceGroup preserves shared tenant resources without skipping resource group cleanup. No Azure calls.'
-  Write-Output 'PASS: managed Monitor groups follow exact subscription/RG/workspace ownership; other labs are excluded and cascaded or orphaned groups are handled. No Azure calls.'
+  Write-Output 'PASS: managed Monitor groups follow exact subscription/RG/workspace ownership; other labs are excluded and automatic cleanup is verified on initial runs and reruns. No Azure calls.'
   if ($IsWindows) { Write-Output 'PASS: parenthesized ARM resource paths survive native Windows .cmd argument forwarding unchanged. No Azure calls.' }
 } finally {
   Remove-Item -LiteralPath $root -Recurse -Force

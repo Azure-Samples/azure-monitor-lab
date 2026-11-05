@@ -35,7 +35,7 @@ if ($context.CustomerWebAppName -cne $CustomerWebAppName) { throw 'The customer 
 Write-Host "Customer backend completion: SQL schema, three seed products and object-scoped managed-identity users in '$($context.sqlDatabaseId)'; worker ZIP publication to '$($context.workerId)'; read-only readiness."
 Write-Host 'SQL public access and firewall rules remain unchanged. No order is submitted. Run as the configured SQL Entra administrator; .NET 8 SDK, Python and paramiko are required.'
 if (-not $ApproveCustomerDependencies -and
-    (Read-Host 'Approve this customer SQL initialization and worker publication? Type yes to continue') -ine 'yes') {
+    ([string](Read-Host 'Approve this customer SQL initialization and worker publication? Type yes to continue')).Trim() -ine 'yes') {
   throw 'Customer backend completion was not approved. Infrastructure exists, but deployment readiness is incomplete.'
 }
 & (Join-Path $PSScriptRoot 'deploy-customer-dependencies.ps1') `

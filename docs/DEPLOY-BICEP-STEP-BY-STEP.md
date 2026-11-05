@@ -80,6 +80,7 @@ The Control Center requires Stage B. Its Foundry Playground additionally require
 6. Stage AI done: Foundry model deployments exist, App Insights receives AI telemetry, and the AI FinOps queries return data after `setup-ai.ps1` runs.
 7. Stage SRE Agent done: the agent is in `swedencentral`, all three connectors are configured, and identity-specific RBAC validation passes.
 8. Stage Observability Agent done: the agent and dedicated workspace share a supported region, Application Insights is monitored, automatic issue creation is enabled, investigation mode matches the explicit selection, and least-privilege RBAC validation passes.
+9. Stage Fabric done: capacity and tenant-scoped items exist, and the Eventstream ingests the Stage A Event Hub feed.
 
 ## 5) Practical deployment commands (stage-by-stage)
 
@@ -117,7 +118,7 @@ az group create --subscription $sub --name $rg --location $location --output non
 $stageNames = @(
    '00-foundation', '10-workloads', '20-alerting', '30-security-posture',
    '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent',
-   '70-observability-agent'
+   '60-fabric', '70-observability-agent'
 )
 $stageParameterDirectory = Join-Path ([IO.Path]::GetTempPath()) ('azure-monitor-lab-stages-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $stageParameterDirectory
@@ -268,6 +269,27 @@ The refresh uses [the existing app deployment helper](../scripts/deploy-webapp.p
 Without Stage B, the refresh is skipped and the standalone AI scenario still works. Adding Stage B later initializes its console normally. To add the AI tier to an existing Stage E health model, set `stages.enableStageAI` to `true` in `lab.config.json`, rerun the bootstrap block, then rerun the native Stage 40 command above. Do not deploy Stage E solely for an A+AI lab.
 
 The worker prints its PID and log/status paths. Keep the deployment host and Azure CLI sign-in available until it finishes; Cloud Shell/CI termination can stop it. Startup is not evidence of successful model responses. See [Stage AI traffic behavior](STAGE-AI.md#6-enable--run).
+
+### Stage Fabric deploy (optional)
+
+Stage Fabric is off by default. It creates a billable F2 capacity in `swedencentral`; set `fabricAdminEmail` to a tenant user UPN before `sync-config.ps1` and project its stage parameters with the other stages.
+
+For the optional Fabric Health Model tier, deploy this stage before Stage E or rerun Stage E with `enableFabric=true` after capacity creation.
+
+```powershell
+az deployment group create `
+   --subscription $sub --resource-group $rg --name stage-60-fabric `
+   --template-file ./infra/stages/60-fabric.bicep `
+   --parameters "@$($stageParameterFiles['60-fabric'])" `
+   --confirm-with-what-if
+./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
+
+Follow the [Fabric checklist](STAGE-FABRIC.md#after-deployps1-checklist) for any connection fallback, ingestion verification, and the guided Real-Time Dashboard. Suspend the capacity when idle:
+
+```powershell
+./scripts/suspend-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
 
 ### Stage SRE Agent deploy (optional)
 

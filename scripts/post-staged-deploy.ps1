@@ -104,6 +104,9 @@ $aks = @($resources | Where-Object {
 $centralLaw = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.OperationalInsights/workspaces' -and $_.name -like "law-$NamePrefix-central-*"
 }) | Select-Object -First 1
+$fabricCapacity = @($resources | Where-Object {
+  $_.type -ieq 'Microsoft.Fabric/capacities'
+}) | Select-Object -First 1
 
 if (-not $webApp) {
   throw "Could not find App Service 'app-$NamePrefix-<suffix>' in resource group '$ResourceGroup'. Complete the workload stage first."
@@ -168,6 +171,19 @@ if ($EnableStageSreAgent) {
   & (Join-Path $PSScriptRoot 'setup-sre-agent.ps1') `
     -SubscriptionId $active.id `
     -ResourceGroup $ResourceGroup
+}
+
+if ($fabricCapacity) {
+  Write-Step "Fabric capacity detected - creating workspace and Real-Time Intelligence items"
+  $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
+  try {
+    & $setupFabric -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
+  } catch {
+    Write-Host "  Fabric SaaS setup failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  The F2 capacity may still be active and billable. Re-run setup or suspend it:" -ForegroundColor Yellow
+    Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($active.id) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+    Write-Host "  ./scripts/suspend-fabric.ps1 -SubscriptionId $($active.id) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+  }
 }
 
 if ($EnableStageObservabilityAgent) {

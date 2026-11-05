@@ -284,7 +284,34 @@ SRE-only completion requires PowerShell 7 and Azure CLI signed into the selected
 
 Follow [Stage SRE Agent](STAGE-SRE-AGENT.md) for optional portal investigators and Review-mode response plans. Those are separate scenarios, not prerequisites for the Control Center's MCP questions and approved operations.
 
-### Step 9 - Security stage validation
+### Step 9 - Enable Stage Fabric (optional)
+
+Stage Fabric deploys an F2 capacity pinned to `swedencentral`. It is off by default because indicative PAYG retail pricing while active is about $0.36/hour, $8.64/day, or $262.80/month, plus possible OneLake storage and other usage charges.
+
+Set the Fabric flag and a tenant user UPN in `stages.tfvars`:
+
+```hcl
+enable_stage_fabric = true
+fabric_admin_email = "<FABRIC-ADMIN-UPN>"
+```
+
+Then apply from the repository root and create the tenant-scoped Fabric items:
+
+```powershell
+terraform -chdir=terraform plan -var-file stages.tfvars
+terraform -chdir=terraform apply -var-file stages.tfvars
+./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
+
+The setup script attempts to create the Event Hubs connection and publish the complete topology. If the tenant rejects public API connection creation, create only the connection once in Fabric and rerun the setup script. Follow the [Fabric post-deploy checklist](STAGE-FABRIC.md#after-deployps1-checklist), then suspend F2 when the demo is idle:
+
+```powershell
+./scripts/suspend-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
+
+See [STAGE-FABRIC.md](STAGE-FABRIC.md) for permissions, setup, and demo flow.
+
+### Step 10 - Security stage validation
 
 After Stage D, verify Activity Log ingestion:
 

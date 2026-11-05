@@ -2,7 +2,7 @@
 
 > 👈 **New here? Start with the [README](../README.md).** This is the deep-dive reference: full capability matrix, every deployed resource, the demo walkthrough, cost breakdown, folder layout, operational helpers, and troubleshooting.
 
-A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel** stack. The lab primarily uses one resource group, plus the AKS-managed resource group and optional tenant-scoped artifacts. It provides two IaC paths (Bicep or Terraform), two delivery modes (**one-shot** for internal demos or a staged workshop for customer-facing progressive enablement), and 72 numbered demo scenarios (`0` through `71`), all driven from one central config file.
+A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel** stack. The lab primarily uses one resource group, plus the AKS-managed resource group and optional tenant-scoped artifacts. It provides two IaC paths (Bicep or Terraform), two delivery modes (**one-shot** for internal demos or a staged workshop for customer-facing progressive enablement), and 81 numbered demo scenarios (`0` through `80`), all driven from one central config file.
 
 ## Capabilities
 
@@ -29,6 +29,7 @@ A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel*
 | **Service Groups + Health Models (preview)** | `setup-health-model.ps1` provisions an Azure **Service Group** and links the RG. SLI/SLO scaffolding in `setup-slis.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/health-model) |
 | **GenAI observability (optional AI stage)** | Off-by-default Microsoft **Foundry** workload (account + project pinned to swedencentral) with chat / embedding / optimization / **model-router** deployments; OpenTelemetry `gen_ai.*` tracing into App Insights; **token anomaly + spike** alerts; an **AI FinOps** query pack + workbook; an AI tier folded into the workload health model; demo agents + traffic via `setup-ai.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/trace) · [stage](STAGE-AI.md) |
 | **Azure SRE Agent (optional trial)** | Off-by-default guided SRE Agent evaluation pinned to `swedencentral`; connects Azure Monitor alerts to specialized Review-mode investigators and validates managed identity RBAC with `setup-sre-agent.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/sre-agent/azure-monitor-alerts) · [stage](STAGE-SRE-AGENT.md) |
+| **Fabric Real-Time Intelligence (optional Fabric stage)** | Off-by-default F2 capacity in `swedencentral`; scripted workspace, Eventstream, Eventhouse, and KQL database, with a guided dashboard and mirroring scenario. Capacity health appears in the Azure workbook and Health Model; tenant-scoped items remain in Fabric. | [stage](STAGE-FABRIC.md) |
 | **Azure Copilot Observability Agent (optional preview)** | Off-by-default alert correlation and trace-based investigation over the lab Application Insights resource; includes deterministic broken/fixed agentic-failure telemetry and least-privilege validation. | [docs](https://learn.microsoft.com/azure/azure-monitor/aiops/observability-agent-autonomous-operations) · [stage](STAGE-OBSERVABILITY-AGENT.md) |
 | **"Break the lab" + "Start the lab"** | Scripted incident injection (`break-the-lab.ps1`, `start-the-lab.ps1`, `start-ramp.ps1`) + one-shot restore (`restore-the-lab.ps1`). | — |
 
@@ -107,6 +108,7 @@ rg-azure-monitor-lab/
 > **Optional Observability Agent stage (default off, preview/billable):** an Observability Agent and dedicated Azure Monitor workspace in `observabilityAgentLocation`, one monitored Application Insights child, Issue Contributor on the dedicated workspace, and Monitoring Reader directly on the monitored Application Insights resource. The Monitor service can create managed resource groups for supporting resources. Enable via `enableStageObservabilityAgent`; automatic investigation remains off unless explicitly enabled. See [STAGE-OBSERVABILITY-AGENT.md](STAGE-OBSERVABILITY-AGENT.md).
 
 > **Optional LAW replication (default off, billable):** cross-region replication on the central LAW. Enable during deployment with `enableLawReplication`, or enable it on an existing workspace with `scripts/enable-law-replication.ps1` without redeploying the complete Bicep template.
+> **Optional Fabric stage (default off, billable):** enable `enableStageFabric` / `enable_stage_fabric` and supply `fabricAdminEmail`. Setup creates tenant-scoped items and attempts the Event Hubs connection and topology; follow [Stage Fabric](STAGE-FABRIC.md) for any portal fallback and suspend the F2 capacity when idle.
 
 > **Region placement:** the **App Service** (plan + site) and its diagnostic sinks (dedicated storage + Event Hub) use configurable **`appServiceLocation`** (default `westeurope`); the **Health Model** preview and the **AI stage** are pinned to **`swedencentral`**. Everything else follows the lab region (default `northeurope`).
 
@@ -210,7 +212,7 @@ Walk-through docs:
 
 ## Demo flow
 
-The lab supports **72 numbered demo scenarios** (`0` through `71`), each with a story, a click-path, and a "killer line". See [`DEMO-SCENARIOS.md`](DEMO-SCENARIOS.md) for the full catalogue, including audience-pivoted shortlists (App Service, AKS, Cost, Security, Workload health, and agentic applications).
+The lab supports **81 numbered demo scenarios** (`0` through `80`), each with a story, a click-path, and a "killer line". See [`DEMO-SCENARIOS.md`](DEMO-SCENARIOS.md) for the full catalogue, including audience-pivoted shortlists (App Service, AKS, Cost, Security, Workload health, and agentic applications).
 
 **Suggested 25-minute "first taste" walkthrough** (covers the cross-stack story):
 
@@ -342,7 +344,7 @@ azure-monitor-lab/
 
 ## Ideas to extend beyond current scope
 
-The lab covers 72 numbered scenarios (`0` through `71`) out of the box; here are well-scoped follow-ups for deeper sessions:
+The lab covers 81 numbered scenarios (`0` through `80`) out of the box; here are well-scoped follow-ups for deeper sessions:
 
 - **Multi-region DR drill** — pair the central LAW with a paired region (the `enableLawReplication` parameter wires this up) and walk alert + workbook continuity during a regional outage.
 - **Cross-subscription workbook rollup** — clone the Traffic Lights workbook into a management-group-scoped variant.
@@ -376,6 +378,37 @@ These scripts operate or extend an already deployed lab. Most are manual demo he
 | `scripts/setup-observability-agent.ps1` | Read-only validation of the optional Observability Agent, monitored Application Insights resource, operations, identity, and RBAC. | 61-67 |
 
 ## Troubleshooting
+
+### Deployment blockers and recovery
+
+Start with the failed resource's inner error, not just the outer `DeploymentFailed`. In Azure Portal, open the resource group > **Deployments** > failed deployment > **Operation details**. Confirm the submitted subscription and region parameters; local config edits do not change an already-submitted deployment.
+
+| Error or symptom | Explanation | What to do |
+|---|---|---|
+| `RequestDisallowedByAzure`: "The selected region is currently not accepting new customers" | Azure restricts new allocations for this tenant/subscription in the requested region; this is not a VM-size or Entra-permission error. | Change the affected region setting in your local `lab.config.json`, then rerun `deploy.ps1` to regenerate parameters. Additional VM quota does not necessarily remove regional restrictions. See the region mapping below. |
+| `NotAvailableForSubscription` / `SkuNotAvailable` | The chosen compute size is restricted or unavailable in that region, even if vCPU quota remains. | Use preflight's candidate shortlist to edit `vmSize`, `aksNodeVmSize`, or `vmssSize`, or choose another eligible region. Candidates are not guaranteed capacity or full service compatibility. Request SKU access if the required size remains restricted; do not assume a quota increase alone enables it. |
+| Insufficient family or total regional vCPU quota | Existing usage plus the lab footprint exceeds a quota limit. | Azure Portal > **Quotas > Compute** > select subscription/region > **Request increase**. Request a new total limit, not just the additional cores. Check both family and regional limits, including VMSS autoscale and AKS upgrade headroom. |
+| `AKS system node size` preflight failure | Generic VM eligibility does not establish AKS system-pool compatibility. | Configure non-B-series system nodes with at least 4 vCPUs and 4 GiB RAM and at least two nodes. `Standard_EC2as_v5` has only two vCPUs; `Standard_EC4as_v5` meets the CPU/RAM minimum but still requires AKS acceptance, quota, and regional eligibility. See [AKS requirements](https://learn.microsoft.com/azure/aks/use-system-pools). |
+| AKS: "Operations are not allowed when the managed cluster is not in the Running power state" | An existing cluster is stopped or transitioning; deployment cannot update it in that state. | Check the cluster's power/provisioning state. If stopped, start it in Azure Portal and wait for **Running** and successful provisioning before redeploying. Starting resumes compute charges. Investigate failed or stuck transitions rather than repeatedly submitting updates. |
+| Fabric: "Service is not ready to be updated" | The capacity is not ready for the requested update; the message alone does not establish why. | Check the capacity's state and Activity Log. Wait for in-progress operations; if suspended, resume it and wait for readiness before retrying (billable). If failed or persistently stuck, investigate or contact Azure Support. Do not treat repeated deployment submissions as a fix. |
+
+#### Choosing another region
+
+Edit the copied **`lab.config.json`**, not `lab.config.json.example` or generated parameter files:
+
+| Setting | Resources affected |
+|---|---|
+| `location` | Main lab infrastructure; does not override the separate settings below. |
+| `appServiceLocation` | App Service and customer web apps, customer dependencies, App Service diagnostic storage, Event Hubs, and the console runner platform. Keep diagnostic destinations co-located as configured by the templates. |
+| `observabilityAgentLocation` | Optional Observability Agent and its dedicated Azure Monitor workspace; choose a supported preview region with subscription access. |
+
+For example, `francecentral` for `appServiceLocation` and `uksouth` for `observabilityAgentLocation` are regions to evaluate, **not guaranteed replacements for every subscription**. [Azure's location-ineligible guidance](https://learn.microsoft.com/azure/azure-resource-manager/troubleshooting/error-region-access-policy) explains the restriction. Preflight checks offerings and quota but cannot guarantee tenant-specific regional admission or live service capacity. An explicit deployment `-Location` argument overrides the main config region only.
+
+A config edit **does not migrate existing resources**. After a partial deployment, inventory successful resources before retrying. When changing the region of resources that cannot move in place, use a new `resourceGroup` for a clean deployment; review and deliberately tear down the old lab when no longer needed to avoid duplicate charges. Disabling an optional stage does not delete resources already created by incremental deployment.
+
+For SRE Agent teardown stuck on "currently being processed", follow the [SRE Agent guidance](STAGE-SRE-AGENT.md); for Monitor-managed resource-group deny assignments, use the lab's [teardown helper](../scripts/README.md#cleanup) rather than deleting protected managed groups directly.
+
+### Other known issues
 
 - **`customer-webapp` fails with `ResourceNotFound` on `/config/appsettings` during a first deployment**: older templates could read customer app settings before the AVM site deployment completed. The settings read now runs inside a nested deployment that depends on site creation, while preserving existing runtime settings. Use the updated Bicep sources and compiled ARM templates, then rerun the same deployment (or Stage B for staged deployments). No resource-group deletion is required.
 - **App Service Logs panes are empty** for the first ~10 min — the source-control deployment from GitHub is still building (Oryx).

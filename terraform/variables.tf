@@ -29,7 +29,7 @@ variable "owner_tag" {
 
 variable "daily_cap_gb" {
   type    = number
-  default = 1
+  default = 3
 }
 
 variable "enable_law_replication" {
@@ -129,6 +129,23 @@ variable "enable_stage_e" { type = bool }
 variable "enable_stage_ai" {
   type    = bool
   default = false
+}
+
+variable "enable_stage_fabric" {
+  type        = bool
+  default     = false
+  description = "Deploy the optional Microsoft Fabric F2 capacity in swedencentral. Indicative PAYG retail cost while active: about $0.36/hour, $8.64/day, or $262.80/month."
+}
+
+variable "fabric_admin_email" {
+  type        = string
+  default     = ""
+  description = "Microsoft Entra user UPN that administers the Fabric capacity. Must be a user in the deployment tenant."
+
+  validation {
+    condition     = !var.enable_stage_fabric || can(regex("^[^@\\s]+@[^@\\s]+$", var.fabric_admin_email))
+    error_message = "fabric_admin_email must be a Microsoft Entra user UPN in the deployment tenant when enable_stage_fabric is true."
+  }
 }
 
 variable "enable_stage_sre_agent" {

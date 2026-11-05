@@ -69,7 +69,7 @@ if ($missing.Count -gt 0) {
 # Defaults for optional keys
 function Coalesce($a, $b) { if ($null -ne $a -and $a -ne '') { $a } else { $b } }
 $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
-$dailyCapGb       = Coalesce $cfg.dailyCapGb       1
+$dailyCapGb       = Coalesce $cfg.dailyCapGb       3
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
 $vmSize           = Coalesce $cfg.vmSize           'Standard_B2s'
 $aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_B2s'
@@ -85,6 +85,7 @@ if ($null -ne $cfg.PSObject.Properties['enableVmOtelMetrics']) {
   $enableVmOtelMetrics = $cfg.enableVmOtelMetrics
 }
 $siemWebhookUrl   = Coalesce $cfg.siemWebhookUrl   ''
+$fabricAdminEmail = Coalesce $cfg.fabricAdminEmail ''
 $subscriptionName = Coalesce $cfg.subscriptionName '<unset>'
 $forbiddenSubs    = if ($null -eq $cfg.forbiddenSubscriptionIds) { @() } else { @($cfg.forbiddenSubscriptionIds) }
 
@@ -104,9 +105,14 @@ if ($enableLawReplication -and [string]::IsNullOrWhiteSpace($lawReplicationLocat
 }
 
 $stages = $cfg.stageToggles
-if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageSreAgent=$false; enableStageObservabilityAgent=$false; enableSlotFailureScenario=$false } }
-# AI stage is optional and defaults off when absent from the config.
+if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enableStageB=$true; enableStageC=$true; enableStageD=$true; enableStageE=$true; enableStageAI=$false; enableStageFabric=$false; enableStageSreAgent=$false; enableStageObservabilityAgent=$false; enableSlotFailureScenario=$false } }
+# AI and Fabric stages are optional and default off when absent from the config.
 $enableStageAI = if ($null -eq $stages.enableStageAI) { $false } else { [bool]$stages.enableStageAI }
+$enableStageFabric = if ($null -eq $stages.enableStageFabric) { $false } else { [bool]$stages.enableStageFabric }
+if ($enableStageFabric -and [string]::IsNullOrWhiteSpace($fabricAdminEmail)) {
+  Write-Error 'lab.config.json has enableStageFabric=true but fabricAdminEmail is empty. Set it to a Microsoft Entra user UPN in the deployment tenant; do not use an external alert alias.'
+  return
+}
 # SRE Agent is optional and defaults off when absent from the config.
 $enableStageSreAgent = if ($null -eq $stages.enableStageSreAgent) { $false } else { [bool]$stages.enableStageSreAgent }
 # Azure Copilot Observability Agent is optional and defaults off when absent.
@@ -197,6 +203,8 @@ $bicepParams = [ordered]@{
     'aksNodeCount'    = @{ value = [int]$aksNodeCount }
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
     'enableAi'        = @{ value = $enableStageAI }
+    'enableFabric'    = @{ value = $enableStageFabric }
+    'fabricAdminEmail'= @{ value = $fabricAdminEmail }
     'enableSreAgent'  = @{ value = $enableStageSreAgent }
     'enableSlotFailureScenario' = @{ value = $enableSlotFailureScenario }
     'enableCustomerDependencies' = @{ value = $enableCustomerDependencies }
@@ -257,6 +265,8 @@ $tfLines = @(
   "enable_stage_d = $((($stages.enableStageD -as [bool]).ToString()).ToLower())"
   "enable_stage_e = $((($stages.enableStageE -as [bool]).ToString()).ToLower())"
   "enable_stage_ai = $($enableStageAI.ToString().ToLower())"
+  "enable_stage_fabric = $($enableStageFabric.ToString().ToLower())"
+  "fabric_admin_email = `"$(Esc $fabricAdminEmail)`""
   "enable_stage_sre_agent = $($enableStageSreAgent.ToString().ToLower())"
   "enable_slot_failure_scenario = $($enableSlotFailureScenario.ToString().ToLower())"
 )

@@ -34,6 +34,14 @@ public sealed class LabOperationCatalogTests
     }
 
     [Fact]
+    public void StartDisclosesOptionalFabricResumeAndBilling()
+    {
+        var action = Assert.Single(LabOperationCatalog.Actions, action => action.Id == "start");
+        Assert.Contains("resumes the optional Fabric F2 capacity", action.Impact);
+        Assert.Contains("active F2 incur charges", action.Impact);
+    }
+
+    [Fact]
     public void SlotFailureUsesTheBoundedTrigger()
     {
         var action = Assert.Single(LabOperationCatalog.Actions, action => action.Id == "slot-failure");

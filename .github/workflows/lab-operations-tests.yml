@@ -10,6 +10,9 @@ on:
       - 'scripts/app-insights-target.ps1'
       - 'scripts/initialize-webapp-console.ps1'
       - 'scripts/deploy.ps1'
+      - 'scripts/preflight-check.ps1'
+      - 'scripts/tests/preflight-guidance.Tests.ps1'
+      - 'scripts/tests/vm-sku-config.Tests.ps1'
       - 'scripts/deploy-webapp.ps1'
       - 'scripts/post-deploy.ps1'
       - 'scripts/post-staged-deploy.ps1'
@@ -25,6 +28,7 @@ on:
       - 'scripts/staged-deploy-helpers.ps1'
       - 'scripts/deployment-slot-recovery.ps1'
       - 'scripts/teardown.ps1'
+      - 'scripts/remove-sre-agent.ps1'
       - 'scripts/remove-lab-entra-identities.ps1'
       - 'scripts/setup-rbac-demo.ps1'
       - 'scripts/wait-webapp-publication.ps1'
@@ -35,8 +39,15 @@ on:
       - 'scripts/tests/staged-guide.Tests.ps1'
       - 'scripts/tests/deployment-slot-recovery.Tests.ps1'
       - 'scripts/tests/sli-setup.Tests.ps1'
+      - 'scripts/tests/fabric-setup.Tests.ps1'
+      - 'scripts/tests/fabric-observability.Tests.ps1'
+      - 'scripts/tests/fabric-connections.Tests.ps1'
+      - 'scripts/tests/fabric-auto-suspend.Tests.ps1'
+      - 'scripts/tests/fabric-monitoring.Tests.ps1'
+      - 'scripts/tests/fabric-tenant.Tests.ps1'
       - 'scripts/tests/service-group.Tests.ps1'
       - 'scripts/tests/teardown.Tests.ps1'
+      - 'scripts/tests/sre-agent-cleanup.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
       - 'scripts/tests/customer-appinsights.Tests.ps1'
@@ -52,6 +63,15 @@ on:
       - 'scripts/setup-sre-agent.ps1'
       - 'scripts/setup-observability-agent.ps1'
       - 'scripts/setup-slis.ps1'
+      - 'scripts/setup-fabric.ps1'
+      - 'scripts/fabric-observability.ps1'
+      - 'scripts/fabric-connections.ps1'
+      - 'scripts/fabric-mirrored-dashboard.ps1'
+      - 'scripts/fabric-monitoring.ps1'
+      - 'scripts/setup-fabric-tenant.ps1'
+      - 'scripts/setup-fabric-auto-suspend.ps1'
+      - 'scripts/setup-fabric-cloud-shell.ps1'
+      - 'infra/modules/fabric-auto-suspend.*'
       - 'scripts/setup-health-model.ps1'
       - 'scripts/resolve-service-group-id.ps1'
       - 'scripts/remove-arm-resource.ps1'
@@ -106,6 +126,8 @@ jobs:
           ./scripts/tests/lab-operations-execution.Tests.ps1
           ./scripts/tests/console-bootstrap.Tests.ps1
           ./scripts/tests/console-deployment.Tests.ps1
+          ./scripts/tests/preflight-guidance.Tests.ps1
+          ./scripts/tests/vm-sku-config.Tests.ps1
           ./scripts/tests/customer-completion.Tests.ps1
           ./scripts/tests/customer-dependencies.Tests.ps1
           ./scripts/tests/webapp-publication.Tests.ps1
@@ -113,8 +135,15 @@ jobs:
           ./scripts/tests/staged-guide.Tests.ps1
           ./scripts/tests/deployment-slot-recovery.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
+          ./scripts/tests/fabric-setup.Tests.ps1
+          ./scripts/tests/fabric-observability.Tests.ps1
+          ./scripts/tests/fabric-connections.Tests.ps1
+          ./scripts/tests/fabric-auto-suspend.Tests.ps1
+          ./scripts/tests/fabric-monitoring.Tests.ps1
+          ./scripts/tests/fabric-tenant.Tests.ps1
           ./scripts/tests/service-group.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
+          ./scripts/tests/sre-agent-cleanup.Tests.ps1
           ./scripts/tests/observability-agent-config.Tests.ps1
           ./scripts/tests/entra-cleanup.Tests.ps1
           ./workloads/webapp/tests/webapp-access.Tests.ps1
