@@ -103,4 +103,4 @@ Write-Info "Test order $($order.id): $($order.item), $($order.status)"
 
 Write-Host "`n☕ Lab Café is open at $webAppUrl" -ForegroundColor Green
 Write-Host '   Synthetic customers browse and order every 5 minutes from now on.'
-Write-Host '   Next: design the model yourself, docs/HEALTH-MODEL-TUTORIAL.md section 3'
+Write-Host '   Next: ./scripts/build-healthmodel-tutorial.ps1, see docs/HEALTH-MODEL-TUTORIAL.md'

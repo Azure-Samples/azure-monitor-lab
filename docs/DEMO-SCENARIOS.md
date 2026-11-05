@@ -13,7 +13,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | Workload / theme | Scenarios |
 |---|---|
 | **Cross-stack — single pane of glass** | <ul><li>[1](#s1) Traffic-Lights workbook</li><li>[60](#s60) Lab Control Center</li></ul> |
-| **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[Tutorial](HEALTH-MODEL-TUTORIAL.md) design a user-flow model (standalone)</li><li>[46](#s46) SLIs / SLOs</li></ul> |
+| **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[Tutorial](HEALTH-MODEL-TUTORIAL.md) explore and break a user-flow model (standalone)</li><li>[46](#s46) SLIs / SLOs</li></ul> |
 | **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li><li>[70](#s70) Customer usage journey</li><li>[71](#s71) Broken-slot SRE rollback</li></ul> |
 | **AKS (`aks-amlab`)** | <ul><li>[4](#s4) Container Insights + Prom + Grafana</li><li>[14](#s14) OTel tracing AKS→App Service</li><li>[30](#s30) Node.js OTel</li><li>[31](#s31) Prom rule group</li><li>[32](#s32) Grafana alert rule</li></ul> |
 | **Azure VMs (Linux + Windows)** | <ul><li>[2](#s2) VM Insights cross-OS</li></ul> |
@@ -2084,7 +2084,11 @@ Service Groups suit Health Models because the same resource may have **different
 
 ### Go further: model user flows
 
-`hm-amlab-workload` groups health by Azure resource tier, which is great for showing the graph. To design a model from what people *do* with the lab (open the Control Center, keep the app answering, get telemetry in), see the [lab user-flow model](healthmodel/lab/plan.md), deployed with `./scripts/deploy-lab-healthmodel.ps1`. To learn the method hands-on on a small workload, run the [health model tutorial](HEALTH-MODEL-TUTORIAL.md).
+`hm-amlab-workload` groups health by Azure resource tier, which is great for showing the graph. To design a model from what people *do* with the lab (open the Control Center, keep the app answering, get telemetry in), see the [lab user-flow model](healthmodel/lab/plan.md), deployed with `./scripts/deploy-lab-healthmodel.ps1`. To see a user-flow model react to failures on a small workload, run the [health model tutorial](HEALTH-MODEL-TUTORIAL.md).
+
+![The lab's user-flow model hm-amlab-flows: three user flows (Operate the lab, Show the shop app live, Show live infrastructure data), eight components and their Azure resources; after the nightly VM shutdown, Virtual machines is Unhealthy and Show live infrastructure data only Degraded](images/healthmodel-lab-graph.png)
+
+This picture was taken just after the nightly VM shutdown at 23:00. *Virtual machines* is Unhealthy, but it has limited impact, so *Show live infrastructure data* and the root are only Degraded: the VMs only add data, so a night without them is not an outage.
 
 <a id="s46"></a>
 ## 46 · Service Level Indicators (SLIs / SLOs) - error budgets on the workload (preview)

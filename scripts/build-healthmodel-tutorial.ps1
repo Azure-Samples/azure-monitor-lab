@@ -30,6 +30,9 @@
   Optional action group notified by the user flow alerts. Without it, alerts fire in
   Azure Monitor but notify nobody.
 
+.PARAMETER SkipFailedOrderSignal
+  Leave out the Order API's failed-order-requests signal. The tutorial has you add it yourself.
+
 .PARAMETER SubscriptionId
   Subscription to deploy into. Defaults to .azure-target.json, then the active az subscription.
   When .azure-target.json exists, any other subscription or tenant is blocked.
@@ -40,6 +43,7 @@ param(
   [string] $HealthModelName = 'hm-lab-cafe',
   [string] $Location = 'swedencentral',
   [string] $ActionGroupId,
+  [switch] $SkipFailedOrderSignal,
   [string] $SubscriptionId
 )
 
@@ -205,6 +209,11 @@ AppDependencies
   @{ name = 'order-storage'; displayName = "Storage: $storageName (order blobs)"; resourceId = $storageId; definitions = @('sd-storage-availability') }
   @{ name = 'queue-storage'; displayName = "Storage: $storageName (order queue)"; resourceId = $storageId; definitions = @('sd-storage-availability') }
 )
+
+if ($SkipFailedOrderSignal) {
+  $orderApi = $entities | Where-Object name -eq 'order-api'
+  $orderApi.logSignals = @($orderApi.logSignals | Where-Object name -ne 'failed-order-requests')
+}
 
 # Child rolls up into parent. The root entity is named like the model.
 $relationships = @(
