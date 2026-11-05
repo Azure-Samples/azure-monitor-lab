@@ -7,7 +7,7 @@
   (App Service, storage, Application Insights, availability tests) and publishes
   workloads/cafe to the web app. Takes about 5 minutes.
 
-  Next step: ./scripts/build-healthmodel-tutorial.ps1
+  Next step: ./scripts/build-healthmodel-tutorial.ps1 -SkipFailedOrderSignal
   Walkthrough: docs/HEALTH-MODEL-TUTORIAL.md
 
 .PARAMETER ResourceGroup
@@ -103,4 +103,4 @@ Write-Info "Test order $($order.id): $($order.item), $($order.status)"
 
 Write-Host "`n☕ Lab Café is open at $webAppUrl" -ForegroundColor Green
 Write-Host '   Synthetic customers browse and order every 5 minutes from now on.'
-Write-Host '   Next: ./scripts/build-healthmodel-tutorial.ps1, see docs/HEALTH-MODEL-TUTORIAL.md'
+Write-Host '   Next: ./scripts/build-healthmodel-tutorial.ps1 -SkipFailedOrderSignal, see docs/HEALTH-MODEL-TUTORIAL.md'

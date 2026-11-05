@@ -11,7 +11,7 @@ Alerts tell you *a metric crossed a line*. A health model tells you *whether you
 
 | | |
 |---|---|
-| ⏱️ Time | About 30 minutes, plus 10 minutes of deploy that you spend reading §1 |
+| ⏱️ Time | About 45 minutes, half of it waiting while you read, look around or predict |
 | 💶 Cost | Roughly EUR 1-2 per day: App Service B1, two private endpoints, two availability tests, a little Log Analytics. Delete the resource group when you're done ([§6](#6-clean-up)) |
 | 📍 Region | `swedencentral` by default, everything in its own resource group `rg-healthmodel-tutorial`. Other regions that offer health models work too (`-Location`) |
 | 🧩 Standalone | You don't need the rest of the lab. Its own health models are in [scenario 45](DEMO-SCENARIOS.md#s45) |
@@ -57,6 +57,7 @@ This tutorial is for seeing and trying; the Microsoft Learn pages are the refere
 - The health models CLI extension (preview, tested with 1.0.0b2): `az extension add --name health-models`.
 - PowerShell 7 (`pwsh`) on Windows, macOS or Linux, or Azure Cloud Shell switched to **PowerShell**.
 - Owner, or Contributor plus User Access Administrator, on the subscription or resource group. The scripts create role assignments for the app and for the health model.
+- The health model resource provider registered on the subscription. The build script registers it if needed, which takes rights on the subscription; with rights on the resource group only, ask an admin to run `az provider register --namespace Microsoft.CloudHealth` once.
 - Run everything from the repository root. Put your subscription in `.azure-target.json` (copy [.azure-target.json.template](../.azure-target.json.template)) or pass `-SubscriptionId` to every script.
 
 ## 1. Four words to start with
@@ -86,12 +87,13 @@ The café is one Node file with no dependencies ([workloads/cafe/server.js](../w
 | Route | What it does | What it touches |
 |---|---|---|
 | `GET /` and `GET /api/menu` | Shows the menu | Reads blob `menu/menu.json` |
-| `POST /api/orders` | Places an order | Writes blob `orders/<id>.json`, then tells the barista display through a queue. If the queue fails, the order **still succeeds** |
+| `POST /api/orders` | Places an order | Reads the menu, writes blob `orders/<id>.json`, then tells the barista display through a queue. If the queue fails, the order **still succeeds** |
 | `GET /api/orders/<id>` | Looks up an order | Reads blob `orders/<id>.json` |
+| `GET /healthz` | App Service health check | Nothing |
 
 Application Insights records every request and every storage call. Two availability tests act as synthetic customers that open the menu and order a flat white every 5 minutes, so the model has data even at 3 a.m. Storage only accepts private traffic, through VNet integration and private endpoints, which gives us a realistic way to break things later.
 
-> ✅ **Done when:** the printed URL opens the café, and **Monitor → Health models → hm-lab-cafe** shows the graph. Give it up to 15 minutes to turn green: the café's first requests can fail while it starts, and those stay in the signal windows for a while.
+> ✅ **Done when:** the printed URL opens the café, and **Monitor → Health models → hm-lab-cafe** shows the graph. Give it up to 15 minutes to turn green: the café's first requests can fail while it starts, and those stay in the signal windows for a while. Log signals can also say *insufficient access* for about 10 minutes while the model's role arrives. Wait; don't rerun the build or recreate entities, that deletes their history. Start §3 in the meantime.
 
 ## 3. Look around
 
@@ -99,10 +101,10 @@ Open **Monitor → Health models → hm-lab-cafe → Graph** (the picture under 
 
 - **User flows**: what customers come to do. *Browse the menu* and *Order coffee* have no signals of their own; they get their health from their children.
 - **System components**: the parts each flow needs, named by what they do (*Order API*, *Order store*). Their signals are KQL queries on Application Insights that measure what customers feel: failed requests, slow orders, failed storage calls.
-- **Azure resources**: the web app and storage account, with platform metrics (health check, storage availability). The same web app shows up twice, once under each flow. A health model is a tree, so each flow gets its own copy with its own thresholds.
-- **Barista display (optional)**: a missing notification is annoying, not an outage. Keep it in mind for §5.
+- **Azure resources**: the web app and storage account, with platform metrics (health check, storage availability). The same web app shows up twice, once under each flow. A health model is a tree, so each flow gets its own copy and every entity has exactly one parent.
+- **Barista display (optional)**: a missing notification is annoying, not an outage. Its *impact*, how much it counts for its parent, is Limited: when it turns Unhealthy, *Order coffee* only turns Degraded. Keep it in mind for §5.
 
-Select **Order API** to open its details. They show its state, the rollup rule (*Worst of*: a parent takes the worst state of its children) and a 24-hour history:
+Select **Order API** to open its details. They show its state, the rollup rule (*Worst of*: a parent takes the worst state of its children; Unknown children don't count) and a 24-hour history:
 
 ![Entity details of Order API: Healthy, impact Standard, rollup Worst of, health objective not set, with a 24-hour history bar](images/healthmodel-cafe-entity-details.png)
 
@@ -122,7 +124,7 @@ Close the editor without saving. Last stop: **Signal definitions**. A signal def
 
 *Order API* watches slow orders and the synthetic customer, but nothing counts orders that fail for real customers. Add that signal.
 
-First try the query yourself in **Log Analytics workspace `law-cafe-…` → Logs**, time range *Last 30 minutes*:
+First try the query yourself in **Log Analytics workspace `law-cafe-…` → Logs**, time range *Last 5 minutes*, the same window the signal looks at:
 
 ```kusto
 AppRequests
@@ -130,7 +132,7 @@ AppRequests
 | summarize value = countif(ResultCode startswith "5")
 ```
 
-It returns one row, `value = 0`. That's what a signal needs: one number, also when nobody orders. A query that returns no row, or a metric filtered to HTTP 500s that never happen, leaves the entity ⚪ Unknown. It counts only server errors (5xx): a 404 for a mistyped order ID is the customer's mistake, not an outage.
+It returns one row, `value = 0` (more if the café is still starting). That's what a signal needs: one number, also when nobody orders. A query that returns no row, or a metric filtered to HTTP 500s that never happen, leaves the signal ⚪ Unknown, and an Unknown signal can't warn you. It counts only server errors (5xx): a 404 for a mistyped order ID is the customer's mistake, not an outage.
 
 Now add it in the portal:
 
@@ -151,13 +153,14 @@ Now add it in the portal:
 <details>
 <summary><b>Or with the CLI</b></summary>
 
-`az monitor health-models entity update` replaces a whole signal group, so this reads the entity, appends the signal and writes it back:
+`az monitor health-models entity update` replaces a whole signal group, so this reads the entity, adds the signal (or replaces it, if it's already there) and writes it back:
 
 ```powershell
 $model = az monitor health-models show -g rg-healthmodel-tutorial -n hm-lab-cafe --query id -o tsv
 $url = "https://management.azure.com$model/entities/order-api?api-version=2026-11-01"
-$entity = az rest --url $url | ConvertFrom-Json
-$entity.properties.signalGroups.azureLogAnalytics.signals += @{
+$entity = az rest --url $url -o json | ConvertFrom-Json
+$group = $entity.properties.signalGroups.azureLogAnalytics
+$group.signals = @($group.signals | Where-Object name -ne 'failed-order-requests') + @{
   name = 'failed-order-requests'; displayName = 'Failed order requests'; signalKind = 'LogAnalyticsQuery'
   queryText = 'AppRequests | where Url has "/api/orders" | summarize value = countif(ResultCode startswith "5")'
   valueColumnName = 'value'; timeGrain = 'PT5M'; refreshInterval = 'PT1M'; dataUnit = 'Count'
@@ -174,6 +177,8 @@ az rest --method put --url $url --body "@$file"
 >
 > ![Signals table of Order API: Failed order requests 0, Order time for most customers 596 ms, Synthetic customer cannot order 0, all Healthy, with their degraded and unhealthy thresholds](images/healthmodel-cafe-entity-signals.png)
 
+Don't run the build script again from here on: it replaces every entity, so your signal would be gone.
+
 📚 [Configure signals](https://learn.microsoft.com/azure/azure-monitor/health-models/tutorial-signals). The [build script](../scripts/build-healthmodel-tutorial.ps1) creates every other signal, entity and relationship from one table; [Create a health model with the Azure CLI](https://learn.microsoft.com/azure/azure-monitor/health-models/cli) walks through the commands.
 
 ## 5. Break it: predict, then look 🔨
@@ -182,7 +187,7 @@ Each break changes one thing, then sends a few customers so failures show within
 
 > **My prediction:** these entities change, to these states: ... These stay Healthy: ... It recovers after about ... minutes.
 
-Then break, wait about 5 minutes, look at the graph, compare, restore, and wait until everything is green again before the next break. Open the answer only after you've looked.
+Then break, wait about 5 minutes, look at the graph, compare and restore. You can start the next break right away: what's still red from the last one doesn't change the next answer. Open the answer only after you've looked.
 
 ### 5.1 The optional barista
 
@@ -235,7 +240,7 @@ An app setting makes every order fail with HTTP 500, like a bad deploy. Predict:
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease -Restore
 ```
 
-Recovery takes up to 15 minutes, because the synthetic customer signal looks back 15 minutes.
+Recovery takes up to 15 minutes, because the synthetic customer signal looks back 15 minutes. Go on to 5.3 meanwhile.
 
 ### 5.3 A network change
 
@@ -254,7 +259,7 @@ The web app loses its VNet integration, so storage, which only accepts private t
 
 </details>
 
-The restore redeploys the workload template (3 to 5 minutes), then the 15-minute windows have to drain:
+If you clean up next ([§6](#6-clean-up)), skip the restore. Otherwise it redeploys the workload template (3 to 5 minutes), then the 15-minute windows have to drain:
 
 ```powershell
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario NetworkCut -Restore
@@ -262,7 +267,7 @@ The restore redeploys the workload template (3 to 5 minutes), then the 15-minute
 
 ### Look back
 
-Open **Timeline**. It shows every entity on one time axis; expand a row to see its children. The numbered boxes are your three breaks:
+Open **Timeline**. It shows every entity on one time axis; expand a row to see its children. The boxes mark state changes, and the number in a box is how many happened close together. Find your three breaks:
 
 ![Timeline of hm-lab-cafe over 24 hours with the root, Browse the menu, Order coffee and its three components; numbered boxes mark the state changes from the experiments](images/healthmodel-cafe-timeline.png)
 

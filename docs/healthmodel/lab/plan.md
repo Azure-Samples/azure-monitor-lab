@@ -1,6 +1,6 @@
 # Health Model for the Azure Monitor Lab
 
-This model, `hm-amlab-flows`, shows whether the lab can do what presenters use it for. It sits next to the demo model `hm-amlab-workload` ([scenario 45](../../DEMO-SCENARIOS.md#s45)), which groups by resource type and stays as it is. Details and reasoning live in the [modelspec](modelspec.md); the method is taught in the [health model tutorial](../../HEALTH-MODEL-TUTORIAL.md).
+This model, `hm-amlab-flows`, shows whether the lab can do what presenters use it for. It sits next to the demo model `hm-amlab-workload` ([scenario 45](../../DEMO-SCENARIOS.md#s45)), which groups by resource type and stays as it is. Details and reasoning live in the [modelspec](modelspec.md); the [health model tutorial](../../HEALTH-MODEL-TUTORIAL.md) shows a smaller model like this one react to failures.
 
 ## What does health mean for my workload?
 

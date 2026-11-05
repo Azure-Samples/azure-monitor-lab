@@ -6,15 +6,16 @@
   Implements docs/healthmodel/cafe/plan.md as three layers:
 
     Lab Café (root)
-    ├─ Browse the menu        user flow
-    │  ├─ Café website        system component -> App Service: <app> (menu)
-    │  └─ Menu catalog        system component -> Storage: <account> (menu blob)
-    └─ Order coffee           user flow
-       ├─ Order API           system component -> App Service: <app> (orders)
-       ├─ Order store         system component -> Storage: <account> (order blobs)
-       └─ Barista display     system component, limited impact -> Storage: <account> (order queue)
+    ├─ Order coffee           user flow
+    │  ├─ Order store         system component -> Storage: <account> (order blobs)
+    │  ├─ Order API           system component -> App Service: <app> (orders)
+    │  └─ Barista display     system component, limited impact -> Storage: <account> (order queue)
+    └─ Browse the menu        user flow
+       ├─ Menu catalog        system component -> Storage: <account> (menu blob)
+       └─ Café website        system component -> App Service: <app> (menu)
 
-  Every command is a create-or-replace, so the script is safe to run again.
+  Every command is a create-or-replace, so the script is safe to run again, but a rerun
+  undoes changes made by hand, such as the signal you add in the tutorial.
   Run scripts/deploy-healthmodel-tutorial.ps1 first.
 
 .PARAMETER ResourceGroup
@@ -216,19 +217,20 @@ if ($SkipFailedOrderSignal) {
 }
 
 # Child rolls up into parent. The root entity is named like the model.
+# The order is the left-to-right order in the portal graph.
 $relationships = @(
-  @{ parent = $HealthModelName; child = 'browse-menu' }
   @{ parent = $HealthModelName; child = 'order-coffee' }
-  @{ parent = 'browse-menu'; child = 'cafe-website' }
-  @{ parent = 'browse-menu'; child = 'menu-catalog' }
-  @{ parent = 'cafe-website'; child = 'menu-app' }
-  @{ parent = 'menu-catalog'; child = 'menu-storage' }
-  @{ parent = 'order-coffee'; child = 'order-api' }
+  @{ parent = $HealthModelName; child = 'browse-menu' }
   @{ parent = 'order-coffee'; child = 'order-store' }
+  @{ parent = 'order-coffee'; child = 'order-api' }
   @{ parent = 'order-coffee'; child = 'barista-display' }
-  @{ parent = 'order-api'; child = 'order-app' }
+  @{ parent = 'browse-menu'; child = 'menu-catalog' }
+  @{ parent = 'browse-menu'; child = 'cafe-website' }
   @{ parent = 'order-store'; child = 'order-storage' }
+  @{ parent = 'order-api'; child = 'order-app' }
   @{ parent = 'barista-display'; child = 'queue-storage' }
+  @{ parent = 'menu-catalog'; child = 'menu-storage' }
+  @{ parent = 'cafe-website'; child = 'menu-app' }
 )
 
 # --- Calculations: turn model data into CLI JSON ---------------------------------
@@ -259,6 +261,30 @@ function Get-Alerts($Entity) {
   $alerts
 }
 
+# Where the portal graph draws each entity: one row per layer, leaves side by side,
+# each parent centred over its children, the root at x 0.
+function Get-CanvasLayout([string] $Root, $Relationships, [double] $ColumnWidth = 250, [double] $RowHeight = 193) {
+  $children = @{}
+  foreach ($edge in $Relationships) { $children[$edge.parent] += @($edge.child) }
+  $layout = @{}
+  $nextLeaf = [ref] 0
+  $place = {
+    param([string] $Name, [int] $Depth)
+    $childXs = @(foreach ($child in $children[$Name]) { & $place $child ($Depth + 1) })
+    if ($childXs.Count) {
+      $x = ($childXs[0] + $childXs[-1]) / 2
+    } else {
+      $x = $nextLeaf.Value * $ColumnWidth
+      $nextLeaf.Value++
+    }
+    $layout[$Name] = @{ x = $x; y = $Depth * $RowHeight }
+    $x
+  }
+  $rootX = & $place $Root 0
+  foreach ($position in $layout.Values) { $position.x -= $rootX }
+  $layout
+}
+
 # --- Actions ---------------------------------------------------------------------
 $jsonDir = Join-Path ([System.IO.Path]::GetTempPath()) "hm-lab-cafe-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Path $jsonDir | Out-Null
@@ -272,8 +298,13 @@ $common = @('-g', $ResourceGroup, '--health-model-name', $HealthModelName, '-o',
 
 try {
   Write-Step '0. Make sure the health model resource provider is registered'
-  az provider register --namespace Microsoft.CloudHealth --wait -o none
-  Assert-NativeCommandSucceeded 'Registering Microsoft.CloudHealth'
+  $registration = az provider show --namespace Microsoft.CloudHealth --query registrationState -o tsv
+  Assert-NativeCommandSucceeded 'Reading the Microsoft.CloudHealth registration'
+  # Registering needs rights on the subscription, so skip it when it's already done.
+  if ($registration -ne 'Registered') {
+    az provider register --namespace Microsoft.CloudHealth --wait -o none
+    Assert-NativeCommandSucceeded 'Registering Microsoft.CloudHealth'
+  }
 
   Write-Step "1. Health model $HealthModelName with a system-assigned identity"
   az monitor health-models create -g $ResourceGroup -n $HealthModelName -l $Location --mi-system-assigned -o none
@@ -309,8 +340,13 @@ try {
   }
 
   Write-Step '5. Entities: user flows, system components, Azure resources'
+  $canvas = Get-CanvasLayout $HealthModelName $relationships
+  az monitor health-models entity update @common -n $HealthModelName `
+    --canvas-position (Write-JsonFile 'root-canvas' $canvas[$HealthModelName])
+  Assert-NativeCommandSucceeded 'Placing the root entity'
   foreach ($entity in $entities) {
-    $entityArgs = @('-n', $entity.name, '--display-name', $entity.displayName, '--impact', ($entity.impact ?? 'Standard'))
+    $entityArgs = @('-n', $entity.name, '--display-name', $entity.displayName, '--impact', ($entity.impact ?? 'Standard'),
+      '--canvas-position', (Write-JsonFile "$($entity.name)-canvas" $canvas[$entity.name]))
     if ($entity.icon) { $entityArgs += @('--icon', "icon-name=$($entity.icon)") }
     if ($entity.objective) { $entityArgs += @('--health-objective', $entity.objective) }
     if ($entity.alerts) { $entityArgs += @('--alerts', (Write-JsonFile "$($entity.name)-alerts" (Get-Alerts $entity))) }
