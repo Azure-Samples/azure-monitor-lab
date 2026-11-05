@@ -71,7 +71,7 @@ variable "vm_size" {
 
 variable "aks_node_vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_B4ls_v2"
 }
 
 variable "vmss_size" {

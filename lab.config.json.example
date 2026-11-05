@@ -18,7 +18,7 @@
   "dailyCapGb":       1,
   "aksNodeCount":     1,
   "vmSize":           "Standard_B2s",
-  "aksNodeVmSize":    "Standard_B2s",
+  "aksNodeVmSize":    "Standard_B4ls_v2",
   "vmssSize":         "Standard_B1s",
   "grafanaAdminObjectId": "",
   "slotAppServicePlanSku": "S2",

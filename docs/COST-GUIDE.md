@@ -29,7 +29,7 @@ The table reflects the current Bicep defaults. Optional stages are excluded unle
 
 | Area | Current deployment | How it is billed | Lifecycle note |
 |---|---|---|---|
-| AKS | Free-tier control plane; **1 system node** (`aksNodeVmSize`), workload nodes from node auto provisioning, Spot first | Node VMs, OS disks, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | AKS can't stop a cluster with node auto provisioning, so the system node and Spot nodes keep billing until teardown |
+| AKS | Free-tier control plane; **1 system node** (`aksNodeVmSize`), Spot nodes from node auto provisioning when the workloads need more room | Node VMs, OS disks, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | AKS can't stop a cluster with node auto provisioning, so the system node and any Spot nodes keep billing until teardown |
 | Demo VMs | **1 Linux B2s + 1 Windows B2s** | VM hours, managed OS/data disks, public IPs, bandwidth, monitoring | Deallocation stops VM compute; disks, IPs, and monitoring remain |
 | VM scale set | **1 configured Linux instance** (`vmssSize`) | VM hours, disk, public IP/load-balancing as applicable, monitoring | Scaling to zero stops instance compute, not retained resources |
 | App Service | Linux Basic B1 plan and web app by default; optional broken-slot scenario uses Standard S1 plus one deployment slot | App Service plan instance-hours, even when the web app is stopped. Enabling `enableSlotFailureScenario` raises the plan tier and cost | Delete the plan to stop plan billing; disabling the toggle does not guarantee an automatic downgrade or slot deletion in incremental deployments |

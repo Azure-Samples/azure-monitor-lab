@@ -39,8 +39,11 @@ spec:
           operator: In
           values: ["D", "E", "F"]
         - key: karpenter.azure.com/sku-cpu
+          operator: Gt
+          values: ["3"]
+        - key: karpenter.azure.com/sku-cpu
           operator: Lt
-          values: ["5"]
+          values: ["9"]
       nodeClassRef:
         group: karpenter.azure.com
         kind: AKSNodeClass
@@ -84,8 +87,11 @@ spec:
           operator: In
           values: ["B", "D"]
         - key: karpenter.azure.com/sku-cpu
+          operator: Gt
+          values: ["3"]
+        - key: karpenter.azure.com/sku-cpu
           operator: Lt
-          values: ["5"]
+          values: ["9"]
       nodeClassRef:
         group: karpenter.azure.com
         kind: AKSNodeClass

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "8266473426797237133"
+      "templateHash": "4364381961390362091"
     }
   },
   "parameters": {
@@ -88,7 +88,7 @@
     },
     "aksNodeVmSize": {
       "type": "string",
-      "defaultValue": "Standard_B2s",
+      "defaultValue": "Standard_B4ls_v2",
       "metadata": {
         "description": "AKS node VM size."
       }
@@ -3684,7 +3684,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "6254438485899744861"
+              "templateHash": "3022823848988061216"
             }
           },
           "parameters": {
@@ -3708,7 +3708,7 @@
             },
             "nodeVmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_B4ls_v2",
               "metadata": {
                 "description": "System node pool VM size. Workload nodes come from node auto provisioning (workloads/k8s/00-nodepools.yaml)."
               }

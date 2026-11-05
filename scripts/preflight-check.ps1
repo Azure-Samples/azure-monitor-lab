@@ -66,7 +66,7 @@ param(
   [Parameter(Mandatory)]
   [string] $Location,
   [string] $VmSize          = 'Standard_B2s',
-  [string] $AksNodeVmSize   = 'Standard_B2s',
+  [string] $AksNodeVmSize   = 'Standard_B4ls_v2',
   [int]    $AksNodeCount    = 1,
   [string] $VmssSize        = 'Standard_B1s',
   [bool]   $DeployLinuxVm   = $true,

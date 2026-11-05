@@ -31,7 +31,7 @@ param enableVmOtelMetrics bool = true
 param vmSize string = 'Standard_B2s'
 
 @description('AKS node VM size.')
-param aksNodeVmSize string = 'Standard_B2s'
+param aksNodeVmSize string = 'Standard_B4ls_v2'
 
 @description('AKS node count.')
 param aksNodeCount int = 1

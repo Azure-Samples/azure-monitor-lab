@@ -35,10 +35,10 @@ The templates grant **Grafana Admin** at the Managed Grafana instance scope to t
 
 ### AKS nodes: Spot first
 
-AKS runs one small system node for the add-ons. The demo workloads get their nodes from [node auto provisioning](https://learn.microsoft.com/azure/aks/node-auto-provisioning) (Karpenter). `post-deploy.ps1` applies [`00-nodepools.yaml`](../workloads/k8s/00-nodepools.yaml) with two pools:
+AKS runs one `Standard_B4ls_v2` system node (4 vCPU) for the add-ons. A 2 vCPU node is too small once Defender for Containers is on, then AKS adds an on-demand `system-surge` node. Demo pods that don't fit there get their nodes from [node auto provisioning](https://learn.microsoft.com/azure/aks/node-auto-provisioning) (Karpenter). `post-deploy.ps1` applies [`00-nodepools.yaml`](../workloads/k8s/00-nodepools.yaml) with two pools:
 
-- `default` (weight 100): Spot only, D, E and F families up to 4 vCPU. This replaces the on-demand, D-only pool AKS creates.
-- `on-demand-fallback` (weight 10): B and D families, only used when no Spot capacity is available.
+- `default` (weight 100): Spot only, D, E and F families with 4 to 8 vCPU. This replaces the on-demand, D-only pool AKS creates.
+- `on-demand-fallback` (weight 10): B and D families with 4 to 8 vCPU, only used when no Spot capacity is available.
 
 Karpenter picks the cheapest SKU that fits the pending pods and removes empty or underused nodes. Spot nodes can be evicted at any time, the pods then move to a new node. NAP needs Azure CNI Overlay with Cilium, so an older lab cluster has to be deleted before redeploying. AKS can't stop a cluster with node auto provisioning, so **Stop Lab** leaves AKS running.
 
