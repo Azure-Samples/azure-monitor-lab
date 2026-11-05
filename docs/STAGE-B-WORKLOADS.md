@@ -16,7 +16,7 @@ They reconcile terminal deployment and slot state before retrying an isolated sl
 | Linux VM | `vm-amlab-lin` (`vmSize`) + NIC, public IP, OS disk + `shutdown-computevm-vm-amlab-lin` schedule | AMA-equipped and attached to `dcr-amlab-vminsights`. Automatically shuts down at 23:00 CET/CEST. The Linux Dependency Agent is not deployed, so Service Map is unavailable on this VM. |
 | Windows VM | `vmwin<suffix>` (`vmSize`) + NIC, public IP, OS disk + `shutdown-computevm-vmwin<suffix>` schedule | AMA and Dependency Agent equipped, attached to `dcr-amlab-vminsights`, and automatically shut down at 23:00 CET/CEST. |
 | VM OpenTelemetry metrics | `dcr-<prefix>-vm-otel` + `vm-otel-metrics-association` on each enabled standalone VM | On by default. Adds system metrics to the existing `amw-<prefix>`; keeps classic VM Insights and its associations unchanged. No VMSS association. |
-| AKS cluster | `aks-amlab` (1 configured `aksNodeVmSize` system node, workload nodes from node auto provisioning, Spot first) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
+| AKS cluster | `aks-amlab` (1 configured `aksNodeVmSize` system node) | Container Insights enabled (writes to `law-amlab-central`). Managed Prometheus is on (writes metrics to `amw-amlab` via `dcr-amlab-prometheus`). DCE attached. |
 | Managed Grafana | `amg-amlab-<suffix>` | Connected to `amw-amlab`. Default Azure dashboards (Node Exporter, Kubelet, K8s/Compute resources, etc.) appear automatically. |
 | App Service | `plan-amlab` + `app-amlab-<suffix>` | Linux App Service plan + web app. Auto-instrumented with `appi-amlab-<suffix>` (connection string baked in). Diagnostic settings send `AppServiceHTTPLogs` to `law-amlab-central`, `storage`, and event hub. |
 | Control Center runner | Basic `acrlabops<suffix>` registry, `cae-labops-<suffix>` Consumption environment, `id-labops-<suffix>` identity, `job-labops-<suffix>` manual job, `console-runner-logs` diagnostic setting, three custom roles, and scoped role assignments | The workload template provisions the platform; completion builds the image, deploys the digest-pinned job and launcher role, and configures operator sign-in and scoped access. Runner logs use the central workspace. |
@@ -32,15 +32,6 @@ Web App publication verifies the exact deployment ID through `/api/console/versi
 The Control Center, customer app, and slots share plan capacity. Check plan CPU and memory when container warm-up fails; increasing capacity requires approval for the higher ongoing cost. Direct Azure capacity changes are not preserved by a full template redeployment: the current Bicep App Service module selects S1 with the slot scenario enabled, or B1 otherwise.
 
 The templates grant **Grafana Admin** at the Managed Grafana instance scope to the deploying identity by default. For service-principal deployments, set `grafanaAdminObjectId` in Bicep or `grafana_admin_object_id` in Terraform to the intended operator or group object ID. New role assignments can take time to propagate. Azure resource ownership and Monitoring Reader on the Grafana managed identity do not grant a user Grafana data-plane access.
-
-### AKS nodes: Spot first
-
-AKS runs one `Standard_B4ls_v2` system node (4 vCPU) for the add-ons. A 2 vCPU node is too small once Defender for Containers is on, then AKS adds an on-demand `system-surge` node. Demo pods that don't fit there get their nodes from [node auto provisioning](https://learn.microsoft.com/azure/aks/node-auto-provisioning) (Karpenter). `post-deploy.ps1` applies [`00-nodepools.yaml`](../workloads/k8s/00-nodepools.yaml) with two pools:
-
-- `default` (weight 100): Spot only, D, E and F families with 4 to 8 vCPU. This replaces the on-demand, D-only pool AKS creates.
-- `on-demand-fallback` (weight 10): B and D families with 4 to 8 vCPU, only used when no Spot capacity is available.
-
-Karpenter picks the cheapest SKU that fits the pending pods and removes empty or underused nodes. Spot nodes can be evicted at any time, the pods then move to a new node. NAP needs Azure CNI Overlay with Cilium, so an older lab cluster has to be deleted before redeploying. AKS can't stop a cluster with node auto provisioning, so **Stop Lab** leaves AKS running.
 
 <a id="optional-vm-opentelemetry-metrics"></a>
 ### VM OpenTelemetry metrics (enabled by default)

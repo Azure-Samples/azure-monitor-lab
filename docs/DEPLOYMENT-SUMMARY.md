@@ -83,7 +83,7 @@ The one-shot deployment also includes custom-log ingestion resources, workspace 
 |---|---|---|
 | Linux Dependency Agent | **skipped** | Not supported on Ubuntu 22.04.5+ kernels. VM Insights still gets perf, heartbeat, processes via AMA + DCR. Service Map demo runs on the Windows VM. |
 | App Service GitHub deployment | **replaced** | Tenant has no GitHub source-control token. `post-deploy.ps1` now builds the bundled `workloads/webapp/AmlabHello` project locally and zip-deploys it instead. |
-| AKS node count | **1 by default** | Both one-shot and staged IaC default to one system node using `aksNodeVmSize`. Node auto provisioning adds Spot nodes for the demo workloads, see [Stage B](STAGE-B-WORKLOADS.md#aks-nodes-spot-first). |
+| AKS node count | **1 by default** | Both one-shot and staged IaC default to one system node using `aksNodeVmSize`. Increase `aksNodeCount` when the selected subscription, add-ons, or workshop workloads require more capacity. |
 | Daily ingestion cap | 1 GB/day on each LAW | Prevents runaway ingest costs. |
 
 ---

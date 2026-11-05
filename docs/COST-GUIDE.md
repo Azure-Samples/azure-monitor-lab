@@ -29,7 +29,7 @@ The table reflects the current Bicep defaults. Optional stages are excluded unle
 
 | Area | Current deployment | How it is billed | Lifecycle note |
 |---|---|---|---|
-| AKS | Free-tier control plane; **1 system node** (`aksNodeVmSize`), Spot nodes from node auto provisioning when the workloads need more room | Node VMs, OS disks, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | AKS can't stop a cluster with node auto provisioning, so the system node and any Spot nodes keep billing until teardown |
+| AKS | Free-tier control plane; **1 configured node by default** (`aksNodeVmSize`) | Node VM, OS disk, load balancer/public IP, outbound data; Managed Prometheus and Container Insights by usage | `az aks stop` stops node compute, but retained disks, IPs, and telemetry can still bill |
 | Demo VMs | **1 Linux B2s + 1 Windows B2s** | VM hours, managed OS/data disks, public IPs, bandwidth, monitoring | Deallocation stops VM compute; disks, IPs, and monitoring remain |
 | VM scale set | **1 configured Linux instance** (`vmssSize`) | VM hours, disk, public IP/load-balancing as applicable, monitoring | Scaling to zero stops instance compute, not retained resources |
 | App Service | Linux Basic B1 plan and web app by default; optional broken-slot scenario uses Standard S1 plus one deployment slot | App Service plan instance-hours, even when the web app is stopped. Enabling `enableSlotFailureScenario` raises the plan tier and cost | Delete the plan to stop plan billing; disabling the toggle does not guarantee an automatic downgrade or slot deletion in incremental deployments |
@@ -98,7 +98,8 @@ These tools are not part of the Azure lab infrastructure estimate:
 |---|---|---|
 | Stop the web app | App Service plan still bills | Plan, storage, logs, networking |
 | Deallocate VMs / scale VMSS to zero | VM compute stops | Disks, public IPs, backup/monitoring, data |
-| Control Center **Stop Lab** | Deallocates VMs/VMSS and stops the Web App. AKS keeps running | App Service Plan, Grafana, Event Hubs, ACR, disks/IPs, retained data, telemetry, and optional agents |
+| Stop AKS | Node compute stops | Disks, public IP/load balancer, registry, logs and metrics |
+| Control Center **Stop Lab** | Deallocates VMs/VMSS and stops AKS and the Web App | App Service Plan, Grafana, Event Hubs, ACR, disks/IPs, retained data, telemetry, and optional agents |
 | Stop SRE Agent activity | Active usage can stop | Post-trial always-on AAU allocation |
 | Leave optional agents idle | Usage may fall | Provisioned workspaces, retained data, and any fixed allocations |
 | Delete the resource group with `scripts/teardown.ps1 -Yes` | Resources are requested for deletion | Charges can continue until asynchronous deletion completes; tenant-scoped/shared resources require the documented cleanup path |
@@ -110,7 +111,7 @@ After teardown, verify the resource group and separately managed agent, replicat
 1. Set a subscription or resource-group budget and alerts in Cost Management.
 2. Use the lab workbook only for **central LAW ingestion volume**. It reads the `Usage` table and does not reconcile the Azure invoice.
 3. Review both LAW daily caps, table plans, retention, archive, export, and replication independently.
-4. Both demo VMs automatically shut down at 23:00 CET/CEST. Their alert actions are suppressed from 23:00–07:00; start them manually when needed, and scale the VMSS down between sessions.
+4. Both demo VMs automatically shut down at 23:00 CET/CEST. Their alert actions are suppressed from 23:00–07:00; start them manually when needed, and stop AKS and scale the VMSS down between sessions.
 5. Keep automatic agent investigations disabled unless their usage is explicitly approved.
 6. Review Cost Analysis by service name, meter, resource, and tag after each workshop.
 7. Delete the lab when it is no longer required and confirm deletion completes.
