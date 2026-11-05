@@ -214,6 +214,10 @@ Write-Step "Getting AKS credentials"
 az aks get-credentials --subscription $active.id --resource-group $ResourceGroup --name $AksName --overwrite-existing --output none
 if ($LASTEXITCODE -ne 0) { throw 'Could not obtain the lab Kubernetes credentials.' }
 
+Write-Step "Applying Spot-first node pools for node auto provisioning"
+kubectl apply -f (Join-Path $PSScriptRoot '..' 'workloads' 'k8s' '00-nodepools.yaml')
+if ($LASTEXITCODE -ne 0) { throw 'The node auto provisioning pools could not be applied.' }
+
 Write-Step "Applying frontend deployment + service"
 $frontendYaml = Join-Path $PSScriptRoot '..' 'workloads' 'k8s' '01-frontend.yaml'
 kubectl apply -f $frontendYaml

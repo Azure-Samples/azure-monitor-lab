@@ -157,7 +157,7 @@ if ($KeepEntraApplications) {
 
 if ($ownsActivityDiagnostic) {
   Write-Host "Deleting subscription diagnostic setting $activityDiagnosticName ..." -ForegroundColor Yellow
-  az monitor diagnostic-settings subscription delete --subscription $active.id --name $activityDiagnosticName --only-show-errors
+  az monitor diagnostic-settings subscription delete --subscription $active.id --name $activityDiagnosticName --yes --only-show-errors
   if ($LASTEXITCODE -ne 0) { throw "Failed to delete subscription diagnostic setting '$activityDiagnosticName'." }
 }
 

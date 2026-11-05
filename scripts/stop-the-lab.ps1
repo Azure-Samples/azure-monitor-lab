@@ -3,8 +3,9 @@
   Stop or deallocate the lab's startable compute resources.
 .DESCRIPTION
   Cost-control counterpart to start-the-lab.ps1. Idempotently deallocates VMs
-  and VMSS instances, stops AKS, and stops Web Apps in the selected resource
-  group. The Web App is stopped last because it hosts the Control Center.
+  and VMSS instances, stops AKS (unless it uses node auto provisioning, which
+  AKS can't stop), and stops Web Apps in the selected resource group. The Web
+  App is stopped last because it hosts the Control Center.
 
   This reduces compute consumption but does not eliminate all charges. App
   Service Plan, managed disks, public IPs, Grafana, Event Hubs, ACR, stored
@@ -72,11 +73,14 @@ foreach ($name in $vmsses) {
 }
 
 Write-Step 'AKS clusters'
-$aksClusters = az aks list -g $ResourceGroup --query "[].{name:name, power:powerState.code}" -o json | ConvertFrom-Json
+$aksClusters = az aks list -g $ResourceGroup --query "[].{name:name, power:powerState.code, nap:nodeProvisioningProfile.mode}" -o json | ConvertFrom-Json
 if (-not $aksClusters) { Write-Info "no AKS clusters in $ResourceGroup" }
 foreach ($aks in $aksClusters) {
   if ($aks.power -eq 'Stopped') {
     Write-Info "$($aks.name) already Stopped"
+    $skipped.aks += $aks.name
+  } elseif ($aks.nap -eq 'Auto') {
+    Write-Info "$($aks.name) uses node auto provisioning, which AKS can't stop; its system node and Spot nodes keep running"
     $skipped.aks += $aks.name
   } elseif ($PSCmdlet.ShouldProcess($aks.name, 'Stop AKS cluster')) {
     Write-Ok "stopping $($aks.name) (was: $($aks.power))"

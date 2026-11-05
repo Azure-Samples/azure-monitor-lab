@@ -46,7 +46,7 @@ kubectl -n demo delete job/loadgen-ramp --ignore-not-found | Out-Null
 kubectl -n demo delete configmap/loadgen-ramp-script --ignore-not-found | Out-Null
 
 $template = Join-Path $PSScriptRoot '..' 'workloads' 'k8s' '03-loadgen-ramp.yaml'
-$rendered = Join-Path $env:TEMP "amlab-ramp-$([guid]::NewGuid().ToString('N')).yaml"
+$rendered = Join-Path ($env:TEMP ?? [IO.Path]::GetTempPath()) "amlab-ramp-$([guid]::NewGuid().ToString('N')).yaml"
 (Get-Content -Raw $template).Replace('__APP_SERVICE_URL__', $url) | Set-Content -Encoding UTF8 $rendered
 kubectl apply -f $rendered | Out-Host
 Remove-Item $rendered -Force

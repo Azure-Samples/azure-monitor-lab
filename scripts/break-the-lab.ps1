@@ -85,7 +85,7 @@ data:
       sleep(1);
     }
 "@
-$tmp = Join-Path $env:TEMP "amlab-broken-cm-$([guid]::NewGuid().ToString('N')).yaml"
+$tmp = Join-Path ($env:TEMP ?? [IO.Path]::GetTempPath()) "amlab-broken-cm-$([guid]::NewGuid().ToString('N')).yaml"
 $cm | Set-Content -Encoding UTF8 $tmp
 try {
   kubectl apply -f $tmp | Out-Null
