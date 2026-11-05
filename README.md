@@ -143,6 +143,8 @@ The pre-flight checks *availability and quota*, not *live service capacity*. Tra
 
 </details>
 
+**Deployment blocked by region access?** For `RequestDisallowedByAzure` / "The selected region is currently not accepting new customers", change the affected region in your local `lab.config.json` and rerun deployment. `location` controls the main infrastructure; `appServiceLocation` controls web apps, customer dependencies, diagnostic storage, and Event Hubs; `observabilityAgentLocation` controls the optional Observability Agent and its workspace. Region eligibility varies by subscription and service. Changing config does not move existing resources: after a partial deployment, review what was created and use a new resource group when resources cannot be relocated. See [known issues and recovery steps](docs/REFERENCE.md#troubleshooting), including SKU/quota restrictions, stopped AKS, and Fabric update failures.
+
 A successful `deploy.ps1` run completes the selected setup. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
 
 For Fabric, set `stageToggles.enableStageFabric` to `true` and supply `fabricAdminEmail`. `deploy.ps1` runs setup automatically. Review `fabricAutomation` in the [config template](lab.config.json.example) for mirroring, sample data, workspace naming, verification timeout, and daily suspension settings. Resolve any reported prerequisites and verify ingestion using the [Fabric checklist](docs/STAGE-FABRIC.md#after-deployps1-checklist). Setup can be rerun safely; it reuses existing items and preserves edited dashboards.

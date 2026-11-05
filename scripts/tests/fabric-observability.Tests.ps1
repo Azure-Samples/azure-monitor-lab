@@ -112,6 +112,11 @@ function Invoke-RestMethod {
     if ($query -eq '.show external tables') {
       return @{ Tables = @((New-Table @('TableName') @(@('AzureActivity'), @('Perf'), @('AppRequests'), @('AppDependencies'), @('AppExceptions'), @('AppTraces')))) }
     }
+    if ($query -match 'let RequestSummary = materialize\(') {
+      $rows = @([regex]::Matches($query, "MetricOrder=\d, Metric='([^']+)'") | ForEach-Object { ,@($_.Groups[1].Value, 42.0) })
+      if ($rows.Count -ne 6) { throw 'Application KPIs must return all six metrics.' }
+      return @{ Tables = @((New-Table @('Metric', 'Value') $rows)) }
+    }
     if ($query -match "project Metric='") { return @{ Tables = @((New-Table @('Metric', 'Value') @(,@('Test metric', 42.0)))) } }
     if ($query -match 'external_table') { return @{ Tables = @((New-Table @('Count') @(,@(5)))) } }
     if ($query -like '.create-merge table LabSampleEvents*') { return @{ Tables = @() } }
@@ -276,22 +281,52 @@ foreach ($applicationInsights in @($true, $false)) {
   $tables = if ($applicationInsights) { @('AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces') } else { @('AzureActivity', 'Perf') }
   $mirroredDashboard = New-FabricMirroredDashboardDefinition -WorkspaceId workspace -QueryServiceUri $endpoint `
     -DatabaseId '22222222-2222-2222-2222-222222222222' -DatabaseName 'Mirrored logs' -Tables $tables -ApplicationInsights:$applicationInsights
-  $expectedTiles = if ($applicationInsights) { 14 } else { 10 }
+  $expectedTiles = if ($applicationInsights) { 9 } else { 10 }
   if ($mirroredDashboard.tiles.Count -ne $expectedTiles -or $mirroredDashboard.dataSources[0].database -ne '22222222-2222-2222-2222-222222222222') {
     throw 'Mirrored dashboard must bind the actual database item GUID and include cards, charts and detail tables.'
   }
   $cards = @($mirroredDashboard.tiles | Where-Object visualType -ceq 'multistat')
-  if ($cards.Count -ne 6) { throw 'Numeric visuals must serialize as lowercase multistat, not stat or multiStat.' }
+  $expectedCards = if ($applicationInsights) { 1 } else { 6 }
+  if ($cards.Count -ne $expectedCards) { throw 'Numeric visuals must serialize as lowercase multistat, with Application Insights KPIs combined into one query.' }
+  if ($mirroredDashboard.autoRefresh.defaultInterval -ne '5m' -or $mirroredDashboard.autoRefresh.minInterval -ne '5m') {
+    throw 'Mirrored dashboards must not introduce faster refresh bursts.'
+  }
+  if ($applicationInsights) {
+    if ($mirroredDashboard.pages.Count -ne 3 -or
+        ($mirroredDashboard.pages.name -join ',') -cne 'Application overview | last 24h,Reliability details | last 24h,Data freshness | last 24h') {
+      throw 'Application Insights must separate overview, reliability and freshness queries into three pages.'
+    }
+    $pageQueryCounts = @($mirroredDashboard.pages | ForEach-Object {
+      $pageId = $_.id
+      @($mirroredDashboard.tiles | Where-Object pageId -eq $pageId).Count
+    })
+    if (($pageQueryCounts -join ',') -ne '4,3,2') { throw 'Application Insights must issue at most four tile queries per page.' }
+    $summary = $cards[0].query
+    $expectedMetrics = @(
+      'Requests | 24h, sampling-adjusted', 'Server error rate | %', 'Request latency | P95 ms',
+      'Exceptions | 24h, sampling-adjusted', 'Source receipt delay | P95 seconds', 'Latest request event age | minutes'
+    )
+    $actualMetrics = @([regex]::Matches($summary, "MetricOrder=\d, Metric='([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+    if (($actualMetrics -join ',') -cne ($expectedMetrics -join ',') -or
+        [regex]::Matches($summary, "external_table\('AppRequests'\)").Count -ne 1 -or
+        [regex]::Matches($summary, "external_table\('AppExceptions'\)").Count -ne 1 -or
+        $summary -notmatch 'let RequestSummary = materialize\(' -or $summary -notmatch 'order by MetricOrder asc' -or
+        $summary -notmatch 'percentilew' -or $summary -notmatch 'ItemCount' -or $summary -notmatch 'project Metric, Value\s*$') {
+      throw 'The combined KPI query must preserve all six ordered metrics, sampling and output columns while sharing one request aggregation.'
+    }
+  } elseif ($mirroredDashboard.pages.Count -ne 1) { throw 'The central dashboard layout must remain unchanged.' }
   foreach ($tile in $mirroredDashboard.tiles) {
     $layout = $tile.layout
     if ($tile.visualType -notin @('multistat', 'line', 'table') -or $layout.width -lt 9 -or $layout.height -lt 7 -or
         $layout.x -lt 0 -or $layout.y -lt 0 -or $layout.x + $layout.width -gt 24) { throw 'Unsupported visual type or tile dimensions.' }
     if ($tile.query -notmatch 'external_table\(' -or $tile.query -match '_ReceivedTime') { throw 'Mirror queries must use external tables and the actual source receipt timestamp.' }
-    if ($tile.visualType -eq 'multistat' -and ($tile.query -notmatch "project Metric='.*', Value=toreal\(Value\)" -or
+    if ($tile.pageId -notin $mirroredDashboard.pages.id) { throw 'Every tile must reference an existing page.' }
+    $numericProjection = if ($applicationInsights) { 'project Metric, Value\s*$' } else { "project Metric='.*', Value=toreal\(Value\)" }
+    if ($tile.visualType -eq 'multistat' -and ($tile.query -notmatch $numericProjection -or
         $tile.visualOptions.multiStat__labelColumn -ne 'Metric' -or $tile.visualOptions.multiStat__valueColumn -ne 'Value')) {
       throw 'Numeric cards require explicit Metric/Value columns and visual mappings.'
     }
-    foreach ($other in $mirroredDashboard.tiles | Where-Object id -ne $tile.id) {
+    foreach ($other in $mirroredDashboard.tiles | Where-Object { $_.id -ne $tile.id -and $_.pageId -eq $tile.pageId }) {
       if ($layout.x -lt $other.layout.x + $other.layout.width -and $other.layout.x -lt $layout.x + $layout.width -and
           $layout.y -lt $other.layout.y + $other.layout.height -and $other.layout.y -lt $layout.y + $layout.height) { throw 'Dashboard tiles overlap.' }
     }
@@ -300,7 +335,7 @@ foreach ($applicationInsights in @($true, $false)) {
     throw 'Application Insights counts and percentiles must respect sampling weights.'
   }
 }
-Write-Output 'PASS: both mirrored dashboards have supported visuals, correct GUID bindings, sampling, explicit KPI outputs and nonoverlapping minimum-sized layouts.'
+Write-Output 'PASS: mirrored dashboards retain supported visuals, sampling and bindings; Application Insights shares six KPIs and limits each page to four queries without overlapping tiles.'
 
 Reset-Fixture
 1..2 | ForEach-Object { if ((Test-Mirror).Status -ne 'Pending') { throw 'Created mirror is not proof of data availability.' } }

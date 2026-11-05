@@ -3808,7 +3808,7 @@ A Fabric Real-Time Dashboard presents live health and throughput alongside busin
 
 1. Open the automatically provisioned `Azure Monitor Demo Live Health` dashboard connected to `MonitoringTelemetry`.
 2. Show the wide live ingestion-rate and recent-telemetry tiles. The middle table expands diagnostic batches and parses time, resource, category, level, HTTP method/path/status/duration, message and metric fields.
-3. Open `Azure Monitor Mirrored Logs - Application Insights` for six numeric cards, four time-series charts and four tables; contrast it with the infrastructure-oriented `Azure Monitor Mirrored Logs - Central`. The generated queries use a fixed last-24h window; edit queries to change it.
+3. Open `Azure Monitor Mirrored Logs - Application Insights`: the application overview combines all six KPIs into one numeric tile, with reliability details and data freshness on separate pages. All four time-series charts and four tables remain available, with at most four tile queries per page to reduce concurrency throttling. Contrast it with the infrastructure-oriented `Azure Monitor Mirrored Logs - Central`. The generated queries use a fixed last-24h window; edit queries to change it. Existing dashboards retain their saved layout; see the [layout upgrade guidance](STAGE-FABRIC.md#azure-monitor-mirroring-preview).
 4. Pin the dashboard for an operations wallboard view.
 
 ### Killer line

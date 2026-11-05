@@ -16,7 +16,8 @@ function New-FabricMirroredDashboardDefinition {
   $definition.pages[0].name = 'Mirrored Log Analytics'
   $tiles = [Collections.Generic.List[object]]::new()
   function Add-MirrorTile {
-    param([string] $Title, [string] $Query, [string] $Visual, [int] $X, [int] $Y, [int] $Width = 12, [int] $Height = 7)
+    param([string] $Title, [string] $Query, [string] $Visual, [int] $X, [int] $Y, [int] $Width = 12, [int] $Height = 7,
+      [string] $PageId = $definition.pages[0].id)
     $options = @{}
     if ($Visual -eq 'multistat') {
       $options = @{
@@ -28,7 +29,7 @@ function New-FabricMirroredDashboardDefinition {
     $tiles.Add(@{
       id = [guid]::NewGuid().ToString(); title = $Title; query = $Query
       visualType = $Visual; visualOptions = $options
-      pageId = $definition.pages[0].id; dataSourceId = $definition.dataSources[0].id
+      pageId = $PageId; dataSourceId = $definition.dataSources[0].id
       usedParamVariables = @(); layout = @{ x = $X; y = $Y; width = $Width; height = $Height }
     })
   }
@@ -59,14 +60,33 @@ let Exceptions = external_table('AppExceptions')
 | where TimeGenerated > ago(24h)
 | extend Weight=coalesce(tolong(ItemCount), long(1));
 '@
-    $cards = @(
-      @('Requests | 24h, sampling-adjusted', ($requests + "`nRequests | summarize Value=toreal(sum(Weight))")),
-      @('Server error rate | %', ($requests + "`nRequests | summarize Total=sum(Weight), Errors=sumif(Weight, Status >= 500) | project Value=round(100.0 * Errors / Total, 2)")),
-      @('Request latency | P95 ms', ($requests + "`nRequests | summarize Value=percentilew(DurationMs, Weight, 95)")),
-      @('Exceptions | 24h, sampling-adjusted', ($exceptions + "`nExceptions | summarize Value=toreal(sum(Weight))")),
-      @('Source receipt delay | P95 seconds', ($requests + "`nRequests | where ReceiptDelaySec >= 0 | summarize Value=round(percentile(ReceiptDelaySec, 95), 2)")),
-      @('Latest request event age | minutes', ($requests + "`nRequests | summarize LatestEvent=max(TimeGenerated) | project Value=round(datetime_diff('second', now(), LatestEvent) / 60.0, 1)"))
+    $reliabilityPageId = [guid]::NewGuid().ToString()
+    $freshnessPageId = [guid]::NewGuid().ToString()
+    $definition.pages = @(
+      @{ id = $definition.pages[0].id; name = 'Application overview | last 24h' },
+      @{ id = $reliabilityPageId; name = 'Reliability details | last 24h' },
+      @{ id = $freshnessPageId; name = 'Data freshness | last 24h' }
     )
+    $summary = $requests + "`n" + $exceptions + @'
+
+let RequestSummary = materialize(
+  Requests
+  | summarize Total=sum(Weight), ServerErrors=sumif(Weight, Status >= 500),
+      P95LatencyMs=percentilew(DurationMs, Weight, 95),
+      P95ReceiptDelaySec=percentile(iff(ReceiptDelaySec >= 0, ReceiptDelaySec, real(null)), 95),
+      LatestEvent=max(TimeGenerated)
+);
+union
+  (RequestSummary | project MetricOrder=0, Metric='Requests | 24h, sampling-adjusted', Value=toreal(Total)),
+  (RequestSummary | project MetricOrder=1, Metric='Server error rate | %', Value=round(100.0 * ServerErrors / Total, 2)),
+  (RequestSummary | project MetricOrder=2, Metric='Request latency | P95 ms', Value=toreal(P95LatencyMs)),
+  (Exceptions | summarize Value=toreal(sum(Weight)) | project MetricOrder=3, Metric='Exceptions | 24h, sampling-adjusted', Value),
+  (RequestSummary | project MetricOrder=4, Metric='Source receipt delay | P95 seconds', Value=round(P95ReceiptDelaySec, 2)),
+  (RequestSummary | project MetricOrder=5, Metric='Latest request event age | minutes', Value=round(datetime_diff('second', now(), LatestEvent) / 60.0, 1))
+| order by MetricOrder asc
+| project Metric, Value
+'@
+    Add-MirrorTile 'Application KPIs | 24h' $summary multistat 0 0 24
   } else {
     $cards = @(
       @('Visible records | 24h, not sampling-adjusted', ($visible + "`nVisible | summarize Value=toreal(count())")),
@@ -76,29 +96,29 @@ let Exceptions = external_table('AppExceptions')
       @('Records missing source receipt | 24h', ($visible + "`nVisible | summarize Value=toreal(countif(isnull(ReceiptDelaySec)))")),
       @('Negative source receipt intervals | 24h', ($visible + "`nVisible | summarize Value=toreal(countif(ReceiptDelaySec < 0))"))
     )
-  }
-  for ($i = 0; $i -lt $cards.Count; $i++) {
-    $title = $cards[$i][0]
-    $query = $cards[$i][1] + "`n| project Metric='$title', Value=toreal(Value)"
-    Add-MirrorTile $title $query multistat (($i % 2) * 12) ([int][Math]::Floor($i / 2) * 7)
+    for ($i = 0; $i -lt $cards.Count; $i++) {
+      $title = $cards[$i][0]
+      $query = $cards[$i][1] + "`n| project Metric='$title', Value=toreal(Value)"
+      Add-MirrorTile $title $query multistat (($i % 2) * 12) ([int][Math]::Floor($i / 2) * 7)
+    }
   }
   if ($ApplicationInsights) {
     Add-MirrorTile 'Traffic and server errors | event time, 15m' ($requests + @'
 
 Requests | summarize Requests=sum(Weight), ServerErrors=sumif(Weight, Status >= 500) by bin(TimeGenerated, 15m) | order by TimeGenerated asc
-'@) line 0 21
+'@) line 0 7
     Add-MirrorTile 'Request latency | sampling-weighted P50 / P95 / P99 ms' ($requests + @'
 
 Requests | summarize P50Ms=percentilew(DurationMs, Weight, 50), P95Ms=percentilew(DurationMs, Weight, 95), P99Ms=percentilew(DurationMs, Weight, 99) by bin(TimeGenerated, 15m) | order by TimeGenerated asc
-'@) line 12 21
+'@) line 12 7
     Add-MirrorTile 'Source receipt delay | seconds, not Fabric mirror latency' ($requests + @'
 
 Requests | where ReceiptDelaySec >= 0 | summarize P50Seconds=percentile(ReceiptDelaySec, 50), P95Seconds=percentile(ReceiptDelaySec, 95) by bin(TimeGenerated, 15m) | order by TimeGenerated asc
-'@) line 0 28
+'@) line 0 0 24 -PageId $freshnessPageId
     Add-MirrorTile 'Dependency calls and failures | event time, 15m' ($dependencies + @'
 
 Dependencies | summarize Calls=sum(Weight), Failures=sumif(Weight, IsSuccess == false) by bin(TimeGenerated, 15m) | order by TimeGenerated asc
-'@) line 12 28
+'@) line 0 14 24
     Add-MirrorTile 'Endpoint reliability | top 12 by failed requests' ($requests + @'
 
 Requests
@@ -107,14 +127,14 @@ Requests
 | extend FailurePct=round(100.0 * Failed / Requests, 2), P95Ms=round(P95Ms, 1)
 | top 12 by Failed desc
 | project Application, Endpoint, Requests, Failed, FailurePct, ServerErrors, P95Ms, LastSeen
-'@) table 0 35 24 8
+'@) table 0 0 24 8 -PageId $reliabilityPageId
     Add-MirrorTile 'Exception hotspots | top 10' ($exceptions + @'
 
 Exceptions
 | summarize Exceptions=sum(Weight), LastSeen=max(TimeGenerated), Example=take_any(substring(OuterMessage, 0, 200)) by Application=AppRoleName, ExceptionType
 | top 10 by Exceptions desc
 | project Application, ExceptionType, Exceptions, LastSeen, Example
-'@) table 0 43 12 8
+'@) table 0 8 12 8 -PageId $reliabilityPageId
     Add-MirrorTile 'Dependency health | top 10 by failures' ($dependencies + @'
 
 Dependencies
@@ -122,8 +142,8 @@ Dependencies
 | extend FailurePct=round(100.0 * Failed / Calls, 2), P95Ms=round(P95Ms, 1)
 | top 10 by Failed desc
 | project DependencyType, Target, Calls, Failed, FailurePct, P95Ms
-'@) table 12 43 12 8
-    $freshnessY = 51
+'@) table 12 8 12 8 -PageId $reliabilityPageId
+    $freshnessY = 7
   } else {
     Add-MirrorTile 'Visible records by source | event time, 15m' ($visible + "`nVisible | summarize Records=count() by SourceTable, bin(TimeGenerated, 15m) | order by TimeGenerated asc") line 0 21
     Add-MirrorTile 'Source receipt delay | P95 seconds, not mirror latency' ($visible + "`nVisible | where ReceiptDelaySec >= 0 | summarize P95Seconds=percentile(ReceiptDelaySec, 95) by SourceTable, bin(TimeGenerated, 15m) | order by TimeGenerated asc") line 12 21
@@ -139,6 +159,7 @@ Visible
 | top 25 by TimeGenerated desc
 '@) table 0 28 24 8
     $freshnessY = 36
+    $freshnessPageId = $definition.pages[0].id
   }
   Add-MirrorTile 'Mirror visibility and source receipt | event age is not mirror latency' ($visible + @'
 
@@ -149,7 +170,7 @@ Visible
 | extend EventAgeMin=round(datetime_diff('second', now(), LatestEvent) / 60.0, 1), P95SourceReceiptSec=round(P95SourceReceiptSec, 2)
 | project SourceTable, VisibleRecords, LatestEvent, EventAgeMin, LatestSourceReceipt, P95SourceReceiptSec, MissingReceipt, NegativeReceipt
 | order by SourceTable asc
-'@) table 0 $freshnessY 24 8
+'@) table 0 $freshnessY 24 8 -PageId $freshnessPageId
   $definition.tiles = $tiles.ToArray()
   return $definition
 }
@@ -224,9 +245,9 @@ function Initialize-FabricMirroredDashboard {
     $result = Invoke-FabricKql -QueryServiceUri $database.properties.queryServiceUri -DatabaseName $database.id -Query $tile.query
     if ($tile.visualType -eq 'multistat') {
       $primary = @($result.Tables | Where-Object { $_.TableName -eq 'Table_0' })
-      if ($primary.Count -ne 1 -or $primary[0].Rows.Count -ne 1 -or
+      if ($primary.Count -ne 1 -or $primary[0].Rows.Count -lt 1 -or
           ($primary[0].Columns.ColumnName -join ',') -cne 'Metric,Value') {
-        throw "Numeric tile '$($tile.title)' did not return exactly one Metric/Value row."
+        throw "Numeric tile '$($tile.title)' must return one or more rows with exactly the Metric/Value columns."
       }
     }
   }
