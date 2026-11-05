@@ -1380,8 +1380,8 @@ Scenario 14 showed Python + .NET wired into the same App Insights via OpenTeleme
 ### What's deployed
 
 `workloads/k8s/05-nodeapp-otel.yaml` deploys 1 pod in namespace `demo`:
-- Image: `node:20-alpine`
-- Runtime script (inlined via ConfigMap): on boot, `npm install @azure/monitor-opentelemetry@^1.10.0`, then `require('@azure/monitor-opentelemetry').useAzureMonitor()` — the whole process is instrumented before user code runs.
+- Image: `node:22-alpine`
+- Runtime script (inlined via ConfigMap): on boot, `npm install @azure/monitor-opentelemetry@1.20.1`, then `require('@azure/monitor-opentelemetry').useAzureMonitor()` — the whole process is instrumented before user code runs.
 - Calls `${APP_SERVICE_URL}/api/echo` every 5 seconds.
 - Env var `APPLICATIONINSIGHTS_CONNECTION_STRING` is injected at apply time by `scripts/post-deploy.ps1`.
 
