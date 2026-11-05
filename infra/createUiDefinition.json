@@ -143,7 +143,7 @@
             "name": "aksNodeVmSize",
             "type": "Microsoft.Common.TextBox",
             "label": "AKS node VM size",
-            "defaultValue": "Standard_B4ls_v2",
+            "defaultValue": "Standard_B2s",
             "toolTip": "VM size for AKS nodes.",
             "constraints": {
               "required": true,

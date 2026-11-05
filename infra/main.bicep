@@ -45,7 +45,7 @@ param dailyCapGb int = 1
 param vmSize string = 'Standard_B2s'
 
 @description('AKS node VM size.')
-param aksNodeVmSize string = 'Standard_B4ls_v2'
+param aksNodeVmSize string = 'Standard_B2s'
 
 @description('Predictive-autoscale VMSS instance size.')
 param vmssSize string = 'Standard_B1s'
