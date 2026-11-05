@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "18270326743947474242"
+      "templateHash": "8266473426797237133"
     }
   },
   "parameters": {
@@ -3684,7 +3684,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4720308177047516325"
+              "templateHash": "6254438485899744861"
             }
           },
           "parameters": {
@@ -3710,14 +3710,14 @@
               "type": "string",
               "defaultValue": "Standard_B2s",
               "metadata": {
-                "description": "Node VM size."
+                "description": "System node pool VM size. Workload nodes come from node auto provisioning (workloads/k8s/00-nodepools.yaml)."
               }
             },
             "nodeCount": {
               "type": "int",
               "defaultValue": 1,
               "metadata": {
-                "description": "Node count."
+                "description": "System node pool node count."
               }
             },
             "centralLawId": {
@@ -3755,7 +3755,7 @@
           "resources": [
             {
               "type": "Microsoft.ContainerService/managedClusters",
-              "apiVersion": "2024-05-01",
+              "apiVersion": "2025-05-01",
               "name": "[parameters('name')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
@@ -3770,6 +3770,9 @@
                 "kubernetesVersion": "1.34",
                 "dnsPrefix": "[parameters('dnsPrefix')]",
                 "enableRBAC": true,
+                "nodeProvisioningProfile": {
+                  "mode": "Auto"
+                },
                 "agentPoolProfiles": [
                   {
                     "name": "systempool",
@@ -3785,7 +3788,9 @@
                 ],
                 "networkProfile": {
                   "networkPlugin": "azure",
-                  "networkPolicy": "azure",
+                  "networkPluginMode": "overlay",
+                  "networkDataplane": "cilium",
+                  "networkPolicy": "cilium",
                   "loadBalancerSku": "standard",
                   "serviceCidr": "10.100.0.0/16",
                   "dnsServiceIP": "10.100.0.10"
@@ -3964,7 +3969,7 @@
             },
             "controlPlaneFqdn": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01').fqdn]"
+              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2025-05-01').fqdn]"
             }
           }
         }

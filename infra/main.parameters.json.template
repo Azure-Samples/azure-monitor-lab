@@ -15,7 +15,7 @@
     "vmSize": { "value": "Standard_B2s" },
     "aksNodeVmSize": { "value": "Standard_B2s" },
     "vmssSize": { "value": "Standard_B1s" },
-    "aksNodeCount": { "value": 2 },
+    "aksNodeCount": { "value": 1 },
     "grafanaAdminObjectId": { "value": "" },
     "enablePlatformLogsDcr": { "value": false },
     "enableMetricsExportDcr": { "value": false },

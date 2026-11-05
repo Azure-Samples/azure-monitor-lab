@@ -248,11 +248,7 @@ See the dated [cost guide](COST-GUIDE.md) for:
 
 Both Log Analytics workspaces default to a **1 GB/day ingestion cap**, but each cap applies only to that workspace's ingestion. It does not cap Grafana, compute, App Service, Event Hubs, ACR, disks, IPs, Prometheus, network monitoring, alerts, tests, agents, or other meters. The in-lab cost workbook reports central-workspace ingestion volume only; Azure Cost Management remains the billing source of truth.
 
-To reduce compute charges between sessions, deallocate VMs and stop AKS:
-
-```powershell
-az aks stop -g rg-azure-monitor-lab -n aks-amlab
-```
+To reduce compute charges between sessions, deallocate the VMs. AKS can't be stopped, because it uses node auto provisioning. Between sessions it runs one system node plus Spot nodes for the demo workloads.
 
 App Service Plan, Grafana Standard, Event Hubs, ACR, retained disks/IPs/data, telemetry, and enabled optional agents can continue billing. Delete the lab when it is no longer needed and verify asynchronous deletion completes.
 

@@ -9,7 +9,7 @@ The Web App prepares approvals and reads execution status. It does not execute P
 | Action | Script | Scope and effect |
 |---|---|---|
 | Start Lab | [start-the-lab.ps1](../../scripts/start-the-lab.ps1) | Starts stopped VMs, VMSS instances, AKS, and web apps. Waits up to 20 minutes for startup. Running resources incur charges. |
-| Stop Lab | [stop-the-lab.ps1](../../scripts/stop-the-lab.ps1) | Deallocates VMs and VMSS instances, stops AKS, then stops the Web App hosting the Control Center. This reduces compute usage but does not stop fixed services, disks/IPs, retained data, telemetry, or optional-agent charges. |
+| Stop Lab | [stop-the-lab.ps1](../../scripts/stop-the-lab.ps1) | Deallocates VMs and VMSS instances, then stops the Web App hosting the Control Center. AKS keeps running because node auto provisioning can't be stopped. This reduces compute usage but does not stop fixed services, disks/IPs, retained data, telemetry, or optional-agent charges. |
 | Break Lab | [break-the-lab.ps1](../../scripts/break-the-lab.ps1) | Deallocates VMs, replaces the AKS demo frontend image, changes the load-generator error rate, starts a short load job, and adds an incident annotation. |
 | Restore Lab | [restore-the-lab.ps1](../../scripts/restore-the-lab.ps1) | Starts VMs and restores the known demo frontend/load-generator configuration. Adds a release annotation. This is not a rollback of arbitrary changes. |
 | Start Load Ramp | [start-ramp.ps1](../../scripts/start-ramp.ps1) | Replaces the named ramp job/configuration and submits approximately 60 minutes of AKS traffic against the lab app. |

@@ -70,7 +70,7 @@ if ($missing.Count -gt 0) {
 function Coalesce($a, $b) { if ($null -ne $a -and $a -ne '') { $a } else { $b } }
 $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
 $dailyCapGb       = Coalesce $cfg.dailyCapGb       1
-$aksNodeCount     = Coalesce $cfg.aksNodeCount     2
+$aksNodeCount     = Coalesce $cfg.aksNodeCount     1
 $vmSize           = Coalesce $cfg.vmSize           'Standard_B2s'
 $aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_B2s'
 $vmssSize         = Coalesce $cfg.vmssSize         'Standard_B1s'

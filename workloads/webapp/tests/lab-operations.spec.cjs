@@ -5,7 +5,7 @@ const now = new Date('2026-09-11T12:00:00Z');
 const target = { jobResourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-azure-monitor-lab/providers/Microsoft.App/jobs/job-labops-demo', image: 'acrlabopsdemo.azurecr.io/lab-operations@sha256:' + 'a'.repeat(64), subscriptionId: '00000000-0000-0000-0000-000000000000', tenantId: '00000000-0000-0000-0000-000000000000', resourceGroup: 'rg-azure-monitor-lab' };
 const actions = [
   ['start', 'Start Lab', 'start-the-lab.ps1', 'Starts stopped lab resources. Running resources incur charges.'],
-  ['stop', 'Stop Lab', 'stop-the-lab.ps1', 'Deallocates VMs and VMSS instances, stops AKS, then stops the Web App hosting this Control Center.'],
+  ['stop', 'Stop Lab', 'stop-the-lab.ps1', 'Deallocates VMs and VMSS instances, then stops the Web App hosting this Control Center.'],
   ['break', 'Break Lab', 'break-the-lab.ps1', 'Deallocates lab VMs, disrupts the AKS frontend, and increases application failures.'],
   ['restore', 'Restore Lab', 'restore-the-lab.ps1', 'Starts VMs and restores the demo frontend and load generator.'],
   ['ramp', 'Start Load Ramp', 'start-ramp.ps1', 'Replaces the previous ramp job and starts 60 minutes of traffic.'],
