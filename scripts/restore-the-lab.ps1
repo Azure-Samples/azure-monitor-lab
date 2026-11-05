@@ -44,7 +44,7 @@ kubectl -n demo set image deployment/hello-frontend hello=mcr.microsoft.com/azur
 Write-Step "Restoring healthy load-gen ConfigMap"
 $loadgenYaml = Join-Path $PSScriptRoot '..' 'workloads' 'k8s' '02-loadgen.yaml'
 $webAppUrl   = "https://$webAppHost"
-$rendered    = Join-Path $env:TEMP "amlab-restore-$([guid]::NewGuid().ToString('N')).yaml"
+$rendered    = Join-Path ($env:TEMP ?? [IO.Path]::GetTempPath()) "amlab-restore-$([guid]::NewGuid().ToString('N')).yaml"
 (Get-Content -Raw $loadgenYaml).Replace('__APP_SERVICE_URL__', "'$webAppUrl'") | Set-Content -Encoding UTF8 $rendered
 kubectl apply -f $rendered | Out-Null
 Remove-Item $rendered -Force

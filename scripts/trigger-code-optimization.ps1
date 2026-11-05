@@ -87,7 +87,7 @@ Write-Info "Host   : $webAppHost"
 # --- Publish updated webapp (unless skipped) -----------------------------------
 if (-not $SkipPublish) {
   Write-Step "Publishing AmlabHello so /api/inefficient is live"
-  $pub    = Join-Path $env:TEMP "amlab-pub-$([guid]::NewGuid().ToString('N'))"
+  $pub    = Join-Path ($env:TEMP ?? [IO.Path]::GetTempPath()) "amlab-pub-$([guid]::NewGuid().ToString('N'))"
   $csproj = Join-Path $PSScriptRoot '..' 'workloads' 'webapp' 'AmlabHello.csproj'
   dotnet publish $csproj -c Release -o $pub --nologo --verbosity quiet | Out-Null
   $zip = "$pub.zip"

@@ -155,7 +155,7 @@ spec:
 '@
 
 $renderedManifest = $manifest.Replace('namespace: demo', "namespace: $Namespace")
-$manifestPath = Join-Path $env:TEMP "amlab-sli-demo-$([guid]::NewGuid().ToString('N')).yaml"
+$manifestPath = Join-Path ($env:TEMP ?? [IO.Path]::GetTempPath()) "amlab-sli-demo-$([guid]::NewGuid().ToString('N')).yaml"
 try {
   $renderedManifest | Set-Content -Path $manifestPath -Encoding utf8
   kubectl apply -f $manifestPath
