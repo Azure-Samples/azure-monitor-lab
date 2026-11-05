@@ -27,6 +27,8 @@ The runner's resource-group Reader role can discover F2 but cannot resume it. Th
 
 For an existing lab with the current runner image but missing resume access, deploy just that template using the lab's subscription/resource group, existing `capacityName`, and runner managed identity `principalId`. This does not rebuild the image, change the Web App, or resume capacity. After inspecting any partial startup, approve a new **Start Lab** operation to verify recovery. If adding Fabric after console setup, rerun console bootstrap (or the normal console upgrade) to discover and grant the new capacity access.
 
+Updating the branch alone does not repair an existing Azure role assignment or update the deployed button description. Apply the capacity access template (or rerun console bootstrap) for permissions, and republish the Web App for the updated description. The description comes from the server-side operation catalog, not the browser bundle.
+
 ### Release marker target
 
 Release markers (including Break Lab and Restore Lab) belong to the **Control Center**
