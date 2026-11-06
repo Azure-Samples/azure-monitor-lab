@@ -11,7 +11,7 @@ public sealed record HealthModelSignal(string Name, string DisplayName, string K
 public sealed record HealthModelEntity(string Name, string DisplayName, string State, string? Icon, IReadOnlyList<string> Children,
     IReadOnlyList<HealthModelSignal> Signals);
 public sealed record HealthModelSnapshot(bool Available, string State, string Message, string Model, DateTimeOffset? CheckedAt,
-    string? PortalUrl, IReadOnlyList<HealthModelEntity> Entities);
+    IReadOnlyList<HealthModelEntity> Entities);
 public sealed record HealthReportRequest(string? Entity);
 public sealed record HealthReportResult(bool Sent, string Message, string Model, string? Entity, string? Signal, DateTimeOffset? ExpiresAt);
 
@@ -51,19 +51,8 @@ public sealed class HealthModelService
         {
             var entities = await ReadPagesAsync($"{path}/entities?api-version={ApiVersion}", cancellationToken);
             var relationships = await ReadPagesAsync($"{path}/relationships?api-version={ApiVersion}", cancellationToken);
-            var children = relationships.Select(Properties)
-                .GroupBy(item => Text(item, "parentEntityName"), StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Select(item => Text(item, "childEntityName")).Where(IsName).Distinct().ToArray(), StringComparer.OrdinalIgnoreCase);
-            var rows = entities.Select(entity =>
-            {
-                var name = Text(entity, "name");
-                var properties = Properties(entity);
-                return new HealthModelEntity(name, Text(properties, "displayName") is { Length: > 0 } display ? display : name,
-                    State(Text(properties, "healthState")), Text(Property(properties, "icon"), "iconName") is { Length: > 0 } icon ? icon : null,
-                    children.GetValueOrDefault(name) ?? [], Signals(properties));
-            }).ToArray();
-            return new(true, "ready", $"{rows.Length} entities read.", target.Name, clock.GetUtcNow(),
-                $"https://portal.azure.com/#resource{path}/overview", rows);
+            var rows = Entities(entities, relationships);
+            return new(true, "ready", $"{rows.Count} entities read.", target.Name, clock.GetUtcNow(), rows);
         }
         catch (Exception exception) when (IsFailure(exception)) { return Empty(target.Name, "unavailable", Failure(exception, "read")); }
     }
@@ -73,23 +62,10 @@ public sealed class HealthModelService
         if (!TryModel(model, out var target, out var path)) return new(false, "This health model is not configured for the Control Center.", model, null, null, null);
         var entity = string.IsNullOrEmpty(request.Entity) ? target.DefaultEntity : request.Entity;
         if (!IsName(entity)) return new(false, "Choose an entity of this health model.", target.Name, null, null, null);
-        var body = JsonSerializer.Serialize(new
-        {
-            signalName = ReportSignal,
-            healthState = "Degraded",
-            value = 1,
-            expiresInMinutes = ReportMinutes,
-            additionalContext = $"Sent from the Lab Control Center. Expires after {ReportMinutes} minutes.",
-            evaluationRules = new
-            {
-                degradedRule = new { @operator = "GreaterThanOrEqual", threshold = 1 },
-                unhealthyRule = new { @operator = "GreaterThanOrEqual", threshold = 2 }
-            }
-        });
         try
         {
             using var response = await SendArmAsync(HttpMethod.Post, new Uri($"https://management.azure.com{path}/entities/{entity}/ingestHealthReport?api-version={ApiVersion}"),
-                new StringContent(body, Encoding.UTF8, "application/json"), cancellationToken);
+                new StringContent(ReportBody, Encoding.UTF8, "application/json"), cancellationToken);
             response.EnsureSuccessStatusCode();
             var expiresAt = clock.GetUtcNow().AddMinutes(ReportMinutes);
             return new(true, $"Degraded report sent. It expires at {expiresAt:HH:mm} UTC.", target.Name, entity, ReportSignal, expiresAt);
@@ -104,6 +80,35 @@ public sealed class HealthModelService
         if (target is null || !Guid.TryParse(configuration["LabConsole:Health:SubscriptionId"], out var subscription) || subscription == Guid.Empty) return false;
         path = $"/subscriptions/{subscription}/resourceGroups/{target.ResourceGroup}/providers/Microsoft.CloudHealth/healthmodels/{target.Name}";
         return true;
+    }
+
+    private static readonly string ReportBody = JsonSerializer.Serialize(new
+    {
+        signalName = ReportSignal,
+        healthState = "Degraded",
+        value = 1,
+        expiresInMinutes = ReportMinutes,
+        additionalContext = $"Sent from the Lab Control Center. Expires after {ReportMinutes} minutes.",
+        evaluationRules = new
+        {
+            degradedRule = new { @operator = "GreaterThanOrEqual", threshold = 1 },
+            unhealthyRule = new { @operator = "GreaterThanOrEqual", threshold = 2 }
+        }
+    });
+
+    private static IReadOnlyList<HealthModelEntity> Entities(IReadOnlyList<JsonElement> entities, IReadOnlyList<JsonElement> relationships)
+    {
+        var children = relationships.Select(Properties)
+            .GroupBy(item => Text(item, "parentEntityName"), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Select(item => Text(item, "childEntityName")).Where(IsName).Distinct().ToArray(), StringComparer.OrdinalIgnoreCase);
+        return entities.Select(entity =>
+        {
+            var name = Text(entity, "name");
+            var properties = Properties(entity);
+            return new HealthModelEntity(name, Text(properties, "displayName") is { Length: > 0 } display ? display : name,
+                State(Text(properties, "healthState")), Text(Property(properties, "icon"), "iconName") is { Length: > 0 } icon ? icon : null,
+                children.GetValueOrDefault(name) ?? [], Signals(properties));
+        }).ToArray();
     }
 
     private static IReadOnlyList<HealthModelSignal> Signals(JsonElement properties)
@@ -180,5 +185,5 @@ public sealed class HealthModelService
         _ => action == "read" ? "The health model could not be read." : "The health report could not be sent."
     };
 
-    private static HealthModelSnapshot Empty(string model, string state, string message) => new(false, state, message, model, null, null, []);
+    private static HealthModelSnapshot Empty(string model, string state, string message) => new(false, state, message, model, null, []);
 }

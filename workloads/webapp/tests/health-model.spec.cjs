@@ -12,7 +12,6 @@ const external = signal('control-center-report', 'control-center-report', 'degra
 function cafe(orderState = 'healthy', reported = false) {
   return {
     available: true, state: 'ready', message: '6 entities read.', model: 'hm-lab-cafe', checkedAt: now.toISOString(),
-    portalUrl: 'https://portal.azure.com/#resource/subscriptions/example-subscription/resourceGroups/rg-healthmodel-tutorial/providers/Microsoft.CloudHealth/healthmodels/hm-lab-cafe/overview',
     entities: [
       entity('hm-lab-cafe', 'Café', orderState === 'healthy' ? 'healthy' : 'degraded', ['browse-menu', 'order-coffee'], [], 'Root'),
       entity('browse-menu', 'Browse menu', 'healthy', ['menu-catalog'], [], 'UserFlow'),
@@ -25,7 +24,7 @@ function cafe(orderState = 'healthy', reported = false) {
 }
 const flows = {
   available: true, state: 'ready', message: '2 entities read.', model: 'hm-amlab-flows', checkedAt: now.toISOString(),
-  portalUrl: 'https://attacker.example/#resource/subscriptions/x', entities: [
+  entities: [
     entity('hm-amlab-flows', 'Lab flows', 'unhealthy', ['shop-demo'], [], 'Root'),
     entity('shop-demo', 'Show the shop app live', 'unhealthy', [], [signal('shop-failures', 'Shop failures', 'unhealthy', 12, 'Count')], 'UserFlow')
   ]
@@ -111,16 +110,6 @@ test('Switching models reads the other model and uses its default entity', async
   await page.locator('#hm-model').selectOption('hm-amlab-flows');
   await expect(page.locator('#hm-entity')).toHaveValue('shop-demo');
   expect(calls.reads).toEqual(['hm-amlab-flows', 'hm-lab-cafe', 'hm-amlab-flows']);
-});
-
-test('Open in Azure links only to the Azure portal', async ({ page }) => {
-  await prepare(page);
-  await open(page);
-  await expect(page.locator('#hm-portal')).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.locator('#hm-portal')).not.toHaveAttribute('href');
-  await selectCafe(page);
-  await expect(page.locator('#hm-portal')).toHaveAttribute('href', cafe().portalUrl);
-  await expect(page.locator('#hm-portal')).toHaveAttribute('rel', 'noopener noreferrer');
 });
 
 for (const choice of [{ entity: null, expected: 'order-coffee' }, { entity: 'order-api', expected: 'order-api' }]) {

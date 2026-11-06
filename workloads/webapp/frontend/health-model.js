@@ -102,18 +102,6 @@ export function initializeHealthModel({ refreshIcons }) {
       entity.append(option);
     }
     entity.value = [...entity.options].some(option => option.value === choice) ? choice : model?.defaultEntity || '';
-    const portal = byId('hm-portal');
-    portal.removeAttribute('href');
-    portal.setAttribute('aria-disabled', 'true');
-    try {
-      const url = new URL(snapshot?.portalUrl);
-      if (url.protocol === 'https:' && url.hostname === 'portal.azure.com' && url.hash.startsWith('#resource/subscriptions/')) {
-        portal.href = url.href;
-        portal.target = '_blank';
-        portal.rel = 'noopener noreferrer';
-        portal.removeAttribute('aria-disabled');
-      }
-    } catch {}
     byId('hm-refresh').disabled = pending || !model;
     byId('hm-report').disabled = pending || sending || !model || !entity.value;
     refreshIcons();

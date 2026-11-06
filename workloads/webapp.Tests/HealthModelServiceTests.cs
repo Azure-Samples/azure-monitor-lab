@@ -32,7 +32,6 @@ public sealed class HealthModelServiceTests
         var result = await Create(transport).ReadAsync("hm-test", default);
         Assert.True(result.Available);
         Assert.Equal("ready", result.State);
-        Assert.Equal($"https://portal.azure.com/#resource{Model}/overview", result.PortalUrl);
         var root = result.Entities.Single(entity => entity.Name == "hm-test");
         Assert.Equal(["order-flow"], root.Children);
         var flow = result.Entities.Single(entity => entity.Name == "order-flow");
