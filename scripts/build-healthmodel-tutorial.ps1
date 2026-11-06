@@ -376,18 +376,22 @@ try {
     $roleName = "Health Model Reporter $ResourceGroup $($active.id.Substring(0, 8))"
     $roleId = az role definition list --custom-role-only true --scope $rgId --query "[?roleName=='$roleName'].name | [0]" -o tsv
     Assert-NativeCommandSucceeded 'Looking up the reporter role'
-    if (-not $roleId) {
-      $role = @{
-        Name = $roleName; Description = 'Read a health model and send external health reports to its entities.'
-        Actions = @(
-          'Microsoft.CloudHealth/healthmodels/read'
-          'Microsoft.CloudHealth/healthmodels/entities/read'
-          'Microsoft.CloudHealth/healthmodels/relationships/read'
-          'Microsoft.CloudHealth/healthmodels/signaldefinitions/read'
-          'Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action'
-        )
-        AssignableScopes = @($rgId)
-      }
+    $role = @{
+      Name = $roleName; Description = 'Read a health model and send external health reports to its entities.'
+      Actions = @(
+        'Microsoft.CloudHealth/healthmodels/read'
+        'Microsoft.CloudHealth/healthmodels/entities/read'
+        'Microsoft.CloudHealth/healthmodels/relationships/read'
+        'Microsoft.CloudHealth/healthmodels/signaldefinitions/read'
+        'Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action'
+      )
+      AssignableScopes = @($rgId)
+    }
+    if ($roleId) {
+      # An existing role gets the current action list, so a rerun brings older roles up to date.
+      az role definition update --role-definition (Write-JsonFile 'reporter-role' $role) -o none
+      Assert-NativeCommandSucceeded 'Updating the reporter role'
+    } else {
       $roleId = az role definition create --role-definition (Write-JsonFile 'reporter-role' $role) --query name -o tsv
       Assert-NativeCommandSucceeded 'Creating the reporter role'
     }
