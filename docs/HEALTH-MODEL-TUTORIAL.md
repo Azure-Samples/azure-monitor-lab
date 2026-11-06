@@ -1,6 +1,14 @@
 # Health Model Tutorial: Lab Café ☕🩺
 
-Alerts tell you *a metric crossed a line*. A health model tells you *whether your customers can do what they came for*. In this tutorial you open a tiny coffee shop on Azure that comes with a ready health model, add one signal yourself, and then break the café three times to watch health roll up from Azure resources to what customers do.
+In this tutorial you finally done it. You run your own coffee shop! In the cloud. 
+
+But you will see that a lot can go wrong, but a health model help you have an overview of your café's health and the chance to drill down into the details.
+
+If you're used to just alerts on some metrics, they can give you the full picture, they are just a signal that something is not right.
+
+But once you give meaning to the signals, combine or route them, you can start to understand the impact of it. 
+
+E.g. if you're CPU load is high, an alert might fire, but in the end, who cares that you're using your CPU a lot. If though your orders start to get delayed, it affects customers in your café.
 
 **After this tutorial you can:**
 
@@ -16,6 +24,39 @@ Alerts tell you *a metric crossed a line*. A health model tells you *whether you
 | 📍 Region | `swedencentral` by default, everything in its own resource group `rg-healthmodel-tutorial`. Other regions that offer health models work too (`-Location`) |
 | 🧩 Standalone | You don't need the rest of the lab. Its own health models are in [scenario 45](DEMO-SCENARIOS.md#s45) |
 | ✅ Last verified | 2026-11-05 with Azure CLI 2.92, `health-models` extension 1.0.0b2, API `2026-11-01` |
+
+## Before you start
+
+### Install the health models CLI
+
+The health models CLI is the `health-models` extension for Azure CLI. Use PowerShell 7 (`pwsh`) on Windows, macOS or Linux, or Azure Cloud Shell switched to **PowerShell**.
+
+1. [Install Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75 or later. Azure Cloud Shell already includes it. Check your version:
+
+   ```powershell
+   az version
+   ```
+
+2. Install the health models extension, then check that its commands are available:
+
+   ```powershell
+   az extension add --name health-models
+   az monitor health-models --help
+   ```
+
+   The help output should list commands such as `create`, `show` and `entity`. See the [official CLI installation steps](https://learn.microsoft.com/azure/azure-monitor/health-models/cli#install-the-extension).
+
+3. Sign in to Azure:
+
+   ```powershell
+   az login
+   ```
+
+### Permissions and repository setup
+
+- Owner, or Contributor plus User Access Administrator, on the subscription or resource group. The scripts create role assignments for the app and for the health model.
+- The health model resource provider registered on the subscription. The build script registers it if needed, which takes rights on the subscription; with rights on the resource group only, ask an admin to run `az provider register --namespace Microsoft.CloudHealth` once.
+- Run everything from the repository root. Put your subscription in `.azure-target.json` (copy [.azure-target.json.template](../.azure-target.json.template)) or pass `-SubscriptionId` to every script.
 
 ## What you'll build
 
@@ -50,15 +91,6 @@ This tutorial is for seeing and trying; the Microsoft Learn pages are the refere
 | Rollup and impact | [Configure health rollup](https://learn.microsoft.com/azure/azure-monitor/health-models/rollup) | §5 |
 | Build with the CLI | [Create a health model with the Azure CLI](https://learn.microsoft.com/azure/azure-monitor/health-models/cli) | §4 |
 | Questions | [FAQ](https://learn.microsoft.com/azure/azure-monitor/health-models/health-models-faq) | |
-
-## Before you start
-
-- Azure CLI 2.75 or later, signed in with `az login`.
-- The health models CLI extension (tested with 1.0.0b2): `az extension add --name health-models`.
-- PowerShell 7 (`pwsh`) on Windows, macOS or Linux, or Azure Cloud Shell switched to **PowerShell**.
-- Owner, or Contributor plus User Access Administrator, on the subscription or resource group. The scripts create role assignments for the app and for the health model.
-- The health model resource provider registered on the subscription. The build script registers it if needed, which takes rights on the subscription; with rights on the resource group only, ask an admin to run `az provider register --namespace Microsoft.CloudHealth` once.
-- Run everything from the repository root. Put your subscription in `.azure-target.json` (copy [.azure-target.json.template](../.azure-target.json.template)) or pass `-SubscriptionId` to every script.
 
 ## 1. Four words to start with
 
@@ -187,7 +219,27 @@ Each break changes one thing, then sends a few customers so failures show within
 
 > **My prediction:** these entities change, to these states: ... These stay Healthy: ... It recovers after about ... minutes.
 
-Then break, wait about 5 minutes, look at the graph, compare and restore. You can start the next break right away: what's still red from the last one doesn't change the next answer. Open the answer only after you've looked.
+Then break, watch the signals, compare and restore. Open the answer only after you've looked.
+
+### Watch health and signal values
+
+Signals refresh every minute after telemetry arrives. Failures count until they leave their query window.
+
+Show entity health:
+
+```powershell
+az monitor health-models entity list -g rg-healthmodel-tutorial --health-model-name hm-lab-cafe `
+  --query "[].{Entity:properties.displayName,Health:properties.healthState}" -o table
+```
+
+Select **Barista display (optional)** in the portal for values and thresholds, or inspect its signals:
+
+```powershell
+az monitor health-models entity show -g rg-healthmodel-tutorial --health-model-name hm-lab-cafe -n barista-display `
+  --query "properties.signalGroups.azureLogAnalytics.signals[].{Signal:displayName,Value:status.value,Health:status.healthState,Window:timeGrain,Updated:status.reportedAt,Error:status.error}" -o table
+```
+
+Rerun every minute. **Updated** is the last evaluation; check **Error** before trusting values. For other experiments, replace `barista-display` with `order-api`, `cafe-website` or `menu-catalog`.
 
 ### 5.1 The optional barista
 
@@ -219,6 +271,10 @@ az monitor health-models entity update -g rg-healthmodel-tutorial --health-model
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario BaristaQueue -Restore
 ```
 
+Watch the barista signal again after restoring. It counts failed notifications in the **last five minutes**, not failures since the café started. Successful notifications do not cancel earlier failures. The count falls to 0 as those failures leave the window, then the signal turns Healthy on a following evaluation. A burst can disappear all at once rather than count down one by one. Allow five minutes after the last failed notification, plus telemetry and evaluation delay.
+
+Wait for this signal to reach 0 before the next experiment, so its remaining failures don't obscure the new result. A healthy queue-storage resource alone doesn't prove notifications have recovered.
+
 ### 5.2 A bad release
 
 An app setting makes every order fail with HTTP 500, like a bad deploy. Predict: what happens to *Order API*, *Order coffee*, *Browse the menu* and the root? Which signal fires first?
@@ -240,7 +296,7 @@ An app setting makes every order fail with HTTP 500, like a bad deploy. Predict:
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease -Restore
 ```
 
-Recovery takes up to 15 minutes, because the synthetic customer signal looks back 15 minutes. Go on to 5.3 meanwhile.
+Use the signal command above with `-n order-api` to watch recovery. Failed order requests look back five minutes; the synthetic customer and slow-order signals look back 15 minutes. They can keep Order API red after the failed request count reaches 0. Allow 15 minutes after the last bad result, plus telemetry and evaluation delay. Wait for Order API to recover before 5.3 if you want to distinguish the experiments in the graph.
 
 ### 5.3 A network change
 
@@ -259,11 +315,13 @@ The web app loses its VNet integration, so storage, which only accepts private t
 
 </details>
 
-If you clean up next ([§6](#6-clean-up)), skip the restore. Otherwise it redeploys the workload template (3 to 5 minutes), then the 15-minute windows have to drain:
+If you clean up next ([§6](#6-clean-up)), skip the restore. Otherwise it redeploys the workload template (3 to 5 minutes), then old failures must leave the signal windows:
 
 ```powershell
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario NetworkCut -Restore
 ```
+
+Watch the signals on **Café website**, **Menu catalog** and **Order API**. Request and dependency counts look back five minutes; synthetic failures and order latency look back 15 minutes. Their windows can keep the flows red after storage access works again.
 
 ### Look back
 

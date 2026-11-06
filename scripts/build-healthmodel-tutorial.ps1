@@ -419,4 +419,4 @@ $modelId = az monitor health-models show -g $ResourceGroup -n $HealthModelName -
 Write-Host "`n🩺 Health model $HealthModelName is live." -ForegroundColor Green
 Write-Host "   Portal: https://portal.azure.com/#@/resource$modelId"
 Write-Host '   Signals start reporting within a few minutes. Watch them with:'
-Write-Host "   az monitor health-models entity list -g $ResourceGroup --health-model-name $HealthModelName -o table"
+Write-Host "   az monitor health-models entity list -g $ResourceGroup --health-model-name $HealthModelName --query `"[].{Entity:properties.displayName,Health:properties.healthState}`" -o table"
