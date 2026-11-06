@@ -41,6 +41,7 @@
     <noscript>This lab console requires JavaScript.</noscript>
     <div class="app-tabs" role="tablist" aria-label="Lab views">
       <button id="tab-health" role="tab" aria-label="Infrastructure Health" aria-controls="panel-health" aria-selected="true" tabindex="0"><i data-lucide="heart-pulse"></i>Infra Health</button>
+      <button id="tab-healthmodel" role="tab" aria-controls="panel-healthmodel" aria-selected="false" tabindex="-1"><i data-lucide="network"></i>Health Model</button>
       <button id="tab-console" role="tab" aria-controls="panel-console" aria-selected="false" tabindex="-1"><i data-lucide="activity"></i>Traffic &amp; Faults</button>
       <button id="tab-operations" role="tab" aria-controls="panel-operations" aria-selected="false" tabindex="-1"><i data-lucide="panels-top-left"></i>Lab Operations</button>
       <button id="tab-sre" role="tab" aria-controls="panel-sre" aria-selected="false" tabindex="-1"><i data-lucide="scan-line"></i>SRE MCP Assistant</button>
@@ -62,6 +63,22 @@
       <div id="infra-empty" class="empty-history"><i data-lucide="heart-pulse"></i><p id="infra-empty-text">No infrastructure snapshot available.</p></div>
       <details id="infra-source-details" class="infra-sources" hidden><summary>Health sources</summary><ul id="infra-sources"></ul></details>
       <nav class="scenario-links infra-scenarios" aria-label="Related scenarios for infrastructure health"><span>Related Scenarios</span><a data-documentation href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/DEMO-SCENARIOS.md#s1" target="_blank" rel="noopener noreferrer">1: Health Dashboard</a></nav>
+    </section>
+    <section id="panel-healthmodel" role="tabpanel" aria-labelledby="tab-healthmodel" tabindex="0" hidden>
+      <div class="infra-heading"><div><h2>Health Model</h2><p id="hm-checked" class="muted">Not checked</p></div><div class="tool-actions"><a id="hm-portal" class="button secondary" aria-disabled="true"><i data-lucide="external-link"></i>Open in Azure</a><button id="hm-refresh" class="button primary" type="button" disabled><i data-lucide="refresh-cw"></i>Refresh</button></div></div>
+      <div class="infra-summary" aria-label="Health model entity counts">
+        <div><span>Entities</span><strong id="hm-count-total">-</strong></div>
+        <div class="infra-healthy"><span>Healthy</span><strong id="hm-count-healthy">-</strong></div>
+        <div class="infra-warning"><span>Degraded</span><strong id="hm-count-degraded">-</strong></div>
+        <div class="infra-critical"><span>Unhealthy</span><strong id="hm-count-unhealthy">-</strong></div>
+        <div class="infra-unknown"><span>Unknown</span><strong id="hm-count-unknown">-</strong></div>
+      </div>
+      <div class="infra-status"><span id="hm-status" role="status">Health model not read.</span><a id="hm-sign-in" class="button secondary" href="/.auth/login/aad?post_login_redirect_uri=/" hidden><i data-lucide="external-link"></i>Sign In</a></div>
+      <div class="hm-toolbar"><label>Health model<select id="hm-model"></select></label><label>Entity<select id="hm-entity"></select></label><button id="hm-report" class="button primary" type="button" disabled><i data-lucide="send"></i>Send Degraded Report</button></div>
+      <p class="hm-note muted">Sends one external Degraded report to the chosen entity. It expires after 15 minutes and the entity returns to its signal-based state.</p>
+      <p id="hm-report-status" class="hm-report-status" role="status"></p>
+      <table id="hm-table" class="infra-table hm-table" aria-label="Health model entities and signals" hidden><thead><tr><th scope="col">Entity</th><th scope="col">State</th><th scope="col">Signals</th></tr></thead><tbody id="hm-rows"></tbody></table>
+      <div id="hm-empty" class="empty-history"><i data-lucide="network"></i><p id="hm-empty-text">No health model snapshot available.</p></div>
     </section>
     <div id="panel-console" role="tabpanel" aria-labelledby="tab-console" tabindex="0" class="workspace" hidden>
       <aside id="controls" aria-label="Lab controls">

@@ -172,6 +172,19 @@ dialog p { font-size: 13px; color: #53636e; line-height: 1.7; margin-bottom: 14p
 .infra-sources li span { margin-left: 10px; font-size: 11px; }
 .infra-sources li p { color: var(--muted); font-size: 11px; }
 .infra-scenarios { margin: 20px 0 28px; }
+.hm-toolbar { display: grid; grid-template-columns: minmax(0,280px) minmax(0,280px) auto; gap: 14px; align-items: end; padding: 12px 0 8px; justify-content: start; }
+.hm-toolbar label { margin: 0; }
+.hm-toolbar select { width: 100%; min-width: 0; }
+.hm-note { font-size: 11px; line-height: 1.6; }
+.hm-report-status { font-size: 12px; min-height: 20px; padding: 8px 0 12px; }
+.hm-table th:first-child { width: 32%; }
+.hm-table th:nth-child(2) { width: 14%; }
+.hm-table td strong { display: block; font-size: 12px; }
+.hm-reported { background: #fcf4db; }
+.hm-signals { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.hm-signals li { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; }
+.hm-signals li strong { font-variant-numeric: tabular-nums; }
+.hm-signals li small { grid-column: 1 / -1; margin-top: 0; }
 .operations-layout { display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 36px; padding: 24px 0 36px; min-height: 500px; }
 .operation-actions { display: grid; gap: 10px; }
 .operation-actions .action { min-height: 58px; }
@@ -263,6 +276,7 @@ a[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); opacity: .65
 	.infra-summary span { font-size: 9px; }
 	.infra-summary strong { font-size: 23px; }
 	.infra-toolbar { grid-template-columns: minmax(0,1fr) minmax(0,110px); gap: 10px; }
+	.hm-toolbar { grid-template-columns: minmax(0,1fr); gap: 10px; }
 	#infra-visible { grid-column: 1 / -1; justify-self: start; padding: 0; }
 	.infra-table thead { display: none; }
 	.infra-table tbody { display: block; }

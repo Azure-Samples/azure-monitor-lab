@@ -1,5 +1,6 @@
 import { initializeSreAssistant } from './sre-assistant.js';
 import { initializeInfrastructureHealth } from './infrastructure-health.js';
+import { initializeHealthModel } from './health-model.js';
 import { initializeLabOperations } from './lab-operations.js';
 import { trackLabEvent } from './telemetry.js';
 
@@ -8,6 +9,7 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
   const sre = initializeSreAssistant();
   const infrastructure = initializeInfrastructureHealth({ refreshIcons, checkWebAppHealth });
   const operations = initializeLabOperations({ refreshIcons });
+  const healthModel = initializeHealthModel({ refreshIcons });
   let context = {};
   let availableAgents = [];
   let activeRequest = null;
@@ -32,6 +34,7 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
     if (consoleActive) requestAnimationFrame(resizeChart);
     operations.activate(tab.id === 'tab-operations');
     if (tab.id === 'tab-health') infrastructure.load();
+    if (tab.id === 'tab-healthmodel') healthModel.load();
     if (tab.id === 'tab-sre') sre.load();
     if (tab.id === 'tab-foundry' && !catalogLoaded) loadCatalog();
   }

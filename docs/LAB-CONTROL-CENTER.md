@@ -47,6 +47,7 @@ The opt-in customer slot operation uses a role assignment scoped to the dedicate
 | Tab | Available activities | Requirements |
 |---|---|---|
 | Infra Health (first/default) | Check only VMs, VM scale sets, AKS clusters, and web apps. Inspect Azure platform availability, VM heartbeats, AKS reporting, and App Service server errors. | Enabled read-only backend access to the lab resource group and central workspace, plus an approved signed-in operator. No AI or SRE stage is required. |
+| Health Model | View a health model's entities as a tree with each entity's state and its signals' current values. Send one Degraded external report to a chosen entity. | Enabled health access, an approved signed-in operator, and roles for the app identity on each model (see [Health Model](#health-model)). |
 | Traffic & Faults | Health checks, deliberately slow requests and errors, dependency calls, checkout outcomes, bounded traffic runs, and a confirmation-gated performance experiment. Inspect request history, latency, and trace IDs. | The published lab web app. The optional AI and SRE stages are not required. |
 | Lab Operations | Start, break, or restore the lab; start the load ramp; generate customer usage traffic; simulate high CPU on both demo VMs; send custom logs; add a release marker; or, when explicitly enabled, change customer production to the broken or working deployment slot. Review exact targets and parameters, then track the independent job. | Azure job, pinned image with Chromium, managed identities, private journal, and operator access, all configured by deployment. Customer traffic requires the deployed `/customer/` experience; CPU simulation requires both VMs running with ready VM Agents. Slot changes require `enableSlotFailureScenario` and a verified recovery path; only the dedicated customer app is swapped, while the Control Center stays available. |
 | Foundry Playground | Run an approved task against an existing lab agent; generate eleven deterministic broken/fixed agent, model, handoff, tool, retry, trace-quality, and token-efficiency profiles; follow the end-to-end Application Insights checklist; run a bounded mixed alert storm for Scenario 64; or generate a separately consented, billable token anomaly for Scenario 65. | App Service authentication and an approved operator. Deterministic scenarios are metadata-only and do not call a model. Real agent and token-anomaly calls also require Stage AI; deployment prepares the four agents and access. |
@@ -70,6 +71,18 @@ The resource table and status totals include **only virtual machines, VM scale s
 Telemetry thresholds follow the [Health Dashboard workbook](../infra/modules/workbook.bicep). AKS restarts are the workbook's sum of reported per-pod maximum counters in the sample window, not a calculated restart increase. Missing tables, collection delay, intentional failures, and stopped resources can affect results. AKS-managed resources in a separate `MC_` group are outside the inventory scope; node and pod signals still come from this lab's cluster telemetry. VM scale sets use platform availability only, not per-instance telemetry checks, and remain **Unknown** when no current assessment is available.
 
 The tab does not start investigations, use a model, probe arbitrary endpoints, restart resources, or make configuration changes. **Health Dashboard** opens the existing workbook for trends and deeper analysis. See [health access setup](../workloads/webapp/README.md#infrastructure-health).
+
+## Health Model
+
+![Health Model tab with the café model's entity tree, signal values and a Degraded user flow after a report](images/health-model.png)
+
+The screenshot uses example data.
+
+The **Health Model** tab reads one of the configured models when opened: the lab's user-flow model `hm-amlab-flows` (deployed by `scripts/deploy-lab-healthmodel.ps1`) or the café tutorial model `hm-lab-cafe` (built by `scripts/build-healthmodel-tutorial.ps1`). Entities appear as a tree from the root, each with its state and its signals' latest values. **Refresh** reads the model again.
+
+**Send Degraded Report** sends one external health report (`ingestHealthReport`) to the chosen entity, by default a user flow (`shop-demo` or `order-coffee`). The report uses the signal `control-center-report`, value 1, and expires after 15 minutes, so the entity returns to its signal-based state on its own. The view refreshes a few times after sending; the model can take up to a minute to show the change. This is the console form of `az monitor health-models entity ingest-health-report`.
+
+Targets live in `LabConsole:HealthModels` (`workloads/webapp/appsettings.json`) and can be overridden with app settings such as `LabConsole__HealthModels__0__ResourceGroup`. The subscription comes from `LabConsole:Health:SubscriptionId`. The app identity needs read access to each model and the `Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action` permission to send reports; no built-in role covers only that action. Without them the tab shows the denied read or report.
 
 ## Lab Operations
 
