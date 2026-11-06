@@ -143,7 +143,7 @@ if ($CustomerWebAppName -and @($apps | Where-Object name -like 'func-*-orders').
     $customerWorkerName = $dependency.workerName
     $model = @($resources | Where-Object { $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -ceq 'hm-amlab-customer' })
     if ($model.Count -eq 1) {
-      $member = az rest --subscription $SubscriptionId --method get --url "https://management.azure.com$($model[0].id)/entities/customer-webapp?api-version=2026-01-01-preview" `
+      $member = az rest --subscription $SubscriptionId --method get --url "https://management.azure.com$($model[0].id)/entities/customer-webapp?api-version=2026-11-01" `
         --query properties.signalGroups.azureResource.azureResourceId --output tsv --only-show-errors
       $expectedCustomerId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Web/sites/$CustomerWebAppName"
       if ($LASTEXITCODE -ne 0 -or $member -ine $expectedCustomerId) { throw 'Customer Health Model membership could not be verified for this exact application.' }
