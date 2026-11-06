@@ -82,6 +82,7 @@ module monitoringDataReader 'monitor-workspace-role.bicep' = {
 // No built-in role has the report action.
 resource consoleApp 'Microsoft.Web/sites@2023-12-01' existing = {
   name: last(split(webAppId, '/'))
+  scope: resourceGroup(split(webAppId, '/')[2], split(webAppId, '/')[4])
 }
 
 resource reporterRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
@@ -97,6 +98,7 @@ resource reporterRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
           'Microsoft.CloudHealth/healthmodels/read'
           'Microsoft.CloudHealth/healthmodels/entities/read'
           'Microsoft.CloudHealth/healthmodels/relationships/read'
+          'Microsoft.CloudHealth/healthmodels/signaldefinitions/read'
           'Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action'
         ]
         notActions: []

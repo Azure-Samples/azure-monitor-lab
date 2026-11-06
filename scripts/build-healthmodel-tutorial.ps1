@@ -383,6 +383,7 @@ try {
           'Microsoft.CloudHealth/healthmodels/read'
           'Microsoft.CloudHealth/healthmodels/entities/read'
           'Microsoft.CloudHealth/healthmodels/relationships/read'
+          'Microsoft.CloudHealth/healthmodels/signaldefinitions/read'
           'Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action'
         )
         AssignableScopes = @($rgId)
@@ -394,8 +395,14 @@ try {
     $existing = az role assignment list --assignee-object-id $ControlCenterPrincipalId --scope $modelScope --role $roleId --query "length(@)" -o tsv
     Assert-NativeCommandSucceeded 'Listing role assignments of the Control Center identity'
     if ($existing -eq '0') {
-      az role assignment create --assignee-object-id $ControlCenterPrincipalId --assignee-principal-type ServicePrincipal `
-        --role $roleId --scope $modelScope -o none
+      # A role created a moment ago can take a minute to replicate before it can be assigned.
+      foreach ($attempt in 1..6) {
+        az role assignment create --assignee-object-id $ControlCenterPrincipalId --assignee-principal-type ServicePrincipal `
+          --role $roleId --scope $modelScope -o none
+        if ($LASTEXITCODE -eq 0 -or $attempt -eq 6) { break }
+        Write-Info 'The role is not assignable yet, retrying in 10 seconds'
+        Start-Sleep -Seconds 10
+      }
       Assert-NativeCommandSucceeded 'Granting the reporter role to the Control Center identity'
     }
     Write-Info "$roleName -> $ControlCenterPrincipalId"

@@ -179,6 +179,7 @@ dialog p { font-size: 13px; color: #53636e; line-height: 1.7; margin-bottom: 14p
 .hm-report-status { font-size: 12px; min-height: 20px; padding: 8px 0 12px; }
 .hm-table th:first-child { width: 32%; }
 .hm-table th:nth-child(2) { width: 14%; }
+.hm-table th:nth-child(3) { width: auto; }
 .hm-table td strong { display: block; font-size: 12px; }
 .hm-reported { background: #fcf4db; }
 .hm-signals { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }

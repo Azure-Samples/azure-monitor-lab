@@ -68,6 +68,7 @@ main {
 .monitoring,
 .app-tabs,
 #panel-health,
+#panel-healthmodel,
 #panel-operations,
 #panel-sre,
 #panel-foundry,
@@ -80,6 +81,7 @@ main {
 }
 
 #panel-health,
+#panel-healthmodel,
 #panel-operations,
 #panel-sre,
 #panel-foundry,
@@ -263,6 +265,7 @@ summary:focus-visible,
   }
 
   #panel-health,
+  #panel-healthmodel,
   #panel-operations,
   #panel-sre,
   #panel-foundry,
