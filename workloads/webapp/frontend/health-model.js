@@ -132,6 +132,7 @@ export function initializeHealthModel({ refreshIcons }) {
     try {
       const response = await fetch(`/api/healthmodels/${encodeURIComponent(model.name)}`, { cache: 'no-store', signal: AbortSignal.timeout(30000) });
       const data = await read(response);
+      if (selected() !== model) return;
       byId('hm-sign-in').hidden = response.status !== 401;
       if (response.ok && data.available && Array.isArray(data.entities)) {
         snapshot = data;
@@ -141,12 +142,14 @@ export function initializeHealthModel({ refreshIcons }) {
         status(data.message || data.error || 'The health model could not be read.');
       }
     } catch {
+      if (selected() !== model) return;
       snapshot = null;
       status('The health model could not be reached. Check connectivity and retry.');
     } finally {
       pending = false;
       byId('panel-healthmodel').setAttribute('aria-busy', 'false');
       render();
+      if (selected() !== model) refresh();
     }
   }
   async function send() {

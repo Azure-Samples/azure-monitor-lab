@@ -37,11 +37,11 @@ async function prepare(page, { reads = {}, report, modelsResponse } = {}) {
   await page.route('**/api/console/config', route => route.fulfill({ json: { links: {}, performanceCooldownSeconds: 30 } }));
   await page.route('**/api/infra/health', route => route.fulfill({ json: { available: false, message: 'Infrastructure health access is not enabled.' } }));
   await page.route('**/api/healthmodels', route => route.fulfill(modelsResponse || { json: { models } }));
-  await page.route('**/api/healthmodels/*', route => {
+  await page.route('**/api/healthmodels/*', async route => {
     const name = new URL(route.request().url()).pathname.split('/').pop();
     calls.reads.push(name);
     const response = reads[name] ?? (name === 'hm-lab-cafe' ? cafe() : flows);
-    return route.fulfill(typeof response === 'function' ? response(calls) : { json: response });
+    return route.fulfill(typeof response === 'function' ? await response(calls) : { json: response });
   });
   await page.route('**/api/healthmodels/*/reports', route => {
     const request = route.request();
@@ -110,6 +110,19 @@ test('Switching models reads the other model and uses its default entity', async
   await page.locator('#hm-model').selectOption('hm-amlab-flows');
   await expect(page.locator('#hm-entity')).toHaveValue('shop-demo');
   expect(calls.reads).toEqual(['hm-amlab-flows', 'hm-lab-cafe', 'hm-amlab-flows']);
+});
+
+test('Switching models during a read shows the newly selected model', async ({ page }) => {
+  let release;
+  const calls = await prepare(page, { reads: { 'hm-amlab-flows': () => new Promise(resolve => { release = () => resolve({ json: flows }); }) } });
+  await page.getByRole('tab', { name: 'Health Model' }).click();
+  await expect(page.locator('#hm-status')).toHaveText('Reading hm-amlab-flows...');
+  await page.locator('#hm-model').selectOption('hm-lab-cafe');
+  release();
+  await expect(page.locator('#hm-status')).toHaveText('6 entities read.');
+  await expect(page.locator('#hm-entity')).toHaveValue('order-coffee');
+  await expect(page.locator('#hm-rows tr').first().locator('td:first-child strong')).toHaveText('Café');
+  expect(calls.reads).toEqual(['hm-amlab-flows', 'hm-lab-cafe']);
 });
 
 for (const choice of [{ entity: null, expected: 'order-coffee' }, { entity: 'order-api', expected: 'order-api' }]) {
