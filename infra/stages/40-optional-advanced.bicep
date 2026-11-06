@@ -153,7 +153,7 @@ module healthModel '../modules/health-model.bicep' = {
   name: 'health-model'
   params: {
     healthModelName: 'hm-${namePrefix}-workload'
-    // Health Model (preview) is only available in a limited set of regions
+    // Health Model is only available in a limited set of regions
     // (UK South, Canada Central, Central US, Sweden Central, Southeast Asia),
     // so its region is pinned to swedencentral independent of the lab location.
     location: 'swedencentral'

@@ -13,7 +13,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | Workload / theme | Scenarios |
 |---|---|
 | **Cross-stack — single pane of glass** | <ul><li>[1](#s1) Traffic-Lights workbook</li><li>[60](#s60) Lab Control Center</li></ul> |
-| **Workload health (Service Groups + Health Models, preview)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[Tutorial](HEALTH-MODEL-TUTORIAL.md) explore and break a user-flow model (standalone)</li><li>[46](#s46) SLIs / SLOs</li></ul> |
+| **Workload health (Service Groups preview + Health Models)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[Tutorial](HEALTH-MODEL-TUTORIAL.md) explore and break a user-flow model (standalone)</li><li>[46](#s46) SLIs / SLOs</li></ul> |
 | **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li><li>[70](#s70) Customer usage journey</li><li>[71](#s71) Broken-slot SRE rollback</li></ul> |
 | **AKS (`aks-amlab`)** | <ul><li>[4](#s4) Container Insights + Prom + Grafana</li><li>[14](#s14) OTel tracing AKS→App Service</li><li>[30](#s30) Node.js OTel</li><li>[31](#s31) Prom rule group</li><li>[32](#s32) Grafana alert rule</li></ul> |
 | **Azure VMs (Linux + Windows)** | <ul><li>[2](#s2) VM Insights cross-OS</li></ul> |
@@ -1972,17 +1972,17 @@ The lab ships two ready-to-run scripts.
 ---
 
 <a id="s45"></a>
-## 45 · Health Models — workload-level health on top of Service Groups (preview)
+## 45 · Health Models — workload-level health on top of Service Groups
 
 **Audience:** SRE leads, platform owners, anyone who manages a *workload* (not just resources).
 **Time:** 5–6 min.
 
 ### Story
-Every other scenario in this lab alerts on a **signal** — CPU > 90%, HTTP 5xx rate > 1%, latency p95 > 2 s. **Health Models** invert the question: instead of "which metric crossed which line?", they answer *"is my **workload** healthy right now?"*. They sit on top of **Azure Service Groups** (also preview) — a tenant-scoped, hierarchy-independent way to group Azure resources that work together.
+Every other scenario in this lab alerts on a **signal** — CPU > 90%, HTTP 5xx rate > 1%, latency p95 > 2 s. **Health Models** invert the question: instead of "which metric crossed which line?", they answer *"is my **workload** healthy right now?"*. They sit on top of **Azure Service Groups** (preview) — a tenant-scoped, hierarchy-independent way to group Azure resources that work together.
 
-Two preview features stacked:
+Two features stacked:
 1. **Azure Service Groups** (`Microsoft.Management/serviceGroups`) — tenant-scoped grouping, lives **alongside** Management Groups / Subscriptions / RGs (not inside them). A resource can belong to many service groups. Access on a service group does *not* grant access to its members.
-2. **Azure Monitor Health Models** (`Microsoft.CloudHealth/healthmodels`, preview) — discover the members of a service group, build a tree of entities, attach metric / log-query signals to each, and propagate health up to a Root entity. Alert on the Root, not on 30 individual metrics.
+2. **Azure Monitor Health Models** (`Microsoft.CloudHealth/healthmodels`) — discover the members of a service group, build a tree of entities, attach metric / log-query signals to each, and propagate health up to a Root entity. Alert on the Root, not on 30 individual metrics.
 
 ### What's deployed by the lab
 
@@ -2097,7 +2097,7 @@ This picture was taken just after the nightly VM shutdown at 23:00. *Virtual mac
 **Time:** 4–5 min.
 
 ### Why it's interesting
-- Same shape as Health Models (preview, hangs off a **Service Group**, no extra cost), but answers a **quantitative** question: *"Are we hitting our SLO, and how much error budget is left?"*
+- Same shape as Health Models (hangs off a **Service Group**, no extra cost), but answers a **quantitative** question: *"Are we hitting our SLO, and how much error budget is left?"*
 - Two SLI shapes baked in: **Availability** + **Latency**, both **window-based** against Managed Prometheus metrics already flowing into the AMW.
 - Outputs a baseline compliance % over a 7-day rolling window, an **error-budget remaining** view, and optional fast/slow **burn-rate alerts** — all on the same service group as the Health Model.
 
@@ -2544,7 +2544,7 @@ Every other scenario watches infra/platform telemetry. This one points the **exa
 4. **Prompt caching reduces billable input** — the `Context-Rich Assistant` uses a >1024-token static system prompt, so repeated calls can hit the prompt cache; open *Cached-input token ratio*, then apply the actual model's current cached-input rate.
 5. **Monitor → Workbooks → "AI FinOps — Foundry Agents"** — token/efficiency tiles, token-share pie, and an illustrative PTU comparison populated with example assumptions. Replace all four assumptions with current rates for one comparable model and deployment type before using the result for planning.
 6. **Monitor → Alerts** — `alert-amlab-token-anomaly` + `alert-amlab-token-spike`. Trigger live by running the simulator hot: `python workloads/ai/simulate_traffic.py --conversations 100 --interval 5`.
-7. **Monitor → Health models → `hm-amlab-workload`** *(preview)* — the **AI** tier rolls up next to frontend/compute/platform; excessive hourly token volume can turn an agent Unhealthy.
+7. **Monitor → Health models → `hm-amlab-workload`** — the **AI** tier rolls up next to frontend/compute/platform; excessive hourly token volume can turn an agent Unhealthy.
 
 ### Killer line
 > *"Tokens are the measurable input to AI cost. The same workspace, KQL, alerts, and health model expose volume and model routing; current model-specific prices and Cost Management provide the bill."*

@@ -251,7 +251,7 @@ Readiness can be rerun with `test-customer-dependencies.ps1 @common`: it verifie
 all three seeded products, the bounded active queue, and discoverable functions.
 It does **not** submit an order or prove queue-to-worker completion. Submit one
 synthetic order explicitly and verify `Completed` before claiming end-to-end
-health. Health Model relationships and diagnostics are configured, but preview
+health. Health Model relationships and diagnostics are configured, but
 Health Model APIs, regional Flex support, private DNS, identity propagation and
 live logs still need operator-side verification.
 

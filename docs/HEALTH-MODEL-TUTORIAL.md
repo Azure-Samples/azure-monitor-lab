@@ -54,7 +54,7 @@ This tutorial is for seeing and trying; the Microsoft Learn pages are the refere
 ## Before you start
 
 - Azure CLI 2.75 or later, signed in with `az login`.
-- The health models CLI extension (preview, tested with 1.0.0b2): `az extension add --name health-models`.
+- The health models CLI extension (tested with 1.0.0b2): `az extension add --name health-models`.
 - PowerShell 7 (`pwsh`) on Windows, macOS or Linux, or Azure Cloud Shell switched to **PowerShell**.
 - Owner, or Contributor plus User Access Administrator, on the subscription or resource group. The scripts create role assignments for the app and for the health model.
 - The health model resource provider registered on the subscription. The build script registers it if needed, which takes rights on the subscription; with rights on the resource group only, ask an admin to run `az provider register --namespace Microsoft.CloudHealth` once.

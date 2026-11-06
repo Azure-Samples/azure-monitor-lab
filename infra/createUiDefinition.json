@@ -15,7 +15,7 @@
         },
         "location": {
           "label": "Region",
-          "toolTip": "Azure region for all lab resources. northeurope is the recommended default. (The Health Model preview and AI stage pin to swedencentral, and the App Service pins to westeurope, automatically — regardless of this choice.)",
+          "toolTip": "Azure region for all lab resources. northeurope is the recommended default. (The Health Model and AI stage pin to swedencentral, and the App Service pins to westeurope, automatically — regardless of this choice.)",
           "resourceTypes": [
             "Microsoft.OperationalInsights/workspaces",
             "Microsoft.ContainerService/managedClusters"

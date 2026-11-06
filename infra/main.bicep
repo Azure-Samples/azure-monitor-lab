@@ -168,7 +168,7 @@ var observabilityAgentName = 'obs-${namePrefix}-${take(suffix, 5)}'
 var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
 
 // AI feature (Foundry) is pinned to swedencentral, independent of the lab region —
-// the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth preview are region-limited.
+// the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth are region-limited.
 var aiLocation = 'swedencentral'
 
 var commonTags = {
@@ -1001,7 +1001,7 @@ module costWorkbook 'modules/cost-workbook.bicep' = {
 }
 
 // ---------------------------------------------------------------------------------
-// Azure Monitor Health Model (preview) -- scenario 45
+// Azure Monitor Health Model -- scenario 45
 //
 // Builds a 3-tier model rolling up to a single root: frontend (webapp +
 // App Insights), compute (VMs + VMSS + AKS), platform (KV + Storage), each
@@ -1012,7 +1012,7 @@ module healthModel 'modules/health-model.bicep' = {
   name: 'health-model'
   params: {
     healthModelName: 'hm-${namePrefix}-workload'
-    // Health Model (preview) is only available in a limited set of regions
+    // Health Model is only available in a limited set of regions
     // (UK South, Canada Central, Central US, Sweden Central, Southeast Asia),
     // so its region is pinned to swedencentral independent of the lab location.
     location: 'swedencentral'

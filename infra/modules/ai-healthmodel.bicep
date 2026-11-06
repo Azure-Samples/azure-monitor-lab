@@ -11,7 +11,7 @@
 // signals for error-rate and token volume.
 //
 // Region-pinned (aiLocation, swedencentral) like the workload health model — the
-// CloudHealth preview is region-limited. Discovery + signals run under the model's
+// CloudHealth is region-limited. Discovery + signals run under the model's
 // system-assigned identity (Reader + Monitoring Reader + Log Analytics Reader on the RG).
 // =====================================================================================
 

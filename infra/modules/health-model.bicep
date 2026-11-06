@@ -1,5 +1,5 @@
 // =============================================================================
-// Azure Monitor Health Model (preview)  -- AMLAB demo workload
+// Azure Monitor Health Model -- AMLAB demo workload
 //
 // Builds a 3-tier health model on top of the lab resources, ready to demo
 // out of the box:
