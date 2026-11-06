@@ -1972,7 +1972,7 @@ The lab ships two ready-to-run scripts.
 ---
 
 <a id="s45"></a>
-## 45 · Health Models — workload-level health on top of Service Groups
+## 45 · Health Models — workload-level health on top of Service Groups (preview)
 
 **Audience:** SRE leads, platform owners, anyone who manages a *workload* (not just resources).
 **Time:** 5–6 min.
@@ -2097,7 +2097,7 @@ This picture was taken just after the nightly VM shutdown at 23:00. *Virtual mac
 **Time:** 4–5 min.
 
 ### Why it's interesting
-- Same shape as Health Models (hangs off a **Service Group**, no extra cost), but answers a **quantitative** question: *"Are we hitting our SLO, and how much error budget is left?"*
+- Same shape as Health Models (hangs off a **Service Group**, no extra cost), but still a preview, and answers a **quantitative** question: *"Are we hitting our SLO, and how much error budget is left?"*
 - Two SLI shapes baked in: **Availability** + **Latency**, both **window-based** against Managed Prometheus metrics already flowing into the AMW.
 - Outputs a baseline compliance % over a 7-day rolling window, an **error-budget remaining** view, and optional fast/slow **burn-rate alerts** — all on the same service group as the Health Model.
 
