@@ -303,7 +303,7 @@ Migrate in this order:
 2. Workload resources (VM, AKS, App Service, Grafana)
 3. Alerting resources (action groups, metric/log/activity alerts)
 4. Security posture query alerts and RBAC
-5. Optional preview resources (health model, SLI, Sentinel)
+5. Optional resources (health model, SLI preview, Sentinel)
 
 Use `azapi_resource` for preview/control-plane resources not fully covered in `azurerm`.
 

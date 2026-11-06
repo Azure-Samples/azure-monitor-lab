@@ -40,7 +40,7 @@ public sealed class InfrastructureHealthService
         });
     }
 
-    private static TokenCredential CreateCredential(IConfiguration configuration) =>
+    internal static TokenCredential CreateCredential(IConfiguration configuration) =>
         string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"))
             ? new AzureCliCredential(new AzureCliCredentialOptions { TenantId = configuration["LabConsole:Health:TenantId"] })
             : new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned);

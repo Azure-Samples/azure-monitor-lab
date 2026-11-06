@@ -194,7 +194,9 @@ test('Infrastructure Health endpoint remains scoped, no-store, disabled by defau
   expect((await response.json()).state).toBe('not_configured');
   expect(response.headers()['cache-control']).toBe('no-store');
   expect(response.headers()['x-amlab-trace-id']).toMatch(/^[0-9a-f]{32}$/);
-  expect((await request.get('/api/infra/health', { headers: { Host: 'attacker.example', 'X-MS-CLIENT-PRINCIPAL-ID': 'forged' } })).status()).toBe(401);
+  for (const route of ['/api/infra/health', '/api/infra/health/']) {
+    expect((await request.get(route, { headers: { Host: 'attacker.example', 'X-MS-CLIENT-PRINCIPAL-ID': 'forged' } })).status()).toBe(401);
+  }
   expect((await request.post('/api/infra/health')).status()).toBe(403);
 });
 

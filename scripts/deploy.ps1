@@ -169,7 +169,7 @@ if ($SkipPreflight) {
 Write-Step "Ensuring resource group $ResourceGroup in $Location"
 az group create -n $ResourceGroup -l $Location --tags purpose=azure-monitor-lab owner=demo-lab | Out-Null
 
-# 1b. Resource provider registration — Health Models (preview) is not auto-registered
+# 1b. Resource provider registration — Health Models is not auto-registered
 function Register-ResourceProvider {
   param([string] $Namespace)
   $state = az provider show -n $Namespace --query registrationState -o tsv 2>$null

@@ -1,5 +1,5 @@
 // =============================================================================
-// Azure Monitor Health Model (preview)  -- AMLAB demo workload
+// Azure Monitor Health Model -- AMLAB demo workload
 //
 // Builds a 3-tier health model on top of the lab resources, ready to demo
 // out of the box:
@@ -32,9 +32,8 @@
 //   * keyvault/storage -> Limited (Unhealthy -> propagates as Degraded only)
 //   * everything else -> Standard
 //
-// API version:    2026-01-01-preview
-// Allowed regions: UK South, Canada Central, Central US, Sweden Central,
-//                  Southeast Asia
+// API version:    2026-11-01
+// Regions:        az provider show -n Microsoft.CloudHealth lists them.
 // =============================================================================
 
 @description('Name of the Health Model resource. Also becomes the root-entity name.')
@@ -42,7 +41,7 @@
 @maxLength(44)
 param healthModelName string = 'hm-amlab-workload'
 
-@description('Region for the Health Model. Must be one of the supported preview regions.')
+@description('Region for the Health Model. Must be a region where Microsoft.CloudHealth is available.')
 @allowed([
   'uksouth'
   'canadacentral'
@@ -94,7 +93,7 @@ param appInsightsLawId string = ''
 // -----------------------------------------------------------------------------
 // Parent resource: Health Model + authentication setting
 // -----------------------------------------------------------------------------
-resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-01-01-preview' = {
+resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-11-01' = {
   name: healthModelName
   location: location
   identity: {
@@ -105,7 +104,7 @@ resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-01-01-preview' = {
 }
 
 // Required by the portal designer before entities can be added.
-resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@2026-01-01-preview' = {
+resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@2026-11-01' = {
   parent: healthModel
   name: 'systemAssigned'
   properties: {
@@ -163,7 +162,7 @@ var aiAgents = [
 // -----------------------------------------------------------------------------
 // Tier-1 generic entities (frontend / compute / platform)
 // -----------------------------------------------------------------------------
-resource entFrontend 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entFrontend 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'frontend'
   properties: {
@@ -187,7 +186,7 @@ resource entFrontend 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-pre
   }
 }
 
-resource entCompute 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entCompute 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'compute'
   properties: {
@@ -219,7 +218,7 @@ resource entCompute 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-prev
   }
 }
 
-resource entPlatform 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entPlatform 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'platform'
   properties: {
@@ -239,7 +238,7 @@ resource entPlatform 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-pre
 // -----------------------------------------------------------------------------
 // Tier-2 Azure resource entities -- frontend branch
 // -----------------------------------------------------------------------------
-resource entWebApp 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entWebApp 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'webapp'
   properties: {
@@ -329,7 +328,7 @@ resource entWebApp 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-previ
   dependsOn: [ authSetting ]
 }
 
-resource entAppInsights 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entAppInsights 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'appinsights'
   properties: {
@@ -400,7 +399,7 @@ resource entAppInsights 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-
 // -----------------------------------------------------------------------------
 // Tier-2 Azure resource entities -- compute branch
 // -----------------------------------------------------------------------------
-resource entLinuxVm 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = if (!empty(linuxVmId)) {
+resource entLinuxVm 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (!empty(linuxVmId)) {
   parent: healthModel
   name: 'linuxvm'
   properties: {
@@ -468,7 +467,7 @@ resource entLinuxVm 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-prev
   dependsOn: [ authSetting ]
 }
 
-resource entWindowsVm 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = if (!empty(windowsVmId)) {
+resource entWindowsVm 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (!empty(windowsVmId)) {
   parent: healthModel
   name: 'winserver'
   properties: {
@@ -534,7 +533,7 @@ resource entWindowsVm 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-pr
   dependsOn: [ authSetting ]
 }
 
-resource entVmss 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entVmss 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'vmss'
   properties: {
@@ -608,7 +607,7 @@ resource entVmss 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview
   dependsOn: [ authSetting ]
 }
 
-resource entAks 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entAks 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'aks'
   properties: {
@@ -677,7 +676,7 @@ resource entAks 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview'
 // -----------------------------------------------------------------------------
 // Tier-2 Azure resource entities -- platform branch
 // -----------------------------------------------------------------------------
-resource entKeyVault 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entKeyVault 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'keyvault'
   properties: {
@@ -728,7 +727,7 @@ resource entKeyVault 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-pre
   dependsOn: [ authSetting ]
 }
 
-resource entStorage 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource entStorage 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'storage'
   properties: {
@@ -782,7 +781,7 @@ resource entStorage 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-prev
 // -----------------------------------------------------------------------------
 // Tier-1 AI entity + tier-2 Foundry account and per-agent entities (enableAi)
 // -----------------------------------------------------------------------------
-resource entAi 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = if (enableAi) {
+resource entAi 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (enableAi) {
   parent: healthModel
   name: 'aiworkload'
   properties: {
@@ -806,7 +805,7 @@ resource entAi 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' 
   }
 }
 
-resource entFoundry 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = if (enableAi) {
+resource entFoundry 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (enableAi) {
   parent: healthModel
   name: 'foundry'
   properties: {
@@ -877,7 +876,7 @@ resource entFoundry 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-prev
 // One entity per agent persona, each carrying error-rate + estimated-cost signals
 // queried from the workspace-based App Insights AppDependencies table (high cost or
 // error rate turns the agent unhealthy).
-resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = [for a in aiAgents: if (enableAi) {
+resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [for a in aiAgents: if (enableAi) {
   parent: healthModel
   name: 'agent-${a.key}'
   properties: {
@@ -930,7 +929,7 @@ resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-previ
 // Root (= healthModelName) is auto-created. Tier-1 entities roll up to it.
 // Tier-2 Azure resource entities roll up to their tier-1 parent.
 // -----------------------------------------------------------------------------
-resource relFrontendRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relFrontendRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'frontend-to-root'
   properties: {
@@ -941,7 +940,7 @@ resource relFrontendRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-
   dependsOn: [ entFrontend ]
 }
 
-resource relComputeRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relComputeRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'compute-to-root'
   properties: {
@@ -952,7 +951,7 @@ resource relComputeRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-0
   dependsOn: [ entCompute ]
 }
 
-resource relPlatformRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relPlatformRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'platform-to-root'
   properties: {
@@ -963,7 +962,7 @@ resource relPlatformRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-
   dependsOn: [ entPlatform ]
 }
 
-resource relWebappFrontend 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relWebappFrontend 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'webapp-to-frontend'
   properties: {
@@ -973,7 +972,7 @@ resource relWebappFrontend 'Microsoft.CloudHealth/healthmodels/relationships@202
   dependsOn: [ entWebApp, entFrontend ]
 }
 
-resource relAppInsightsFrontend 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relAppInsightsFrontend 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'appinsights-to-frontend'
   properties: {
@@ -983,7 +982,7 @@ resource relAppInsightsFrontend 'Microsoft.CloudHealth/healthmodels/relationship
   dependsOn: [ entAppInsights, entFrontend ]
 }
 
-resource relLinuxVmCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = if (!empty(linuxVmId)) {
+resource relLinuxVmCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (!empty(linuxVmId)) {
   parent: healthModel
   name: 'linuxvm-to-compute'
   properties: {
@@ -993,7 +992,7 @@ resource relLinuxVmCompute 'Microsoft.CloudHealth/healthmodels/relationships@202
   dependsOn: [ entLinuxVm, entCompute ]
 }
 
-resource relWinServerCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = if (!empty(windowsVmId)) {
+resource relWinServerCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (!empty(windowsVmId)) {
   parent: healthModel
   name: 'winserver-to-compute'
   properties: {
@@ -1003,7 +1002,7 @@ resource relWinServerCompute 'Microsoft.CloudHealth/healthmodels/relationships@2
   dependsOn: [ entWindowsVm, entCompute ]
 }
 
-resource relVmssCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relVmssCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'vmss-to-compute'
   properties: {
@@ -1013,7 +1012,7 @@ resource relVmssCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-0
   dependsOn: [ entVmss, entCompute ]
 }
 
-resource relAksCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relAksCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'aks-to-compute'
   properties: {
@@ -1023,7 +1022,7 @@ resource relAksCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-01
   dependsOn: [ entAks, entCompute ]
 }
 
-resource relKeyVaultPlatform 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relKeyVaultPlatform 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'keyvault-to-platform'
   properties: {
@@ -1033,7 +1032,7 @@ resource relKeyVaultPlatform 'Microsoft.CloudHealth/healthmodels/relationships@2
   dependsOn: [ entKeyVault, entPlatform ]
 }
 
-resource relStoragePlatform 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = {
+resource relStoragePlatform 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
   parent: healthModel
   name: 'storage-to-platform'
   properties: {
@@ -1044,7 +1043,7 @@ resource relStoragePlatform 'Microsoft.CloudHealth/healthmodels/relationships@20
 }
 
 // AI tier relationships (enableAi): ai -> root, foundry + agents -> ai.
-resource relAiRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = if (enableAi) {
+resource relAiRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableAi) {
   parent: healthModel
   name: 'ai-to-root'
   properties: {
@@ -1055,7 +1054,7 @@ resource relAiRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-
   dependsOn: [ entAi ]
 }
 
-resource relFoundryAi 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = if (enableAi) {
+resource relFoundryAi 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableAi) {
   parent: healthModel
   name: 'foundry-to-ai'
   properties: {
@@ -1065,7 +1064,7 @@ resource relFoundryAi 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-
   dependsOn: [ entFoundry, entAi ]
 }
 
-resource relAgentsAi 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = [for a in aiAgents: if (enableAi) {
+resource relAgentsAi 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = [for a in aiAgents: if (enableAi) {
   parent: healthModel
   name: 'agent-${a.key}-to-ai'
   properties: {

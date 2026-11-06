@@ -251,7 +251,7 @@ Readiness can be rerun with `test-customer-dependencies.ps1 @common`: it verifie
 all three seeded products, the bounded active queue, and discoverable functions.
 It does **not** submit an order or prove queue-to-worker completion. Submit one
 synthetic order explicitly and verify `Completed` before claiming end-to-end
-health. Health Model relationships and diagnostics are configured, but preview
+health. Health Model relationships and diagnostics are configured, but
 Health Model APIs, regional Flex support, private DNS, identity propagation and
 live logs still need operator-side verification.
 
@@ -426,6 +426,17 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 | `demo-slis.ps1` | Creates, inspects, or removes isolated AKS workloads that move the availability and pod-start latency SLIs. | `./scripts/demo-slis.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -Mode Degrade` |
 | [setup-rbac-demo.ps1](setup-rbac-demo.ps1) | Creates three lab-specific, ownership-tagged app registrations and service principals for the granular RBAC demonstration. A stable scope suffix separates labs; repeated setup reuses the same lab's identities. | `./scripts/setup-rbac-demo.ps1 -ResourceGroup <rg>` |
 | `demo-granular-rbac.ps1` | Runs the granular RBAC demonstration query using the generated local RBAC configuration. | `./scripts/demo-granular-rbac.ps1` |
+
+## Health model tutorial and lab user-flow model
+
+The tutorial scripts are standalone: they use their own resource group and don't need the lab. See [docs/HEALTH-MODEL-TUTORIAL.md](../docs/HEALTH-MODEL-TUTORIAL.md).
+
+| Script | Purpose | Example |
+|---|---|---|
+| `deploy-healthmodel-tutorial.ps1` | Deploys the Lab Café workload (`infra/healthmodel-tutorial/workload.bicep`, `workloads/cafe`). | `./scripts/deploy-healthmodel-tutorial.ps1` |
+| `build-healthmodel-tutorial.ps1` | Builds the café health model with the `az monitor health-models` CLI. | `./scripts/build-healthmodel-tutorial.ps1 [-SkipFailedOrderSignal] [-ControlCenterPrincipalId <id>]` |
+| `break-healthmodel-tutorial.ps1` | Breaks or restores the café: `BaristaQueue`, `BadRelease`, `NetworkCut`. | `./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease [-Restore]` |
+| `deploy-lab-healthmodel.ps1` | Deploys the lab's user-flow health model `hm-amlab-flows` (`infra/healthmodel-lab/main.bicep`) next to `hm-amlab-workload`. Needs a deployed lab. | `./scripts/deploy-lab-healthmodel.ps1 -ResourceGroup <rg>` |
 
 ## Recommended sequence after deployment
 

@@ -31,7 +31,7 @@ for (const width of [1440, 820, 390, 320]) {
       expect(tab.insetBottom).toBeGreaterThanOrEqual(9);
       expect(tab.clipped).toBe(false);
     }
-    for (const id of ['health', 'console', 'operations', 'sre', 'foundry']) {
+    for (const id of ['health', 'healthmodel', 'console', 'operations', 'sre', 'foundry']) {
       await page.locator(`#tab-${id}`).click();
       const panel = page.locator(`#panel-${id}`);
       await expect(panel).toBeVisible();
@@ -40,7 +40,7 @@ for (const width of [1440, 820, 390, 320]) {
         .map(item => item.textContent));
       expect(clipped).toEqual([]);
     }
-    const insets = await page.locator('#panel-health, .workspace > aside, .workspace > .results, #panel-operations, #panel-sre, #panel-foundry')
+    const insets = await page.locator('#panel-health, #panel-healthmodel, .workspace > aside, .workspace > .results, #panel-operations, #panel-sre, #panel-foundry')
       .evaluateAll(items => items.map(item => parseFloat(getComputedStyle(item).paddingLeft)));
     expect(insets.every(inset => inset >= 16)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -75,7 +75,7 @@ test('Control Center presents two documentation entry points and valid contextua
   await expect(page.getByRole('link', { name: 'Guide', exact: true })).toHaveAttribute('href', `${docsUrl}LAB-CONTROL-CENTER.md`);
   await expect(page.getByRole('link', { name: 'Scenarios', exact: true })).toHaveAttribute('href', `${docsUrl}DEMO-SCENARIOS.md`);
   const links = await page.locator('[data-documentation]').evaluateAll(items => items.map(item => ({ href: item.href, target: item.target, rel: item.rel })));
-  expect(links.length).toBe(16);
+  expect(links.length).toBe(18);
   for (const link of links) {
     expect(link.href.startsWith(docsUrl)).toBe(true);
     expect(link.target).toBe('_blank');
