@@ -82,7 +82,7 @@ The **Health Model** tab reads one of the configured models when opened: the lab
 
 **Send Degraded Report** sends one external health report (`ingestHealthReport`) to the chosen entity, by default a user flow (`shop-demo` or `order-coffee`). The report uses the signal `control-center-report`, value 1, and expires after 15 minutes, so the entity returns to its signal-based state on its own. The view refreshes a few times after sending; the model can take up to a minute to show the change. This is the console form of `az monitor health-models entity ingest-health-report`.
 
-Targets live in `LabConsole:HealthModels` (`workloads/webapp/appsettings.json`) and can be overridden with app settings such as `LabConsole__HealthModels__0__ResourceGroup`. The subscription comes from `LabConsole:Health:SubscriptionId`. The app identity needs read access to each model and the `Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action` permission to send reports; no built-in role covers only that action. Without them the tab shows the denied read or report.
+Targets live in `LabConsole:HealthModels` (`workloads/webapp/appsettings.json`) and can be overridden with app settings such as `LabConsole__HealthModels__0__ResourceGroup`. The subscription comes from `LabConsole:Health:SubscriptionId`. The app identity needs a custom *Health Model Reporter* role on each model, since no built-in role has the report action. `scripts/deploy-lab-healthmodel.ps1` grants it on `hm-amlab-flows`. For the café, pass the app identity to `scripts/build-healthmodel-tutorial.ps1 -ControlCenterPrincipalId <id>` (`az webapp identity show -g <lab resource group> -n <app> --query principalId -o tsv`). Without the role the tab shows the denied read or report.
 
 ## Lab Operations
 

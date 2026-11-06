@@ -434,7 +434,7 @@ The tutorial scripts are standalone: they use their own resource group and don't
 | Script | Purpose | Example |
 |---|---|---|
 | `deploy-healthmodel-tutorial.ps1` | Deploys the Lab Café workload (`infra/healthmodel-tutorial/workload.bicep`, `workloads/cafe`). | `./scripts/deploy-healthmodel-tutorial.ps1` |
-| `build-healthmodel-tutorial.ps1` | Builds the café health model with the `az monitor health-models` CLI. | `./scripts/build-healthmodel-tutorial.ps1 [-SkipFailedOrderSignal]` |
+| `build-healthmodel-tutorial.ps1` | Builds the café health model with the `az monitor health-models` CLI. | `./scripts/build-healthmodel-tutorial.ps1 [-SkipFailedOrderSignal] [-ControlCenterPrincipalId <id>]` |
 | `break-healthmodel-tutorial.ps1` | Breaks or restores the café: `BaristaQueue`, `BadRelease`, `NetworkCut`. | `./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease [-Restore]` |
 | `deploy-lab-healthmodel.ps1` | Deploys the lab's user-flow health model `hm-amlab-flows` (`infra/healthmodel-lab/main.bicep`) next to `hm-amlab-workload`. Needs a deployed lab. | `./scripts/deploy-lab-healthmodel.ps1 -ResourceGroup <rg>` |
 

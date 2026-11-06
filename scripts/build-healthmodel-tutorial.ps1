@@ -34,6 +34,10 @@
 .PARAMETER SkipFailedOrderSignal
   Leave out the Order API's failed-order-requests signal. The tutorial has you add it yourself.
 
+.PARAMETER ControlCenterPrincipalId
+  Optional object ID of the lab Control Center's identity (the lab web app's system-assigned
+  identity). It gets a role to read the model and send health reports from the Health Model tab.
+
 .PARAMETER SubscriptionId
   Subscription to deploy into. Defaults to .azure-target.json, then the active az subscription.
   When .azure-target.json exists, any other subscription or tenant is blocked.
@@ -45,6 +49,7 @@ param(
   [string] $Location = 'swedencentral',
   [string] $ActionGroupId,
   [switch] $SkipFailedOrderSignal,
+  [string] $ControlCenterPrincipalId,
   [string] $SubscriptionId
 )
 
@@ -363,6 +368,37 @@ try {
       --parent-entity-name $edge.parent --child-entity-name $edge.child
     Assert-NativeCommandSucceeded "Connecting $($edge.parent) -> $($edge.child)"
     Write-Info "$($edge.parent) -> $($edge.child)"
+  }
+
+  if ($ControlCenterPrincipalId) {
+    Write-Step '7. Let the Control Center read the model and send health reports'
+    # No built-in role has the report action, so a custom role that only this resource group can use.
+    $roleName = "Health Model Reporter $ResourceGroup $($active.id.Substring(0, 8))"
+    $roleId = az role definition list --custom-role-only true --scope $rgId --query "[?roleName=='$roleName'].name | [0]" -o tsv
+    Assert-NativeCommandSucceeded 'Looking up the reporter role'
+    if (-not $roleId) {
+      $role = @{
+        Name = $roleName; Description = 'Read a health model and send external health reports to its entities.'
+        Actions = @(
+          'Microsoft.CloudHealth/healthmodels/read'
+          'Microsoft.CloudHealth/healthmodels/entities/read'
+          'Microsoft.CloudHealth/healthmodels/relationships/read'
+          'Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action'
+        )
+        AssignableScopes = @($rgId)
+      }
+      $roleId = az role definition create --role-definition (Write-JsonFile 'reporter-role' $role) --query name -o tsv
+      Assert-NativeCommandSucceeded 'Creating the reporter role'
+    }
+    $modelScope = az monitor health-models show -g $ResourceGroup -n $HealthModelName --query id -o tsv
+    $existing = az role assignment list --assignee-object-id $ControlCenterPrincipalId --scope $modelScope --role $roleId --query "length(@)" -o tsv
+    Assert-NativeCommandSucceeded 'Listing role assignments of the Control Center identity'
+    if ($existing -eq '0') {
+      az role assignment create --assignee-object-id $ControlCenterPrincipalId --assignee-principal-type ServicePrincipal `
+        --role $roleId --scope $modelScope -o none
+      Assert-NativeCommandSucceeded 'Granting the reporter role to the Control Center identity'
+    }
+    Write-Info "$roleName -> $ControlCenterPrincipalId"
   }
 } finally {
   Remove-Item -Recurse -Force $jsonDir -ErrorAction SilentlyContinue

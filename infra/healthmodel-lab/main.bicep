@@ -78,6 +78,44 @@ module monitoringDataReader 'monitor-workspace-role.bicep' = {
   }
 }
 
+// The Control Center (the lab web app) shows this model and sends health reports to it.
+// No built-in role has the report action.
+resource consoleApp 'Microsoft.Web/sites@2023-12-01' existing = {
+  name: last(split(webAppId, '/'))
+}
+
+resource reporterRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
+  name: guid(resourceGroup().id, 'health-model-reporter')
+  properties: {
+    roleName: 'Health Model Reporter ${take(uniqueString(resourceGroup().id), 8)}'
+    description: 'Read a health model and send external health reports to its entities.'
+    type: 'CustomRole'
+    assignableScopes: [resourceGroup().id]
+    permissions: [
+      {
+        actions: [
+          'Microsoft.CloudHealth/healthmodels/read'
+          'Microsoft.CloudHealth/healthmodels/entities/read'
+          'Microsoft.CloudHealth/healthmodels/relationships/read'
+          'Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action'
+        ]
+        notActions: []
+        dataActions: []
+        notDataActions: []
+      }
+    ]
+  }
+}
+
+module consoleReporter 'health-model-role.bicep' = {
+  name: '${healthModelName}-console-reporter'
+  params: {
+    healthModelName: healthModel.name
+    principalId: consoleApp.identity.principalId
+    roleDefinitionId: reporterRole.id
+  }
+}
+
 resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@2026-11-01' = {
   parent: healthModel
   name: auth
