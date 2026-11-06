@@ -4,7 +4,7 @@ param(
   [Parameter(Mandatory)] [guid] $TenantId,
   [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup,
   [Parameter(Mandatory)] [ValidatePattern('^[a-zA-Z0-9-]+$')] [string] $WebAppName,
-  [ValidatePattern('^[a-zA-Z0-9-]+$')] [string] $CustomerWebAppName = '',
+  [ValidatePattern('^[a-zA-Z0-9-]*$')] [string] $CustomerWebAppName = '',
   [Parameter(Mandatory)] [string] $ConsoleConfigPath,
   [guid[]] $AllowedUserObjectIds
 )
