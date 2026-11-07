@@ -22,43 +22,29 @@ These are complementary entry points into the same lab. The Control Center links
 
 ### Scenario coverage
 
-| Scenarios | What you can demonstrate |
-|---|---|
-| [1-52](docs/DEMO-SCENARIOS.md#s1) | Workbooks, VM and AKS insights, Application Insights, OpenTelemetry, alerts, automation, networking, data routing, cost controls, security, and workload Health Models |
-| [53](docs/DEMO-SCENARIOS.md#s53) | GenAI token, trace, and cost observability |
-| [54-59](docs/DEMO-SCENARIOS.md#s54) | Azure SRE Agent readiness, investigation, change correlation, alert merging, and recovery verification |
-| [60](docs/DEMO-SCENARIOS.md#s60) | Cross-stack operations in the Lab Control Center |
-| [61-67](docs/DEMO-SCENARIOS.md#s61) | Agentic failures, customer impact, AI cost spikes, and Observability Agent triage |
-| [68-73](docs/DEMO-SCENARIOS.md#s68) | Evidence-first Copilot investigations, end-to-end Application Insights incidents, customer journeys, broken-slot rollback, and real SQL / Service Bus / Functions dependencies |
-| [74-80](docs/DEMO-SCENARIOS.md#s74) | Fabric streaming, Eventhouse queries, Real-Time Dashboards, business-event correlation, capacity monitoring, suspend/resume, and Azure Monitor mirroring (preview) |
-
-Optional scenarios need their corresponding stages, permissions, and sometimes manual preparation; deploying the core lab does not enable every scenario. Start with the [workload-based scenario index](docs/DEMO-SCENARIOS.md#demo-scenarios--organized-by-workload) to choose a demo path.
+Explore the [guided scenarios](docs/DEMO-SCENARIOS.md) for walkthroughs, queries, and expected results. Optional scenarios require their corresponding stages, permissions, and preparation.
 
 ## Architecture
 
-Workloads feed a shared Azure Monitor telemetry backbone for dashboards, alerts, and agent-assisted investigation. Optional Microsoft Fabric extends it with streaming analytics and Azure Monitor mirroring (preview), without replacing operational monitoring. See the [resource inventory](docs/REFERENCE.md#what-gets-deployed) and [Fabric guide](docs/STAGE-FABRIC.md) for details.
+The lab combines application, infrastructure, and AI workloads with Azure Monitor to demonstrate end-to-end observability, alerting, troubleshooting, and agent-assisted operations. See the [resource inventory](docs/REFERENCE.md#what-gets-deployed) for deployed components.
 
 [![Azure Monitor Lab architecture: operational telemetry and response, customer application, and optional Event Hubs to Fabric Real-Time Intelligence analytics](docs/architecture-overview-sre.svg)](docs/architecture.drawio)
 
 ## Prerequisites
 
+- An active Azure subscription
+- Azure permissions to deploy resources and create custom roles and role assignments, plus Microsoft Entra permissions to manage the application and service principal used for Control Center sign-in and validate operator users. See [console deployment prerequisites](workloads/webapp/LAB-OPERATIONS.md#prerequisites) for details; Azure ownership does not override tenant restrictions on application registration.
 - Azure CLI (`az`) 2.60 or later, logged in with `az login`
 - `kubectl` (any recent version)
 - Bicep CLI (bundled with `az` 2.20+), or Terraform 1.6+ if you take the Terraform path
 - PowerShell 7+
 - .NET 8 SDK for publishing the Control Center
-- Azure and Microsoft Entra permissions to deploy the lab and configure Control Center access. See [console deployment prerequisites](workloads/webapp/LAB-OPERATIONS.md#prerequisites) for the required roles.
 - Optional AI stage: [Python 3.10+](https://www.python.org/downloads/)
 - Optional SRE Agent stage: [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) and [tar](https://www.gnu.org/software/tar/)
-- Optional Fabric stage: Fabric enabled in the tenant, workspace creation/administration and capacity administration permissions, and `fabricAdminEmail` set to a Microsoft Entra user UPN in that tenant. Automated source authorization also needs Azure RBAC administration at the event hub and source Log Analytics workspaces, plus custom-role administration. Default mirroring requires a tenant administrator to enable the preview; Azure Monitor table/row/column protections do not carry into Fabric, so review workspace access first. Capacity Metrics needs separate installation and eligible Power BI licensing/OAuth. See [Fabric prerequisites and cost caveats](docs/STAGE-FABRIC.md#prerequisites).
 
 ## Deploy
 
-> Recommended region: `northeurope` (the default), which has the widest feature availability. The Health Model preview and optional GenAI / AI stage (Microsoft Foundry and its models) go to `swedencentral`. App Service and its co-located diagnostic Storage and Event Hub dependencies use configurable `appServiceLocation` (default `westeurope`) so subscriptions closed to new customers in that region can select another supported region.
-
 ### Option 1: Deploy to Azure (portal, no local setup)
-
-> The stable `main` button does not yet include this branch's Fabric stage. To test Fabric, use `feature/fabric-stage` with Option 2, or supply that branch's raw ARM template and UI definition URLs in a Custom deployment.
 
 <div align="center">
 
@@ -77,7 +63,7 @@ This button deploys the stable `main` templates.
 | **Monitoring & cost** | Daily ingestion cap, Sentinel, platform-logs/metrics-export DCRs, LAW replication |
 | **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, optional AI, SRE Agent, and Observability Agent stages |
 
-After the portal deployment succeeds, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in the Azure portal, select **PowerShell**, and run the commands below. The Cloud Shell wrapper discovers the deployed resources, publishes the App Service sample, installs the AKS and Health Model demo components, and prepares the identity and RBAC prerequisites for the SLI demo without requiring optional Azure CLI extensions. It attempts to verify the Managed Prometheus source metrics and continues with a warning if Cloud Shell cannot request that token audience:
+After the portal deployment succeeds, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)**, select **PowerShell**, and run the commands below to complete the post-deployment configuration:
 
 ```powershell
 git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
@@ -96,8 +82,6 @@ If you enabled the optional AI stage and want to generate AI telemetry, run this
 
 After the wrapper succeeds, deployment is complete. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
 
-For a portal deployment using the `feature/fabric-stage` templates, run `git switch feature/fabric-stage` after cloning and before running the completion wrappers above. With Fabric enabled, also run `./scripts/setup-fabric-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup` to complete its tenant-scoped items. Follow the [Fabric completion checklist](docs/STAGE-FABRIC.md#after-deployps1-checklist) and suspend F2 when idle.
-
 ### Option 2: Scripted one-shot (Bicep / Terraform, full control)
 
 ```powershell
@@ -105,26 +89,24 @@ For a portal deployment using the `feature/fabric-stage` templates, run `git swi
 git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
 
-# Fabric preview only: omit this switch when deploying stable main.
-git switch feature/fabric-stage
-
-# 2. Copy the template and fill in subscriptionId, tenantId, alertEmail, vmAdminPassword, ...
+# 2. Copy the template and configure subscriptionId, tenantId, resourceGroup, location, alertEmail, vmAdminPassword, ...
 Copy-Item lab.config.json.example lab.config.json
 notepad lab.config.json
 # Save your changes and close Notepad before continuing.
 # One-shot ignores enableStageA-E; AI, SRE Agent, Observability Agent, and customer scenarios remain optional.
-# Fabric is also opt-in: stageToggles.enableStageFabric plus fabricAdminEmail.
 
 # 3. Deploy (deploy.ps1 calls sync-config.ps1 for you)
 ./scripts/deploy.ps1
-
-# Or target a custom resource group / region (created if it doesn't exist yet):
-./scripts/deploy.ps1 -ResourceGroup rg-my-lab -Location westeurope
 ```
 
-Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`. Override them with `-ResourceGroup` / `-Location` (explicit args win over `lab.config.json`, then defaults). The group is created or reused. Infrastructure provisioning, native packaging, and the cloud runner build can take tens of minutes. A successful run includes console sign-in, health, the eight-operation Azure runner, and access to selected optional agents. See [deployment reference](docs/REFERENCE.md#deploy) for config and guardrails.
+Set the resource group and deployment regions in your local `lab.config.json` before deploying. Defaults are `rg-azure-monitor-lab` and `northeurope`; the group is created or reused. Deployment can take tens of minutes and includes Control Center setup and selected optional agents. See [deployment reference](docs/REFERENCE.md#deploy) for config and guardrails.
 
-The [config example](lab.config.json.example) selects `Standard_B2als_v2` (2 vCPUs, 4 GiB RAM) for the demo VMs and VMSS, and two `Standard_D4as_v5` AKS system nodes (4 vCPUs, 16 GiB RAM each). Burstable demo VMs keep costs down but can throttle under sustained load; AKS uses non-burstable nodes. These example choices do not change existing local configurations or the defaults used without this config. SKU eligibility, quota, and capacity vary by subscription and region: adjust `vmSize`, `aksNodeVmSize`, and `vmssSize` in your local config if needed, retain an AKS-supported system-node size, and rerun deployment. Pre-flight checks availability, quota, and the documented AKS system-pool minimums, but not every AKS-specific compatibility requirement; it does not select replacement SKUs automatically.
+<details>
+<summary><b>VM and AKS node SKU choices</b></summary>
+
+The [config example](lab.config.json.example) uses `Standard_B2als_v2` (2 vCPUs, 4 GiB RAM) for VMs and VMSS, and two `Standard_D4as_v5` AKS system nodes (4 vCPUs, 16 GiB RAM each). Burstable VMs reduce cost but can throttle under sustained load. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` in your local config for regional availability and quota; keep AKS system nodes on supported non-burstable sizes. Pre-flight checks availability, quota, and system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
+
+</details>
 
 <details>
 <summary><b>Pre-flight check</b> (region SKU / quota validation before deploy)</summary>
@@ -139,7 +121,7 @@ If compute checks fail, pre-flight names the config keys to edit and lists candi
 
 For **insufficient quota**, open Azure Portal > Quotas > Compute, select the checked subscription and region, and request a new total family/regional vCPU limit covering existing usage plus lab demand. For **NotAvailableForSubscription**, more quota may not remove SKU restrictions: use an eligible size or region, or request SKU access through Help + support if needed. Do not copy an EC2as_v5 workaround into AKS: system pools require non-B-series nodes with at least 4 vCPUs and 4 GiB RAM, and at least two nodes ([AKS requirements](https://learn.microsoft.com/azure/aks/use-system-pools)). Keep pre-flight enabled rather than bypassing known blockers.
 
-The pre-flight checks *availability and quota*, not *live service capacity*. Transient, region-wide shortages like AKS `AksCapacityHeavyUsage` have no pre-check API and only surface at deploy time. If one hits, `deploy.ps1` catches it and points you to the fix: deploy to another region (`-Location northeurope`) or retry (`-MaxDeployRetries 3`), since capacity frees up as other clusters are deleted.
+The pre-flight checks *availability and quota*, not *live service capacity*. Transient, region-wide shortages like AKS `AksCapacityHeavyUsage` have no pre-check API and only surface at deploy time. If one hits, change `location` in your local `lab.config.json` or retry (`-MaxDeployRetries 3`), since capacity frees up as other clusters are deleted.
 
 </details>
 
@@ -147,15 +129,12 @@ The pre-flight checks *availability and quota*, not *live service capacity*. Tra
 
 A successful `deploy.ps1` run completes the selected setup. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
 
-For Fabric, set `stageToggles.enableStageFabric` to `true` and supply `fabricAdminEmail`. `deploy.ps1` runs setup automatically. Review `fabricAutomation` in the [config template](lab.config.json.example) for mirroring, sample data, workspace naming, verification timeout, and daily suspension settings. Resolve any reported prerequisites and verify ingestion using the [Fabric checklist](docs/STAGE-FABRIC.md#after-deployps1-checklist). Setup can be rerun safely; it reuses existing items and preserves edited dashboards.
-
 ### Option 3: Staged workshop (progressive deployment)
 
 Use the staged approach when you want to pause between capabilities, walk through the lab with an audience, or deploy only the stages needed for a particular demo. Stages A to E can be toggled in `lab.config.json`. The optional AI, SRE Agent, Observability Agent, and Fabric stages have separate toggles and prerequisites. Bicep deploys SRE Agent with `infra/stages/60-sre-agent.bicep`; Terraform deploys the compiled stage when `enable_stage_sre_agent = true`.
 
 Step-by-step guides:
 
-- Optional [Stage Fabric](docs/STAGE-FABRIC.md) uses `infra/stages/60-fabric.bicep` or Terraform's `enable_stage_fabric`; its end-to-end stream requires Stage A's Event Hub. For staged Bicep, deploy Fabric before Stage E, or rerun Stage E with `enableFabric=true` to include capacity health in the Health Model. Terraform orders this dependency automatically.
 - [Bicep staged deployment](docs/DEPLOY-BICEP-STEP-BY-STEP.md)
 - [Terraform staged deployment](docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md)
 
@@ -175,24 +154,20 @@ az webapp list --subscription $subscriptionId --resource-group $resourceGroup --
 
 ## Cost and lifecycle
 
-Fabric F2 adds billable active capacity hours, plus possible OneLake storage and other usage charges. The branch's indicative estimate is **USD 0.36/hour** (about **USD 8.64 per 24 active hours**); verify current regional pricing before deploying. F2 is a cost-controlled light demo choice, below Microsoft's documented F4 recommendation for Eventstreams. Both Log Analytics workspaces default to **3 GB/day each**, not a shared budget or total-cost limit.
-
-Fabric setup enables daily **20:00 UTC** suspension unless explicitly disabled. This fixed schedule is **not an idle detector**: it interrupts active queries and ingestion and does not automatically resume capacity. Run `./scripts/suspend-fabric.ps1` when idle and `./scripts/resume-fabric.ps1` before the next Fabric demo; `./scripts/start-the-lab.ps1 -Wait` also resumes F2. See [Fabric setup, permissions and lifecycle](docs/STAGE-FABRIC.md).
-
 > [!WARNING]
-> **Ballpark:** default Stages A-E lab: **EUR 6-10/day** (EUR 180-300/month). Everything enabled with light Foundry and agent use: **EUR 10-25/day** (EUR 300-750/month), assuming an eligible SRE Agent trial and automatic Observability Agent investigations remain off. These September 2026 public-retail estimates are not quotes; heavier token/AAC use, post-trial SRE Agent charges, region, agreement, telemetry, and traffic can exceed the range. See the [cost guide](docs/COST-GUIDE.md).
+> **Ballpark:** Stages A-E: **EUR 6-10/day**; optional capabilities with light AI and agent use: **EUR 10-25/day**, assuming an eligible SRE Agent trial and automatic Observability Agent investigations remain off. These September 2026 estimates are not quotes or spending caps; region, telemetry, traffic, and usage can increase costs. See the [cost guide](docs/COST-GUIDE.md) for assumptions and service-specific charges.
 
 > [!IMPORTANT]
-> **Control costs:** VMs auto-shutdown at **23:00 CET/CEST**; VM notifications are suppressed until **07:00**. When idle, use **Control Center → Lab Operations → Stop Lab**. Fixed services and retained data still bill. When finished, tear down the lab and verify deletion.
+> **Control costs:** Use **Control Center → Lab Operations → Stop Lab** when idle. VMs also auto-shutdown at **23:00 CET/CEST**. Fixed services and retained data still bill.
 
-When the lab is no longer needed, set `$rg` to the resource group where you deployed the lab, then run the command below. If you used the default configuration, use `rg-azure-monitor-lab`.
+When finished, run teardown for your lab's resource group and verify deletion:
 
 ```powershell
 $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 ./scripts/teardown.ps1 -ResourceGroup $rg -Yes   # deletes the whole resource group
 ```
 
-For Fabric, the teardown script also attempts to remove the tenant-scoped workspace and its items, generated mirror connections, and source-scoped mirroring permissions before deleting the resource group. Check its output and verify cleanup: deleting the Azure resource group or running `terraform destroy` alone does not remove tenant-scoped Fabric items. Use a distinct `fabricAutomation.workspaceName` for each lab to keep setup and teardown isolated. See [Fabric cleanup](docs/STAGE-FABRIC.md#suspend-and-resume).
+Verify cleanup of any tenant-scoped items too; deleting the Azure resource group or running `terraform destroy` alone does not remove Fabric workspace items. See [optional Fabric lifecycle and cleanup](docs/STAGE-FABRIC.md#suspend-and-resume).
 
 ## Documentation
 
