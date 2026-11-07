@@ -89,7 +89,7 @@ After the wrapper succeeds, deployment is complete. Continue with the [manual sc
 git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
 
-# 2. Copy the template and configure subscriptionId, tenantId, resourceGroup, location, alertEmail, vmAdminPassword, ...
+# 2. Copy the template and fill in basicConfiguration for your subscription
 Copy-Item lab.config.json.example lab.config.json
 notepad lab.config.json
 # Save your changes and close Notepad before continuing.
@@ -99,12 +99,12 @@ notepad lab.config.json
 ./scripts/deploy.ps1
 ```
 
-Set the resource group and deployment regions in your local `lab.config.json` before deploying. Defaults are `rg-azure-monitor-lab` and `northeurope`; the group is created or reused. Deployment can take tens of minutes and includes Control Center setup and selected optional agents. See [deployment reference](docs/REFERENCE.md#deploy) for config and guardrails.
+Fill in `basicConfiguration` in your local `lab.config.json` for a default deployment, including the resource group and regions. `advancedConfiguration` groups compute sizes, monitoring, access, and optional stage toggles. Existing flat configs still work. Defaults are `rg-azure-monitor-lab` and `northeurope`; the group is created or reused. Deployment can take tens of minutes and includes Control Center setup and selected optional agents. See [config layout](docs/REFERENCE.md#config-layout-and-compatibility) and [deployment reference](docs/REFERENCE.md#deploy).
 
 <details>
 <summary><b>VM and AKS node SKU choices</b></summary>
 
-The [config example](lab.config.json.example) uses `Standard_B2als_v2` (2 vCPUs, 4 GiB RAM) for VMs and VMSS, and two `Standard_D4as_v5` AKS system nodes (4 vCPUs, 16 GiB RAM each). Burstable VMs reduce cost but can throttle under sustained load. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` in your local config for regional availability and quota; keep AKS system nodes on supported non-burstable sizes. Pre-flight checks availability, quota, and system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
+The [config example](lab.config.json.example) uses `Standard_B2als_v2` (2 vCPUs, 4 GiB RAM) for VMs and VMSS, and two `Standard_D4as_v5` AKS system nodes (4 vCPUs, 16 GiB RAM each). Burstable VMs reduce cost but can throttle under sustained load. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` under `advancedConfiguration.compute` for regional availability and quota; keep AKS system nodes on supported non-burstable sizes. Pre-flight checks availability, quota, and system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
 
 </details>
 
@@ -131,7 +131,7 @@ A successful `deploy.ps1` run completes the selected setup. Continue with the [m
 
 ### Option 3: Staged workshop (progressive deployment)
 
-Use the staged approach when you want to pause between capabilities, walk through the lab with an audience, or deploy only the stages needed for a particular demo. Stages A to E can be toggled in `lab.config.json`. The optional AI, SRE Agent, Observability Agent, and Fabric stages have separate toggles and prerequisites. Bicep deploys SRE Agent with `infra/stages/60-sre-agent.bicep`; Terraform deploys the compiled stage when `enable_stage_sre_agent = true`.
+Use the staged approach when you want to pause between capabilities, walk through the lab with an audience, or deploy only the stages needed for a particular demo. Select stages under `advancedConfiguration.stageToggles` in `lab.config.json` (`stageToggles` in legacy flat configs). The optional AI, SRE Agent, Observability Agent, and Fabric stages have separate toggles and prerequisites. Bicep deploys SRE Agent with `infra/stages/60-sre-agent.bicep`; Terraform deploys the compiled stage when `enable_stage_sre_agent = true`.
 
 Step-by-step guides:
 

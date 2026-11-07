@@ -10,6 +10,17 @@ Most scripts use the Azure CLI and require `az login`. Scripts that work with AK
 
 ## Deployment and configuration
 
+The [central config example](../lab.config.json.example) separates `basicConfiguration` (subscription, tenant, resource group, regions, emails, VM credentials) from grouped `advancedConfiguration` settings (compute, monitoring, access, optional stages, and automation). Existing flat configs still work. See [config layout and compatibility](../docs/REFERENCE.md#config-layout-and-compatibility) for paths and optional migration.
+
+Scripts and custom runbooks should use the shared [lab-config.ps1](lab-config.ps1) helper:
+
+```powershell
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+```
+
+The returned object exposes the existing flat property names regardless of the input format. Documentation that names a setting without its grouping prefix refers to this normalized name; edit that setting in its group in the new template.
+
 ### Customer-slot provider failure recovery
 
 `deploy.ps1` and `Invoke-LabStage 10-workloads` share `deployment-slot-recovery.ps1`.
@@ -58,6 +69,7 @@ Local regression checks (mocked Azure CLI, no Azure access):
 | Script | Purpose | Typical command |
 |---|---|---|
 | `sync-config.ps1` | Reads `lab.config.json` and generates the gitignored deployment inputs: `.azure-target.json`, `infra/main.parameters.json`, and `terraform/stages.tfvars`. | `./scripts/sync-config.ps1` |
+| [migrate-lab-config.ps1](migrate-lab-config.ps1) | Optionally reorganizes an existing config without changing values; creates a private `.bak` backup and refuses to overwrite it. Does not deploy or regenerate inputs. | `./scripts/migrate-lab-config.ps1` |
 | `preflight-check.ps1` | Checks regional SKU availability, quota, AKS system-pool minimums, and Azure resource-provider availability. Compute failures identify config keys and eligible candidate alternatives; standalone checks require explicit sizing arguments to match your config (see [guidance](../README.md#option-2-scripted-one-shot-bicep--terraform-full-control)). | `./scripts/preflight-check.ps1 -Location northeurope -VmSize Standard_B2als_v2 -AksNodeVmSize Standard_D4as_v5 -AksNodeCount 2 -VmssSize Standard_B2als_v2` |
 | `deploy.ps1` | Runs the one-shot Bicep deployment, including resource creation, post-deployment workloads, health model setup, SLI prerequisite verification, optional AI setup, and optional SRE/Observability Agent deployment and validation. The preview SLIs remain a manual portal step. | `./scripts/deploy.ps1 -ResourceGroup rg-my-lab -Location northeurope` |
 | [staged-deploy-helpers.ps1](staged-deploy-helpers.ps1) | Loads or refreshes `Invoke-LabStage` and `Assert-LabAccount` after the Bicep guide's input bootstrap. Dot-sourcing preserves the current inputs and makes no Azure calls. | `. ./scripts/staged-deploy-helpers.ps1` |

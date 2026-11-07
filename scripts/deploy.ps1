@@ -76,7 +76,8 @@ if (Test-Path $labConfigPath) {
   # Honor lab.config.json as the single source of truth for RG + region, but only
   # when the caller did not pass an explicit override. Precedence:
   #   explicit -ResourceGroup/-Location  >  lab.config.json  >  built-in defaults.
-  $labCfg = Get-Content -Raw $labConfigPath | ConvertFrom-Json
+  . (Join-Path $PSScriptRoot 'lab-config.ps1')
+  $labCfg = Read-LabConfig -Path $labConfigPath
   if (-not $PSBoundParameters.ContainsKey('ResourceGroup') -and -not [string]::IsNullOrWhiteSpace($labCfg.resourceGroup)) {
     $ResourceGroup = $labCfg.resourceGroup
   }

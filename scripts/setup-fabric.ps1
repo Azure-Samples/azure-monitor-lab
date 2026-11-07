@@ -51,7 +51,8 @@ $fabricApi = 'https://api.fabric.microsoft.com/v1'
 
 $configPath = Join-Path $PSScriptRoot '..' 'lab.config.json'
 if (Test-Path -LiteralPath $configPath) {
-  $configuration = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+  . (Join-Path $PSScriptRoot 'lab-config.ps1')
+  $configuration = Read-LabConfig -Path $configPath
   $automation = $configuration.fabricAutomation
   if (-not $PSBoundParameters.ContainsKey('NamePrefix') -and $configuration.namePrefix) {
     $NamePrefix = $configuration.namePrefix

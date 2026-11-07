@@ -19,7 +19,7 @@ $fixture = @{
   PublicationMode = ''; AksCredentialRequests = 0
   Packages = [Collections.Generic.List[string]]::new()
 }
-foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1', 'deployment-slot-recovery.ps1')) {
+foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1', 'deployment-slot-recovery.ps1', 'lab-config.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source "scripts/$name") -Destination $directory
 }
 $null = New-Item -ItemType Directory -Path (Join-Path $root 'infra') -Force
@@ -338,7 +338,7 @@ try {
     @{ Config = $true; Explicit = @{ EnableStageE = $false }; Expected = 0 },
     @{ Config = $false; Explicit = @{ EnableStageE = $true }; Expected = 1 }
   )) {
-    @{ stageToggles = @{ enableStageE = $selection.Config } } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'lab.config.json')
+    @{ advancedConfiguration = @{ stageToggles = @{ enableStageE = $selection.Config } } } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $root 'lab.config.json')
     $fixture.StageEResources = $true
     $fixture.Events.Clear()
     $fixture.ServiceGroupCalls = 0
@@ -422,9 +422,9 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
   }
   $fixture.ObservabilityEnabled = $true
   @{
-    subscriptionId = $fixture.Subscription
-    stageToggles = @{ enableStageObservabilityAgent = $true }
-  } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'lab.config.json')
+    basicConfiguration = @{ subscriptionId = $fixture.Subscription }
+    advancedConfiguration = @{ stageToggles = @{ enableStageObservabilityAgent = $true } }
+  } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $root 'lab.config.json')
   $migrationsBefore = $fixture.RbacMigrations
   $fixture.Events.Clear()
   & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) | Out-Null

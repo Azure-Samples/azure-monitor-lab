@@ -307,7 +307,8 @@ foreach ($number in 0..80) {
 }
 Write-Output 'PASS: combined template output budget, shared architecture boundaries, and all integration/Fabric scenario anchors are preserved.'
 
-$example = Get-Content -LiteralPath (Join-Path $source 'lab.config.json.example') -Raw | ConvertFrom-Json
+. (Join-Path $source 'scripts\lab-config.ps1')
+$example = Read-LabConfig -Path (Join-Path $source 'lab.config.json.example')
 $foundation = Get-Content -LiteralPath (Join-Path $source 'infra/stages/00-foundation.json') -Raw | ConvertFrom-Json
 $ui = Get-Content -LiteralPath (Join-Path $source 'infra/createUiDefinition.json') -Raw | ConvertFrom-Json
 $slider = @($ui.parameters.steps.elements | Where-Object name -eq 'dailyCapGb')

@@ -54,6 +54,9 @@ on:
       - 'scripts/tests/vm-otel-metrics.Tests.ps1'
       - 'scripts/tests/vm-otel-config.Tests.ps1'
       - 'scripts/sync-config.ps1'
+      - 'scripts/lab-config.ps1'
+      - 'scripts/migrate-lab-config.ps1'
+      - 'scripts/tests/lab-config.Tests.ps1'
       - 'lab.config.json.example'
       - 'scripts/tests/observability-agent-config.Tests.ps1'
       - 'scripts/tests/amba.Tests.ps1'
@@ -128,6 +131,7 @@ jobs:
           ./scripts/tests/console-deployment.Tests.ps1
           ./scripts/tests/preflight-guidance.Tests.ps1
           ./scripts/tests/vm-sku-config.Tests.ps1
+          ./scripts/tests/lab-config.Tests.ps1
           ./scripts/tests/customer-completion.Tests.ps1
           ./scripts/tests/customer-dependencies.Tests.ps1
           ./scripts/tests/webapp-publication.Tests.ps1

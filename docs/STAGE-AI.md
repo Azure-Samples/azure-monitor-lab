@@ -85,7 +85,7 @@ az monitor app-insights query --app $appi -g $rg --analytics-query "dependencies
 
 [AI setup](../scripts/setup-ai.ps1) installs the [Python dependencies](../workloads/ai/requirements.txt), reuses or creates the four matching agents, then starts a finite background batch of 150 conversations. `-Conversations` changes the finite batch size. `-SkipTraffic` prepares agents without traffic. The legacy `-BackgroundTraffic` switch is accepted but no longer needed; false does not restore foreground mode.
 
-**Bicep one-shot:** set `stageToggles.enableStageAI = true` in the central config. [The deployment script](../scripts/deploy.ps1) prepares console agents/access before publication, validates selected SRE resources, then starts background AI traffic as its final step.
+**Bicep one-shot:** set `advancedConfiguration.stageToggles.enableStageAI = true` in the central config (`stageToggles.enableStageAI` in legacy flat configs). [The deployment script](../scripts/deploy.ps1) prepares console agents/access before publication, validates selected SRE resources, then starts background AI traffic as its final step.
 
 **Terraform:** set `enable_stage_ai = true` and follow [the Terraform runbook](DEPLOY-TERRAFORM-STEP-BY-STEP.md#step-7---enable-stage-ai-optional). With B enabled, apply refreshes console inventory/access and prepares agents with `-SkipTraffic`, including when AI is added later. No second console wrapper is required. Optional traffic is a separate background setup invocation. Without B, use the standalone AI helper to prepare agents.
 

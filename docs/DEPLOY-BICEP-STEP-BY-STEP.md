@@ -90,6 +90,8 @@ Run these examples from the repository root in the same PowerShell 7 session. Ea
 
 Create a private config from [the example](../lab.config.json.example), fill in the subscription, tenant, resource group, prefix, region, notification address, and VM credentials, then generate the local inputs. Do not overwrite an existing config:
 
+Use `basicConfiguration` for subscription-specific values and `advancedConfiguration` for customization, including `naming.namePrefix` and `stageToggles`. Legacy flat configs remain supported; see [config layout](REFERENCE.md#config-layout-and-compatibility).
+
 ```powershell
 if (-not (Test-Path ./lab.config.json)) { Copy-Item ./lab.config.json.example ./lab.config.json }
 ```
@@ -100,7 +102,8 @@ After editing the config, run:
 ./scripts/sync-config.ps1
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = [guid]$config.subscriptionId
 $tenant = [guid]$config.tenantId
 $rg = $config.resourceGroup
@@ -266,7 +269,7 @@ if ($webApp) {
 
 The refresh uses [the existing app deployment helper](../scripts/deploy-webapp.ps1), which configures console access and verifies the new publication without reapplying AKS workloads. Its bootstrap prepares agents with `-SkipTraffic`. The final [AI setup](../scripts/setup-ai.ps1) reuses those agents and always starts a finite background batch, default 150 conversations. Add `-SkipTraffic` there to prepare agents without model traffic. The [Cloud Shell AI wrapper](../scripts/setup-ai-cloud-shell.ps1) offers the same background behavior with core ARM discovery.
 
-Without Stage B, the refresh is skipped and the standalone AI scenario still works. Adding Stage B later initializes its console normally. To add the AI tier to an existing Stage E health model, set `stages.enableStageAI` to `true` in `lab.config.json`, rerun the bootstrap block, then rerun the native Stage 40 command above. Do not deploy Stage E solely for an A+AI lab.
+Without Stage B, the refresh is skipped and the standalone AI scenario still works. Adding Stage B later initializes its console normally. To add the AI tier to an existing Stage E health model, set `advancedConfiguration.stageToggles.enableStageAI` to `true` in `lab.config.json` (`stageToggles.enableStageAI` in legacy flat configs), rerun the bootstrap block, then rerun the native Stage 40 command above. Do not deploy Stage E solely for an A+AI lab.
 
 The worker prints its PID and log/status paths. Keep the deployment host and Azure CLI sign-in available until it finishes; Cloud Shell/CI termination can stop it. Startup is not evidence of successful model responses. See [Stage AI traffic behavior](STAGE-AI.md#6-enable--run).
 

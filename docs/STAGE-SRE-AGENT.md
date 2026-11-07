@@ -38,10 +38,14 @@ The deploying identity needs Owner or User Access Administrator at subscription 
 Enable the stage in `lab.config.json`:
 
 ```json
-"stageToggles": {
-  "enableStageSreAgent": true
+"advancedConfiguration": {
+  "stageToggles": {
+    "enableStageSreAgent": true
+  }
 }
 ```
+
+Merge this into the existing group without removing other toggles. Legacy flat configs use `stageToggles.enableStageSreAgent`; see [config layout](REFERENCE.md#config-layout-and-compatibility).
 
 For a one-shot deployment, `deploy.ps1` maps this toggle to the Bicep `enableSreAgent` parameter. The deployment creates:
 

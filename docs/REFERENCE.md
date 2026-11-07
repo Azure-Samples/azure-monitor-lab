@@ -160,6 +160,48 @@ notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdmi
 
 To change a value (e.g. region, alert email, password, stage toggles), edit `lab.config.json` and re-run `sync-config.ps1` (or just run `deploy.ps1` again).
 
+### Config layout and compatibility
+
+For a default deployment, fill in `basicConfiguration`: subscription and tenant, resource group, service regions, notification email, and VM credentials. `subscriptionName` is descriptive; `fabricAdminEmail` is only needed when that optional stage is enabled. Leave the advanced defaults unchanged unless you need to customize the lab.
+
+| Section | Settings |
+|---|---|
+| `basicConfiguration` | `subscriptionId`, `subscriptionName`, `tenantId`, `resourceGroup`, `location`, `appServiceLocation`, `observabilityAgentLocation`, `alertEmail`, `fabricAdminEmail`, `vmAdminUsername`, `vmAdminPassword` |
+| `advancedConfiguration.naming` | Resource `namePrefix` |
+| `advancedConfiguration.compute` | VM/VMSS/AKS sizes, AKS node count, Linux/Windows VM selection |
+| `advancedConfiguration.monitoring` | Daily ingestion cap, VM OTel metrics, workspace replication, SIEM webhook |
+| `advancedConfiguration.customerApplicationServices` | Customer application services: slot App Service SKU and SQL Entra administrator settings |
+| `advancedConfiguration.observabilityAgent` | Automatic investigation and agent instructions |
+| `advancedConfiguration.fabric` | Optional `fabricAutomation` settings and their notes |
+| `advancedConfiguration.stageToggles` | Core stages and optional capability/scenario toggles |
+
+Existing flat configs remain supported; migration is optional. The shared [config helper](../scripts/lab-config.ps1) normalizes both formats before scripts read settings. Deployment parameters, defaults, and explicit script-argument precedence are unchanged. Do not duplicate a setting across sections: ambiguous duplicates and malformed grouping containers fail before config generation.
+
+The former `advancedConfiguration.customerDependencies` group is also accepted; migration uses the clearer `customerApplicationServices` name.
+
+Rarely needed overrides are supported but omitted from the default template:
+
+- `advancedConfiguration.access.grafanaAdminObjectId`: grant Grafana Admin to a specified user/group when a pipeline deploys. Without it, access defaults to the deploying identity.
+- `advancedConfiguration.safety.forbiddenSubscriptionIds`: add an explicit subscription denylist. Without it, the denylist is empty; the expected subscription/tenant checks still apply.
+- `advancedConfiguration.fabric.fabricAutomation.appInsightsMirrorConnectionId`: select a specific authorized App Insights mirror connection when multiple connections match. Otherwise setup reuses a unique matching connection or creates one.
+
+To reorganize an existing private config while preserving all values:
+
+```powershell
+./scripts/migrate-lab-config.ps1 -WhatIf
+./scripts/migrate-lab-config.ps1
+```
+
+This creates `lab.config.json.bak` (also gitignored) before replacing the config, and refuses to overwrite an existing backup. Keep both files private. It does not deploy or regenerate inputs. Extra settings are preserved under `advancedConfiguration.other`.
+
+For custom PowerShell workflows, read a normalized config rather than assuming a flat JSON layout:
+
+```powershell
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+$rg = $config.resourceGroup
+```
+
 **Default-on VM OpenTelemetry metrics:** `enableVmOtelMetrics` defaults to the JSON Boolean `true`, including when omitted; explicitly set `false` to opt out. One-shot Bicep/ARM and the portal expose the same parameter; staged Bicep uses Stage B only, and Terraform uses `enable_vm_otel_metrics` (also default `true`). This adds 10 system metrics at 60 seconds to the existing `amw-<prefix>` for enabled standalone Linux/Windows VMs, not VMSS. Classic VM Insights, LAW/KQL queries, and workbooks remain unchanged; OTel uses AMW/PromQL. See [setup, limitations, cost scope, and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
 
 ### Granular RBAC demo (scenario 27)

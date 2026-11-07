@@ -52,7 +52,8 @@ Bootstrap a fresh clone with:
 }
 
 Write-Step "Reading $ConfigPath"
-$cfg = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+. (Join-Path $PSScriptRoot 'lab-config.ps1')
+$cfg = Read-LabConfig -Path $ConfigPath
 
 # Required fields
 $required = @('subscriptionId','tenantId','alertEmail','vmAdminPassword','resourceGroup','location','namePrefix')

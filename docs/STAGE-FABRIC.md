@@ -96,11 +96,17 @@ The Azure Monitor workbook reports the ARM capacity state and provisioning state
 Set the Fabric toggle in `lab.config.json` and replace the fictitious `admin@example.com` with a Microsoft Entra user UPN from your deployment tenant:
 
 ```json
-"stageToggles": {
-  "enableStageFabric": true
+"basicConfiguration": {
+  "fabricAdminEmail": "admin@example.com"
 },
-"fabricAdminEmail": "admin@example.com"
+"advancedConfiguration": {
+  "stageToggles": {
+    "enableStageFabric": true
+  }
+}
 ```
+
+Merge these settings into the existing groups without removing other values. Legacy flat configs use `fabricAdminEmail` and `stageToggles.enableStageFabric`; see [config layout](REFERENCE.md#config-layout-and-compatibility).
 
 Then deploy and configure the Fabric items:
 
@@ -208,7 +214,7 @@ The Control Center runner receives a separate read/resume role assigned only on 
 
 ## Automation settings
 
-The setup helpers read `fabricAutomation` directly from `lab.config.json`; these settings do not need ARM/Terraform parameter projection. Explicit script parameters override config. The Cloud Shell wrapper exposes the same options.
+The setup helpers read `advancedConfiguration.fabric.fabricAutomation` directly from `lab.config.json` (`fabricAutomation` in legacy flat configs); these settings do not need ARM/Terraform parameter projection. Merge the following settings into that object. Explicit script parameters override config. The Cloud Shell wrapper exposes the same options.
 
 ```json
 "fabricAutomation": {
@@ -221,7 +227,6 @@ The setup helpers read `fabricAutomation` directly from `lab.config.json`; these
   "mirrorConnectionId": "",
   "mirrorScope": [],
   "mirrorTables": ["AzureActivity", "ContainerLogV2", "AppServiceHTTPLogs", "Perf"],
-  "appInsightsMirrorConnectionId": "",
   "appInsightsMirrorTables": ["AppRequests", "AppDependencies", "AppExceptions", "AppTraces"],
   "enableAutoSuspend": true,
   "autoSuspendHourUtc": 20,
@@ -230,6 +235,8 @@ The setup helpers read `fabricAutomation` directly from `lab.config.json`; these
 ```
 
 For multiple lab resource groups in the same tenant, set a distinct `workspaceName` for each one. The same name is honored during setup and teardown; explicit `-WorkspaceName` overrides config. Never point a lab's teardown at another lab's workspace.
+
+`appInsightsMirrorConnectionId` is optional and omitted from the default config. Setup reuses a unique connection matching the App Insights workspace, or creates one when none exists. If multiple connections match, add this setting under `advancedConfiguration.fabric.fabricAutomation` to select one explicitly; setup will not guess.
 
 `enableWorkspaceMonitoring=false` and `enableOperationsAgent=false` skip those setup steps; they do not stop collection, stop/delete an existing agent, or remove permissions. Explicit `-EnableWorkspaceMonitoring` / `-EnableOperationsAgent` script parameters override config, including through the Cloud Shell wrapper.
 

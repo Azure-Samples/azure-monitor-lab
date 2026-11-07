@@ -1,77 +1,93 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Azure Monitor Lab — central per-user config",
-  "description": "Copy this file to lab.config.json (gitignored) and fill in real values. Then run scripts/sync-config.ps1 (or scripts/deploy.ps1, which calls it for you) to materialize .azure-target.json, infra/main.parameters.json and terraform/stages.tfvars from these values. This is the ONE place you need to edit when bootstrapping the lab.",
-
-  "subscriptionId":   "<YOUR-SUBSCRIPTION-ID>",
-  "subscriptionName": "<YOUR-SUBSCRIPTION-NAME>",
-  "tenantId":         "<YOUR-TENANT-ID>",
-
-  "alertEmail":       "your.alias@example.com",
-  "fabricAdminEmail": "admin@example.com",
-  "fabricAutomation": {
-    "workspaceName": "Azure Monitor Demo Lab",
-    "enableWorkspaceMonitoring": true,
-    "enableOperationsAgent": true,
-    "seedSampleData": true,
-    "verificationTimeoutSeconds": 180,
-    "enableMirroring": true,
-    "mirrorConnectionId": "",
-    "mirrorScope": [],
-    "mirrorTables": ["AzureActivity", "ContainerLogV2", "AppServiceHTTPLogs", "Perf"],
-    "appInsightsMirrorConnectionId": "",
-    "appInsightsMirrorTables": ["AppRequests", "AppDependencies", "AppExceptions", "AppTraces"],
-    "enableAutoSuspend": true,
-    "autoSuspendHourUtc": 20,
-    "autoSuspendMinuteUtc": 0
+  "description": "Copy this file to lab.config.json (gitignored). Fill in basicConfiguration for a default deployment; advancedConfiguration groups optional stages, compute sizing, monitoring, access, and automation. Then run scripts/deploy.ps1, or scripts/sync-config.ps1 to generate the deployment inputs without deploying. Existing flat configs remain supported.",
+  "basicConfiguration": {
+    "subscriptionId": "<YOUR-SUBSCRIPTION-ID>",
+    "subscriptionName": "<YOUR-SUBSCRIPTION-NAME>",
+    "tenantId": "<YOUR-TENANT-ID>",
+    "resourceGroup": "rg-azure-monitor-lab",
+    "location": "northeurope",
+    "appServiceLocation": "westeurope",
+    "observabilityAgentLocation": "westeurope",
+    "alertEmail": "your.alias@example.com",
+    "fabricAdminEmail": "admin@example.com",
+    "vmAdminUsername": "azureuser",
+    "vmAdminPassword": "<STRONG-PASSWORD>"
   },
-  "_fabricAutomationDocs": "When Stage Fabric is enabled, setup defaults to workspace monitoring with collection enabled, a configured but STOPPED Operations Agent, keyless Event Hubs ingestion, live/central/App Insights dashboards, both Log Analytics mirrors and daily 20:00 UTC suspension. Review/generate the agent playbook and start it in Fabric; existing agent edits/run state are preserved. Per-stream activity logging remains a reported portal action. Tenant admins can separately discover and explicitly enable group-scoped settings with scripts/setup-fabric-tenant.ps1; deployment never changes tenant settings or grants admin privileges. Workspace identity receives event-hub-scoped Data Receiver and source-LAW-scoped custom mirroring roles (read/query and roleAssignments/write). Review Fabric workspace access: Azure Monitor table/row protections do not carry into Fabric. Capacity Metrics installation/licensing/OAuth remain prerequisites. Explicit false settings skip new setup, not disable existing items. Set enableAutoSuspend=false and rerun to disable its schedule without resuming capacity. Suspension uses a managed-identity Logic App outside Terraform state.",
-  "vmAdminPassword":  "<STRONG-PASSWORD>",
-
-  "resourceGroup":    "rg-azure-monitor-lab",
-  "location":         "northeurope",
-  "appServiceLocation": "westeurope",
-  "namePrefix":       "amlab",
-  "vmAdminUsername":  "azureuser",
-  "dailyCapGb":       3,
-  "aksNodeCount":     2,
-  "vmSize":           "Standard_B2als_v2",
-  "aksNodeVmSize":    "Standard_D4as_v5",
-  "vmssSize":         "Standard_B2als_v2",
-  "_computeSizingDocs": "These sizes are starting points, not guaranteed for every subscription/region. deploy.ps1 checks eligibility, quota and AKS system-pool minimums, and reports config keys and candidate alternatives on compute failures; it never changes sizes automatically. Edit the copied lab.config.json and rerun. Insufficient quota: request a new total limit in Azure Portal > Quotas > Compute. NotAvailableForSubscription: more quota may not remove SKU restrictions; choose an eligible size/region or request SKU access if needed. AKS system nodes must be non-B-series with at least 4 vCPUs and 4 GiB RAM, with at least two nodes. EC2as_v5 is not a suitable AKS system-node fallback. See README.md for troubleshooting and standalone preflight usage.",
-  "grafanaAdminObjectId": "",
-  "slotAppServicePlanSku": "S2",
-  "sqlEntraAdminObjectId": "",
-  "sqlEntraAdminName": "",
-  "sqlEntraAdminType": "Group",
-  "_customerDependenciesDocs": "Bicep/Azure CLI only. Requires Stage B and enableSlotFailureScenario. SQL Basic is Entra-only: supply explicit SQL admin object ID/name/type, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL networking. After provisioning explicitly run deploy-customer-dependencies.ps1 using the SQL Entra admin identity, approving only an exact temporary operator firewall IP if needed. Disabling is not deletion under ARM incremental mode; teardown removes the lab resource group.",
-  "_grafanaAdminObjectIdDocs": "Leave empty to grant Grafana Admin to the deploying identity. When a pipeline deploys, set the Microsoft Entra object ID of the human lab operator or group that must access Grafana, not an application client ID.",
-  "deployWindowsVm":  true,
-  "deployLinuxVm":    true,
-  "enableVmOtelMetrics": true,
-  "_enableVmOtelMetricsDocs": "Default-on Stage B OpenTelemetry system metrics for standalone Linux/Windows VMs into the existing Azure Monitor workspace. Classic VM Insights remains enabled; VMSS is unchanged. Omission defaults to true. Use a JSON Boolean, not a quoted string. See docs/STAGE-B-WORKLOADS.md for targeted opt-out.",
-
-  "enableLawReplication":   false,
-  "lawReplicationLocation": "",
-  "_lawReplicationLocationDocs": "lawReplicationLocation is required when enableLawReplication is true and must be a supported secondary region for the primary 'location' above — see https://learn.microsoft.com/en-us/azure/azure-monitor/logs/workspace-replication?tabs=azure-cli#supported-regions",
-
-  "siemWebhookUrl":   "",
-  "forbiddenSubscriptionIds": [],
-  "observabilityAgentLocation": "westeurope",
-  "enableObservabilityAgentAutomaticInvestigation": false,
-  "observabilityAgentInstructions": "Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact and keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task or efficiency failures and add [OPS-REVIEW] to the title. Reconstruct the Application Insights request, agent, model, handoff, and tool hierarchy; report technical, task, performance, and trace health separately. Produce an SRE handoff packet with customer impact, likely fault domain and confidence, three timestamped evidence points with sources, the smallest safe correction, rollback conditions, missing evidence, and fixed-run verification criteria. Do not claim remediation or incident closure.",
-
-  "stageToggles": {
-    "enableStageA": true,
-    "enableStageB": true,
-    "enableStageC": true,
-    "enableStageD": true,
-    "enableStageE": true,
-    "enableStageAI": false,
-    "enableStageFabric": false,
-    "enableStageSreAgent": false,
-    "enableStageObservabilityAgent": false,
-    "enableSlotFailureScenario": false,
-    "enableCustomerDependencies": false
+  "advancedConfiguration": {
+    "naming": {
+      "namePrefix": "amlab"
+    },
+    "compute": {
+      "vmSize": "Standard_B2als_v2",
+      "vmssSize": "Standard_B2als_v2",
+      "aksNodeVmSize": "Standard_D4as_v5",
+      "aksNodeCount": 2,
+      "deployWindowsVm": true,
+      "deployLinuxVm": true,
+      "_computeSizingDocs": "These sizes are starting points, not guaranteed for every subscription/region. deploy.ps1 checks eligibility, quota and AKS system-pool minimums, and reports config keys and candidate alternatives on compute failures; it never changes sizes automatically. Edit the copied lab.config.json and rerun. Insufficient quota: request a new total limit in Azure Portal > Quotas > Compute. NotAvailableForSubscription: more quota may not remove SKU restrictions; choose an eligible size/region or request SKU access if needed. AKS system nodes must be non-B-series with at least 4 vCPUs and 4 GiB RAM, with at least two nodes. EC2as_v5 is not a suitable AKS system-node fallback. See README.md for troubleshooting and standalone preflight usage."
+    },
+    "monitoring": {
+      "dailyCapGb": 3,
+      "enableVmOtelMetrics": true,
+      "_enableVmOtelMetricsDocs": "Default-on Stage B OpenTelemetry system metrics for standalone Linux/Windows VMs into the existing Azure Monitor workspace. Classic VM Insights remains enabled; VMSS is unchanged. Omission defaults to true. Use a JSON Boolean, not a quoted string. See docs/STAGE-B-WORKLOADS.md for targeted opt-out.",
+      "enableLawReplication": false,
+      "lawReplicationLocation": "",
+      "_lawReplicationLocationDocs": "lawReplicationLocation is required when enableLawReplication is true and must be a supported secondary region for the primary 'location' above — see https://learn.microsoft.com/en-us/azure/azure-monitor/logs/workspace-replication?tabs=azure-cli#supported-regions",
+      "siemWebhookUrl": ""
+    },
+    "customerApplicationServices": {
+      "slotAppServicePlanSku": "S2",
+      "sqlEntraAdminObjectId": "",
+      "sqlEntraAdminName": "",
+      "sqlEntraAdminType": "Group",
+      "_customerDependenciesDocs": "Bicep/Azure CLI only. Requires Stage B and enableSlotFailureScenario. SQL Basic is Entra-only: supply explicit SQL admin object ID/name/type, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL networking. After provisioning explicitly run deploy-customer-dependencies.ps1 using the SQL Entra admin identity, approving only an exact temporary operator firewall IP if needed. Disabling is not deletion under ARM incremental mode; teardown removes the lab resource group."
+    },
+    "observabilityAgent": {
+      "enableObservabilityAgentAutomaticInvestigation": false,
+      "observabilityAgentInstructions": "Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact and keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task or efficiency failures and add [OPS-REVIEW] to the title. Reconstruct the Application Insights request, agent, model, handoff, and tool hierarchy; report technical, task, performance, and trace health separately. Produce an SRE handoff packet with customer impact, likely fault domain and confidence, three timestamped evidence points with sources, the smallest safe correction, rollback conditions, missing evidence, and fixed-run verification criteria. Do not claim remediation or incident closure."
+    },
+    "fabric": {
+      "fabricAutomation": {
+        "workspaceName": "Azure Monitor Demo Lab",
+        "enableWorkspaceMonitoring": true,
+        "enableOperationsAgent": true,
+        "seedSampleData": true,
+        "verificationTimeoutSeconds": 180,
+        "enableMirroring": true,
+        "mirrorConnectionId": "",
+        "mirrorScope": [],
+        "mirrorTables": [
+          "AzureActivity",
+          "ContainerLogV2",
+          "AppServiceHTTPLogs",
+          "Perf"
+        ],
+        "appInsightsMirrorTables": [
+          "AppRequests",
+          "AppDependencies",
+          "AppExceptions",
+          "AppTraces"
+        ],
+        "enableAutoSuspend": true,
+        "autoSuspendHourUtc": 20,
+        "autoSuspendMinuteUtc": 0
+      },
+      "_fabricAutomationDocs": "When Stage Fabric is enabled, setup defaults to workspace monitoring with collection enabled, a configured but STOPPED Operations Agent, keyless Event Hubs ingestion, live/central/App Insights dashboards, both Log Analytics mirrors and daily 20:00 UTC suspension. Review/generate the agent playbook and start it in Fabric; existing agent edits/run state are preserved. Per-stream activity logging remains a reported portal action. Tenant admins can separately discover and explicitly enable group-scoped settings with scripts/setup-fabric-tenant.ps1; deployment never changes tenant settings or grants admin privileges. Workspace identity receives event-hub-scoped Data Receiver and source-LAW-scoped custom mirroring roles (read/query and roleAssignments/write). Review Fabric workspace access: Azure Monitor table/row protections do not carry into Fabric. Capacity Metrics installation/licensing/OAuth remain prerequisites. Explicit false settings skip new setup, not disable existing items. Set enableAutoSuspend=false and rerun to disable its schedule without resuming capacity. Suspension uses a managed-identity Logic App outside Terraform state."
+    },
+    "stageToggles": {
+      "enableStageA": true,
+      "enableStageB": true,
+      "enableStageC": true,
+      "enableStageD": true,
+      "enableStageE": true,
+      "enableStageAI": false,
+      "enableStageFabric": false,
+      "enableStageSreAgent": false,
+      "enableStageObservabilityAgent": false,
+      "enableSlotFailureScenario": false,
+      "enableCustomerDependencies": false
+    }
   }
 }

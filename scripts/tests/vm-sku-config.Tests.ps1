@@ -4,6 +4,8 @@ $root = Join-Path $PSScriptRoot "vm-sku-config-fixture-$([guid]::NewGuid().ToStr
 $null = New-Item -ItemType Directory -Path (Join-Path $root 'scripts'), (Join-Path $root 'infra'), (Join-Path $root 'terraform') -Force
 $helper = Join-Path $root 'scripts\sync-config.ps1'
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\sync-config.ps1') -Destination $helper
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\lab-config.ps1') -Destination (Join-Path $root 'scripts')
+. (Join-Path $PSScriptRoot '..\lab-config.ps1')
 $configPath = Join-Path $root 'lab.config.json'
 $config = @{
   subscriptionId = [guid]::NewGuid().ToString()
@@ -43,7 +45,7 @@ try {
     }
   }
 
-  $example = Get-Content -LiteralPath (Join-Path $repoRoot 'lab.config.json.example') -Raw | ConvertFrom-Json
+  $example = Read-LabConfig -Path (Join-Path $repoRoot 'lab.config.json.example')
   $exampleSizes = @{
     vmSize = 'Standard_B2als_v2'
     aksNodeVmSize = 'Standard_D4as_v5'

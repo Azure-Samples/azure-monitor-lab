@@ -58,7 +58,8 @@ function Write-Info($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
 $labConfigPath = Join-Path $PSScriptRoot '..' 'lab.config.json'
 $labConfig = $null
 if (Test-Path $labConfigPath) {
-  $labConfig = Get-Content -Raw $labConfigPath | ConvertFrom-Json
+  . (Join-Path $PSScriptRoot 'lab-config.ps1')
+  $labConfig = Read-LabConfig -Path $labConfigPath
   if (-not $PSBoundParameters.ContainsKey('EnableStageE') -and $null -ne $labConfig.stageToggles.enableStageE) {
     if ($labConfig.stageToggles.enableStageE -isnot [bool]) { throw 'stageToggles.enableStageE must be a JSON boolean.' }
     $EnableStageE = $labConfig.stageToggles.enableStageE

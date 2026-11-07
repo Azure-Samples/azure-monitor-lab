@@ -63,13 +63,21 @@ MCP and coding-agent integration appeared as roadmap content in the LevelUp mate
 In `lab.config.json`, set:
 
 ```json
-"observabilityAgentLocation": "westeurope",
-"enableObservabilityAgentAutomaticInvestigation": false,
-"observabilityAgentInstructions": "Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact. For agent task or efficiency failures, reconstruct the trace and produce an evidence-bound SRE handoff packet. Do not claim remediation or closure.",
-"stageToggles": {
-  "enableStageObservabilityAgent": true
+"basicConfiguration": {
+  "observabilityAgentLocation": "westeurope"
+},
+"advancedConfiguration": {
+  "observabilityAgent": {
+    "enableObservabilityAgentAutomaticInvestigation": false,
+    "observabilityAgentInstructions": "Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact. For agent task or efficiency failures, reconstruct the trace and produce an evidence-bound SRE handoff packet. Do not claim remediation or closure."
+  },
+  "stageToggles": {
+    "enableStageObservabilityAgent": true
+  }
 }
 ```
+
+Merge these settings into their existing groups without replacing other values. Legacy flat configs remain supported; see [config layout](REFERENCE.md#config-layout-and-compatibility).
 
 The one-shot Bicep deployment reads those values through `scripts/sync-config.ps1`.
 

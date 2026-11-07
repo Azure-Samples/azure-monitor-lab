@@ -149,6 +149,8 @@ The shipped files already contain the staged wiring described above. Open them a
 
 **Recommended:** bootstrap from the central `lab.config.json` instead of hand-editing this file. From the repo root:
 
+Fill in `basicConfiguration` for your subscription and customize `advancedConfiguration.stageToggles` as needed. Legacy flat configs remain supported; see [config layout](REFERENCE.md#config-layout-and-compatibility).
+
 ```powershell
 Copy-Item lab.config.json.example lab.config.json
 notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdminPassword, stageToggles, ...
@@ -185,7 +187,8 @@ enable_stage_sre_agent = false
 Terraform looks the RG up via data source rather than creating it, so `terraform destroy` will not nuke it. Create it once (idempotent - safe to re-run):
 
 ```powershell
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = $config.subscriptionId.ToString()
 $tenant = $config.tenantId.ToString()
 $rg = $config.resourceGroup
@@ -362,7 +365,8 @@ The resource group is BYO (Terraform does not own it via data source), so `terra
 The wrapper cleans up Azure dependencies before deleting the resource group. This is the same cleanup path used after one-shot or staged Bicep deployments.
 
 ```powershell
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = $config.subscriptionId.ToString()
 $rg = $config.resourceGroup
 az account set --subscription $sub
