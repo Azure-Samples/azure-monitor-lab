@@ -25,6 +25,9 @@ param customerWebAppName string = ''
 @description('Exact customer orders worker name. Empty disables dependency fault permissions.')
 param customerWorkerName string = ''
 
+@description('Existing lab F2 capacity name. Empty disables capacity resume permissions.')
+param fabricCapacityName string = ''
+
 var suffix = uniqueString(resourceGroup().id, webAppName)
 var registryName = 'acrlabops${take(suffix, 12)}'
 var environmentName = 'cae-labops-${take(suffix, 8)}'
@@ -278,6 +281,14 @@ module runnerReader './lab-console-role.bicep' = {
   name: 'console-runner-reader'
   params: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
+    principalId: identity.outputs.principalId
+  }
+}
+
+module fabricAccess './lab-console-fabric-access.bicep' = if (!empty(fabricCapacityName)) {
+  name: 'console-runner-fabric-access'
+  params: {
+    capacityName: fabricCapacityName
     principalId: identity.outputs.principalId
   }
 }

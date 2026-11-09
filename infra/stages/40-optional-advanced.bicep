@@ -30,6 +30,9 @@ param enableMetricsExportDcr bool = false
 @description('Fold the AI (Foundry) workload into the workload health model as a fourth "AI" tier. Requires the AI stage (50-ai) to have run.')
 param enableAi bool = false
 
+@description('Fold the Microsoft Fabric F2 capacity into the workload health model. Requires Stage Fabric (60-fabric) to have run.')
+param enableFabric bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var amwName = 'amw-${namePrefix}'
@@ -170,6 +173,8 @@ module healthModel '../modules/health-model.bicep' = {
     enableAi: enableAi
     foundryAccountId: enableAi ? resourceId('Microsoft.CognitiveServices/accounts', toLower('ai${namePrefix}${take(suffix, 8)}')) : ''
     appInsightsLawId: appInsights.properties.WorkspaceResourceId
+    enableFabric: enableFabric
+    fabricCapacityId: enableFabric ? resourceId('Microsoft.Fabric/capacities', toLower('fab${namePrefix}${take(suffix, 8)}')) : ''
     tags: commonTags
   }
 }

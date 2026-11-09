@@ -4,7 +4,9 @@ $fixture = Join-Path $PSScriptRoot ('customer-config-fixture-' + [guid]::NewGuid
 New-Item -ItemType Directory -Path (Join-Path $fixture 'scripts'), (Join-Path $fixture 'infra'), (Join-Path $fixture 'terraform') -Force | Out-Null
 try {
   Copy-Item (Join-Path $repo 'scripts\sync-config.ps1') (Join-Path $fixture 'scripts\sync-config.ps1')
-  $cfg = Get-Content (Join-Path $repo 'lab.config.json.example') -Raw | ConvertFrom-Json
+  Copy-Item (Join-Path $repo 'scripts\lab-config.ps1') (Join-Path $fixture 'scripts\lab-config.ps1')
+  . (Join-Path $repo 'scripts\lab-config.ps1')
+  $cfg = Read-LabConfig -Path (Join-Path $repo 'lab.config.json.example')
   $cfg.subscriptionId = [guid]::NewGuid().ToString()
   $cfg.tenantId = [guid]::NewGuid().ToString()
   $cfg.vmAdminPassword = 'Fixture-only-N0tASecret!'

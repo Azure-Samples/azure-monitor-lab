@@ -8,7 +8,7 @@
 
 | Group | Resource(s) | Purpose |
 |---|---|---|
-| Log Analytics workspaces | `law-amlab-central`, `law-amlab-appinsights` | Two-workspace pattern: one for infra/platform logs, one dedicated to App Insights. Daily cap = 1 GB. Solutions on central: **VMInsights**, **ContainerInsights**. |
+| Log Analytics workspaces | `law-amlab-central`, `law-amlab-appinsights` | Two-workspace pattern: one for infra/platform logs, one dedicated to App Insights. Daily cap = 3 GB each. Solutions on central: **VMInsights**, **ContainerInsights**. |
 | Workspace-based App Insights | `appi-amlab-<suffix>` | Pinned to `law-amlab-appinsights-<suffix>`. Connection string + ikey are used later by App Service and availability tests. |
 | Azure Monitor workspace (Prometheus) | `amw-amlab` | The Prometheus-compatible workspace consumed by AKS Managed Prometheus and Managed Grafana in Stage B. |
 | Data Collection Endpoint | `dce-amlab` (Linux kind) | Required for DCR-based collection on Linux + AMA. |
@@ -42,7 +42,7 @@ Use these one-liners when guiding a customer through Stage A:
 5. **"Workbooks first, alerts later."**
    The Traffic-Lights workbook is intentionally empty right now. Open it; show "🟢/🟠/🔴" cells with no data. In Stage B those cells light up. This is a powerful "before/after" moment.
 
-6. **"Daily cap = 1 GB."**
+6. **"Daily cap = 3 GB per workspace."**
    We deliberately cap ingestion so the lab is safe to leave running. Customers nod hard at this.
 
 7. **"Application Insights starts with investigation and usage workflows."**
@@ -54,7 +54,7 @@ Resource group: **`rg-azure-monitor-lab-terraform-test`** in **North Europe** (t
 
 1. **Resource group overview** — show the resource list, point out the tag column (`owner=demo-lab`). This is the "everything in one box" story.
 2. **`law-amlab-central` → Solutions** — show VMInsights and ContainerInsights pre-installed.
-3. **`law-amlab-central` → Usage and estimated costs → Daily cap** — show the 1 GB cap.
+3. **`law-amlab-central` → Usage and estimated costs → Daily cap** — show the default 3 GB cap. The App Insights workspace has an independent 3 GB cap; neither is a total-cost limit.
 4. **`law-amlab-central` → Tables → AzureActivity** *(if visible)* — table is shaped by the workspace-transform DCR.
 5. **`appi-amlab-<suffix>` → Overview** — explain it's *workspace-based* (no separate ingestion).
 6. **`amw-amlab` → Overview** — call out "this is the Prometheus side; AKS will write here in Stage B."

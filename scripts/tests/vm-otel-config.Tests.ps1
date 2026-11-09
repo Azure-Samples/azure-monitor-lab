@@ -4,6 +4,8 @@ $root = Join-Path $PSScriptRoot "vm-otel-config-fixture-$([guid]::NewGuid().ToSt
 $null = New-Item -ItemType Directory -Path (Join-Path $root 'scripts'), (Join-Path $root 'infra'), (Join-Path $root 'terraform') -Force
 $helper = Join-Path $root 'scripts\sync-config.ps1'
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\sync-config.ps1') -Destination $helper
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\lab-config.ps1') -Destination (Join-Path $root 'scripts')
+. (Join-Path $PSScriptRoot '..\lab-config.ps1')
 $configPath = Join-Path $root 'lab.config.json'
 $config = @{
   subscriptionId = [guid]::NewGuid().ToString(); tenantId = [guid]::NewGuid().ToString()
@@ -42,7 +44,7 @@ try {
   }
   foreach ($path in @('lab.config.json.example', 'infra\main.parameters.json.template')) {
     $example = Get-Content -LiteralPath (Join-Path $repoRoot $path) -Raw | ConvertFrom-Json
-    $value = if ($path -eq 'lab.config.json.example') { $example.enableVmOtelMetrics } else { $example.parameters.enableVmOtelMetrics.value }
+    $value = if ($path -eq 'lab.config.json.example') { (ConvertTo-FlatLabConfig $example).enableVmOtelMetrics } else { $example.parameters.enableVmOtelMetrics.value }
     if ($value -isnot [bool] -or -not $value) { throw "$path must default VM OTel to Boolean true." }
   }
   $ui = Get-Content -LiteralPath (Join-Path $repoRoot 'infra\createUiDefinition.json') -Raw | ConvertFrom-Json

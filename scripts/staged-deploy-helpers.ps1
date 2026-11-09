@@ -12,6 +12,7 @@
 #>
 
 . (Join-Path $PSScriptRoot 'deployment-slot-recovery.ps1')
+. (Join-Path $PSScriptRoot 'network-watcher.ps1')
 
 function Assert-LabAccount {
   az account set --subscription $sub
@@ -24,7 +25,7 @@ function Assert-LabAccount {
 
 function Invoke-LabStage {
   param(
-    [ValidateSet('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '70-observability-agent')]
+    [ValidateSet('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')]
     [string] $Stage,
     [hashtable] $Overrides = @{}
   )
@@ -65,7 +66,15 @@ function Invoke-LabStage {
       '--name', "stage-$Stage", '--template-file', "infra/stages/$Stage.bicep",
       '--parameters', "@$($parameterFile.FullName)", '--mode', 'Incremental')
     Assert-LabAccount
-    az deployment group what-if @deploymentArguments
+    if ($Stage -eq '10-workloads') {
+      $watcherLocation = $parameters.location.value
+      if (-not $watcherLocation) {
+        $watcherLocation = az group show --subscription $sub --name $rg --query location --output tsv --only-show-errors
+        if ($LASTEXITCODE -ne 0 -or -not $watcherLocation) { throw 'Could not resolve the Stage B resource group region.' }
+      }
+      Ensure-LabNetworkWatcher -SubscriptionId $sub -TenantId $tenant -Location $watcherLocation -Confirm
+    }
+    az deployment group what-if @deploymentArguments --only-show-errors
     if ($LASTEXITCODE -ne 0) { throw "Preview failed for $Stage." }
     if ((Read-Host 'Deploy this stage? Type yes to continue') -ne 'yes') { throw 'Stage deployment cancelled.' }
     Assert-LabAccount
@@ -73,7 +82,8 @@ function Invoke-LabStage {
       Invoke-LabDeployment -Arguments $deploymentArguments -SubscriptionId $sub.ToString() `
         -ResourceGroup $rg -DeploymentName "stage-$Stage"
     } else {
-      az deployment group create @deploymentArguments --output none
+      Invoke-LabDeploymentCommand -Arguments (@('deployment', 'group', 'create') + $deploymentArguments +
+        @('--output', 'none', '--only-show-errors')) -DeploymentName "stage-$Stage"
     }
     if ($LASTEXITCODE -ne 0) { throw "Deployment failed for $Stage." }
   } finally {

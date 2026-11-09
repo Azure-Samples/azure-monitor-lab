@@ -85,7 +85,7 @@ az monitor app-insights query --app $appi -g $rg --analytics-query "dependencies
 
 [AI setup](../scripts/setup-ai.ps1) installs the [Python dependencies](../workloads/ai/requirements.txt), reuses or creates the four matching agents, then starts a finite background batch of 150 conversations. `-Conversations` changes the finite batch size. `-SkipTraffic` prepares agents without traffic. The legacy `-BackgroundTraffic` switch is accepted but no longer needed; false does not restore foreground mode.
 
-**Bicep one-shot:** set `stageToggles.enableStageAI = true` in the central config. [The deployment script](../scripts/deploy.ps1) prepares console agents/access before publication, validates selected SRE resources, then starts background AI traffic as its final step.
+**Bicep one-shot:** set `advancedConfiguration.stageToggles.enableStageAI = true` in the central config (`stageToggles.enableStageAI` in legacy flat configs). [The deployment script](../scripts/deploy.ps1) prepares console agents/access before publication, validates selected SRE resources, then starts background AI traffic as its final step.
 
 **Terraform:** set `enable_stage_ai = true` and follow [the Terraform runbook](DEPLOY-TERRAFORM-STEP-BY-STEP.md#step-7---enable-stage-ai-optional). With B enabled, apply refreshes console inventory/access and prepares agents with `-SkipTraffic`, including when AI is added later. No second console wrapper is required. Optional traffic is a separate background setup invocation. Without B, use the standalone AI helper to prepare agents.
 
@@ -106,6 +106,7 @@ Verify the Model Router version available in the chosen AI region before deploym
 ## 7) Tear-down nuance
 
 - Deleting the resource group removes everything. CognitiveServices accounts are **soft-deleted** — if you plan to redeploy the same name, purge it: `az cognitiveservices account purge -l swedencentral -g <rg> -n <account>`.
+- A redeployment collision appears as `FlagMustBeSetForRestore`. The one-shot `deploy.ps1` workflow now extracts the exact account name from that error, verifies it in the deleted-account list, purges only that lab account, and retries once. Staged deployments still require the manual purge command above.
 - The health model's role assignments (Reader / Monitoring Reader / Log Analytics Reader on the RG) are removed with the RG.
 - Agents created by `setup-ai.ps1` live in the Foundry project and go with the account; `workloads/ai/agents.json` (their ids) is git-ignored local state.
 - To stop token spend without deleting anything, just stop the traffic simulator — models bill per token, near-zero when idle.

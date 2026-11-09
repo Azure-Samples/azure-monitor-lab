@@ -10,6 +10,58 @@ Most scripts use the Azure CLI and require `az login`. Scripts that work with AK
 
 ## Deployment and configuration
 
+One-shot and staged Bicep deployments suppress Azure CLI/Bicep warnings and
+upgrade notices by default with `--only-show-errors`. Progress messages,
+what-if previews and deployment errors remain visible. Standalone Bicep builds
+and CI validation still show diagnostics; no global Azure CLI setting is changed.
+During script-based ARM deployment, an animated progress display shows the
+deployment name and elapsed time, followed by a green `[OK]` or red `[FAIL]`
+summary. This indicates activity, not a completion percentage or time estimate.
+Azure CLI diagnostics and exit codes are preserved, including during recovery
+retries. Stopping the local runner does not cancel an ARM deployment already
+submitted; verify its Azure status before retrying.
+
+The [central config example](../lab.config.json.example) separates `basicConfiguration` (subscription, tenant, resource group, regions, emails, VM credentials) from grouped `advancedConfiguration` settings (compute, monitoring, access, optional stages, and automation). Existing flat configs still work. See [config layout and compatibility](../docs/REFERENCE.md#config-layout-and-compatibility) for paths and optional migration.
+
+Scripts and custom runbooks should use the shared [lab-config.ps1](lab-config.ps1) helper:
+
+```powershell
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+```
+
+The returned object exposes the existing flat property names regardless of the input format. Documentation that names a setting without its grouping prefix refers to this normalized name; edit that setting in its group in the new template.
+
+### Network Watcher prerequisites
+
+The Bicep network-monitoring modules require `NetworkWatcher_<region>` in the
+shared `NetworkWatcherRG`. Azure automatic enablement is not a deployment
+dependency guarantee, especially after explicitly deleting this group.
+`deploy.ps1` prepares it before ARM deployment, including with `-SkipPreflight`.
+`Invoke-LabStage 10-workloads` prepares it before preview and requests confirmation
+if shared resources must be created. Other stages do not enable Network Watcher.
+Staged Terraform prepares it before Stage B through `terraform_data.network_watcher`;
+apply approval covers missing-only creation, and destroy leaves the shared watcher
+untouched. Portal deployments require the README's Cloud Shell prerequisite step
+before starting the wizard.
+
+[network-watcher.ps1](network-watcher.ps1) verifies the selected subscription/tenant,
+creates only a missing group/watcher, and waits for readiness. Existing group
+location/tags and watchers are preserved. A regional watcher in a different group
+or with a different name fails explicitly rather than being moved or replaced.
+For raw Bicep/portal deployments, prepare the prerequisite first:
+
+```powershell
+. ./scripts/lab-config.ps1
+. ./scripts/network-watcher.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+Ensure-LabNetworkWatcher -SubscriptionId $config.subscriptionId -TenantId $config.tenantId `
+  -Location $config.location -Confirm
+```
+
+This restores the selected regional watcher, not deleted monitoring children or
+unrelated regional watchers. Rerun the lab deployment to restore its monitors.
+
 ### Customer-slot provider failure recovery
 
 `deploy.ps1` and `Invoke-LabStage 10-workloads` share `deployment-slot-recovery.ps1`.
@@ -58,12 +110,13 @@ Local regression checks (mocked Azure CLI, no Azure access):
 | Script | Purpose | Typical command |
 |---|---|---|
 | `sync-config.ps1` | Reads `lab.config.json` and generates the gitignored deployment inputs: `.azure-target.json`, `infra/main.parameters.json`, and `terraform/stages.tfvars`. | `./scripts/sync-config.ps1` |
-| `preflight-check.ps1` | Checks regional SKU availability, quota, and Azure resource-provider availability before deployment. | `./scripts/preflight-check.ps1 -Location northeurope` |
+| [migrate-lab-config.ps1](migrate-lab-config.ps1) | Optionally reorganizes an existing config without changing values; creates a private `.bak` backup and refuses to overwrite it. Does not deploy or regenerate inputs. | `./scripts/migrate-lab-config.ps1` |
+| `preflight-check.ps1` | Checks regional SKU availability, quota, AKS system-pool minimums, and Azure resource-provider availability. Compute failures identify config keys and eligible candidate alternatives; standalone checks require explicit sizing arguments to match your config (see [guidance](../README.md#option-2-scripted-one-shot-bicep--terraform-full-control)). | `./scripts/preflight-check.ps1 -Location northeurope -VmSize Standard_B2als_v2 -AksNodeVmSize Standard_D4as_v5 -AksNodeCount 2 -VmssSize Standard_B2als_v2` |
 | `deploy.ps1` | Runs the one-shot Bicep deployment, including resource creation, post-deployment workloads, health model setup, SLI prerequisite verification, optional AI setup, and optional SRE/Observability Agent deployment and validation. The preview SLIs remain a manual portal step. | `./scripts/deploy.ps1 -ResourceGroup rg-my-lab -Location northeurope` |
 | [staged-deploy-helpers.ps1](staged-deploy-helpers.ps1) | Loads or refreshes `Invoke-LabStage` and `Assert-LabAccount` after the Bicep guide's input bootstrap. Dot-sourcing preserves the current inputs and makes no Azure calls. | `. ./scripts/staged-deploy-helpers.ps1` |
 | `post-deploy.ps1` | Publishes the app, automatically initializes console infrastructure/sign-in/access, and applies AKS workloads. Normally called by a deployment wrapper. | `./scripts/post-deploy.ps1 -SubscriptionId <sub> -TenantId <tenant> -ResourceGroup <rg> -WebAppName <app> -AksName <aks> -WebAppHost <host>` |
-| [post-staged-deploy.ps1](post-staged-deploy.ps1) | After B, discovers and completes workloads/console setup. Stage E setup follows config or an explicit boolean; SRE and Observability Agent validation follow deployed resources or explicit booleans. Terraform passes its supported selections itself. | `./scripts/post-staged-deploy.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -EnableStageE $false` |
-| [post-cloud-shell-deploy.ps1](post-cloud-shell-deploy.ps1) | Portal wrapper that signs in to the tenant, pins the subscription, completes workloads/console setup, verifies SLI prerequisites, and validates discovered SRE and Observability Agents. Preview SLIs remain a portal step. | `./scripts/post-cloud-shell-deploy.ps1 -TenantId <tenant> -SubscriptionId <sub> -ResourceGroup <rg>` |
+| [post-staged-deploy.ps1](post-staged-deploy.ps1) | After B, discovers and completes workloads/console setup. Stage E setup follows config or an explicit boolean; Fabric setup and SRE/Observability Agent validation follow deployed resources or explicit booleans. Terraform passes its supported selections itself. Fabric failures stop completion; explicit `-EnableStageFabric $false` skips setup without suspending the capacity. | `./scripts/post-staged-deploy.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -EnableStageE $false` |
+| [post-cloud-shell-deploy.ps1](post-cloud-shell-deploy.ps1) | Portal wrapper that signs in to the tenant, pins the subscription, completes workloads/console setup, verifies SLI prerequisites, completes detected Fabric setup, and validates discovered SRE and Observability Agents. Explicit `-EnableStageFabric $false` skips setup without suspending the capacity. Preview SLIs remain a portal step. | `./scripts/post-cloud-shell-deploy.ps1 -TenantId <tenant> -SubscriptionId <sub> -ResourceGroup <rg>` |
 | [cleanup-legacy-rbac.ps1](cleanup-legacy-rbac.ps1) | After replacement grants are deployed and verified, removes only the obsolete Logic App resource-group Contributor and Observability Agent subscription Monitoring Reader assignments. Deployment wrappers invoke it automatically. | Normally called by a deployment wrapper. |
 | [initialize-webapp-console.ps1](initialize-webapp-console.ps1) | Called automatically by deployment. Provisions/builds the Azure runner, configures operator sign-in, health and scoped access, prepares optional agents, then enables the console. | No separate command after successful deployment. |
 | [deploy-webapp.ps1](deploy-webapp.ps1) | Updates an existing Control Center and, when supplied, its dedicated customer Web App and broken slot without reapplying AKS workloads. ZIP uploads are asynchronous; the script verifies the exact published deployment version for up to 15 minutes and does not blindly re-upload after an ambiguous SCM response. | See [upgrade and WhatIf](../workloads/webapp/README.md#monitoring-destinations). |
@@ -103,9 +156,11 @@ whose selected `enableCustomerDependencies` parameter is not `true`.
 After infrastructure and customer storefront publication, `deploy.ps1`,
 `post-staged-deploy.ps1`, and `post-cloud-shell-deploy.ps1` automatically invoke
 [customer backend completion](complete-customer-dependencies.ps1) when the feature
-is enabled. It shows the exact database and worker targets and asks for approval
-before acquiring a SQL administrator token, changing database objects, or publishing
-the worker. Declining approval or failing bootstrap/publication/readiness stops
+is enabled. Completion is approved by default: it shows the exact database and
+worker targets, acquires a SQL administrator token, initializes schema/seed products
+and object-scoped managed-identity users, then publishes the worker. Pass
+`-ApproveCustomerDependencies:$false` to any deployment/completion wrapper to
+restore the interactive `yes` prompt. Declining that prompt or failing bootstrap/publication/readiness stops
 deployment; infrastructure success alone is not reported as backend readiness.
 Disabled backends do not prompt or run completion.
 
@@ -113,20 +168,22 @@ Run as the configured SQL Entra administrator, with the .NET 8 SDK, Python and
 `paramiko` available. Completion opens an authenticated customer App Service SSH
 tunnel on an allocated loopback port, verifies an SSH response, and closes its
 owned tunnel after SQL initialization or on failure. It does not change public
-network access or firewall rules. Unattended callers must explicitly approve this
-scope with `-ApproveCustomerDependencies`; the switch does not grant administrator
-access or bypass target checks. Staged/Cloud Shell completion discovers the latest
+network access or firewall rules. Default approval does not grant administrator
+access or bypass target checks. Standalone `bootstrap-customer-sql.ps1` and
+`deploy-customer-dependencies.ps1` repair commands retain their existing
+`ShouldProcess` confirmation and `-WhatIf` behavior. Staged/Cloud Shell completion discovers the latest
 successful deployment whose output matches the exact customer app, then validates
 its enabled feature/context. Use `-CustomerDependencyDeploymentName <name>` to
 select the intended deployment explicitly. The one-shot driver passes its exact
 successful deployment name automatically.
 
 ```powershell
-.\scripts\deploy.ps1 -ApproveCustomerDependencies
+.\scripts\deploy.ps1
 # After a staged Bicep deployment:
 .\scripts\post-staged-deploy.ps1 -SubscriptionId '<subscription-guid>' `
-  -ResourceGroup '<lab-resource-group>' -CustomerDependencyDeploymentName stage-10-workloads `
-  -ApproveCustomerDependencies
+  -ResourceGroup '<lab-resource-group>' -CustomerDependencyDeploymentName stage-10-workloads
+# To request interactive customer backend approval:
+.\scripts\deploy.ps1 -ApproveCustomerDependencies:$false
 ```
 
 For targeted repair without reapplying infrastructure or publishing the storefront,
@@ -169,6 +226,10 @@ SELECT/UPDATE Orders. No SQL control-plane role substitutes for these grants.
 
 Automatic completion uses `-StartCustomerPrivateTunnel` and manages its own
 tunnel; no separate terminal or `SqlServer` PowerShell module is needed.
+Transient SQL login resets/timeouts are retried up to three times, with 5s/10s
+delays, before executing any bootstrap SQL. Schema and verification errors are
+not replayed; permanent login/permission errors fail immediately. Failures report
+the SQL error number and whether login, initialization or verification failed.
 For an operator-managed existing tunnel, use `-UseCustomerPrivateTunnel -SshPort
 22446` instead. Prerequisites for both private tunnel modes:
 
@@ -197,6 +258,10 @@ In **terminal 2**, using `$common` and `$context` initialized above, choose the
 SQL-only command or the complete SQL-first worker-publication lifecycle:
 
 ```powershell
+# Optional read-only login check; no schema, data or SQL users are changed:
+.\scripts\bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId `
+  -UseCustomerPrivateTunnel -SshPort 22446 -CheckOnly
+# Initialize SQL after the connection check passes:
 .\scripts\bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId `
   -UseCustomerPrivateTunnel -SshPort 22446
 # Alternatively, bootstrap then publish the worker and check readiness:
@@ -388,14 +453,39 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 
 | Script | Purpose | Typical command |
 |---|---|---|
-| `start-the-lab.ps1` | Starts stopped or deallocated VMs, VMSS, AKS, and App Service resources. Add `-Wait` to poll until running. | `./scripts/start-the-lab.ps1 -ResourceGroup <rg> -Wait` |
+| `start-the-lab.ps1` | Starts stopped or deallocated VMs, VMSS, AKS, App Service, and the optional paused Fabric F2 capacity. Add `-Wait` to poll until running or Active. | `./scripts/start-the-lab.ps1 -ResourceGroup <rg> -Wait` |
 | `break-the-lab.ps1` | Intentionally degrades the lab: stops VMs, crashloops the AKS frontend, and increases load-generator failures. | `./scripts/break-the-lab.ps1 -ResourceGroup <rg>` |
 | `restore-the-lab.ps1` | Reverses the break scenario by starting VMs, restoring the AKS image, and applying a healthy load generator. | `./scripts/restore-the-lab.ps1 -ResourceGroup <rg>` |
 | `start-ramp.ps1` | Starts a 60-minute AKS load test against the App Service for Smart Detection and autoscale demonstrations. | `./scripts/start-ramp.ps1 -ResourceGroup <rg>` |
 | [simulate-high-cpu.ps1](simulate-high-cpu.ps1) | Submits fixed 10-minute CPU loads to the running Linux and Windows demo VMs. No AKS dependency; guest load expires independently. | `./scripts/simulate-high-cpu.ps1 -SubscriptionId <sub> -TenantId <tenant> -ResourceGroup <rg>`; add `-WhatIf` for readiness checks only. |
 | `teardown.ps1` | Removes tenant-scoped demo artifacts and monitoring dependencies, then deletes every resource group whose name contains the complete requested resource group name, including AKS-managed `MC_` groups. | `./scripts/teardown.ps1 -ResourceGroup <rg> -Yes` |
 
-[teardown.ps1](teardown.ps1) is destructive. It lists matching resource groups and verified lab-owned Entra identity IDs before deletion. The `-Yes` switch skips the confirmation prompt and approves both lists. If omitted, the script requires you to type `DELETE`.
+[teardown.ps1](teardown.ps1) is destructive. It lists matching resource groups and verified lab-owned Entra identity IDs before deletion. The `-Yes` switch skips the confirmation prompt and approves both lists. If omitted, the script requires you to type `DELETE`. Once that plan is approved, nested diagnostic-setting and identity deletions do not ask again. On Windows MSI Azure CLI installations, teardown applies a process-local Python filter for only the known `monitor-control-service` extension's `_create.py` invalid `\s` escape warning and its sample command. Installed files are unchanged; other CLI diagnostics, streams, and exit codes are preserved. Legacy Entra ownership warnings remain visible.
+
+### Optional shared Network Watcher resource-group deletion
+
+By default, teardown preserves `NetworkWatcherRG`, even with `-Yes`. To include the **entire group** in the confirmed cleanup plan:
+
+```powershell
+./scripts/teardown.ps1 -ResourceGroup '<rg>' --delete-networkwatcherrg yes
+# Equivalent native PowerShell parameter:
+./scripts/teardown.ps1 -ResourceGroup '<rg>' -DeleteNetworkWatcherRG yes
+```
+
+The option defaults to `no` and only accepts `yes` or `no`. Specify other arguments by name, including `-ResourceGroup`; the double-dash form is explicitly supported. `-Yes` may additionally skip the existing `DELETE` confirmation, but does not opt into this cleanup on its own.
+
+> [!WARNING]
+> This deletes all resources in the exact `NetworkWatcherRG` in the verified subscription, not only the lab's regional watcher or monitoring children. Network Watcher is shared across workloads and regions; connection monitors, flow logs, and unrelated resources in that group are also removed. The script warns before confirmation and submits the group deletion asynchronously. A missing group is safe to rerun; similarly named groups are not selected by this option.
+
+SRE Agent cleanup uses [remove-sre-agent.ps1](remove-sre-agent.ps1): explicitly scope the subscription/tenant, stop the agent, verify `Stopped`, submit one asynchronous deletion, then verify `ResourceNotFound` before continuing. State checks are bounded to 600 seconds per phase. Already-stopped/absent agents are safe to rerun; an accepted delete alone is not success. Unknown states, authorization errors, service conflicts and timeouts block resource-group cleanup and retain Azure diagnostics.
+
+The helper can also remove only one agent, without deleting its resource group:
+
+```powershell
+./scripts/remove-sre-agent.ps1 -SubscriptionId '<subscription-id>' -TenantId '<tenant-id>' -ResourceId '<full-agent-resource-id>'
+```
+
+It supports `-WhatIf`, confirmation and `-VerificationTimeoutSeconds`. A `currently being processed` conflict can indicate an ongoing or stuck Azure service operation; the helper does not reset that operation, change permissions, invent a force-delete option or repeatedly resubmit actions. If the operation remains stuck, Azure Support must investigate using the Activity Log and operation IDs. Stopping does not eliminate the agent's always-on charges; only verified deletion establishes that the agent is gone.
 
 ## Telemetry and monitoring demos
 
@@ -417,6 +507,11 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 
 | Script | Purpose | Typical command |
 |---|---|---|
+| `setup-fabric.ps1` | Creates or reuses the workspace, Eventhouse, KQL database, keyless Extended Eventstream pipeline, dashboards and Azure Monitor mirrors. Workspace monitoring and Operations Agent use read-only readiness checks with [guided manual setup](../docs/STAGE-FABRIC.md#manual-monitoring-and-operations-agent-setup); existing settings/run states are preserved. Use `-EnableWorkspaceMonitoring:$false` / `-EnableOperationsAgent:$false` to skip those checks, `-SkipEventstreamConnection` for manual topology, `-MaxOperationMinutes` for the LRO ceiling, or `-Teardown` to remove the workspace. See [Fabric setup and prerequisites](../docs/STAGE-FABRIC.md). | `./scripts/setup-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `setup-fabric-cloud-shell.ps1` | Cloud Shell wrapper for the Fabric setup workflow. | `./scripts/setup-fabric-cloud-shell.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `setup-fabric-tenant.ps1` | Separate Fabric administrator helper: read-only discovery by default; `-Apply` and confirmation explicitly enable reviewed API setting names for an existing security group. Preserves existing scopes/exclusions and refuses unscoped tenant-wide enablement. Supports `-WhatIf`; never called by deployment. | `./scripts/setup-fabric-tenant.ps1 -TenantId <tenant>` |
+| `suspend-fabric.ps1` | Suspends the F2 capacity to stop active compute billing. | `./scripts/suspend-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `resume-fabric.ps1` | Resumes the F2 capacity and active compute billing. | `./scripts/resume-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | [setup-ai.ps1](setup-ai.ps1) | Reuses or creates four matching Foundry agents, then starts a finite background batch unless `-SkipTraffic` is supplied. Console bootstrap uses `-SkipTraffic`; the legacy `-BackgroundTraffic` switch is unnecessary. | `./scripts/setup-ai.ps1 -SubscriptionId <sub> -TenantId <tenant> -g <rg> -Conversations 150` |
 | [setup-ai-cloud-shell.ps1](setup-ai-cloud-shell.ps1) | Verifies and forwards subscription/tenant, discovers Foundry and App Insights through core ARM, and uses the same background AI setup. Works locally too. | `./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | `setup-sre-agent.ps1` | Validates the deployed SRE Agent, connectors, and identity-specific RBAC. It discovers the agent identities automatically and is read-only unless `-GrantMissingRoles` is explicitly supplied. | `./scripts/setup-sre-agent.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
@@ -477,7 +572,7 @@ To inspect just the eligible Entra identities without deleting anything:
 
 Cleanup includes name-matched auxiliary groups such as `MC_<lab-rg>_...` and Azure Monitor managed groups such as `MA_<workspace>_<region>_managed_...`. Monitor groups are selected only when their `managedBy` resource ID points to a `Microsoft.Monitor/accounts` workspace in the exact target subscription and resource group. The script does not guess ownership from the workspace name or numeric suffix, so another lab's `amw-amlab` managed group is left alone. Owned Monitor groups are included in the confirmation list before any cleanup; omit `-Yes` to review that list.
 
-Azure normally removes the Monitor managed group when its workspace is deleted. Teardown checks whether it still exists and rechecks its ownership before requesting cleanup. A rerun can find a leftover group through its `managedBy` link even if the target lab group is already gone. Groups with missing or different ownership metadata are not selected. Delete requests remain asynchronous; an accepted request is not confirmation that the group is gone.
+Azure removes the Monitor managed group when its workspace is deleted. These groups have service-managed deny assignments: teardown never directly deletes them or attempts to remove their protection. After submitting lab/auxiliary group deletion, teardown polls each verified Monitor group for up to 600 seconds, rechecking its resource ID and ownership while it exists. Only an authoritative `ResourceGroupNotFound` confirms removal; lookup errors, ownership changes, and stalled cleanup remain explicit failures. A rerun can verify a leftover group through its `managedBy` link even if the target lab group is already gone. Groups with missing or different ownership metadata are not selected. Ordinary group delete requests remain asynchronous; an accepted request is not confirmation that the group is gone. If Azure-managed cleanup times out, check the owning workspace's deletion and contact Azure Support if it remains stuck.
 
 New labs use a tenant-scoped Service Group ID of `amlab-workload-<scope-hash>`. The suffix is the first 12 lowercase hexadecimal characters of SHA-256 over the lowercased full resource-group ARM ID, including the subscription ID. Two resource groups in the same subscription get different IDs, while redeployments reuse the same ID. A subscription-only suffix or a new random ID on every run would not provide both guarantees. A new group's default display name includes the resource-group name. Existing groups retain their display names (including legacy, custom/shared, and explicitly selected groups) unless `-ServiceGroupDisplayName` is supplied. Failed or invalid group reads stop setup rather than silently renaming an existing group.
 

@@ -25,6 +25,13 @@
     },
     "basics": [
       {
+        "name": "networkWatcherPrerequisite",
+        "type": "Microsoft.Common.TextBlock",
+        "options": {
+          "text": "Before deploying, prepare NetworkWatcher_<region> in NetworkWatcherRG for this subscription and selected Region using the README's Cloud Shell prerequisite step. Automatic Network Watcher enablement is not guaranteed. After deployment, run the Cloud Shell completion wrapper from the same release."
+        }
+      },
+      {
         "name": "namePrefix",
         "type": "Microsoft.Common.TextBox",
         "label": "Name prefix",
@@ -131,36 +138,36 @@
             "name": "vmSize",
             "type": "Microsoft.Common.TextBox",
             "label": "VM size",
-            "defaultValue": "Standard_B2s",
-            "toolTip": "VM size for the demo VMs (kept small for a lab).",
+            "defaultValue": "Standard_EC2as_v5",
+            "toolTip": "Confidential-compute size for the demo VMs. Check regional eligibility and quota; these sizes are not burstable.",
             "constraints": {
               "required": true,
               "regex": "^[A-Za-z0-9_]+$",
-              "validationMessage": "Enter a valid VM SKU, e.g. Standard_B2s."
+              "validationMessage": "Enter a compatible confidential VM SKU, e.g. Standard_EC2as_v5."
             }
           },
           {
             "name": "aksNodeVmSize",
             "type": "Microsoft.Common.TextBox",
             "label": "AKS node VM size",
-            "defaultValue": "Standard_B2s",
-            "toolTip": "VM size for AKS nodes.",
+            "defaultValue": "Standard_EC4as_v5",
+            "toolTip": "AKS system-node size. Use a supported non-B-series SKU with at least 4 vCPUs and 4 GiB RAM; check regional eligibility and quota.",
             "constraints": {
               "required": true,
               "regex": "^[A-Za-z0-9_]+$",
-              "validationMessage": "Enter a valid VM SKU, e.g. Standard_B2s."
+              "validationMessage": "Enter an AKS-supported system-node SKU, e.g. Standard_EC4as_v5."
             }
           },
           {
             "name": "vmssSize",
             "type": "Microsoft.Common.TextBox",
             "label": "Predictive autoscale VMSS size",
-            "defaultValue": "Standard_B1s",
-            "toolTip": "VM size for the predictive-autoscale scale set.",
+            "defaultValue": "Standard_EC2as_v5",
+            "toolTip": "Confidential-compute size for the predictive-autoscale scale set. Check regional eligibility and quota.",
             "constraints": {
               "required": true,
               "regex": "^[A-Za-z0-9_]+$",
-              "validationMessage": "Enter a valid VM SKU, e.g. Standard_B1s."
+              "validationMessage": "Enter a compatible confidential VM SKU, e.g. Standard_EC2as_v5."
             }
           },
           {
@@ -181,7 +188,7 @@
             "min": 1,
             "max": 5,
             "label": "AKS node count",
-            "defaultValue": 1,
+            "defaultValue": 2,
             "showStepMarkers": true,
             "toolTip": "Number of nodes in the AKS node pool.",
             "constraints": {
@@ -200,9 +207,9 @@
             "min": 1,
             "max": 10,
             "label": "Daily ingestion cap (GB)",
-            "defaultValue": 1,
+            "defaultValue": 3,
             "showStepMarkers": true,
-            "toolTip": "Daily ingestion cap on the central Log Analytics workspace.",
+            "toolTip": "Daily ingestion cap on each Log Analytics workspace: central and Application Insights.",
             "constraints": {
               "required": true
             }
@@ -351,6 +358,34 @@
             "visible": "[equals(steps('advanced').enableAi, true)]",
             "options": {
               "text": "The AI stage deploys billable Microsoft Foundry models in swedencentral. The portal deployment creates the infrastructure only. After deployment, run ./scripts/setup-ai.ps1 -ResourceGroup <resource-group> to create the agents and generate simulated traffic."
+            }
+          },
+          {
+            "name": "enableFabric",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable optional Microsoft Fabric F2 capacity",
+            "defaultValue": false,
+            "toolTip": "Deploys an F2 Fabric capacity pinned to swedencentral. Indicative PAYG retail cost while active: about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies; OneLake storage and other meters can add cost. Off by default."
+          },
+          {
+            "name": "fabricAdminEmail",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Fabric administrator UPN",
+            "defaultValue": "",
+            "toolTip": "Microsoft Entra user UPN in the selected subscription tenant. Replace the fictitious example admin@example.com with your tenant's user UPN. Do not use an external notification alias.",
+            "constraints": {
+              "required": "[equals(steps('advanced').enableFabric, true)]",
+              "regex": "^[^@\\s]+@[^@\\s]+$",
+              "validationMessage": "Enter a Microsoft Entra user UPN from the deployment tenant."
+            },
+            "visible": "[equals(steps('advanced').enableFabric, true)]"
+          },
+          {
+            "name": "fabricPostDeployInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('advanced').enableFabric, true)]",
+            "options": {
+              "text": "Cost warning: Fabric F2 is pinned to swedencentral and bills while active at an indicative PAYG retail cost of about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies and additional Fabric usage may add charges. The deployment creates only the ARM capacity. The README's Cloud Shell completion wrapper detects it and runs Fabric SaaS setup. Review its manual-action results and suspend the capacity when the demo is idle."
             }
           },
           {
@@ -514,6 +549,8 @@
       "appServiceRepoUrl": "[steps('advanced').appServiceRepoUrl]",
       "siemWebhookUrl": "[steps('advanced').siemWebhookUrl]",
       "enableAi": "[steps('advanced').enableAi]",
+      "enableFabric": "[steps('advanced').enableFabric]",
+      "fabricAdminEmail": "[steps('advanced').fabricAdminEmail]",
       "enableSreAgent": "[steps('advanced').enableSreAgent]",
       "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",
       "slotAppServicePlanSku": "[steps('advanced').slotAppServicePlanSku]",

@@ -11,8 +11,8 @@
   successful deployment whose customer app output matches this storefront.
 
 .PARAMETER ApproveCustomerDependencies
-  Explicitly approve enabled customer SQL initialization and worker publication.
-  Otherwise completion requests confirmation and fails if approval is declined.
+  Enabled customer SQL initialization and worker publication are approved by
+  default. Pass -ApproveCustomerDependencies:$false to request confirmation.
 #>
 [CmdletBinding()]
 param(
@@ -20,7 +20,7 @@ param(
   [Parameter(Mandatory)] [string] $WebAppName,
   [string] $CustomerWebAppName,
   [string] $CustomerDependencyDeploymentName,
-  [switch] $ApproveCustomerDependencies,
+  [switch] $ApproveCustomerDependencies = $true,
   [Parameter(Mandatory)] [string] $AksName,
   [Parameter(Mandatory)] [string] $WebAppHost,
   [string] $CentralLawName,
@@ -202,7 +202,7 @@ Write-Step 'Cleaning up local Web App package files'
 Remove-Item -Recurse -Force $pub
 Remove-Item -Force $zip
 if ($CustomerWebAppName) {
-  Write-Step 'Completing the enabled customer backend with operator approval'
+  Write-Step 'Completing the enabled customer backend'
   & (Join-Path $PSScriptRoot 'complete-customer-dependencies.ps1') `
     -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup `
     -CustomerWebAppName $CustomerWebAppName -DeploymentName $CustomerDependencyDeploymentName `

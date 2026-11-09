@@ -38,10 +38,14 @@ The deploying identity needs Owner or User Access Administrator at subscription 
 Enable the stage in `lab.config.json`:
 
 ```json
-"stageToggles": {
-  "enableStageSreAgent": true
+"advancedConfiguration": {
+  "stageToggles": {
+    "enableStageSreAgent": true
+  }
 }
 ```
+
+Merge this into the existing group without removing other toggles. Legacy flat configs use `stageToggles.enableStageSreAgent`; see [config layout](REFERENCE.md#config-layout-and-compatibility).
 
 For a one-shot deployment, `deploy.ps1` maps this toggle to the Bicep `enableSreAgent` parameter. The deployment creates:
 
@@ -226,6 +230,14 @@ Scenarios 54 through 59 in `DEMO-SCENARIOS.md` form one 23-minute SRE Agent flow
 5. Demonstrate repeated-alert merging, restore the lab, and verify recovery.
 6. Show the incident command brief generated automatically by the response-plan investigator.
 
+### Repeating an alert-driven demo
+
+Confirm each original alert reaches **Resolved** before triggering the next failure. Re-running Break while an alert remains **Fired**, or changing its workflow state back to **New**, does not prove a new incident will be ingested. Alerts acknowledged before the response plan was configured may not be replayed. Confirm each enabled plan also has its response handler.
+
+The default restored load generator and optional `demo/otel-caller` both send intentional HTTP 5xx requests, which can keep `alert-webapp-5xx` above its threshold. For a clean repeat, temporarily suspend the `demo/loadgen` CronJob and scale `demo/otel-caller` to zero if deployed, recording its original replica count first. Allow active load-generator jobs to finish and wait for alert resolution. After triggering the next failure, resume the CronJob and restore the caller's original replica count. Do not leave either generator paused unintentionally.
+
+The AKS restart alert measures per-container counter increases over 15 minutes, counting restarts since creation for new pods. It must not sum cumulative counters across inventory samples: even an unchanged historical restart count would otherwise keep the alert firing. AKS recovery and fresh firings also require ingestion and alert-evaluation time.
+
 ## 8. Done when
 
 1. The trial banner and creation date are recorded.
@@ -249,4 +261,6 @@ After the demo:
 3. Stop the agent when it is not being evaluated.
 4. Run `./scripts/teardown.ps1 -ResourceGroup <resource-group>` or delete the agent directly before day 31 if you do not intend to pay the fixed always-on charge.
 
-The teardown script deletes the SRE Agent before submitting asynchronous resource-group deletion. A successful resource-group deletion also deletes an agent contained in that group. Verify completion with `az group exists -n <resource-group>`; it must return `false`. If group deletion fails, confirm that no `Microsoft.App/agents` resource remains so billing does not continue.
+The teardown script uses [remove-sre-agent.ps1](../scripts/remove-sre-agent.ps1) to stop the SRE Agent, verify `Stopped`, submit one deletion and verify `ResourceNotFound` before submitting asynchronous resource-group deletion. State verification is bounded; service errors retain the Azure details and block further cleanup. A `currently being processed` conflict means Azure has not released an existing operation; wait for it to finish or contact Azure Support if it remains stuck. The helper does not force-reset service state or repeatedly submit deletes. Stopping alone does not stop always-on charges.
+
+A successful resource-group deletion also deletes an agent contained in that group. Verify completion with `az group exists -n <resource-group>`; it must return `false`. If group deletion fails, confirm that no `Microsoft.App/agents` resource remains so billing does not continue. See [guarded standalone removal](../scripts/README.md#lab-lifecycle-and-demo-control) to remove only an agent without deleting the resource group.

@@ -11,7 +11,31 @@ if ($guideStageE -lt 0 -or $guideSentinelContent -le $guideStageE -or
 }
 $blocks = [regex]::Matches($guide, '(?ms)^```powershell\r?\n(.*?)^```')
 $helperImport = '. ./scripts/staged-deploy-helpers.ps1'
-foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
+$workloadSection = $guide.Substring($guide.IndexOf('### Stage B deploy'), $guide.IndexOf('### Stage C deploy') - $guide.IndexOf('### Stage B deploy'))
+if ($workloadSection.IndexOf('Invoke-LabStage -Stage 10-workloads') -lt 0 -or
+    $workloadSection.IndexOf('Invoke-LabStage -Stage 10-workloads') -gt $workloadSection.IndexOf('<details>') -or
+    $workloadSection -notmatch [regex]::Escape($helperImport)) {
+  throw 'Stage B must recommend the shared prerequisite/recovery helper before its raw CLI alternative.'
+}
+$readme = Get-Content -LiteralPath (Join-Path $source 'README.md') -Raw
+$portalPrerequisite = $readme.IndexOf('Ensure-LabNetworkWatcher')
+$portalButton = $readme.IndexOf('[![Deploy to Azure]')
+$ui = Get-Content -LiteralPath (Join-Path $source 'infra/createUiDefinition.json') -Raw | ConvertFrom-Json
+if ($portalPrerequisite -lt 0 -or $portalPrerequisite -gt $portalButton -or
+    @($ui.parameters.basics | Where-Object name -eq 'networkWatcherPrerequisite').Count -ne 1 -or
+    $readme -notmatch 'post-cloud-shell-deploy\.ps1[^\r\n]+-NamePrefix \$namePrefix') {
+  throw 'Portal instructions must prepare Network Watcher before deployment and preserve the selected name prefix at completion.'
+}
+$template = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json -AsHashtable
+foreach ($name in $ui.parameters.outputs.PSObject.Properties.Name) {
+  if (-not $template.parameters.ContainsKey($name)) { throw "Portal output '$name' is not a template parameter." }
+}
+foreach ($name in $template.parameters.Keys) {
+  if (-not $template.parameters[$name].ContainsKey('defaultValue') -and $name -notin $ui.parameters.outputs.PSObject.Properties.Name) {
+    throw "Required template parameter '$name' has no portal output."
+  }
+}
+foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-FABRIC.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
   $text = Get-Content -LiteralPath (Join-Path $source $relativePath) -Raw
   foreach ($example in [regex]::Matches($text, '(?ms)^```powershell\r?\n(.*?)^```')) {
     $errors = $null
@@ -67,9 +91,25 @@ function az {
       $activeTenant = if ($fixture.Failure -eq 'account' -and $fixture.AccountChecks -gt 1) { [guid]::NewGuid() } else { $tenant }
       return @{ id = $sub; tenantId = $activeTenant } | ConvertTo-Json
     }
+    'network watcher' {
+      if ($fixture.Stage -ne '10-workloads' -or $args[2] -ne 'list') { throw 'Only Stage B may inspect its Network Watcher prerequisite.' }
+      $location = if ($fixture.Overrides.ContainsKey('location')) { $fixture.Overrides.location } elseif ($sourceParameters.ContainsKey('location')) { $sourceParameters.location.value } else { 'northeurope' }
+      return ConvertTo-Json -InputObject @(@{
+        id = "/subscriptions/$sub/resourceGroups/NetworkWatcherRG/providers/Microsoft.Network/networkWatchers/NetworkWatcher_$location"
+        location = $location; provisioningState = 'Succeeded'
+      })
+    }
+    'group show' {
+      if ($args[[array]::IndexOf($args, '--subscription') + 1] -ne $sub.ToString() -or
+          $args[[array]::IndexOf($args, '--name') + 1] -ne $rg -or $args -notcontains 'location') {
+        throw 'Default Stage B location must come from the exact selected resource group.'
+      }
+      return 'northeurope'
+    }
     'deployment group' {
       $operation = $args[2]
       if ($operation -notin @('what-if', 'create')) { throw 'Unexpected deployment operation.' }
+      if ($args -notcontains '--only-show-errors') { throw 'Stage previews and deployments must suppress CLI warnings by default.' }
       foreach ($expected in @{
         '--subscription' = $sub.ToString(); '--resource-group' = $rg; '--mode' = 'Incremental'
         '--name' = "stage-$($fixture.Stage)"; '--template-file' = "infra/stages/$($fixture.Stage).bicep"
@@ -114,6 +154,10 @@ try {
   }
   $originalInputs = @($sub, $tenant, $rg, $sourceParameters) | ConvertTo-Json -Depth 30 -Compress
   . ([scriptblock]::Create($helperImport))
+  function Invoke-LabDeploymentCommand {
+    param($Arguments, $DeploymentName)
+    az @Arguments
+  }
   $recoveryImplementation = ${function:Invoke-LabDeployment}
   function Invoke-LabDeployment {
     param($Arguments, $SubscriptionId, $ResourceGroup, $DeploymentName)
@@ -129,27 +173,40 @@ try {
     Where-Object { $_ -is [Management.Automation.ValidateSetAttribute] } |
     ForEach-Object { $_.ValidValues }
   if ($allowedStages -notcontains '41-sentinel-content') { throw 'Reloading must replace the stale Stage ValidateSet.' }
+  if ($allowedStages -notcontains '60-fabric') { throw 'Reloading must add the optional Fabric stage.' }
   Write-Output 'PASS: dot-sourcing replaces stale stage helpers, accepts Stage 41, and preserves inputs without Azure calls.'
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '70-observability-agent')) {
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
     $templateReference = "--template-file ./infra/stages/$stage.bicep"
     $parameterReference = '--parameters "@$($stageParameterFiles[''{0}''])"' -f $stage
     if (-not $guide.Contains($templateReference) -or -not $guide.Contains($parameterReference)) {
       throw "The guide must deploy $stage with its native Azure CLI command and projected parameter file."
     }
   }
-  if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 9) {
+  if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 10) {
     throw 'Every staged deployment command must include a what-if confirmation.'
   }
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '70-observability-agent')) {
+  if ([regex]::Matches($guide, '--confirm-with-what-if[^\r\n]*(?:\r?\n[^\r\n]*)?--only-show-errors').Count -ne 10) {
+    throw 'All ten raw staged deployment examples must suppress CLI warnings without hiding errors.'
+  }
+  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
     $fixture.Stage = $stage
     $fixture.Events.Clear()
     $fixture.AccountChecks = 0
     $fixture.RecoveryCalls = 0
     Invoke-LabStage -Stage $stage
-    if (($fixture.Events -join ',') -ne 'what-if,create' -or $fixture.AccountChecks -ne 2) { throw 'Every stage must preview, confirm, and reverify account before deployment.' }
+    $expectedAccountChecks = if ($stage -eq '10-workloads') { 3 } else { 2 }
+    if (($fixture.Events -join ',') -ne 'what-if,create' -or $fixture.AccountChecks -ne $expectedAccountChecks) { throw 'Every stage must preview, confirm, and reverify account before deployment.' }
     $expectedRecoveryCalls = if ($stage -eq '10-workloads') { 1 } else { 0 }
     if ($fixture.RecoveryCalls -ne $expectedRecoveryCalls) { throw 'Only Stage B must use customer-slot deployment recovery.' }
   }
+  $fixture.Stage = '10-workloads'
+  $fixture.Overrides = @{ location = 'westeurope' }
+  Invoke-LabStage -Stage $fixture.Stage -Overrides $fixture.Overrides
+  $fixture.Overrides = @{}
+  $originalLocation = $sourceParameters.location
+  $sourceParameters.Remove('location')
+  try { Invoke-LabStage -Stage $fixture.Stage }
+  finally { $sourceParameters.location = $originalLocation }
   $fixture.Stage = '50-ai'
   $fixture.Overrides = @{ enableHealthModel = $true; routerModelVersion = 'offline-version' }
   Invoke-LabStage -Stage $fixture.Stage -Overrides $fixture.Overrides
@@ -184,7 +241,7 @@ try {
     if ($stage -eq 'Observability Agent' -and $section.IndexOf('./scripts/setup-observability-agent.ps1') -gt $section.IndexOf('./scripts/deploy-webapp.ps1')) { throw 'Observability Agent validation must precede console publication.' }
   }
   if ($guide -match '--template-file infra/main.bicep') { throw 'A staged guide must not deploy the full-lab template.' }
-  Write-Output 'PASS: all nine Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
+  Write-Output 'PASS: all ten Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
   Write-Output 'PASS: late AI/SRE/Observability Agent instructions refresh existing consoles and preserve standalone A-only scenarios.'
 } finally {
   Pop-Location

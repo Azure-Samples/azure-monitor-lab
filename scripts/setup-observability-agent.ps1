@@ -40,7 +40,8 @@ if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $labConfigPath = Join-Path $repoRoot 'lab.config.json'
 $targetPath = Join-Path $repoRoot '.azure-target.json'
-$labConfig = if (Test-Path $labConfigPath) { Get-Content -Raw $labConfigPath | ConvertFrom-Json } else { $null }
+. (Join-Path $PSScriptRoot 'lab-config.ps1')
+$labConfig = if (Test-Path $labConfigPath) { Read-LabConfig -Path $labConfigPath } else { $null }
 $target = if (Test-Path $targetPath) { Get-Content -Raw $targetPath | ConvertFrom-Json } else { $null }
 
 if ([string]::IsNullOrWhiteSpace($SubscriptionId)) {

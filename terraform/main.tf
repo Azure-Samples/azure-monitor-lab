@@ -11,6 +11,32 @@ data "azurerm_resource_group" "lab" {
   name = var.resource_group_name
 }
 
+data "azurerm_client_config" "current" {
+  count = var.enable_stage_b ? 1 : 0
+}
+
+resource "terraform_data" "network_watcher" {
+  count = var.enable_stage_b ? 1 : 0
+
+  triggers_replace = {
+    subscription = var.subscription_id
+    tenant       = data.azurerm_client_config.current[0].tenant_id
+    location     = var.location
+    helper       = filesha256("${path.module}/../scripts/network-watcher.ps1")
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["pwsh", "-NoProfile", "-NonInteractive", "-Command"]
+    command     = ". (Join-Path $env:LAB_REPOSITORY_ROOT 'scripts/network-watcher.ps1'); Ensure-LabNetworkWatcher -SubscriptionId $env:LAB_SUBSCRIPTION_ID -TenantId $env:LAB_TENANT_ID -Location $env:LAB_LOCATION -Confirm:$false"
+    environment = {
+      LAB_REPOSITORY_ROOT = abspath("${path.module}/..")
+      LAB_SUBSCRIPTION_ID = var.subscription_id
+      LAB_TENANT_ID       = data.azurerm_client_config.current[0].tenant_id
+      LAB_LOCATION        = var.location
+    }
+  }
+}
+
 check "slot_failure_requires_workloads" {
   assert {
     condition     = !var.enable_slot_failure_scenario || var.enable_stage_b
@@ -48,7 +74,7 @@ resource "azapi_resource" "stage_b" {
   parent_id = data.azurerm_resource_group.lab.id
 
   # Stage B references Stage A's LAW via 'existing' — wait for A to finish.
-  depends_on = [azapi_resource.stage_a]
+  depends_on = [azapi_resource.stage_a, terraform_data.network_watcher]
 
   body = {
     properties = {
@@ -139,8 +165,8 @@ resource "azapi_resource" "stage_e" {
   # Action Group ('ag-${namePrefix}-email') as an alert target. Without depending
   # on C, an all-at-once apply races C and E in parallel and Azure rejects the
   # alerts with `BadRequest: Action Group ... is invalid`.
-  # Also depends on the AI stage so the workload health model can fold in the AI tier.
-  depends_on = [azapi_resource.stage_a, azapi_resource.stage_b, azapi_resource.stage_c, azapi_resource.stage_ai]
+  # Also depends on the AI and Fabric stages so the workload health model can fold in optional tiers.
+  depends_on = [azapi_resource.stage_a, azapi_resource.stage_b, azapi_resource.stage_c, azapi_resource.stage_ai, azapi_resource.stage_fabric]
 
   body = {
     properties = {
@@ -156,6 +182,7 @@ resource "azapi_resource" "stage_e" {
         enablePlatformLogsDcr  = { value = var.enable_platform_logs_dcr }
         enableMetricsExportDcr = { value = var.enable_metrics_export_dcr }
         enableAi               = { value = var.enable_stage_ai }
+        enableFabric           = { value = var.enable_stage_fabric }
       }
     }
   }
@@ -202,6 +229,28 @@ resource "azapi_resource" "stage_ai" {
         alertEmail         = { value = var.alert_email }
         ownerTag           = { value = var.owner_tag }
         routerModelVersion = { value = var.router_model_version }
+      }
+    }
+  }
+}
+
+# Optional Fabric stage: an F2 capacity pinned to swedencentral. An explicit tenant
+# user UPN is used as the capacity administrator. Fabric workspace and Real-Time Intelligence
+# items are created afterward by scripts/setup-fabric.ps1.
+resource "azapi_resource" "stage_fabric" {
+  count     = var.enable_stage_fabric ? 1 : 0
+  type      = "Microsoft.Resources/deployments@2022-09-01"
+  name      = "stage-fabric-capacity"
+  parent_id = data.azurerm_resource_group.lab.id
+
+  body = {
+    properties = {
+      mode     = "Incremental"
+      template = sensitive(jsondecode(file("${path.module}/../infra/stages/60-fabric.json")))
+      parameters = {
+        namePrefix       = { value = var.name_prefix }
+        fabricAdminEmail = { value = var.fabric_admin_email }
+        ownerTag         = { value = var.owner_tag }
       }
     }
   }

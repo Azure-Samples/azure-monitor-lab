@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "12566327140331978255"
+      "templateHash": "18171970224737494696"
     }
   },
   "parameters": {
@@ -34,9 +34,9 @@
     },
     "dailyCapGb": {
       "type": "int",
-      "defaultValue": 1,
+      "defaultValue": 3,
       "metadata": {
-        "description": "Daily ingestion cap (GB) on the central Log Analytics workspace. Set to -1 to disable."
+        "description": "Daily ingestion cap (GB) on each of the central and Application Insights Log Analytics workspaces. Set to -1 to disable."
       }
     },
     "ownerTag": {
@@ -1347,7 +1347,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "17713457183335564880"
+              "templateHash": "13427846610720516459"
             }
           },
           "parameters": {
@@ -1421,6 +1421,19 @@
               ]
             },
             {
+              "type": "Microsoft.EventHub/namespaces/authorizationRules",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', parameters('namespaceName'), 'diagnostics-listen')]",
+              "properties": {
+                "rights": [
+                  "Listen"
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.EventHub/namespaces', parameters('namespaceName'))]"
+              ]
+            },
+            {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
               "scope": "[format('Microsoft.EventHub/namespaces/{0}', parameters('namespaceName'))]",
@@ -1461,6 +1474,10 @@
             "sendRuleId": {
               "type": "string",
               "value": "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', parameters('namespaceName'), 'diagnostics-send')]"
+            },
+            "listenRuleName": {
+              "type": "string",
+              "value": "diagnostics-listen"
             }
           }
         }
@@ -2225,7 +2242,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "199999375665995834"
+              "templateHash": "9277295640901288810"
             }
           },
           "parameters": {
@@ -2274,6 +2291,7 @@
             "slowestOpsQuery": "[replace('workspace(\"__APPI_LAW__\").AppRequests\n| summarize AvgDuration = round(avg(DurationMs), 1), Requests = count() by OperationName\n| top 10 by AvgDuration desc\n', '__APPI_LAW__', parameters('appInsightsLawName'))]",
             "appiDetailQuery": "[replace('workspace(\"__APPI_LAW__\").AppRequests\n| summarize Failed = countif(Success == false), OK = countif(Success == true) by bin(TimeGenerated, 5m)\n| render timechart\n', '__APPI_LAW__', parameters('appInsightsLawName'))]",
             "alertActivityQuery": "AzureActivity\n| where CategoryValue == \"Alert\"\n| project TimeGenerated, Operation = OperationNameValue, Status = ActivityStatusValue, Caller\n| order by TimeGenerated desc\n| take 25\n",
+            "fabricCapacityHealthQuery": "[replace('resources\n| where type =~ \"microsoft.fabric/capacities\"\n| where resourceGroup =~ \"__RESOURCE_GROUP__\"\n| extend CapacityState = tostring(properties.state), ProvisioningState = tostring(properties.provisioningState)\n| extend Status = case(\n  ProvisioningState !~ \"Succeeded\", \"🔴\",\n  CapacityState =~ \"Active\", \"🟢\",\n  CapacityState in~ (\"Paused\", \"Suspended\"), \"🟠\",\n  \"⚪\")\n| project Status,\n      ResourceType = \"Microsoft Fabric F2\",\n      Capacity = name,\n      State = CapacityState,\n      Provisioning = ProvisioningState,\n      Region = location,\n          SKU = tostring(sku.name)\n', '__RESOURCE_GROUP__', resourceGroup().name)]",
             "dataIngestionQuery": "Usage\n| summarize IngestedMB = round(sum(Quantity), 2) by DataType\n| where IngestedMB > 0.01\n| top 15 by IngestedMB desc\n| render barchart\n",
             "workbookContent": {
               "version": "Notebook/1.0",
@@ -2546,6 +2564,30 @@
                 {
                   "type": 1,
                   "content": {
+                    "json": "---\n## Microsoft Fabric Real-Time Intelligence Health\n\nThe capacity is discovered dynamically. This section is empty when Stage Fabric is disabled. Eventstream item and data-flow health remain available in the Fabric workspace."
+                  },
+                  "name": "fabricHealthHeader"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "[variables('fabricCapacityHealthQuery')]",
+                    "size": 1,
+                    "title": "Fabric F2 Capacity Health",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "rowLimit": 10,
+                      "filter": true
+                    }
+                  },
+                  "name": "fabricCapacityHealth"
+                },
+                {
+                  "type": 1,
+                  "content": {
                     "json": "---\n## 🔎 Detail Panels\n\nDrill-down views that explain *why* a row is 🔴 or 🟠."
                   },
                   "name": "detailHeader"
@@ -2653,7 +2695,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4309548182300101190"
+              "templateHash": "13632335284258159914"
             }
           },
           "parameters": {
@@ -2677,7 +2719,7 @@
             },
             "dailyCapGb": {
               "type": "int",
-              "defaultValue": 1,
+              "defaultValue": 3,
               "metadata": {
                 "description": "Configured daily ingestion cap (GB) for the central LAW. Set to -1 when disabled."
               }

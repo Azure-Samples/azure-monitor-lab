@@ -1,4 +1,60 @@
 # Shared by the one-shot and staged Bicep entrypoints. Loading this file makes no Azure calls.
+function Invoke-LabDeploymentCommand {
+  param(
+    [Parameter(Mandatory)][string[]] $Arguments,
+    [Parameter(Mandatory)][string] $DeploymentName
+  )
+  $job = $null
+  $elapsed = [Diagnostics.Stopwatch]::StartNew()
+  $frames = @('|', '/', '-', '\')
+  $frame = 0
+  $exitCode = $null
+  $global:LASTEXITCODE = 1
+  Write-Host "  [RUN] Infrastructure deployment | $DeploymentName" -ForegroundColor Cyan
+  try {
+    $job = Start-Job -ScriptBlock {
+      param($Command, $Directory)
+      $ErrorActionPreference = 'Stop'
+      $PSNativeCommandUseErrorActionPreference = $false
+      Set-Location -LiteralPath $Directory
+      & az @Command 2>&1 | ForEach-Object {
+        [pscustomobject]@{ Kind = 'Diagnostic'; Text = $_.ToString() }
+      }
+      [pscustomobject]@{ Kind = 'Exit'; Code = $LASTEXITCODE }
+    } -ArgumentList $Arguments, $PWD.Path
+    do {
+      Write-Progress -Id 73 -Activity 'Azure Monitor Lab | Infrastructure deployment' `
+        -Status "$($frames[$frame % $frames.Count]) Running | elapsed $($elapsed.Elapsed.ToString('hh\:mm\:ss'))" `
+        -CurrentOperation $DeploymentName
+      $frame++
+      foreach ($message in @(Receive-Job -Job $job -ErrorAction Stop)) {
+        if ($message.Kind -eq 'Exit') {
+          $exitCode = [int]$message.Code
+        } elseif ($message.Kind -eq 'Diagnostic') {
+          Write-Host $message.Text
+        } else {
+          throw 'Deployment runner returned an unexpected response.'
+        }
+      }
+      if ($job.State -in @('Running', 'NotStarted')) { Start-Sleep -Milliseconds 200 }
+    } while ($job.State -in @('Running', 'NotStarted') -or $job.HasMoreData)
+    if ($job.State -ne 'Completed' -or $null -eq $exitCode) {
+      throw 'Deployment runner did not complete with a known exit code; verify ARM deployment status before retrying.'
+    }
+    $global:LASTEXITCODE = $exitCode
+    $label = if ($exitCode -eq 0) { 'OK' } else { 'FAIL' }
+    $color = if ($exitCode -eq 0) { 'Green' } else { 'Red' }
+    Write-Host "  [$label] $DeploymentName | elapsed $($elapsed.Elapsed.ToString('hh\:mm\:ss'))" -ForegroundColor $color
+  } finally {
+    Write-Progress -Id 73 -Activity 'Azure Monitor Lab | Infrastructure deployment' -Completed
+    $elapsed.Stop()
+    if ($job) {
+      if ($job.State -in @('Running', 'NotStarted')) { Stop-Job -Job $job }
+      Remove-Job -Job $job
+    }
+  }
+}
+
 function Invoke-LabDeployment {
   param(
     [Parameter(Mandatory)][string[]] $Arguments,
@@ -24,7 +80,8 @@ function Invoke-LabDeployment {
       $inputHashes[$path] = (Get-FileHash -LiteralPath $path).Hash
     }
   }
-  az deployment group create @Arguments --output none
+  Invoke-LabDeploymentCommand -Arguments (@('deployment', 'group', 'create') + $Arguments + @('--output', 'none', '--only-show-errors')) `
+    -DeploymentName $DeploymentName
   if ($LASTEXITCODE -eq 0) { return }
 
   $scope = @('--subscription', $SubscriptionId, '--resource-group', $ResourceGroup)
@@ -221,8 +278,10 @@ function Invoke-LabDeployment {
       }
       $state = Wait-SlotState
       if ($state -eq 'Expected') { break }
-      $null = az deployment group create @scope --name customer-broken-slot --mode Incremental `
-        --template-file $templateFile --parameters ($leaf | ConvertTo-Json -Depth 30 -Compress) --output none --only-show-errors 2>$null
+      Invoke-LabDeploymentCommand -Arguments (@('deployment', 'group', 'create') + $scope +
+        @('--name', 'customer-broken-slot', '--mode', 'Incremental', '--template-file', $templateFile,
+          '--parameters', ($leaf | ConvertTo-Json -Depth 30 -Compress), '--output', 'none', '--only-show-errors')) `
+        -DeploymentName 'customer-broken-slot'
       $exitCode = $LASTEXITCODE
       $terminal = Read-TerminalDeployment 'customer-broken-slot'
       if ($terminal.state -eq 'Succeeded') {
@@ -252,7 +311,8 @@ function Invoke-LabDeployment {
     $templateIndex = [Array]::IndexOf($resumeArguments, '--template-file')
     if ($templateIndex -lt 0 -or $Arguments -contains 'Complete') { throw 'Parent reconciliation requires an incremental template-file deployment.' }
     $resumeArguments[$templateIndex + 1] = $parentTemplateFile
-    az deployment group create @resumeArguments --output none
+    Invoke-LabDeploymentCommand -Arguments (@('deployment', 'group', 'create') + $resumeArguments + @('--output', 'none', '--only-show-errors')) `
+      -DeploymentName $DeploymentName
     $exitCode = $LASTEXITCODE
     if ((Read-TerminalDeployment $DeploymentName).state -ne 'Succeeded' -or $exitCode -ne 0) {
       throw 'Parent reconciliation did not succeed; stopped. Slot presence alone is not deployment success.'

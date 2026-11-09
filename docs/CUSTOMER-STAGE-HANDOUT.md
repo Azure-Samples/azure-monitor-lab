@@ -7,7 +7,8 @@ This one-pager helps customers decide how far to go in a workshop or pilot. Cost
 - Default regions: North Europe; App Service and its diagnostic Storage and Event Hub in configurable `appServiceLocation` (West Europe by default); optional AI, SRE Agent, and Health Model resources in Sweden Central.
 - A continuously provisioned month is approximately 730 hours.
 - Stage A is required. Stages B-E are progressive. AI, SRE Agent, and Observability Agent are optional and off by default.
-- The two Log Analytics 1 GB/day caps are ingestion guardrails, not full-cost caps.
+- Fabric is also opt-in: F2 capacity is pinned to Sweden Central, while workspace items are tenant-scoped. The streaming demo requires Stage A's Event Hub.
+- The two Log Analytics 3 GB/day caps are independent ingestion guardrails, not full-cost caps.
 - Price every provisioned resource and every usage meter; do not interpret a missing or zero-price allowance row as permanently free service.
 
 ## Stage-by-stage estimate
@@ -23,6 +24,7 @@ This one-pager helps customers decide how far to go in a workshop or pilot. Cost
 | SRE Agent - Optional | 5-10 min + portal setup | `always-on AAUs x current rate + active AAUs x current rate`, subject to current trial eligibility. Stopping activity does not stop a post-trial always-on allocation. |
 | Observability Agent - Optional | 5-10 min + investigations | `AAC consumed x current regional AAC rate + dedicated workspace data charges`. Correlation is unbilled in the preview terms checked September 27, 2026; chat and deep investigation consume AAC. |
 | Control Center runner | Per execution | ACR Basic registry-days/storage + ACR Tasks build vCPU-seconds + Container Apps job vCPU/GiB-seconds (1 vCPU, 2 GiB, up to 1,800 seconds/run) + logs. No always-running app replica is deployed. |
+| Fabric - Optional Real-Time Intelligence | 5-10 min + asynchronous item/mirror provisioning | `F2 active capacity hours x current regional rate` + OneLake storage and other usage meters. Setup defaults to keyless streaming, both LAW mirrors/dashboards and daily 20:00 UTC suspension; tenant preview enablement and Metrics app consent remain prerequisites. See [Stage Fabric](STAGE-FABRIC.md). |
 
 ## Customer conversation checklist
 
@@ -35,6 +37,7 @@ This one-pager helps customers decide how far to go in a workshop or pilot. Cost
 
 ## Lifecycle guidance
 
+- Suspend Fabric F2 when idle; stopping VMs or AKS does not suspend its capacity. Fabric item setup and teardown are separate from ARM capacity provisioning.
 - Deallocate VMs, scale the VMSS down, and stop AKS outside workshop windows.
 - Stopping the web app does not stop App Service Plan billing.
 - Disks, public IPs, Grafana Standard, Event Hubs, ACR, retained data, and telemetry can continue billing after compute stops.

@@ -80,14 +80,19 @@ The Control Center requires Stage B. Its Foundry Playground additionally require
 6. Stage AI done: Foundry model deployments exist, App Insights receives AI telemetry, and the AI FinOps queries return data after `setup-ai.ps1` runs.
 7. Stage SRE Agent done: the agent is in `swedencentral`, all three connectors are configured, and identity-specific RBAC validation passes.
 8. Stage Observability Agent done: the agent and dedicated workspace share a supported region, Application Insights is monitored, automatic issue creation is enabled, investigation mode matches the explicit selection, and least-privilege RBAC validation passes.
+9. Stage Fabric done: capacity and tenant-scoped items exist, and the Eventstream ingests the Stage A Event Hub feed.
 
 ## 5) Practical deployment commands (stage-by-stage)
 
 Run these examples from the repository root in the same PowerShell 7 session. Each call previews one dedicated stage and asks for confirmation before deployment. Raw Bicep is infrastructure-only until the documented completion step succeeds.
 
+Deployment examples use `--only-show-errors` to hide CLI/Bicep warnings and upgrade notices while preserving what-if previews and errors. Standalone Bicep builds and CI validation still show diagnostics.
+
 ### Step 0 - Bootstrap inputs (recommended)
 
 Create a private config from [the example](../lab.config.json.example), fill in the subscription, tenant, resource group, prefix, region, notification address, and VM credentials, then generate the local inputs. Do not overwrite an existing config:
+
+Use `basicConfiguration` for subscription-specific values and `advancedConfiguration` for customization, including `naming.namePrefix` and `stageToggles`. Legacy flat configs remain supported; see [config layout](REFERENCE.md#config-layout-and-compatibility).
 
 ```powershell
 if (-not (Test-Path ./lab.config.json)) { Copy-Item ./lab.config.json.example ./lab.config.json }
@@ -99,7 +104,8 @@ After editing the config, run:
 ./scripts/sync-config.ps1
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = [guid]$config.subscriptionId
 $tenant = [guid]$config.tenantId
 $rg = $config.resourceGroup
@@ -117,7 +123,7 @@ az group create --subscription $sub --name $rg --location $location --output non
 $stageNames = @(
    '00-foundation', '10-workloads', '20-alerting', '30-security-posture',
    '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent',
-   '70-observability-agent'
+   '60-fabric', '70-observability-agent'
 )
 $stageParameterDirectory = Join-Path ([IO.Path]::GetTempPath()) ('azure-monitor-lab-stages-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $stageParameterDirectory
@@ -159,32 +165,53 @@ az deployment group create `
    --parameters "@$($stageParameterFiles['00-foundation'])" `
    --mode Incremental `
    --confirm-with-what-if `
-   --output none
+   --output none --only-show-errors
 ```
 
 This deploys [foundation only](../infra/stages/00-foundation.bicep). `--confirm-with-what-if` previews the changes and asks for confirmation before deployment. There is no AKS node pool or Web App in Stage A.
 
 ### Stage B deploy
 
-Classic VM Insights and additive OpenTelemetry metrics are **both enabled by default**. `enableVmOtelMetrics` defaults to `true` in central configuration (including when omitted), Stage B, and the one-shot template; the portal Workloads page defaults to **Yes**. To opt out, set `"enableVmOtelMetrics": false` **before** the input-bootstrap/sync and stage-parameter generation above, or explicitly pass `enableVmOtelMetrics=false`. Stage A and VMSS are unchanged. See [both monitoring views and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics). Setting the flag to `false` on an incremental redeployment does not remove existing OTel associations.
+Connection Monitor and flow logs require the shared regional Network Watcher.
+Use the versioned helper for Stage B. It prepares missing Network Watcher
+prerequisites, previews and confirms deployment, and uses the same narrowly scoped
+customer-slot failure recovery as `deploy.ps1`:
 
 ```powershell
+. ./scripts/staged-deploy-helpers.ps1
+Invoke-LabStage -Stage 10-workloads
+./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $false
+```
+
+Classic VM Insights and additive OpenTelemetry metrics are **both enabled by default**. `enableVmOtelMetrics` defaults to `true` in central configuration (including when omitted), Stage B, and the one-shot template; the portal Workloads page defaults to **Yes**. To opt out, set `"enableVmOtelMetrics": false` **before** the input-bootstrap/sync and stage-parameter generation above, or explicitly pass `enableVmOtelMetrics=false`. Stage A and VMSS are unchanged. See [both monitoring views and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics). Setting the flag to `false` on an incremental redeployment does not remove existing OTel associations.
+
+<details>
+<summary>Raw Azure CLI alternative (no automatic customer-slot recovery)</summary>
+
+Prepare the shared watcher before this infrastructure-only command; run completion
+only after deployment succeeds:
+
+```powershell
+. ./scripts/network-watcher.ps1
+Ensure-LabNetworkWatcher -SubscriptionId $sub -TenantId $tenant -Location $config.location -Confirm
 az deployment group create `
    --subscription $sub --resource-group $rg --name stage-10-workloads `
    --template-file ./infra/stages/10-workloads.bicep `
    --parameters "@$($stageParameterFiles['10-workloads'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $false
 ```
 
+</details>
+
 Completion publishes and verifies the App Service, initializes the Control Center and approved operator access, applies AKS workloads, and creates the summary rule. It prepares available AI agents without traffic and validates any deployed SRE Agent. Stage E is explicitly off here because it has not been deployed yet. For noninteractive setup, pass approved user IDs through `-ConsoleOperatorObjectIds`; otherwise existing operators or the signed-in user are used.
 
-When `enableCustomerDependencies=true`, completion also requests approval to
+When `enableCustomerDependencies=true`, completion automatically proceeds to
 initialize the SQL schema, seed products and least-privilege users through a
 temporary private App Service tunnel, publish the orders worker, and verify
 readiness. Run as the configured SQL Entra administrator with .NET 8 SDK, Python
-and `paramiko` installed. For an explicitly preapproved run, pass
-`-ApproveCustomerDependencies` to the completion wrapper. Use
+and `paramiko` installed. To request an interactive `yes` prompt instead, pass
+`-ApproveCustomerDependencies:$false` to the completion wrapper. Use
 `-CustomerDependencyDeploymentName stage-10-workloads` to select this deployment
 explicitly; otherwise the wrapper discovers the latest successful deployment for
 the exact customer app and validates its enabled context. Declined approval or
@@ -199,7 +226,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-20-alerting `
    --template-file ./infra/stages/20-alerting.bicep `
    --parameters "@$($stageParameterFiles['20-alerting'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ```
 
 This stage requires the VMSS administrator password and notification email from the private inputs, even when the optional standalone VMs are disabled.
@@ -218,7 +245,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-30-security-posture `
    --template-file ./infra/stages/30-security-posture.bicep `
    --parameters "@$($stageParameterFiles['30-security-posture'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ```
 
 The security template reuses the Stage A LAW and Stage C action group. It does not deploy workloads or enable a SIEM.
@@ -230,12 +257,12 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-40-optional-advanced `
    --template-file ./infra/stages/40-optional-advanced.bicep `
    --parameters "@$($stageParameterFiles['40-optional-advanced'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 az deployment group create `
    --subscription $sub --resource-group $rg --name stage-41-sentinel-content `
    --template-file ./infra/stages/41-sentinel-content.bicep `
    --parameters "@$($stageParameterFiles['41-sentinel-content'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $true
 ```
 
@@ -254,7 +281,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-50-ai `
    --template-file ./infra/stages/50-ai.bicep `
    --parameters "@$($stageParameterFiles['50-ai'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1
 if ($webApp) {
@@ -265,9 +292,30 @@ if ($webApp) {
 
 The refresh uses [the existing app deployment helper](../scripts/deploy-webapp.ps1), which configures console access and verifies the new publication without reapplying AKS workloads. Its bootstrap prepares agents with `-SkipTraffic`. The final [AI setup](../scripts/setup-ai.ps1) reuses those agents and always starts a finite background batch, default 150 conversations. Add `-SkipTraffic` there to prepare agents without model traffic. The [Cloud Shell AI wrapper](../scripts/setup-ai-cloud-shell.ps1) offers the same background behavior with core ARM discovery.
 
-Without Stage B, the refresh is skipped and the standalone AI scenario still works. Adding Stage B later initializes its console normally. To add the AI tier to an existing Stage E health model, set `stages.enableStageAI` to `true` in `lab.config.json`, rerun the bootstrap block, then rerun the native Stage 40 command above. Do not deploy Stage E solely for an A+AI lab.
+Without Stage B, the refresh is skipped and the standalone AI scenario still works. Adding Stage B later initializes its console normally. To add the AI tier to an existing Stage E health model, set `advancedConfiguration.stageToggles.enableStageAI` to `true` in `lab.config.json` (`stageToggles.enableStageAI` in legacy flat configs), rerun the bootstrap block, then rerun the native Stage 40 command above. Do not deploy Stage E solely for an A+AI lab.
 
 The worker prints its PID and log/status paths. Keep the deployment host and Azure CLI sign-in available until it finishes; Cloud Shell/CI termination can stop it. Startup is not evidence of successful model responses. See [Stage AI traffic behavior](STAGE-AI.md#6-enable--run).
+
+### Stage Fabric deploy (optional)
+
+Stage Fabric is off by default. It creates a billable F2 capacity in `swedencentral`; set `fabricAdminEmail` to a tenant user UPN before `sync-config.ps1` and project its stage parameters with the other stages.
+
+For the optional Fabric Health Model tier, deploy this stage before Stage E or rerun Stage E with `enableFabric=true` after capacity creation.
+
+```powershell
+az deployment group create `
+   --subscription $sub --resource-group $rg --name stage-60-fabric `
+   --template-file ./infra/stages/60-fabric.bicep `
+   --parameters "@$($stageParameterFiles['60-fabric'])" `
+   --confirm-with-what-if --only-show-errors
+./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
+
+Follow the [Fabric checklist](STAGE-FABRIC.md#after-deployps1-checklist) for any connection fallback, ingestion verification, and the guided Real-Time Dashboard. Suspend the capacity when idle:
+
+```powershell
+./scripts/suspend-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
 
 ### Stage SRE Agent deploy (optional)
 
@@ -278,7 +326,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-60-sre-agent `
    --template-file ./infra/stages/60-sre-agent.bicep `
    --parameters "@$($stageParameterFiles['60-sre-agent'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/setup-sre-agent.ps1 -SubscriptionId $sub -ResourceGroup $rg
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1
@@ -300,7 +348,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-70-observability-agent `
    --template-file ./infra/stages/70-observability-agent.bicep `
    --parameters "@$($stageParameterFiles['70-observability-agent'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/setup-observability-agent.ps1 -SubscriptionId $sub -ResourceGroup $rg
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1

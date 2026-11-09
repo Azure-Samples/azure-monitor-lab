@@ -287,7 +287,15 @@ resource alertAksPodRestarts 'Microsoft.Insights/scheduledQueryRules@2023-03-15-
     criteria: {
       allOf: [
         {
-          query: 'KubePodInventory | where TimeGenerated > ago(15m) | summarize Restarts = sum(toint(ContainerRestartCount)) by Name | where Restarts > 5'
+          query: '''
+let windowStart = ago(15m);
+KubePodInventory
+| where TimeGenerated > windowStart
+| summarize Baseline = min(toint(ContainerRestartCount)), Latest = max(toint(ContainerRestartCount)), Created = min(PodCreationTimeStamp) by _ResourceId, Namespace, PodUid, Name, ContainerName
+| extend Restarts = Latest - iff(Created >= windowStart, 0, Baseline)
+| summarize Restarts = sum(Restarts) by _ResourceId, Namespace, PodUid, Name
+| where Restarts > 5
+'''
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0

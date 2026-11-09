@@ -10,9 +10,9 @@ import uuid
 import paramiko
 
 
-def bootstrap(publish: Path, port: int, payload: bytes) -> None:
+def bootstrap(publish: Path, port: int, payload: bytes, check_only: bool = False) -> None:
     decoded = json.loads(payload)
-    if not decoded.get("AccessToken") or not decoded.get("Query") or not decoded.get("SqlServerName"):
+    if not decoded.get("AccessToken") or not decoded.get("SqlServerName") or (not check_only and not decoded.get("Query")):
         raise ValueError("An in-memory token, SQL server name and bootstrap query are required.")
     if not 1 <= port <= 65535:
         raise ValueError("SSH tunnel port must be between 1 and 65535.")
@@ -44,7 +44,10 @@ def bootstrap(publish: Path, port: int, payload: bytes) -> None:
                     sftp.put(str(Path(root) / file), path)
                     uploaded.append(path)
         command = "dotnet " + shlex.quote(posixpath.join(remote_root, "CustomerSqlBootstrap.dll"))
-        stdin, stdout, stderr = client.exec_command(command, timeout=120)
+        if check_only:
+            command += " --check-only"
+        # Three 30s login attempts, 5s/10s delays, 60s bootstrap and 15s verification.
+        stdin, stdout, stderr = client.exec_command(command, timeout=210)
         stdin.channel.sendall(payload)
         stdin.channel.shutdown_write()
         payload = b""
@@ -53,8 +56,8 @@ def bootstrap(publish: Path, port: int, payload: bytes) -> None:
         error = stderr.read().decode("utf-8")
         status = stdout.channel.recv_exit_status()
         print(output, end="")
+        print(error, end="", file=sys.stderr)
         if status != 0:
-            print(error, end="", file=sys.stderr)
             raise RuntimeError(f"Private SQL bootstrap exited with status {status}.")
     finally:
         payload = b""
@@ -74,8 +77,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Bootstrap SQL through an already-authenticated App Service SSH tunnel.")
     parser.add_argument("--publish", type=Path, required=True)
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--check-only", action="store_true", help="Verify SQL login with SELECT 1 without bootstrapping schema or users.")
     args = parser.parse_args()
-    bootstrap(args.publish, args.port, sys.stdin.buffer.read())
+    bootstrap(args.publish, args.port, sys.stdin.buffer.read(), check_only=args.check_only)
 
 
 if __name__ == "__main__":
