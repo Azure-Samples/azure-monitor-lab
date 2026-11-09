@@ -106,6 +106,7 @@ After the wrapper succeeds, deployment is complete. Continue with the [manual sc
 # 1. Clone the repo and enter it
 git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
+git switch integration
 
 # 2. Copy the template and fill in basicConfiguration for your subscription
 Copy-Item lab.config.json.example lab.config.json
