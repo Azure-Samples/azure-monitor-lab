@@ -85,6 +85,29 @@ test('Health Model tab reads the first configured model only when opened', async
   expect(calls.lists).toBe(1);
 });
 
+test('Health Model sends a same-origin referrer through App Service authentication without leaking it externally', async ({ page }) => {
+  await prepare(page);
+  let requests = 0;
+  await page.route('**/api/healthmodels/*/reports', async route => {
+    requests++;
+    if (route.request().headers().referer !== new URL('/', route.request().url()).href) {
+      return route.fulfill({ status: 403, body: '' });
+    }
+    return route.fulfill(sent('shop-demo'));
+  });
+  await open(page);
+  await page.getByRole('button', { name: 'Send Degraded Report' }).click();
+  await expect(page.locator('#hm-report-status')).toHaveText('Degraded report sent. It expires at 12:15 UTC.');
+  expect(requests).toBe(1);
+  let externalReferrer;
+  await page.route('https://external.example/privacy-check', route => {
+    externalReferrer = route.request().headers().referer;
+    return route.fulfill({ body: 'ok', headers: { 'access-control-allow-origin': '*' } });
+  });
+  await page.evaluate(() => fetch('https://external.example/privacy-check'));
+  expect(externalReferrer).toBeUndefined();
+});
+
 test('Health Model shows the entity tree once per entity, with states, counts and signal values', async ({ page }) => {
   await prepare(page);
   await open(page);

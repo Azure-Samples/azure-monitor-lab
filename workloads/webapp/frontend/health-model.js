@@ -113,7 +113,7 @@ export function initializeHealthModel({ refreshIcons }) {
   function reportStatus(text) { byId('hm-report-status').textContent = text; }
   async function read(response) { try { return await response.json(); } catch { return {}; } }
   async function loadModels() {
-    const response = await fetch('/api/healthmodels', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    const response = await fetch('/api/healthmodels', { cache: 'no-store', referrerPolicy: 'same-origin', signal: AbortSignal.timeout(15000) });
     byId('hm-sign-in').hidden = response.status !== 401;
     if (response.status === 401) { status('Sign in with an approved lab operator account to view health models.'); return false; }
     const data = await read(response);
@@ -129,7 +129,7 @@ export function initializeHealthModel({ refreshIcons }) {
   }
   async function fetchSnapshot(model, signal) {
     try {
-      const response = await fetch(`/api/healthmodels/${encodeURIComponent(model.name)}`, { cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(30000)]) });
+      const response = await fetch(`/api/healthmodels/${encodeURIComponent(model.name)}`, { cache: 'no-store', referrerPolicy: 'same-origin', signal: AbortSignal.any([signal, AbortSignal.timeout(30000)]) });
       const data = await read(response);
       const ok = response.ok && data.available && Array.isArray(data.entities);
       return { signIn: response.status === 401, snapshot: ok ? data : null, message: data.message || data.error || 'The health model could not be read.' };
@@ -157,7 +157,7 @@ export function initializeHealthModel({ refreshIcons }) {
   async function post(model, entity) {
     try {
       const response = await fetch(`/api/healthmodels/${encodeURIComponent(model.name)}/reports`, {
-        method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(30000),
+        method: 'POST', cache: 'no-store', referrerPolicy: 'same-origin', signal: AbortSignal.timeout(30000),
         headers: { 'Content-Type': 'application/json', 'X-Amlab-Agent-Request': 'true' }, body: JSON.stringify({ entity })
       });
       const data = await read(response);

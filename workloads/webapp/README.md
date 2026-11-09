@@ -37,6 +37,8 @@ The normal deployment bootstrap discovers the central workspace, configures sing
 
 The caller needs role-assignment and app-configuration permissions, plus permission to manage the sign-in registration under the tenant's policy. A setup failure stops deployment. Allow Azure RBAC and telemetry propagation before treating missing data as a workload fault. The existing [health access helper](../../scripts/setup-webapp-health-access.ps1) remains available for targeted administrative repair; it is not required after a successful normal deployment.
 
+Health Model requests explicitly use same-origin referrers so authenticated reports pass App Service's CSRF checks. The site's default `no-referrer` policy remains unchanged for external requests.
+
 The shared backend identity can read metadata across this lab and logs in the assigned workspaces. The API fixes the scope and returns only aggregates; this is not delegated browser-user access. Disabling `LabConsole__Health__Enabled` stops future queries but does not revoke existing roles.
 
 ### Configuration And Limits
