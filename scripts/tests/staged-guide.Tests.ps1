@@ -36,6 +36,43 @@ foreach ($name in $template.parameters.Keys) {
     throw "Required template parameter '$name' has no portal output."
   }
 }
+. (Join-Path $source 'scripts/lab-config.ps1')
+$example = Read-LabConfig -Path (Join-Path $source 'lab.config.json.example')
+$stageAliases = @{
+  enableAi = 'enableStageAI'; enableFabric = 'enableStageFabric'
+  enableSreAgent = 'enableStageSreAgent'; enableObservabilityAgent = 'enableStageObservabilityAgent'
+}
+foreach ($control in @($ui.parameters.basics) + @($ui.parameters.steps.elements)) {
+  if (-not $control.PSObject.Properties['defaultValue']) { continue }
+  $name = $control.name
+  if ($name -in @('alertEmail', 'fabricAdminEmail')) {
+    if ($control.defaultValue -cne '') { throw "Portal identity '$name' must not reuse a fictitious example address." }
+    continue
+  }
+  if ($stageAliases.ContainsKey($name)) {
+    $expected = $example.stageToggles.($stageAliases[$name])
+  } elseif ($example.PSObject.Properties[$name]) {
+    $expected = $example.$name
+  } elseif ($example.stageToggles.PSObject.Properties[$name]) {
+    $expected = $example.stageToggles.$name
+  } else {
+    continue
+  }
+  $actual = $control.defaultValue
+  if ($control.type -eq 'Microsoft.Common.OptionsGroup') {
+    $selected = @($control.constraints.allowedValues | Where-Object label -CEQ $actual)
+    if ($selected.Count -ne 1) { throw "Portal default '$name' must select exactly one allowed value." }
+    $actual = $selected[0].value
+  }
+  if ($actual -cne $expected -or ($expected -is [bool] -and $actual -isnot [bool])) {
+    throw "Portal default '$name' does not match lab.config.json.example."
+  }
+  if ($control.type -eq 'Microsoft.Common.DropDown' -and
+      $actual -notin $control.constraints.allowedValues.value) {
+    throw "Portal default '$name' is not an allowed selection."
+  }
+}
+Write-Output 'PASS: shared portal defaults match the config example without pre-filling fictitious identities.'
 $stagePage = @($ui.parameters.steps | Where-Object name -eq 'stages')
 if ($stagePage.Count -ne 1 -or $stagePage[0].label -ne 'Optional stages') {
   throw 'Portal must expose a dedicated Optional stages page.'

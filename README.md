@@ -80,7 +80,7 @@ Once Network Watcher is ready, open the wizard:
 
 </div>
 
-Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Sensible defaults are pre-filled throughout; the only things you have to supply are an alert email and a VM admin password.
+Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Shared settings match the config example, including App Service in `francecentral` and Observability Agent in `uksouth`. Select your subscription, resource group and main region in Basics, and supply your own alert email and VM admin password; sample identities and credentials are not pre-filled.
 
 This button deploys the `integration` templates and portal UI, which may contain changes not yet released to stable `main`. The Cloud Shell commands above use the same branch.
 
@@ -93,6 +93,8 @@ This button deploys the `integration` templates and portal UI, which may contain
 | **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, and customer application scenarios |
 
 Core stages A-E deploy together. Their individual workload and monitoring features remain configurable; the **Optional stages** tab adds any combination of the four integrations.
+
+SQL Entra administrator details appear and are required only when **Advanced > Enable broken deployment-slot recovery scenario** and **Enable real customer SQL, orders queue and processor** are both enabled. Supply the administrator principal's object ID, name and type (default `Group`); no SQL password is needed. Complete setup as that administrator or a member of its administrator group. Both customer options default off, as in the config example. Fabric separately requires a capacity-administrator UPN when enabled.
 
 After the portal deployment succeeds, open PowerShell Cloud Shell to complete the post-deployment configuration. If you skipped preparation, first run the expandable section's commands through `az account set` to clone the repository and set your deployment variables; the final Network Watcher commands are not needed.
 

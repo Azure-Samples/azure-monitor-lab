@@ -15,7 +15,7 @@
         },
         "location": {
           "label": "Region",
-          "toolTip": "Azure region for all lab resources. northeurope is the recommended default. (The Health Model preview and AI stage pin to swedencentral, and the App Service pins to westeurope, automatically — regardless of this choice.)",
+          "toolTip": "Main lab region; the config example uses northeurope. The Health Model preview and AI stage use swedencentral. App Service defaults to francecentral on Workloads, and Observability Agent defaults to uksouth on Optional stages; both can be changed separately.",
           "resourceTypes": [
             "Microsoft.OperationalInsights/workspaces",
             "Microsoft.ContainerService/managedClusters"
@@ -174,7 +174,7 @@
             "name": "appServiceLocation",
             "type": "Microsoft.Common.TextBox",
             "label": "App Service dependency region",
-            "defaultValue": "westeurope",
+            "defaultValue": "francecentral",
             "toolTip": "Region for App Service and its co-located diagnostic Storage and Event Hub dependencies.",
             "constraints": {
               "required": true,
@@ -377,7 +377,7 @@
             "name": "observabilityAgentLocation",
             "type": "Microsoft.Common.DropDown",
             "label": "Observability Agent region",
-            "defaultValue": "westeurope",
+            "defaultValue": "uksouth",
             "visible": "[equals(steps('stages').enableObservabilityAgent, true)]",
             "toolTip": "The agent and its Azure Monitor workspace must share a supported region.",
             "constraints": {
@@ -504,9 +504,10 @@
             "type": "Microsoft.Common.TextBox",
             "label": "SQL Microsoft Entra administrator object ID",
             "defaultValue": "",
-            "visible": "[equals(steps('advanced').enableCustomerDependencies, true)]",
+            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+            "toolTip": "Object ID of the Microsoft Entra user, group or application selected as SQL administrator. This is not a subscription ID, tenant ID or application client ID. Required only when both customer scenario options are enabled.",
             "constraints": {
-              "required": true,
+              "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
               "regex": "^(?!00000000-0000-0000-0000-000000000000$)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
               "validationMessage": "Supply the administrator's nonzero Entra object ID, not a client ID."
             }
@@ -516,22 +517,31 @@
             "type": "Microsoft.Common.TextBox",
             "label": "SQL Microsoft Entra administrator display name",
             "defaultValue": "",
-            "visible": "[equals(steps('advanced').enableCustomerDependencies, true)]",
-            "constraints": { "required": true }
+            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+            "toolTip": "Name of the selected SQL administrator principal. Complete post-deployment setup as that administrator, or as a member of its administrator group.",
+            "constraints": { "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]" }
           },
           {
             "name": "sqlEntraAdminType",
             "type": "Microsoft.Common.DropDown",
             "label": "SQL Microsoft Entra administrator type",
             "defaultValue": "Group",
-            "visible": "[equals(steps('advanced').enableCustomerDependencies, true)]",
+            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
             "constraints": {
               "allowedValues": [
                 { "label": "Group", "value": "Group" },
                 { "label": "User", "value": "User" },
                 { "label": "Application", "value": "Application" }
               ],
-              "required": true
+              "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]"
+            }
+          },
+          {
+            "name": "sqlEntraAdminInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+            "options": {
+              "text": "Customer SQL uses Microsoft Entra authentication only: provide the SQL administrator object ID, name and principal type above, not a SQL password. Azure subscription ownership does not automatically grant SQL database administration. Run Cloud Shell completion as the configured administrator or a member of its administrator group. These details are not needed when customer SQL dependencies are disabled."
             }
           }
         ]

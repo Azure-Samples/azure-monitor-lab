@@ -57,6 +57,18 @@ try {
   foreach ($parameter in @('enableCustomerDependencies','slotAppServicePlanSku','sqlEntraAdminObjectId','sqlEntraAdminName','sqlEntraAdminType')) {
     if (-not $ui.parameters.outputs.$parameter) { throw "Portal is missing output $parameter." }
   }
+  $sqlCondition = "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]"
+  foreach ($parameter in @('sqlEntraAdminObjectId','sqlEntraAdminName','sqlEntraAdminType')) {
+    $field = @($elements | Where-Object name -eq $parameter)
+    if ($field.Count -ne 1 -or $field[0].visible -cne $sqlCondition -or $field[0].constraints.required -cne $sqlCondition) {
+      throw "Portal SQL administrator field '$parameter' must be visible and required only when both customer options are enabled."
+    }
+  }
+  $sqlInfo = @($elements | Where-Object name -eq 'sqlEntraAdminInfo')
+  if ($sqlInfo.Count -ne 1 -or $sqlInfo[0].visible -cne $sqlCondition -or
+      $ui.parameters.outputs.enableCustomerDependencies -cne $sqlCondition) {
+    throw 'Portal SQL guidance and deployment must follow the same effective customer-dependency selection.'
+  }
   Write-Output 'PASS: customer feature default-off, Boolean validation, Stage B/slot prerequisites, Entra admin parameters, S2 preservation and Terraform disabled compatibility.'
 } finally {
   Remove-Item -LiteralPath $fixture -Recurse -Force
