@@ -129,9 +129,10 @@ For a fresh deployment, use `deploy.ps1` rather than calling `post-deploy.ps1` d
 
 `stageToggles.enableCustomerDependencies` defaults to `false`. Enabling it requires
 JSON Boolean `enableSlotFailureScenario=true` and `enableStageB=true`, plus
-`sqlEntraAdminObjectId`, `sqlEntraAdminName`, and `sqlEntraAdminType`
-(`User`, `Group`, or `Application`; default `Group`). `slotAppServicePlanSku`
-defaults to `S2`, with one worker; `S1`/`S3` are explicit alternatives. Run
+the SQL administrator group's `sqlEntraAdminObjectId` and `sqlEntraAdminName`.
+The portal and config example use `Group` and the one-worker `S2` slot plan
+automatically, without exposing those choices. Existing scripted configurations
+and template parameters retain their explicit overrides. Run
 `sync-config.ps1` before infrastructure preview. Terraform remains supported only
 with this dependency toggle disabled.
 

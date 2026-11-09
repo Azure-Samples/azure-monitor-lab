@@ -466,29 +466,14 @@
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable broken deployment-slot recovery scenario",
             "defaultValue": false,
-            "toolTip": "Uses the configurable Standard S2 plan (one worker by default), provisions a dedicated customer app and broken slot, and allows an approved Control Center action to swap only that customer app."
+            "toolTip": "Automatically uses the Standard S2 plan with one worker, provisions a dedicated customer app and broken slot, and allows an approved Control Center action to swap only that customer app."
           },
           {
             "name": "slotFailureScenarioInfo",
             "type": "Microsoft.Common.TextBlock",
             "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
             "options": {
-              "text": "This option increases App Service cost using Standard S2 by default and one worker. The broken slot is isolated to the dedicated customer app; the Control Center stays available. Recovery must be performed externally with Azure SRE Agent in Review mode or the documented GitHub Copilot CLI workflow."
-            }
-          },
-          {
-            "name": "slotAppServicePlanSku",
-            "type": "Microsoft.Common.DropDown",
-            "label": "Customer slot plan SKU (one worker)",
-            "defaultValue": "S2",
-            "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
-            "constraints": {
-              "allowedValues": [
-                { "label": "Standard S1", "value": "S1" },
-                { "label": "Standard S2", "value": "S2" },
-                { "label": "Standard S3", "value": "S3" }
-              ],
-              "required": true
+              "text": "This option automatically uses Standard S2 with one worker and increases App Service cost. The broken slot is isolated to the dedicated customer app; the Control Center stays available. Recovery must be performed externally with Azure SRE Agent in Review mode or the documented GitHub Copilot CLI workflow."
             }
           },
           {
@@ -502,46 +487,31 @@
           {
             "name": "sqlEntraAdminObjectId",
             "type": "Microsoft.Common.TextBox",
-            "label": "SQL Microsoft Entra administrator object ID",
+            "label": "SQL Microsoft Entra administrator group object ID",
             "defaultValue": "",
             "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
-            "toolTip": "Object ID of the Microsoft Entra user, group or application selected as SQL administrator. This is not a subscription ID, tenant ID or application client ID. Required only when both customer scenario options are enabled.",
+            "toolTip": "Object ID of the Microsoft Entra group selected as SQL administrator. The administrator type is automatically Group. This is not a subscription ID, tenant ID or application client ID. Required only when both customer scenario options are enabled.",
             "constraints": {
               "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
               "regex": "^(?!00000000-0000-0000-0000-000000000000$)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-              "validationMessage": "Supply the administrator's nonzero Entra object ID, not a client ID."
+              "validationMessage": "Supply the administrator group's nonzero Entra object ID, not a client ID."
             }
           },
           {
             "name": "sqlEntraAdminName",
             "type": "Microsoft.Common.TextBox",
-            "label": "SQL Microsoft Entra administrator display name",
+            "label": "SQL Microsoft Entra administrator group name",
             "defaultValue": "",
             "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
-            "toolTip": "Name of the selected SQL administrator principal. Complete post-deployment setup as that administrator, or as a member of its administrator group.",
+            "toolTip": "Name of the selected SQL administrator group. Complete post-deployment setup as a member of this group.",
             "constraints": { "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]" }
-          },
-          {
-            "name": "sqlEntraAdminType",
-            "type": "Microsoft.Common.DropDown",
-            "label": "SQL Microsoft Entra administrator type",
-            "defaultValue": "Group",
-            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
-            "constraints": {
-              "allowedValues": [
-                { "label": "Group", "value": "Group" },
-                { "label": "User", "value": "User" },
-                { "label": "Application", "value": "Application" }
-              ],
-              "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]"
-            }
           },
           {
             "name": "sqlEntraAdminInfo",
             "type": "Microsoft.Common.TextBlock",
             "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
             "options": {
-              "text": "Customer SQL uses Microsoft Entra authentication only: provide the SQL administrator object ID, name and principal type above, not a SQL password. Azure subscription ownership does not automatically grant SQL database administration. Run Cloud Shell completion as the configured administrator or a member of its administrator group. These details are not needed when customer SQL dependencies are disabled."
+              "text": "Customer SQL uses Microsoft Entra authentication only and automatically selects a Group administrator: provide the administrator group's object ID and name above, not a SQL password. Azure subscription ownership does not automatically grant SQL database administration. Run Cloud Shell completion as a member of this group. These details are not needed when customer SQL dependencies are disabled."
             }
           }
         ]
@@ -576,11 +546,9 @@
       "fabricAdminEmail": "[steps('stages').fabricAdminEmail]",
       "enableSreAgent": "[steps('stages').enableSreAgent]",
       "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",
-      "slotAppServicePlanSku": "[steps('advanced').slotAppServicePlanSku]",
       "enableCustomerDependencies": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
       "sqlEntraAdminObjectId": "[steps('advanced').sqlEntraAdminObjectId]",
       "sqlEntraAdminName": "[steps('advanced').sqlEntraAdminName]",
-      "sqlEntraAdminType": "[steps('advanced').sqlEntraAdminType]",
       "enableObservabilityAgent": "[steps('stages').enableObservabilityAgent]",
       "observabilityAgentLocation": "[steps('stages').observabilityAgentLocation]",
       "enableObservabilityAgentAutomaticInvestigation": "[steps('stages').enableObservabilityAgentAutomaticInvestigation]"

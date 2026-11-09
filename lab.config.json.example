@@ -38,11 +38,9 @@
       "siemWebhookUrl": ""
     },
     "customerApplicationServices": {
-      "slotAppServicePlanSku": "S2",
       "sqlEntraAdminObjectId": "",
       "sqlEntraAdminName": "",
-      "sqlEntraAdminType": "Group",
-      "_customerDependenciesDocs": "Bicep/Azure CLI only. Requires Stage B and enableSlotFailureScenario. SQL Basic is Entra-only: supply explicit SQL admin object ID/name/type, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL networking. After provisioning explicitly run deploy-customer-dependencies.ps1 using the SQL Entra admin identity, approving only an exact temporary operator firewall IP if needed. Disabling is not deletion under ARM incremental mode; teardown removes the lab resource group."
+      "_customerDependenciesDocs": "Bicep/Azure CLI only. Requires Stage B and enableSlotFailureScenario. The slot scenario automatically uses Standard S2 with one worker. SQL Basic is Entra-only and defaults to a Group administrator: supply the Entra group's object ID and name, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL networking. After provisioning explicitly run deploy-customer-dependencies.ps1 using the SQL Entra admin identity, approving only an exact temporary operator firewall IP if needed. Disabling is not deletion under ARM incremental mode; teardown removes the lab resource group."
     },
     "observabilityAgent": {
       "enableObservabilityAgentAutomaticInvestigation": false,

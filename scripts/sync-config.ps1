@@ -136,7 +136,7 @@ if ($enableCustomerDependencies) {
   }
   $adminId = [guid]::Empty
   if (-not [guid]::TryParseExact($sqlEntraAdminObjectId, 'D', [ref]$adminId) -or $adminId -eq [guid]::Empty -or [string]::IsNullOrWhiteSpace($sqlEntraAdminName)) {
-    throw 'Customer dependencies require explicit sqlEntraAdminObjectId (nonzero GUID), sqlEntraAdminName, and sqlEntraAdminType.'
+    throw 'Customer dependencies require explicit sqlEntraAdminObjectId (nonzero GUID) and sqlEntraAdminName. The administrator type defaults to Group.'
   }
   if ($cfg.PSObject.Properties.Name -contains 'sqlAdministratorPassword' -or $cfg.PSObject.Properties.Name -contains 'sqlAdministratorLogin') {
     throw 'Customer SQL supports Microsoft Entra authentication only; remove SQL credentials.'
