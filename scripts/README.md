@@ -630,6 +630,8 @@ New labs use a tenant-scoped Service Group ID of `amlab-workload-<scope-hash>`. 
 
 [setup-health-model.ps1](setup-health-model.ps1) and [setup-slis.ps1](setup-slis.ps1) share [resolve-service-group-id.ps1](resolve-service-group-id.ps1). They reuse the selected RG's existing membership target before deriving a name, preserving legacy `amlab-workload` groups and custom IDs. An explicit `-ServiceGroupId` still overrides discovery. Existing memberships are not automatically migrated or reparented; membership lookup failures stop rather than silently selecting a different group. This applies to one-shot, staged, Cloud Shell, and Terraform post-deployment setup because they invoke these same helpers.
 
+SLI setup discovers the selected resource group's unique `id-sli-<prefix>` identity and its matching `amw-<prefix>` workspace, so custom prefixes also work without a local config. Missing or ambiguous identities stop setup rather than selecting another lab's resources.
+
 Teardown checks for the exact `sgm-amlab-rg` membership in the selected resource group before attempting tenant-scoped SLI or Service Group deletion; the helpers resolve its actual target. If the membership is absent, shared cleanup is skipped automatically. When the membership exists but other labs share a legacy or explicitly chosen Service Group and SLIs, add `-KeepServiceGroup` to preserve them. The selected lab's resource-group membership is removed with its resource group.
 
 ```powershell
