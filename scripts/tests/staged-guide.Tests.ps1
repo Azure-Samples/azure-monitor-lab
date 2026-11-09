@@ -27,6 +27,22 @@ if ($portalPrerequisite -lt 0 -or $portalPrerequisite -gt $portalButton -or
     $readme -notmatch 'post-cloud-shell-deploy\.ps1[^\r\n]+-NamePrefix \$namePrefix') {
   throw 'Portal instructions must prepare Network Watcher before deployment and preserve the selected name prefix at completion.'
 }
+$completionBlocks = @([regex]::Matches($readme, '(?ms)^```powershell\r?\n(.*?)^```') | Where-Object {
+  $_.Groups[1].Value -match '(?m)^\./scripts/post-cloud-shell-deploy\.ps1 '
+})
+if ($completionBlocks.Count -ne 1) { throw 'README must have one self-contained portal completion block.' }
+$completion = $completionBlocks[0].Groups[1].Value
+$completionSetup = $completion.Substring(0, $completion.IndexOf('./scripts/post-cloud-shell-deploy.ps1 -TenantId'))
+foreach ($variable in @('tenantId','subscriptionId','resourceGroup','namePrefix')) {
+  if ($completionSetup -notmatch "(?m)^\`$$variable\s*=\s*Read-Host ") {
+    throw "Portal completion must initialize '$variable' within its own code block."
+  }
+}
+if ($completionSetup -notmatch 'git clone --branch \S+ https://github\.com/Azure-Samples/azure-monitor-lab\.git' -or
+    $completionSetup -notmatch 'Set-Location ./azure-monitor-lab' -or
+    $completionSetup -notmatch "IsNullOrWhiteSpace\(\`$namePrefix\).+\`$namePrefix = 'amlab'") {
+  throw 'Portal completion must include clone/directory setup and the default name prefix without relying on optional preparation.'
+}
 $template = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json -AsHashtable
 foreach ($name in $ui.parameters.outputs.PSObject.Properties.Name) {
   if (-not $template.parameters.ContainsKey($name)) { throw "Portal output '$name' is not a template parameter." }

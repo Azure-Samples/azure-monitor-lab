@@ -96,13 +96,30 @@ Core stages A-E deploy together. Their individual workload and monitoring featur
 
 The slot scenario automatically uses Standard `S2` with one worker. SQL Entra administrator details appear and are required only when **Advanced > Enable broken deployment-slot recovery scenario** and **Enable real customer SQL, orders queue and processor** are both enabled. The administrator type is automatically `Group`: supply the Entra group's object ID and name; no SQL password is needed. Complete setup as a member of that group. Both customer options default off, as in the config example. Fabric separately requires a capacity-administrator UPN when enabled.
 
-After the portal deployment succeeds, open PowerShell Cloud Shell to complete the post-deployment configuration. If you skipped preparation, first run the expandable section's commands through `az account set` to clone the repository and set your deployment variables; the final Network Watcher commands are not needed.
+After the portal deployment succeeds, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and run the complete block below. Enter the same tenant, subscription, resource group and name prefix used in the portal deployment. It clones the repository if needed, or reuses your existing clone from preparation.
 
 ```powershell
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+if (-not (Test-Path -LiteralPath ./scripts/post-cloud-shell-deploy.ps1)) {
+    if (-not (Test-Path -LiteralPath ./azure-monitor-lab)) {
+        git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
+    }
+    Set-Location ./azure-monitor-lab
+}
+git switch integration
+git pull --ff-only origin integration
+
+$tenantId = Read-Host 'Tenant ID'
+$subscriptionId = Read-Host 'Subscription ID'
+$resourceGroup = Read-Host 'Resource group name'
+$namePrefix = Read-Host 'Name prefix (press Enter for amlab)'
+if ([string]::IsNullOrWhiteSpace($namePrefix)) { $namePrefix = 'amlab' }
+
 ./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
 ```
 
-The wrapper detects deployed optional integrations, including Fabric, and reports any remaining manual actions. If the Cloud Shell session expired, reopen the clone and restore the variables above without repeating deployment.
+The wrapper detects deployed optional integrations, including Fabric, and reports any remaining manual actions. If the Cloud Shell session expires, rerun this block to reopen the clone and restore your deployment variables.
 
 If you enabled the optional AI stage and want to generate AI telemetry, run this next from the same Cloud Shell session. Skip it when AI is disabled:
 
