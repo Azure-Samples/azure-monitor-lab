@@ -40,6 +40,7 @@ on:
       - 'scripts/tests/network-watcher.Tests.ps1'
       - 'scripts/deployment-slot-recovery.ps1'
       - 'scripts/teardown.ps1'
+      - 'scripts/remove-lab-soft-deleted-resources.ps1'
       - 'scripts/remove-sre-agent.ps1'
       - 'scripts/remove-lab-entra-identities.ps1'
       - 'scripts/setup-rbac-demo.ps1'
@@ -65,6 +66,7 @@ on:
       - 'infra/healthmodel-tutorial/**'
       - 'infra/tests/**'
       - 'scripts/tests/teardown.Tests.ps1'
+      - 'scripts/tests/soft-delete-cleanup.Tests.ps1'
       - 'scripts/tests/sre-agent-cleanup.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
@@ -171,6 +173,7 @@ jobs:
           ./scripts/tests/service-group.Tests.ps1
           ./scripts/tests/healthmodel-deployment.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
+          ./scripts/tests/soft-delete-cleanup.Tests.ps1
           ./scripts/tests/sre-agent-cleanup.Tests.ps1
           ./scripts/tests/observability-agent-config.Tests.ps1
           ./scripts/tests/entra-cleanup.Tests.ps1

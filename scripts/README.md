@@ -517,7 +517,30 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 | [simulate-high-cpu.ps1](simulate-high-cpu.ps1) | Submits fixed 10-minute CPU loads to the running Linux and Windows demo VMs. No AKS dependency; guest load expires independently. | `./scripts/simulate-high-cpu.ps1 -SubscriptionId <sub> -TenantId <tenant> -ResourceGroup <rg>`; add `-WhatIf` for readiness checks only. |
 | `teardown.ps1` | Removes tenant-scoped demo artifacts and monitoring dependencies, then deletes every resource group whose name contains the complete requested resource group name, including AKS-managed `MC_` groups. | `./scripts/teardown.ps1 -ResourceGroup <rg> -Yes` |
 
-[teardown.ps1](teardown.ps1) is destructive. It lists matching resource groups and verified lab-owned Entra identity IDs before deletion. The `-Yes` switch skips the confirmation prompt and approves both lists. If omitted, the script requires you to type `DELETE`. Once that plan is approved, nested diagnostic-setting and identity deletions do not ask again. On Windows MSI Azure CLI installations, teardown applies a process-local Python filter for only the known `monitor-control-service` extension's `_create.py` invalid `\s` escape warning and its sample command. Installed files are unchanged; other CLI diagnostics, streams, and exit codes are preserved. Legacy Entra ownership warnings remain visible.
+[teardown.ps1](teardown.ps1) is destructive. It lists matching resource groups and verified lab-owned Entra identity IDs before deletion. Normal Azure soft-delete recovery is preserved unless you explicitly add `-PurgeSoftDeletedResources`. The `-Yes` switch only skips confirmation; it never enables permanent cleanup on its own. Without `-Yes`, type `DELETE` to approve the displayed plan, including permanent-resource cleanup only when explicitly selected. Nested deletions do not ask again after approval. On Windows MSI Azure CLI installations, teardown applies a process-local Python filter for only the known `monitor-control-service` extension's `_create.py` invalid `\s` escape warning and its sample command. Installed files are unchanged; other CLI diagnostics, streams, and exit codes are preserved. Legacy Entra ownership warnings remain visible.
+
+### Permanent cleanup for same-name redeployment
+
+Normal teardown preserves Azure's soft-delete recovery policies and does not request deleted-resource inventories or purge permissions. To release reserved names, explicitly add `-PurgeSoftDeletedResources`:
+
+```powershell
+./scripts/teardown.ps1 -ResourceGroup '<rg>' -PurgeSoftDeletedResources
+```
+
+With that switch, [the cleanup helper](remove-lab-soft-deleted-resources.ps1) discovers live and already soft-deleted Key Vaults, Foundry/Cognitive Services accounts, and Log Analytics workspaces by exact original subscription/resource-group/resource IDs, not name prefixes. It uses each resource's actual region, including AI resources outside the main lab region. Only the exact requested lab group and the approved auxiliary groups are included; Azure Monitor-managed groups are never directly purged or deleted.
+
+> [!WARNING]
+> `-PurgeSoftDeletedResources` permanently destroys the displayed secrets, AI account data and logs. Review the plan before typing `DELETE`; adding `-Yes` also approves that permanent cleanup without prompting. Omit the purge switch to retain normal soft-delete recovery instead. Recovery retention can leave names reserved and block immediate same-name redeployment.
+
+When purge is selected, after agent/dependency cleanup and before resource-group deletion, live vaults and AI accounts are deleted, awaited in soft-deleted inventory, purged, and verified absent. Log Analytics workspaces use permanent (`--force`) deletion after replication is disabled. Already soft-deleted workspaces must first be recovered; teardown temporarily recreates the exact original resource group if necessary, recovers and permanently deletes the workspace, then includes that group in the final group deletion. This recovery is part of the displayed cleanup plan and works on reruns after an earlier group deletion.
+
+Key Vault purge protection cannot be bypassed. A protected vault blocks an opted-in purge before deletion; wait for its retention period or rerun without `-PurgeSoftDeletedResources`. Additional purge permissions include deleted-resource inventory reads, Key Vault purge (for example, **Key Vault Purge Operator** at subscription scope), Cognitive Services deleted-account purge at subscription scope, and workspace recovery/delete plus resource-group create rights for recovery. Permission errors retain Azure diagnostics and stop before resource-group deletion; the script never grants permissions. Inventory visibility and purge completion are bounded to 600 seconds per check. A timeout is not reported as successful cleanup.
+
+The other currently deployed resource types use their normal group-deletion lifecycle; teardown does not invent purge operations for Application Insights components, SQL backups, or soft-deleted storage blobs. Service-side deletion/DNS propagation can still delay reuse. Final resource-group deletion remains asynchronous: wait for `az group exists --subscription '<sub>' -n '<rg>'` to return `false` before redeploying.
+
+Offline regression checks (mocked Azure only):
+`pwsh -NoProfile -File scripts\tests\soft-delete-cleanup.Tests.ps1` and
+`pwsh -NoProfile -File scripts\tests\teardown.Tests.ps1`.
 
 ### Optional shared Network Watcher resource-group deletion
 
