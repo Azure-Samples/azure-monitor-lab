@@ -232,12 +232,19 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
     $fixture.PrivateArtifact = Split-Path $args[[array]::IndexOf($args, '--publish') + 1] -Parent
     $global:LASTEXITCODE = if ($fixture.PrivateFails) { 1 } else { 0 }
   }
+  function customer-test-python {
+    $fixture.SelectedPythonCalls++
+    $input | python @args
+  }
   $common = @{ SubscriptionId=$sub;TenantId=$tenant;ResourceGroup='test-rg';DeploymentName='test-deployment';Confirm=$false }
   $fixture.CheckOnly = $true
   & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -CheckOnly
   Assert-True ($fixture.SqlCalls -eq 1 -and @($fixture.Calls | Where-Object { $_ -match 'firewall-rule|deployment source config-zip' }).Count -eq 0) 'Direct CheckOnly must not initialize SQL or change Azure resources.'
   & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -CheckOnly -UseCustomerPrivateTunnel
   Assert-True (-not (Test-Path $fixture.PrivateArtifact) -and $fixture.PublishCalls -eq 0) 'Private CheckOnly must clean temporary binaries without publishing the worker.'
+  $fixture.SelectedPythonCalls = 0
+  & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -CheckOnly -UseCustomerPrivateTunnel -PythonExecutable customer-test-python
+  Assert-True ($fixture.SelectedPythonCalls -eq 2 -and -not (Test-Path $fixture.PrivateArtifact)) 'Private bootstrap must use the selected interpreter for both dependency verification and token delivery, retaining artifact cleanup.'
   $fixture.PrivateFails = $true
   Assert-Throws { & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -CheckOnly -UseCustomerPrivateTunnel } 'Private CheckOnly failure must propagate.'
   Assert-True (-not (Test-Path $fixture.PrivateArtifact)) 'Failed private CheckOnly must still clean temporary binaries.'

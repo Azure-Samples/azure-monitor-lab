@@ -209,8 +209,11 @@ Completion publishes and verifies the App Service, initializes the Control Cente
 When `enableCustomerDependencies=true`, completion automatically proceeds to
 initialize the SQL schema, seed products and least-privilege users through a
 temporary private App Service tunnel, publish the orders worker, and verify
-readiness. Run as the configured SQL Entra administrator with .NET 8 SDK, Python
-and `paramiko` installed. To request an interactive `yes` prompt instead, pass
+readiness. Run as the configured SQL Entra administrator with .NET 8 SDK and Python.
+Missing `paramiko` is installed automatically in a temporary virtual environment;
+Python venv support and package-index access are required for that setup. System
+Python is unchanged, and the environment is cleaned up on success or failure.
+To request an interactive `yes` prompt instead, pass
 `-ApproveCustomerDependencies:$false` to the completion wrapper. Use
 `-CustomerDependencyDeploymentName stage-10-workloads` to select this deployment
 explicitly; otherwise the wrapper discovers the latest successful deployment for

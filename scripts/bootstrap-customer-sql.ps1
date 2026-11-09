@@ -9,6 +9,7 @@
   When public SQL access is disabled, UseCustomerPrivateTunnel uses an existing
   authenticated Azure CLI customer App Service SSH tunnel on SshPort. Requires
   .NET 8 SDK and Python paramiko, not Invoke-Sqlcmd. Tokens use encrypted stdin.
+  PythonExecutable selects the interpreter provisioned by deployment completion.
   CheckOnly verifies login with SELECT 1 without changing schema, data or users.
 #>
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
@@ -21,6 +22,7 @@ param(
   [switch] $ApproveTemporaryFirewall,
   [string] $OperatorIpv4,
   [switch] $UseCustomerPrivateTunnel,
+  [ValidateNotNullOrEmpty()][string] $PythonExecutable = 'python',
   [switch] $CheckOnly,
   [ValidateRange(1, 65535)][int] $SshPort = 22446
 )
@@ -34,12 +36,15 @@ if ($UseCustomerPrivateTunnel -and ($ApproveTemporaryFirewall -or $OperatorIpv4)
 if (-not $UseCustomerPrivateTunnel -and $PSBoundParameters.ContainsKey('SshPort')) {
   throw 'SshPort requires -UseCustomerPrivateTunnel.'
 }
+if (-not $UseCustomerPrivateTunnel -and $PSBoundParameters.ContainsKey('PythonExecutable')) {
+  throw 'PythonExecutable requires -UseCustomerPrivateTunnel.'
+}
 if ($UseCustomerPrivateTunnel) {
-  foreach ($tool in @('dotnet', 'python')) {
+  foreach ($tool in @('dotnet', $PythonExecutable)) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Private tunnel bootstrap requires $tool." }
   }
-  python -c "import paramiko"
-  if ($LASTEXITCODE -ne 0) { throw 'Private tunnel bootstrap requires Python paramiko. Install it in the chosen Python environment before retrying.' }
+  & $PythonExecutable -c "import paramiko"
+  if ($LASTEXITCODE -ne 0) { throw 'Private tunnel bootstrap requires Python paramiko. In this shell, run: python -m pip install paramiko; then verify: python -c "import paramiko". If Python is externally managed, activate a virtual environment first (see scripts/README.md). Retry bootstrap after verification; no SQL changes were started.' }
 } elseif (-not (Get-Command Invoke-Sqlcmd -ErrorAction SilentlyContinue)) {
   throw 'Install/import the SqlServer PowerShell module before bootstrap. No Azure changes were made.'
 }
@@ -69,7 +74,7 @@ try {
     $privatePayload = @{ AccessToken = $accessToken; Query = $query; SqlServerName = $context.sqlServerName } | ConvertTo-Json -Compress
     $privateArguments = @((Join-Path $PSScriptRoot 'customer-sql-bootstrap\bootstrap-over-ssh.py'), '--publish', $publish, '--port', $SshPort)
     if ($CheckOnly) { $privateArguments += '--check-only' }
-    $privatePayload | python @privateArguments
+    $privatePayload | & $PythonExecutable @privateArguments
     if ($LASTEXITCODE -ne 0) { throw 'Private SQL operation failed. See the SQL login, initialization or verification error above; check private connectivity and the configured SQL Entra administrator.' }
     return
   }
