@@ -104,7 +104,16 @@ try {
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $publish 'host.json')) -or -not (Test-Path (Join-Path $publish 'functions.metadata'))) {
     throw 'CustomerProcessor .NET 8 isolated publication did not produce host.json and functions.metadata.'
   }
-  Compress-Archive -Path (Join-Path $publish '*') -DestinationPath $zip
+  # Compress-Archive omits hidden directories, including .azurefunctions on Linux.
+  [IO.Compression.ZipFile]::CreateFromDirectory($publish, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
+  $package = [IO.Compression.ZipFile]::OpenRead($zip)
+  try {
+    $entries = @($package.Entries.FullName)
+    if ($entries -cnotcontains 'host.json' -or $entries -cnotcontains 'functions.metadata' -or
+        @($entries | Where-Object { $_.StartsWith('.azurefunctions/', [StringComparison]::Ordinal) -and -not $_.EndsWith('/') }).Count -eq 0) {
+      throw 'Orders processor ZIP is incomplete: host.json, functions.metadata and .azurefunctions files must be at the archive root. Check the .NET isolated publish output; no ZIP was uploaded.'
+    }
+  } finally { $package.Dispose() }
   az functionapp deployment source config-zip --subscription $SubscriptionId --resource-group $ResourceGroup --name $context.workerName `
     --src $zip --build-remote false --output none --only-show-errors
   if ($LASTEXITCODE -ne 0) { throw 'Orders processor ZIP deployment failed.' }

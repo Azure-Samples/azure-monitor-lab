@@ -217,6 +217,9 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
     $output = $args[[array]::IndexOf($args, '--output') + 1]
     '{}' | Set-Content (Join-Path $output 'host.json')
     '[]' | Set-Content (Join-Path $output 'functions.metadata')
+    $extensions = New-Item -ItemType Directory -Path (Join-Path $output '.azurefunctions') -Force
+    if ($IsWindows) { $extensions.Attributes = $extensions.Attributes -bor [IO.FileAttributes]::Hidden }
+    '{}' | Set-Content (Join-Path $extensions.FullName 'function.deps.json')
     $global:LASTEXITCODE = 0
   }
   function python {

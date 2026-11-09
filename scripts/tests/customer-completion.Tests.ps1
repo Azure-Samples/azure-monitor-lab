@@ -77,6 +77,13 @@ function dotnet {
   $out = $args[[array]::IndexOf($args, '--output') + 1]
   '{}' | Set-Content (Join-Path $out 'host.json')
   '[]' | Set-Content (Join-Path $out 'functions.metadata')
+  if ($fixture.Failure -ne 'publish-extensions') {
+    $extensions = New-Item -ItemType Directory -Path (Join-Path $out '.azurefunctions') -Force
+    if ($IsWindows) { $extensions.Attributes = $extensions.Attributes -bor [IO.FileAttributes]::Hidden }
+    '{"extensions":[]}' | Set-Content (Join-Path $out 'extensions.json')
+    '{}' | Set-Content (Join-Path $extensions.FullName 'function.deps.json')
+    'test extension assembly' | Set-Content (Join-Path $extensions.FullName 'Microsoft.Azure.WebJobs.Extensions.ServiceBus.dll')
+  }
   $global:LASTEXITCODE = if ($fixture.Failure -eq 'publish') { 1 } else { 0 }
 }
 function Invoke-RestMethod {
@@ -120,6 +127,14 @@ function az {
       } | ConvertTo-Json -Depth 8
     }
     'functionapp deployment source config-zip*' {
+      $zip = $args[[array]::IndexOf($args, '--src') + 1]
+      $package = [IO.Compression.ZipFile]::OpenRead($zip)
+      try {
+        $entries = @($package.Entries.FullName)
+        foreach ($required in @('host.json', 'functions.metadata', 'extensions.json', '.azurefunctions/function.deps.json', '.azurefunctions/Microsoft.Azure.WebJobs.Extensions.ServiceBus.dll')) {
+          Assert-True ($entries -ccontains $required) "Worker ZIP must preserve the exact root-level path '$required', including hidden extension files."
+        }
+      } finally { $package.Dispose() }
       $fixture.Events.Add('upload')
       if ($fixture.Failure -eq 'upload') { $global:LASTEXITCODE = 1 }
       return
@@ -219,6 +234,7 @@ if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
     @{ Failure = 'tunnel-timeout'; Message = 'SSH banner'; Started = $true },
     @{ Failure = 'sql'; Message = 'simulated SQL failure'; Started = $true },
     @{ Failure = 'publish'; Message = 'isolated publication'; Started = $true },
+    @{ Failure = 'publish-extensions'; Message = 'Orders processor ZIP is incomplete'; Started = $true },
     @{ Failure = 'upload'; Message = 'ZIP deployment failed'; Started = $true },
     @{ Failure = 'functions'; Message = 'not discoverable within 120 seconds'; Started = $true },
     @{ Failure = 'products'; Message = 'did not return seed'; Started = $true }
@@ -230,6 +246,9 @@ if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
       @($fixture.Events | Where-Object { $_ -eq 'tunnel-remove' }).Count -eq [int]$case.Started) 'Every owned tunnel must be stopped and removed exactly once, including failures.'
     if ($case.Failure -like 'python*' -or $case.Failure -in @('tunnel-exit','tunnel-timeout','sql')) {
       Assert-True ($fixture.Events -notcontains 'publish') 'Failed prerequisites or SQL must block worker publication.'
+    }
+    if ($case.Failure -eq 'publish-extensions') {
+      Assert-True ($fixture.Events -notcontains 'upload') 'Missing Functions extensions must fail validation before any ZIP upload.'
     }
     if ($fixture.PythonEnvironment) {
       Assert-True (-not (Test-Path -LiteralPath $fixture.PythonEnvironment)) 'Failed dependency setup must remove its temporary environment.'
