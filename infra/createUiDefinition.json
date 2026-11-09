@@ -15,7 +15,7 @@
         },
         "location": {
           "label": "Region",
-          "toolTip": "Main lab region; the config example uses northeurope. The Health Model preview and AI stage use swedencentral. App Service defaults to francecentral on Workloads, and Observability Agent defaults to uksouth on Optional stages; both can be changed separately.",
+          "toolTip": "Main lab region; the config example uses northeurope. The Health Model and AI stage use swedencentral. App Service defaults to francecentral on Workloads, and Observability Agent defaults to uksouth on Optional stages; both can be changed separately.",
           "resourceTypes": [
             "Microsoft.OperationalInsights/workspaces",
             "Microsoft.ContainerService/managedClusters"

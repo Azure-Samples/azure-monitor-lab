@@ -1,0 +1,13 @@
+{
+  "name": "lab-cafe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tiny coffee shop API used by the health model tutorial",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

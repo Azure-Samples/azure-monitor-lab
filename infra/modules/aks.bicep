@@ -7,10 +7,10 @@ param dnsPrefix string
 @description('Region.')
 param location string
 
-@description('Node VM size.')
+@description('System node pool VM size. Workload nodes come from node auto provisioning (workloads/k8s/00-nodepools.yaml).')
 param nodeVmSize string = 'Standard_EC4as_v5'
 
-@description('Node count.')
+@description('System node pool node count.')
 param nodeCount int = 2
 
 @description('Central LAW for Container Insights logs.')
@@ -28,7 +28,7 @@ param dcrPrometheusName string
 @description('Resource tags.')
 param tags object = {}
 
-resource aks 'Microsoft.ContainerService/managedClusters@2024-05-01' = {
+resource aks 'Microsoft.ContainerService/managedClusters@2025-05-01' = {
   name: name
   location: location
   tags: tags
@@ -43,6 +43,9 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-05-01' = {
     kubernetesVersion: '1.34'
     dnsPrefix: dnsPrefix
     enableRBAC: true
+    nodeProvisioningProfile: {
+      mode: 'Auto'
+    }
     agentPoolProfiles: [
       {
         name: 'systempool'
@@ -58,7 +61,9 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-05-01' = {
     ]
     networkProfile: {
       networkPlugin: 'azure'
-      networkPolicy: 'azure'
+      networkPluginMode: 'overlay'
+      networkDataplane: 'cilium'
+      networkPolicy: 'cilium'
       loadBalancerSku: 'standard'
       serviceCidr: '10.100.0.0/16'
       dnsServiceIP: '10.100.0.10'

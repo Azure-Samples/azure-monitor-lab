@@ -41,14 +41,14 @@ resource customerLaw 'Microsoft.OperationalInsights/workspaces@2023-09-01' exist
   name: last(split(customerCentralLawId, '/'))
 }
 
-resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-01-01-preview' = {
+resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-11-01' = {
   name: modelName
   location: location
   identity: { type: 'SystemAssigned' }
   tags: tags
   properties: {}
 }
-resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@2026-01-01-preview' = {
+resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@2026-11-01' = {
   parent: healthModel
   name: authName
   properties: {
@@ -122,7 +122,7 @@ resource workspaceReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
   }
 }
 
-resource root 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource root 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: modelName
   properties: {
@@ -138,7 +138,7 @@ var metricComponents = [
   { key: 'customer-servicebus', display: 'Orders queue runtime (Service Bus)', id: customerBus.id, namespace: 'Microsoft.ServiceBus/namespaces', metric: 'DeadletteredMessages', aggregation: 'Maximum', unit: 'Count', degraded: 0, unhealthy: 4 }
   { key: 'customer-worker-storage', display: 'Processor host storage', id: customerStorage.id, namespace: 'Microsoft.Storage/storageAccounts', metric: 'Availability', aggregation: 'Average', unit: 'Percent', degraded: 99, unhealthy: 95 }
 ]
-resource metricEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = [for item in metricComponents: {
+resource metricEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [for item in metricComponents: {
   parent: healthModel
   name: item.key
   properties: {
@@ -183,7 +183,7 @@ resource metricEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-
   }
   dependsOn: [authSetting, siteReader, planReader, sqlReader, busReader, storageReader]
 }]
-resource processorEntity 'Microsoft.CloudHealth/healthmodels/entities@2026-01-01-preview' = {
+resource processorEntity 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: 'customer-processor'
   properties: {
@@ -222,7 +222,7 @@ var customerEdges = [
   { parent: 'customer-processor', child: 'customer-sql' }
   { parent: 'customer-processor', child: 'customer-worker-storage' }
 ]
-resource relationships 'Microsoft.CloudHealth/healthmodels/relationships@2026-01-01-preview' = [for edge in customerEdges: {
+resource relationships 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = [for edge in customerEdges: {
   parent: healthModel
   name: '${edge.parent}-to-${edge.child}'
   properties: {

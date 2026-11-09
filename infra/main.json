@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "5761674375643973390"
+      "templateHash": "4126034704792554604"
     }
   },
   "parameters": {
@@ -3718,7 +3718,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "913029475329877512"
+              "templateHash": "12959589568754574968"
             }
           },
           "parameters": {
@@ -3744,14 +3744,14 @@
               "type": "string",
               "defaultValue": "Standard_EC4as_v5",
               "metadata": {
-                "description": "Node VM size."
+                "description": "System node pool VM size. Workload nodes come from node auto provisioning (workloads/k8s/00-nodepools.yaml)."
               }
             },
             "nodeCount": {
               "type": "int",
               "defaultValue": 2,
               "metadata": {
-                "description": "Node count."
+                "description": "System node pool node count."
               }
             },
             "centralLawId": {
@@ -3789,7 +3789,7 @@
           "resources": [
             {
               "type": "Microsoft.ContainerService/managedClusters",
-              "apiVersion": "2024-05-01",
+              "apiVersion": "2025-05-01",
               "name": "[parameters('name')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
@@ -3804,6 +3804,9 @@
                 "kubernetesVersion": "1.34",
                 "dnsPrefix": "[parameters('dnsPrefix')]",
                 "enableRBAC": true,
+                "nodeProvisioningProfile": {
+                  "mode": "Auto"
+                },
                 "agentPoolProfiles": [
                   {
                     "name": "systempool",
@@ -3819,7 +3822,9 @@
                 ],
                 "networkProfile": {
                   "networkPlugin": "azure",
-                  "networkPolicy": "azure",
+                  "networkPluginMode": "overlay",
+                  "networkDataplane": "cilium",
+                  "networkPolicy": "cilium",
                   "loadBalancerSku": "standard",
                   "serviceCidr": "10.100.0.0/16",
                   "dnsServiceIP": "10.100.0.10"
@@ -3998,7 +4003,7 @@
             },
             "controlPlaneFqdn": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01').fqdn]"
+              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2025-05-01').fqdn]"
             }
           }
         }
@@ -64983,7 +64988,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "2388638836634970468"
+              "templateHash": "3951996124099318291"
             }
           },
           "parameters": {
@@ -65007,7 +65012,7 @@
                 "southeastasia"
               ],
               "metadata": {
-                "description": "Region for the Health Model. Must be one of the supported preview regions."
+                "description": "Region for the Health Model. Must be a region where Microsoft.CloudHealth is available."
               }
             },
             "tags": {
@@ -65144,7 +65149,7 @@
           "resources": [
             {
               "type": "Microsoft.CloudHealth/healthmodels",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[parameters('healthModelName')]",
               "location": "[parameters('location')]",
               "identity": {
@@ -65155,7 +65160,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'systemAssigned')]",
               "properties": {
                 "displayName": "System-assigned managed identity",
@@ -65172,7 +65177,7 @@
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -65186,7 +65191,7 @@
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '73c42c96-874c-492b-b04d-ab87d138a893')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893')]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -65195,7 +65200,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'frontend')]",
               "properties": {
                 "displayName": "Frontend",
@@ -65221,7 +65226,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'compute')]",
               "properties": {
                 "displayName": "Compute fleet",
@@ -65250,7 +65255,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'platform')]",
               "properties": {
                 "displayName": "Shared platform services",
@@ -65275,7 +65280,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'webapp')]",
               "properties": {
                 "displayName": "App Service (webapp)",
@@ -65390,7 +65395,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'appinsights')]",
               "properties": {
                 "displayName": "Application Insights (telemetry)",
@@ -65483,7 +65488,7 @@
             {
               "condition": "[not(empty(parameters('linuxVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'linuxvm')]",
               "properties": {
                 "displayName": "Linux VM",
@@ -65576,7 +65581,7 @@
             {
               "condition": "[not(empty(parameters('windowsVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'winserver')]",
               "properties": {
                 "displayName": "Windows VM",
@@ -65668,7 +65673,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'vmss')]",
               "properties": {
                 "displayName": "VMSS (predictive autoscale)",
@@ -65761,7 +65766,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'aks')]",
               "properties": {
                 "displayName": "AKS cluster",
@@ -65853,7 +65858,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'keyvault')]",
               "properties": {
                 "displayName": "Key Vault",
@@ -65924,7 +65929,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'storage')]",
               "properties": {
                 "displayName": "Storage Account",
@@ -65996,7 +66001,7 @@
             {
               "condition": "[parameters('enableFabric')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-05-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence')]",
               "properties": {
                 "displayName": "Real-Time Intelligence",
@@ -66023,7 +66028,7 @@
             {
               "condition": "[parameters('enableFabric')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-05-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity')]",
               "properties": {
                 "displayName": "Microsoft Fabric F2 capacity",
@@ -66054,7 +66059,7 @@
             {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'aiworkload')]",
               "properties": {
                 "displayName": "AI workload (Foundry)",
@@ -66081,7 +66086,7 @@
             {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'foundry')]",
               "properties": {
                 "displayName": "Foundry account",
@@ -66179,7 +66184,7 @@
               },
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), format('agent-{0}', variables('aiAgents')[copyIndex()].key))]",
               "properties": {
                 "displayName": "[variables('aiAgents')[copyIndex()].display]",
@@ -66246,7 +66251,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'frontend-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -66260,7 +66265,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'compute-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -66274,7 +66279,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'platform-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -66288,7 +66293,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'webapp-to-frontend')]",
               "properties": {
                 "parentEntityName": "frontend",
@@ -66302,7 +66307,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'appinsights-to-frontend')]",
               "properties": {
                 "parentEntityName": "frontend",
@@ -66317,7 +66322,7 @@
             {
               "condition": "[not(empty(parameters('linuxVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'linuxvm-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -66332,7 +66337,7 @@
             {
               "condition": "[not(empty(parameters('windowsVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'winserver-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -66346,7 +66351,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'vmss-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -66360,7 +66365,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'aks-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -66374,7 +66379,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'keyvault-to-platform')]",
               "properties": {
                 "parentEntityName": "platform",
@@ -66388,7 +66393,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'storage-to-platform')]",
               "properties": {
                 "parentEntityName": "platform",
@@ -66403,7 +66408,7 @@
             {
               "condition": "[parameters('enableFabric')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-05-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -66418,7 +66423,7 @@
             {
               "condition": "[parameters('enableFabric')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-05-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity-to-realtimeintelligence')]",
               "properties": {
                 "parentEntityName": "realtimeintelligence",
@@ -66433,7 +66438,7 @@
             {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'ai-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -66448,7 +66453,7 @@
             {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'foundry-to-ai')]",
               "properties": {
                 "parentEntityName": "aiworkload",
@@ -66467,7 +66472,7 @@
               },
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), format('agent-{0}-to-ai', variables('aiAgents')[copyIndex()].key))]",
               "properties": {
                 "parentEntityName": "aiworkload",
@@ -66491,7 +66496,7 @@
             },
             "healthModelPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-01-01-preview', 'full').identity.principalId]"
+              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]"
             }
           }
         }
@@ -66560,7 +66565,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "10343612691357676888"
+              "templateHash": "5962604355043039655"
             }
           },
           "parameters": {
@@ -66705,7 +66710,7 @@
           "resources": [
             {
               "type": "Microsoft.CloudHealth/healthmodels",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[variables('modelName')]",
               "location": "[parameters('location')]",
               "identity": {
@@ -66716,7 +66721,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), variables('authName'))]",
               "properties": {
                 "displayName": "Customer model system-assigned identity",
@@ -66734,7 +66739,7 @@
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -66748,7 +66753,7 @@
               "name": "[guid(resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -66762,7 +66767,7 @@
               "name": "[guid(resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1]), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -66776,7 +66781,7 @@
               "name": "[guid(resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -66790,7 +66795,7 @@
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -66804,7 +66809,7 @@
               "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -66818,7 +66823,7 @@
               "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('logReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('logReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -66827,7 +66832,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), variables('modelName'))]",
               "properties": {
                 "displayName": "Customer application architecture",
@@ -66849,7 +66854,7 @@
                 "count": "[length(variables('metricComponents'))]"
               },
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), variables('metricComponents')[copyIndex()].key)]",
               "properties": {
                 "displayName": "[variables('metricComponents')[copyIndex()].display]",
@@ -66878,7 +66883,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), 'customer-processor')]",
               "properties": {
                 "displayName": "Orders processor",
@@ -66928,7 +66933,7 @@
                 "count": "[length(variables('customerEdges'))]"
               },
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), format('{0}-to-{1}', variables('customerEdges')[copyIndex()].parent, variables('customerEdges')[copyIndex()].child))]",
               "properties": {
                 "parentEntityName": "[variables('customerEdges')[copyIndex()].parent]",
@@ -66953,7 +66958,7 @@
             },
             "healthModelPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]"
+              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]"
             }
           }
         }

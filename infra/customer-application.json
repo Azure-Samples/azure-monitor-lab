@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "14465485099022062842"
+      "templateHash": "15868992102537307882"
     }
   },
   "parameters": {
@@ -25899,7 +25899,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "10343612691357676888"
+              "templateHash": "5962604355043039655"
             }
           },
           "parameters": {
@@ -26044,7 +26044,7 @@
           "resources": [
             {
               "type": "Microsoft.CloudHealth/healthmodels",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[variables('modelName')]",
               "location": "[parameters('location')]",
               "identity": {
@@ -26055,7 +26055,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), variables('authName'))]",
               "properties": {
                 "displayName": "Customer model system-assigned identity",
@@ -26073,7 +26073,7 @@
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -26087,7 +26087,7 @@
               "name": "[guid(resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -26101,7 +26101,7 @@
               "name": "[guid(resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1]), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -26115,7 +26115,7 @@
               "name": "[guid(resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -26129,7 +26129,7 @@
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -26143,7 +26143,7 @@
               "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -26157,7 +26157,7 @@
               "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('logReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('logReader'))]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -26166,7 +26166,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), variables('modelName'))]",
               "properties": {
                 "displayName": "Customer application architecture",
@@ -26188,7 +26188,7 @@
                 "count": "[length(variables('metricComponents'))]"
               },
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), variables('metricComponents')[copyIndex()].key)]",
               "properties": {
                 "displayName": "[variables('metricComponents')[copyIndex()].display]",
@@ -26217,7 +26217,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), 'customer-processor')]",
               "properties": {
                 "displayName": "Orders processor",
@@ -26267,7 +26267,7 @@
                 "count": "[length(variables('customerEdges'))]"
               },
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', variables('modelName'), format('{0}-to-{1}', variables('customerEdges')[copyIndex()].parent, variables('customerEdges')[copyIndex()].child))]",
               "properties": {
                 "parentEntityName": "[variables('customerEdges')[copyIndex()].parent]",
@@ -26292,7 +26292,7 @@
             },
             "healthModelPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-01-01-preview', 'full').identity.principalId]"
+              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]"
             }
           }
         }
