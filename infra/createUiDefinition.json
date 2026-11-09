@@ -6,7 +6,7 @@
     "config": {
       "isWizard": false,
       "basics": {
-        "description": "**Azure Monitor Lab** — full portal deployment. Every setting is provided here in the UI; no local config file is required. Pick a **Resource group** and **Region**, then step through the tabs to tune workloads, monitoring, and advanced options. Sensible defaults are pre-filled everywhere.",
+        "description": "**Azure Monitor Lab** — full portal deployment. Every setting is provided here in the UI; no local config file is required. Pick a **Resource group** and **Region**, then step through the tabs to tune workloads, monitoring, optional stages, and advanced options. Sensible defaults are pre-filled everywhere.",
         "resourceGroup": {
           "allowExisting": true,
           "constraints": {
@@ -298,6 +298,122 @@
         ]
       },
       {
+        "name": "stages",
+        "label": "Optional stages",
+        "elements": [
+          {
+            "name": "stageSelectionInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "options": {
+              "text": "Core stages A-E deploy together. Configure their individual features on Workloads and Monitoring & cost. Enable any optional stages below; all are off by default and can add charges. After deployment, run the README's Cloud Shell completion step and review any remaining manual actions."
+            }
+          },
+          {
+            "name": "enableAi",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable AI stage (Microsoft Foundry)",
+            "defaultValue": false,
+            "toolTip": "Deploys Microsoft Foundry, four billable model deployments, AI monitoring, alerts, and an AI FinOps workbook in swedencentral. Off by default."
+          },
+          {
+            "name": "aiPostDeployInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('stages').enableAi, true)]",
+            "options": {
+              "text": "The AI stage deploys billable Microsoft Foundry models in swedencentral. The portal creates the infrastructure; Cloud Shell completion prepares the agents. Follow the README's separate optional AI traffic step to generate telemetry."
+            }
+          },
+          {
+            "name": "enableFabric",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable Fabric stage (Real-Time Intelligence)",
+            "defaultValue": false,
+            "toolTip": "Deploys an F2 Fabric capacity pinned to swedencentral. Indicative PAYG retail cost while active: about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies; OneLake storage and other meters can add cost. Off by default."
+          },
+          {
+            "name": "fabricAdminEmail",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Fabric administrator UPN",
+            "defaultValue": "",
+            "toolTip": "Microsoft Entra user UPN in the selected subscription tenant. Replace the fictitious example admin@example.com with your tenant's user UPN. Do not use an external notification alias.",
+            "constraints": {
+              "required": "[equals(steps('stages').enableFabric, true)]",
+              "regex": "^[^@\\s]+@[^@\\s]+$",
+              "validationMessage": "Enter a Microsoft Entra user UPN from the deployment tenant."
+            },
+            "visible": "[equals(steps('stages').enableFabric, true)]"
+          },
+          {
+            "name": "fabricPostDeployInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('stages').enableFabric, true)]",
+            "options": {
+              "text": "Cost warning: Fabric F2 is pinned to swedencentral and bills while active at an indicative PAYG retail cost of about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies and additional Fabric usage may add charges. The deployment creates only the ARM capacity. The README's Cloud Shell completion wrapper detects it and runs Fabric SaaS setup. Review its manual-action results and suspend the capacity when the demo is idle."
+            }
+          },
+          {
+            "name": "enableSreAgent",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable SRE Agent stage (incident investigation)",
+            "defaultValue": false,
+            "toolTip": "Deploys the preview Azure SRE Agent and connectors in swedencentral. Active usage is billable and always-on billing can begin after an eligible trial. Requires subscription-level role-assignment permission."
+          },
+          {
+            "name": "sreAgentInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('stages').enableSreAgent, true)]",
+            "options": {
+              "text": "Azure SRE Agent uses a preview API, is pinned to swedencentral, and creates a subscription-scope Monitoring Contributor assignment for its connector identity. Cloud Shell completion validates the agent and prints its portal URL. Delete the agent before the trial ends if you do not intend to continue with paid usage. Custom investigators and response plans are configured after deployment."
+            }
+          },
+          {
+            "name": "enableObservabilityAgent",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable Observability Agent stage (autonomous operations)",
+            "defaultValue": false,
+            "toolTip": "Deploys the preview Azure Copilot Observability Agent, a dedicated Azure Monitor workspace, autonomous alert correlation, and least-privilege RBAC. Chat and deep investigations consume Azure Agent Credits."
+          },
+          {
+            "name": "observabilityAgentLocation",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Observability Agent region",
+            "defaultValue": "westeurope",
+            "visible": "[equals(steps('stages').enableObservabilityAgent, true)]",
+            "toolTip": "The agent and its Azure Monitor workspace must share a supported region.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Australia East", "value": "australiaeast" },
+                { "label": "Canada Central", "value": "canadacentral" },
+                { "label": "Central US", "value": "centralus" },
+                { "label": "East Asia", "value": "eastasia" },
+                { "label": "East US", "value": "eastus" },
+                { "label": "South Central US", "value": "southcentralus" },
+                { "label": "UK South", "value": "uksouth" },
+                { "label": "West Central US", "value": "westcentralus" },
+                { "label": "West Europe", "value": "westeurope" }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "enableObservabilityAgentAutomaticInvestigation",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Automatically investigate agent-created issues",
+            "defaultValue": false,
+            "visible": "[equals(steps('stages').enableObservabilityAgent, true)]",
+            "toolTip": "Billable deep investigations run automatically for every issue the agent creates. Leave off for cost-controlled demos."
+          },
+          {
+            "name": "observabilityAgentInfo",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[equals(steps('stages').enableObservabilityAgent, true)]",
+            "options": {
+              "text": "Azure Copilot Observability Agent autonomous operations are in preview. The deployment creates a dedicated Azure Monitor workspace, grants Issue Contributor there and Monitoring Reader directly on this lab's Application Insights resource, and monitors that resource. Cloud Shell completion validates the deployed agent. Alert correlation is automatic; deep investigation remains manual unless explicitly enabled."
+            }
+          }
+        ]
+      },
+      {
         "name": "advanced",
         "label": "Advanced",
         "elements": [
@@ -344,56 +460,6 @@
             "constraints": {
               "required": false
             }
-          },
-          {
-            "name": "enableAi",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Enable optional AI stage",
-            "defaultValue": false,
-            "toolTip": "Deploys Microsoft Foundry, four billable model deployments, AI monitoring, alerts, and an AI FinOps workbook in swedencentral. Off by default."
-          },
-          {
-            "name": "aiPostDeployInfo",
-            "type": "Microsoft.Common.TextBlock",
-            "visible": "[equals(steps('advanced').enableAi, true)]",
-            "options": {
-              "text": "The AI stage deploys billable Microsoft Foundry models in swedencentral. The portal deployment creates the infrastructure only. After deployment, run ./scripts/setup-ai.ps1 -ResourceGroup <resource-group> to create the agents and generate simulated traffic."
-            }
-          },
-          {
-            "name": "enableFabric",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Enable optional Microsoft Fabric F2 capacity",
-            "defaultValue": false,
-            "toolTip": "Deploys an F2 Fabric capacity pinned to swedencentral. Indicative PAYG retail cost while active: about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies; OneLake storage and other meters can add cost. Off by default."
-          },
-          {
-            "name": "fabricAdminEmail",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Fabric administrator UPN",
-            "defaultValue": "",
-            "toolTip": "Microsoft Entra user UPN in the selected subscription tenant. Replace the fictitious example admin@example.com with your tenant's user UPN. Do not use an external notification alias.",
-            "constraints": {
-              "required": "[equals(steps('advanced').enableFabric, true)]",
-              "regex": "^[^@\\s]+@[^@\\s]+$",
-              "validationMessage": "Enter a Microsoft Entra user UPN from the deployment tenant."
-            },
-            "visible": "[equals(steps('advanced').enableFabric, true)]"
-          },
-          {
-            "name": "fabricPostDeployInfo",
-            "type": "Microsoft.Common.TextBlock",
-            "visible": "[equals(steps('advanced').enableFabric, true)]",
-            "options": {
-              "text": "Cost warning: Fabric F2 is pinned to swedencentral and bills while active at an indicative PAYG retail cost of about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies and additional Fabric usage may add charges. The deployment creates only the ARM capacity. The README's Cloud Shell completion wrapper detects it and runs Fabric SaaS setup. Review its manual-action results and suspend the capacity when the demo is idle."
-            }
-          },
-          {
-            "name": "enableSreAgent",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Enable optional SRE Agent stage",
-            "defaultValue": false,
-            "toolTip": "Deploys the preview Azure SRE Agent and connectors in swedencentral. Active usage is billable and always-on billing can begin after an eligible trial. Requires subscription-level role-assignment permission."
           },
           {
             "name": "enableSlotFailureScenario",
@@ -467,59 +533,6 @@
               ],
               "required": true
             }
-          },
-          {
-            "name": "sreAgentInfo",
-            "type": "Microsoft.Common.TextBlock",
-            "visible": "[equals(steps('advanced').enableSreAgent, true)]",
-            "options": {
-              "text": "Azure SRE Agent uses a preview API, is pinned to swedencentral, and creates a subscription-scope Monitoring Contributor assignment for its connector identity. After deployment, run ./scripts/setup-sre-agent.ps1 -SubscriptionId <subscription-id> -ResourceGroup <resource-group> to validate the agent and print its portal URL. Delete the agent before the trial ends if you do not intend to continue with paid usage. Custom investigators and response plans are configured after deployment."
-            }
-          },
-          {
-            "name": "enableObservabilityAgent",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Enable Azure Copilot Observability Agent",
-            "defaultValue": false,
-            "toolTip": "Deploys the preview Observability Agent, a dedicated Azure Monitor workspace, autonomous alert correlation, and least-privilege RBAC. Chat and deep investigations consume Azure Agent Credits."
-          },
-          {
-            "name": "observabilityAgentLocation",
-            "type": "Microsoft.Common.DropDown",
-            "label": "Observability Agent region",
-            "defaultValue": "westeurope",
-            "visible": "[equals(steps('advanced').enableObservabilityAgent, true)]",
-            "toolTip": "The agent and its Azure Monitor workspace must share a supported region.",
-            "constraints": {
-              "allowedValues": [
-                { "label": "Australia East", "value": "australiaeast" },
-                { "label": "Canada Central", "value": "canadacentral" },
-                { "label": "Central US", "value": "centralus" },
-                { "label": "East Asia", "value": "eastasia" },
-                { "label": "East US", "value": "eastus" },
-                { "label": "South Central US", "value": "southcentralus" },
-                { "label": "UK South", "value": "uksouth" },
-                { "label": "West Central US", "value": "westcentralus" },
-                { "label": "West Europe", "value": "westeurope" }
-              ],
-              "required": true
-            }
-          },
-          {
-            "name": "enableObservabilityAgentAutomaticInvestigation",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Automatically investigate agent-created issues",
-            "defaultValue": false,
-            "visible": "[equals(steps('advanced').enableObservabilityAgent, true)]",
-            "toolTip": "Billable deep investigations run automatically for every issue the agent creates. Leave off for cost-controlled demos."
-          },
-          {
-            "name": "observabilityAgentInfo",
-            "type": "Microsoft.Common.TextBlock",
-            "visible": "[equals(steps('advanced').enableObservabilityAgent, true)]",
-            "options": {
-              "text": "Azure Copilot Observability Agent autonomous operations are in preview. The deployment creates a dedicated Azure Monitor workspace, grants Issue Contributor there and Monitoring Reader directly on this lab's Application Insights resource, and monitors that resource. Alert correlation is automatic; deep investigation remains manual unless explicitly enabled."
-            }
           }
         ]
       }
@@ -548,19 +561,19 @@
       "grafanaAdminObjectId": "[steps('advanced').grafanaAdminObjectId]",
       "appServiceRepoUrl": "[steps('advanced').appServiceRepoUrl]",
       "siemWebhookUrl": "[steps('advanced').siemWebhookUrl]",
-      "enableAi": "[steps('advanced').enableAi]",
-      "enableFabric": "[steps('advanced').enableFabric]",
-      "fabricAdminEmail": "[steps('advanced').fabricAdminEmail]",
-      "enableSreAgent": "[steps('advanced').enableSreAgent]",
+      "enableAi": "[steps('stages').enableAi]",
+      "enableFabric": "[steps('stages').enableFabric]",
+      "fabricAdminEmail": "[steps('stages').fabricAdminEmail]",
+      "enableSreAgent": "[steps('stages').enableSreAgent]",
       "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",
       "slotAppServicePlanSku": "[steps('advanced').slotAppServicePlanSku]",
       "enableCustomerDependencies": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
       "sqlEntraAdminObjectId": "[steps('advanced').sqlEntraAdminObjectId]",
       "sqlEntraAdminName": "[steps('advanced').sqlEntraAdminName]",
       "sqlEntraAdminType": "[steps('advanced').sqlEntraAdminType]",
-      "enableObservabilityAgent": "[steps('advanced').enableObservabilityAgent]",
-      "observabilityAgentLocation": "[steps('advanced').observabilityAgentLocation]",
-      "enableObservabilityAgentAutomaticInvestigation": "[steps('advanced').enableObservabilityAgentAutomaticInvestigation]"
+      "enableObservabilityAgent": "[steps('stages').enableObservabilityAgent]",
+      "observabilityAgentLocation": "[steps('stages').observabilityAgentLocation]",
+      "enableObservabilityAgentAutomaticInvestigation": "[steps('stages').enableObservabilityAgentAutomaticInvestigation]"
     }
   }
 }

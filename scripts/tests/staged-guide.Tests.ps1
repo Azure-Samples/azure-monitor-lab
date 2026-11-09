@@ -20,7 +20,8 @@ if ($workloadSection.IndexOf('Invoke-LabStage -Stage 10-workloads') -lt 0 -or
 $readme = Get-Content -LiteralPath (Join-Path $source 'README.md') -Raw
 $portalPrerequisite = $readme.IndexOf('Ensure-LabNetworkWatcher')
 $portalButton = $readme.IndexOf('[![Deploy to Azure]')
-$ui = Get-Content -LiteralPath (Join-Path $source 'infra/createUiDefinition.json') -Raw | ConvertFrom-Json
+$uiText = Get-Content -LiteralPath (Join-Path $source 'infra/createUiDefinition.json') -Raw
+$ui = $uiText | ConvertFrom-Json
 if ($portalPrerequisite -lt 0 -or $portalPrerequisite -gt $portalButton -or
     @($ui.parameters.basics | Where-Object name -eq 'networkWatcherPrerequisite').Count -ne 1 -or
     $readme -notmatch 'post-cloud-shell-deploy\.ps1[^\r\n]+-NamePrefix \$namePrefix') {
@@ -35,6 +36,47 @@ foreach ($name in $template.parameters.Keys) {
     throw "Required template parameter '$name' has no portal output."
   }
 }
+$stagePage = @($ui.parameters.steps | Where-Object name -eq 'stages')
+if ($stagePage.Count -ne 1 -or $stagePage[0].label -ne 'Optional stages') {
+  throw 'Portal must expose a dedicated Optional stages page.'
+}
+$stageFlags = @('enableAi', 'enableFabric', 'enableSreAgent', 'enableObservabilityAgent')
+foreach ($name in $stageFlags) {
+  $control = @($stagePage[0].elements | Where-Object name -eq $name)
+  if ($control.Count -ne 1 -or $control[0].type -ne 'Microsoft.Common.CheckBox' -or
+      $control[0].defaultValue -isnot [bool] -or $control[0].defaultValue -ne $false -or
+      $template.parameters[$name].type -ne 'bool' -or $template.parameters[$name].defaultValue -ne $false -or
+      $ui.parameters.outputs.$name -cne "[steps('stages').$name]") {
+    throw "Optional stage '$name' must have one default-off checkbox wired to its Boolean template parameter."
+  }
+}
+$dependentStageFields = @{
+  aiPostDeployInfo = 'enableAi'
+  fabricAdminEmail = 'enableFabric'
+  fabricPostDeployInfo = 'enableFabric'
+  sreAgentInfo = 'enableSreAgent'
+  observabilityAgentLocation = 'enableObservabilityAgent'
+  enableObservabilityAgentAutomaticInvestigation = 'enableObservabilityAgent'
+  observabilityAgentInfo = 'enableObservabilityAgent'
+}
+foreach ($name in $dependentStageFields.Keys) {
+  $control = @($stagePage[0].elements | Where-Object name -eq $name)
+  $condition = "[equals(steps('stages').$($dependentStageFields[$name]), true)]"
+  if ($control.Count -ne 1 -or $control[0].visible -cne $condition -or
+      ($name -eq 'fabricAdminEmail' -and $control[0].constraints.required -cne $condition)) {
+    throw "Stage-specific field '$name' must follow its own stage selection."
+  }
+}
+foreach ($name in @('fabricAdminEmail', 'observabilityAgentLocation', 'enableObservabilityAgentAutomaticInvestigation')) {
+  if ($ui.parameters.outputs.$name -cne "[steps('stages').$name]") { throw "Stage setting '$name' lost its template output." }
+}
+foreach ($reference in [regex]::Matches($uiText, "steps\('(?<page>[^']+)'\)\.(?<control>[A-Za-z0-9_]+)")) {
+  $page = @($ui.parameters.steps | Where-Object name -CEQ $reference.Groups['page'].Value)
+  if ($page.Count -ne 1 -or @($page[0].elements | Where-Object name -CEQ $reference.Groups['control'].Value).Count -ne 1) {
+    throw "Portal expression references a missing or ambiguous control: $($reference.Value)."
+  }
+}
+Write-Output 'PASS: four default-off optional portal stages, conditional settings, template outputs and all step/control references.'
 foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-FABRIC.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
   $text = Get-Content -LiteralPath (Join-Path $source $relativePath) -Raw
   foreach ($example in [regex]::Matches($text, '(?ms)^```powershell\r?\n(.*?)^```')) {

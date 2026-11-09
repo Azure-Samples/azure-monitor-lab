@@ -49,7 +49,7 @@ The lab combines application, infrastructure, and AI workloads with Azure Monito
 First, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and prepare the shared Network Watcher. Use the same subscription and region in the portal wizard:
 
 ```powershell
-git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
+git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
@@ -69,20 +69,23 @@ Existing shared resources are preserved; only a missing group/watcher is created
 
 <div align="center">
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2FcreateUiDefinition.json)
 
 </div>
 
 Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Sensible defaults are pre-filled throughout; the only things you have to supply are an alert email and a VM admin password.
 
-This button deploys the stable `main` templates. Use completion scripts from the same release; changes merged into `integration` reach this button only after promotion to `main`.
+This button deploys the `integration` templates and portal UI, which may contain changes not yet released to stable `main`. The Cloud Shell commands above use the same branch.
 
 | Tab | You provide |
 |---|---|
 | **Basics** | Resource group (recommended `rg-azure-monitor-lab`), Region (recommended `northeurope`), name prefix, alert email, VM admin username + password |
 | **Workloads** | Deploy Linux/Windows VMs, VM size, AKS node size + count |
 | **Monitoring & cost** | Daily ingestion cap, Sentinel, platform-logs/metrics-export DCRs, LAW replication |
-| **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, optional AI, SRE Agent, and Observability Agent stages |
+| **Optional stages** | Enable AI (Microsoft Foundry), Fabric (Real-Time Intelligence), SRE Agent, or Observability Agent; all default off, with stage-specific settings shown when enabled |
+| **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, and customer application scenarios |
+
+Core stages A-E deploy together. Their individual workload and monitoring features remain configurable; the **Optional stages** tab adds any combination of the four integrations.
 
 After the portal deployment succeeds, return to the same Cloud Shell session and complete the post-deployment configuration:
 
