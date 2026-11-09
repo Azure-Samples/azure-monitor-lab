@@ -60,8 +60,14 @@ function Invoke-RestMethod {
     '/v1/workspaces/workspace-guid/query$' {
       if ($fixture.FailQuery) { throw 'Forbidden telemetry query' }
       $rows = if ($fixture.NoTelemetry) { @() } else { @(@('AppRequests', 2), @('AppDependencies', 3)) }
-      if (($Body | ConvertFrom-Json).query -notmatch 'TimeGenerated >= datetime\(') {
+      $query = ($Body | ConvertFrom-Json).query
+      if ($query -notmatch 'let start = datetime\(' -or $query -notmatch 'TimeGenerated >= start') {
         throw 'Verification must require new telemetry, not records from a previous deployment.'
+      }
+      if ($query -match 'withsource' -or
+          $query -notmatch "summarize Records=count\(\) \| extend Source='AppRequests'" -or
+          $query -notmatch "summarize Records=count\(\) \| extend Source='AppDependencies'") {
+        throw 'Verification must count both tables without colliding with their existing Source columns.'
       }
       [pscustomobject]@{ tables = @([pscustomobject]@{
         columns = @(@{ name = 'Source' }, @{ name = 'Records' }); rows = $rows

@@ -88,7 +88,7 @@ Assert-DemoCommand 'Resolve Café workspace'
 $token = az account get-access-token --subscription $SubscriptionId --resource https://api.loganalytics.io -o json | ConvertFrom-Json
 Assert-DemoCommand 'Acquire Café telemetry query token'
 $query = @{
-  query = "union withsource=Source AppRequests, AppDependencies | where TimeGenerated >= datetime($($verificationStarted.ToString('o'))) | summarize Records=count() by Source"
+  query = "let start = datetime($($verificationStarted.ToString('o'))); union (AppRequests | where TimeGenerated >= start | summarize Records=count() | extend Source='AppRequests'), (AppDependencies | where TimeGenerated >= start | summarize Records=count() | extend Source='AppDependencies') | project Source, Records"
   timespan = 'PT15M'
 } | ConvertTo-Json
 $deadline = [DateTimeOffset]::UtcNow.AddSeconds($VerificationTimeoutSeconds)
