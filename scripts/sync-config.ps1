@@ -72,9 +72,9 @@ function Coalesce($a, $b) { if ($null -ne $a -and $a -ne '') { $a } else { $b } 
 $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
 $dailyCapGb       = Coalesce $cfg.dailyCapGb       3
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
-$vmSize           = Coalesce $cfg.vmSize           'Standard_B2s'
-$aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_B2s'
-$vmssSize         = Coalesce $cfg.vmssSize         'Standard_B1s'
+$vmSize           = Coalesce $cfg.vmSize           'Standard_EC2as_v5'
+$aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_EC4as_v5'
+$vmssSize         = Coalesce $cfg.vmssSize         'Standard_EC2as_v5'
 $appServiceLocation = Coalesce $cfg.appServiceLocation 'westeurope'
 $deployWindowsVm  = if ($null -eq $cfg.deployWindowsVm) { $true } else { [bool]$cfg.deployWindowsVm }
 $deployLinuxVm    = if ($null -eq $cfg.deployLinuxVm)   { $true } else { [bool]$cfg.deployLinuxVm }

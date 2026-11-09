@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "6028819012846507664"
+      "templateHash": "8176785891256843997"
     }
   },
   "parameters": {
@@ -60,7 +60,7 @@
     },
     "vmssSize": {
       "type": "string",
-      "defaultValue": "Standard_B1s",
+      "defaultValue": "Standard_EC2as_v5",
       "metadata": {
         "description": "Predictive-autoscale VMSS instance size."
       }
@@ -1729,7 +1729,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "12020505676555017969"
+              "templateHash": "7667011808131489377"
             }
           },
           "parameters": {
@@ -1747,7 +1747,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B1s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU (kept tiny for a demo lab)."
               }

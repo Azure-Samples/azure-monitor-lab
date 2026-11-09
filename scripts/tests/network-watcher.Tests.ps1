@@ -139,5 +139,41 @@ try {
   $fixture.Mode = 'never-visible'
   Assert-Throws { Ensure-LabNetworkWatcher @common } 'bounded polling'
   Assert-True ($fixture.Reads -eq 14 -and $fixture.Delays -eq 12 -and ($fixture.Writes -join ',') -eq 'watcher') 'An enabled watcher must be observed ready, not assumed successful.'
+  $repo = Split-Path $PSScriptRoot -Parent | Split-Path -Parent
+  $terraform = Get-Content -LiteralPath (Join-Path $repo 'terraform/main.tf') -Raw
+  $workloads = [regex]::Match($terraform, '(?s)resource "azapi_resource" "stage_b" \{(.*?)(?=\r?\nresource |\z)').Value
+  Assert-True ($workloads -match 'depends_on\s*=\s*\[[^\]]*terraform_data\.network_watcher') 'Terraform Stage B must wait for Network Watcher preparation.'
+  $prerequisite = [regex]::Match($terraform, '(?s)resource "terraform_data" "network_watcher" \{(.*?)(?=\r?\n(?:resource |check )|\z)').Value
+  Assert-True ($prerequisite -match 'count\s*=\s*var\.enable_stage_b \? 1 : 0' -and
+    $prerequisite -match 'LAB_SUBSCRIPTION_ID\s*=\s*var\.subscription_id' -and
+    $prerequisite -match 'LAB_TENANT_ID\s*=\s*data\.azurerm_client_config\.current\[0\]\.tenant_id' -and
+    $prerequisite -match 'LAB_LOCATION\s*=\s*var\.location' -and
+    $prerequisite -notmatch 'when\s*=\s*destroy') 'Terraform prerequisite must use the selected provider target, run only for Stage B, and preserve shared resources on destroy.'
+  $command = [regex]::Match($prerequisite, 'command\s*=\s*"([^"]+)"').Groups[1].Value
+  Assert-True (-not [string]::IsNullOrWhiteSpace($command)) 'Terraform must provide an executable prerequisite command.'
+  $environment = @{
+    LAB_REPOSITORY_ROOT = $repo; LAB_SUBSCRIPTION_ID = $subscription.ToString()
+    LAB_TENANT_ID = $tenant.ToString(); LAB_LOCATION = 'northeurope'
+  }
+  $previousEnvironment = @{}
+  try {
+    foreach ($name in $environment.Keys) {
+      $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+      [Environment]::SetEnvironmentVariable($name, $environment[$name])
+    }
+    Reset-Fixture
+    $fixture.WatcherExists = $false
+    $fixture.GroupExists = 'false'
+    & ([scriptblock]::Create($command))
+    Assert-True (($fixture.Writes -join ',') -eq 'group,watcher') 'The exact noninteractive Terraform command must restore missing prerequisites.'
+    & ([scriptblock]::Create($command))
+    Assert-True (($fixture.Writes -join ',') -eq 'group,watcher') 'Terraform command reruns must preserve existing prerequisites.'
+    Reset-Fixture
+    $fixture.Mode = 'tenant'
+    Assert-Throws { & ([scriptblock]::Create($command)) } 'already-selected'
+    Assert-True ($fixture.Writes.Count -eq 0) 'The Terraform entry point must reject a mismatched CLI tenant before writes.'
+  } finally {
+    foreach ($name in $previousEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name]) }
+  }
   Write-Output 'PASS: regional Network Watcher restoration, shared-resource preservation, exact account/scope guards, Azure error propagation, WhatIf and bounded readiness. No Azure calls.'
 } finally { $global:LASTEXITCODE = $previousExitCode }

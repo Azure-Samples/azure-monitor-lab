@@ -32,6 +32,10 @@
   Validate Azure Copilot Observability Agent when true. When omitted, detect the
   deployed resource. Explicit false skips validation without changing it.
 
+.PARAMETER EnableStageFabric
+  Complete Fabric setup when true. When omitted, detect the deployed capacity.
+  Explicit false skips setup without changing or suspending the capacity.
+
 .EXAMPLE
   ./scripts/post-staged-deploy.ps1 -ResourceGroup rg-azure-monitor-lab
 
@@ -48,7 +52,8 @@ param(
   [switch] $ApproveCustomerDependencies = $true,
   [bool] $EnableStageE = $false,
   [bool] $EnableStageSreAgent = $false,
-  [bool] $EnableStageObservabilityAgent = $false
+  [bool] $EnableStageObservabilityAgent = $false,
+  [bool] $EnableStageFabric = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -96,6 +101,9 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageSreAgent')) {
 if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
   $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
 }
+if (-not $PSBoundParameters.ContainsKey('EnableStageFabric')) {
+  $EnableStageFabric = @($resources | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' }).Count -gt 0
+}
 $webApp = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and $_.name -notmatch '-customer$'
 }) | Select-Object -First 1
@@ -104,9 +112,6 @@ $aks = @($resources | Where-Object {
 }) | Select-Object -First 1
 $centralLaw = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.OperationalInsights/workspaces' -and $_.name -like "law-$NamePrefix-central-*"
-}) | Select-Object -First 1
-$fabricCapacity = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Fabric/capacities'
 }) | Select-Object -First 1
 
 if (-not $webApp) {
@@ -174,7 +179,7 @@ if ($EnableStageSreAgent) {
     -ResourceGroup $ResourceGroup
 }
 
-if ($fabricCapacity) {
+if ($EnableStageFabric) {
   Write-Step "Fabric capacity detected - creating workspace and Real-Time Intelligence items"
   $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
   try {
@@ -182,8 +187,9 @@ if ($fabricCapacity) {
   } catch {
     Write-Host "  Fabric SaaS setup failed: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host "  The F2 capacity may still be active and billable. Re-run setup or suspend it:" -ForegroundColor Yellow
-    Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($active.id) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+    Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($active.id) -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix" -ForegroundColor Yellow
     Write-Host "  ./scripts/suspend-fabric.ps1 -SubscriptionId $($active.id) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+    throw
   }
 }
 

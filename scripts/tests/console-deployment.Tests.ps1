@@ -8,7 +8,7 @@ $fixture = @{
   Events = [Collections.Generic.List[string]]::new(); FailSetup = $false; BadTenant = $false; Uploads = 0
   OperatorRoles = 0; DeploymentWrites = 0
   DefaultOperator = $false; CurrentUserLookups = 0; ExistingOperatorRole = $false; CurrentUserUnavailable = $false
-  AiSetupFails = $false; SreSetupFails = $false
+  AiSetupFails = $false; SreSetupFails = $false; FabricSetupFails = $false; FabricResources = $false
   StageEResources = $false; ServiceGroupCalls = 0; SliCalls = 0; SliUnsupportedAudience = $false
   DeploymentId = ''; VersionChecks = 0
   SreResources = $false; ResourceDiscoveryFails = $false
@@ -69,6 +69,13 @@ if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') 
 $fixture.Events.Add('sre')
 if ($fixture.SreSetupFails) { throw 'SRE verification failed.' }
 '@ | Set-Content (Join-Path $directory 'setup-sre-agent.ps1')
+@'
+param([guid]$SubscriptionId, $ResourceGroup, $NamePrefix)
+if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg' -or $NamePrefix -ne 'amlab') { throw 'Fabric setup lost the verified target or prefix.' }
+if (-not $fixture.FabricResources) { throw 'Fabric capacity missing.' }
+$fixture.Events.Add('fabric')
+if ($fixture.FabricSetupFails) { throw 'Fabric setup failed.' }
+'@ | Set-Content (Join-Path $directory 'setup-fabric.ps1')
 @'
 param([guid]$SubscriptionId, $ResourceGroup)
 if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') { throw 'Observability Agent setup lost the verified target.' }
@@ -201,6 +208,7 @@ function az {
       if ($fixture.StageEResources) { $resources += @{ name = 'id-sli-amlab'; type = 'Microsoft.ManagedIdentity/userAssignedIdentities' } }
       if ($fixture.SreResources) { $resources += @{ name = 'sre-amlab-test'; type = 'Microsoft.App/agents' } }
       if ($fixture.ObservabilityResources) { $resources += @{ name = 'obs-amlab-test'; type = 'Microsoft.Monitor/observabilityAgents' } }
+      if ($fixture.FabricResources) { $resources += @{ name = 'fabamlabtest'; type = 'Microsoft.Fabric/capacities' } }
       return ConvertTo-Json -InputObject $resources
     }
     'resource show' { return 'offline-connection' }
@@ -341,6 +349,39 @@ try {
     }
   }
   $fixture.ObservabilityResources = $false
+  $fixture.SreResources = $false
+  foreach ($name in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
+    foreach ($selection in @(
+      @{ Resources = $false; Config = $true; Explicit = @{}; Expected = 'post-deploy' },
+      @{ Resources = $true; Config = $false; Explicit = @{}; Expected = 'post-deploy,fabric' },
+      @{ Resources = $true; Config = $true; Explicit = @{ EnableStageFabric = $false }; Expected = 'post-deploy' },
+      @{ Resources = $true; Config = $false; Explicit = @{ EnableStageFabric = $true }; Expected = 'post-deploy,fabric' }
+    )) {
+      @{ stageToggles = @{ enableStageFabric = $selection.Config } } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'lab.config.json')
+      $fixture.FabricResources = $selection.Resources
+      $fixture.Events.Clear()
+      $selectionArguments = $selection.Explicit
+      if ($name -eq 'post-cloud-shell-deploy.ps1') { $selectionArguments.TenantId = $fixture.Tenant }
+      & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) @selectionArguments | Out-Null
+      $expectedEvents = if ($name -eq 'post-cloud-shell-deploy.ps1') { "login,$($selection.Expected)" } else { $selection.Expected }
+      if (($fixture.Events -join ',') -ne $expectedEvents) { throw "$name must follow explicit Fabric selection or deployed resources, not stale config." }
+    }
+    $failureArguments = if ($name -eq 'post-cloud-shell-deploy.ps1') { @{ TenantId = $fixture.Tenant } } else { @{} }
+    foreach ($failure in @('setup', 'missing-capacity')) {
+      $fixture.FabricSetupFails = $failure -eq 'setup'
+      $fixture.FabricResources = $failure -eq 'setup'
+      $rejected = $false
+      try {
+        & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) -EnableStageFabric $true @failureArguments | Out-Null
+      } catch {
+        $expectedError = if ($failure -eq 'setup') { 'Fabric setup failed.' } else { 'Fabric capacity missing.' }
+        $rejected = $_.Exception.Message -eq $expectedError
+      }
+      if (-not $rejected) { throw "$name hid Fabric completion failure: $failure." }
+    }
+    $fixture.FabricSetupFails = $false
+    $fixture.FabricResources = $false
+  }
   $fixture.SliUnsupportedAudience = $true
   $fixture.SreResources = $true
   $fixture.Events.Clear()
@@ -373,9 +414,15 @@ try {
       $terraformConsole -notmatch '-EnableStageE \(\[bool\]::Parse\(\$env:LAB_ENABLE_STAGE_E\)\)' -or
       $terraformConsole -notmatch 'LAB_ENABLE_STAGE_SRE_AGENT\s*=\s*tostring\(var\.enable_stage_sre_agent\)' -or
       $terraformConsole -notmatch '-EnableStageSreAgent \(\[bool\]::Parse\(\$env:LAB_ENABLE_STAGE_SRE_AGENT\)\)' -or
+      $terraformConsole -notmatch 'LAB_ENABLE_STAGE_FABRIC\s*=\s*tostring\(var\.enable_stage_fabric\)' -or
+      $terraformConsole -notmatch '-EnableStageFabric \(\[bool\]::Parse\(\$env:LAB_ENABLE_STAGE_FABRIC\)\)' -or
       $terraformConsole -notmatch 'scripts/setup-activity-log\.ps1' -or
       $terraformConsole -notmatch 'scripts/wait-webapp-publication\.ps1') {
-    throw 'Terraform must explicitly pass its Stage E/SRE selections and track publication-verifier changes.'
+    throw 'Terraform must explicitly pass its Stage E/SRE/Fabric selections and track publication-verifier changes.'
+  }
+  $consoleHook = [regex]::Match($terraformConsole, '(?s)resource "terraform_data" "console_ready" \{(.*?)(?=\r?\nresource |\z)').Value
+  if ($consoleHook -notmatch 'depends_on\s*=\s*\[[^\]]*azapi_resource\.stage_fabric') {
+    throw 'Console completion must wait directly for Fabric even when Stage E is disabled.'
   }
   @{ expectedSubscriptionId = $fixture.Subscription; expectedTenantId = $fixture.Tenant } | ConvertTo-Json | Set-Content (Join-Path $root '.azure-target.json')
   @'

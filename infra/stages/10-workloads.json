@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "4725626045174591387"
+      "templateHash": "17882747473514457051"
     }
   },
   "parameters": {
@@ -68,21 +68,21 @@
     },
     "vmSize": {
       "type": "string",
-      "defaultValue": "Standard_B2s",
+      "defaultValue": "Standard_EC2as_v5",
       "metadata": {
         "description": "VM size."
       }
     },
     "aksNodeVmSize": {
       "type": "string",
-      "defaultValue": "Standard_B2s",
+      "defaultValue": "Standard_EC4as_v5",
       "metadata": {
         "description": "AKS node VM size."
       }
     },
     "aksNodeCount": {
       "type": "int",
-      "defaultValue": 1,
+      "defaultValue": 2,
       "metadata": {
         "description": "AKS node count."
       }
@@ -337,7 +337,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "3721574997013875600"
+              "templateHash": "14744096280615074103"
             }
           },
           "parameters": {
@@ -355,7 +355,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU."
               }
@@ -604,7 +604,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4986736003627378185"
+              "templateHash": "14683978266823128703"
             }
           },
           "parameters": {
@@ -623,7 +623,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU."
               }
@@ -896,7 +896,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4720308177047516325"
+              "templateHash": "913029475329877512"
             }
           },
           "parameters": {
@@ -920,14 +920,14 @@
             },
             "nodeVmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC4as_v5",
               "metadata": {
                 "description": "Node VM size."
               }
             },
             "nodeCount": {
               "type": "int",
-              "defaultValue": 1,
+              "defaultValue": 2,
               "metadata": {
                 "description": "Node count."
               }

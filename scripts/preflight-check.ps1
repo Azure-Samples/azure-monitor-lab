@@ -26,16 +26,16 @@
   Target region (e.g. swedencentral). Required.
 
 .PARAMETER VmSize
-  SKU for the Linux + Windows demo VMs. Defaults to the Bicep default (Standard_B2s).
+  SKU for the Linux + Windows demo VMs. Defaults to the Bicep default (Standard_EC2as_v5).
 
 .PARAMETER AksNodeVmSize
-  SKU for the AKS node pool. Defaults to the Bicep default (Standard_B2s).
+  SKU for the AKS node pool. Defaults to the Bicep default (Standard_EC4as_v5).
 
 .PARAMETER AksNodeCount
-  AKS node count. Defaults to 1 (Bicep default).
+  AKS node count. Defaults to 2 (Bicep default).
 
 .PARAMETER VmssSize
-  SKU for the predictive-autoscale VMSS. Defaults to the Bicep default (Standard_B1s).
+  SKU for the predictive-autoscale VMSS. Defaults to the Bicep default (Standard_EC2as_v5).
 
 .PARAMETER DeployLinuxVm
   Whether the Linux VM is part of the deployment. Default true.
@@ -67,10 +67,10 @@
 param(
   [Parameter(Mandatory)]
   [string] $Location,
-  [string] $VmSize          = 'Standard_B2s',
-  [string] $AksNodeVmSize   = 'Standard_B2s',
-  [int]    $AksNodeCount    = 1,
-  [string] $VmssSize        = 'Standard_B1s',
+  [string] $VmSize          = 'Standard_EC2as_v5',
+  [string] $AksNodeVmSize   = 'Standard_EC4as_v5',
+  [int]    $AksNodeCount    = 2,
+  [string] $VmssSize        = 'Standard_EC2as_v5',
   [bool]   $DeployLinuxVm   = $true,
   [bool]   $DeployWindowsVm = $true,
   [bool]   $DeployObservabilityAgent = $false,

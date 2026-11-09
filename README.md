@@ -46,6 +46,27 @@ The lab combines application, infrastructure, and AI workloads with Azure Monito
 
 ### Option 1: Deploy to Azure (portal, no local setup)
 
+First, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and prepare the shared Network Watcher. Use the same subscription and region in the portal wizard:
+
+```powershell
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
+cd azure-monitor-lab
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+$tenantId = Read-Host 'Tenant ID'
+$subscriptionId = Read-Host 'Subscription ID'
+$resourceGroup = Read-Host 'Resource group name'
+$location = Read-Host 'Azure region (for example northeurope)'
+$namePrefix = Read-Host 'Name prefix (press Enter for amlab)'
+if ([string]::IsNullOrWhiteSpace($namePrefix)) { $namePrefix = 'amlab' }
+az login --tenant $tenantId --use-device-code --output none
+az account set --subscription $subscriptionId
+. ./scripts/network-watcher.ps1
+Ensure-LabNetworkWatcher -SubscriptionId $subscriptionId -TenantId $tenantId -Location $location -Confirm
+```
+
+Existing shared resources are preserved; only a missing group/watcher is created. Then open the wizard:
+
 <div align="center">
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2FcreateUiDefinition.json)
@@ -54,7 +75,7 @@ The lab combines application, infrastructure, and AI workloads with Azure Monito
 
 Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Sensible defaults are pre-filled throughout; the only things you have to supply are an alert email and a VM admin password.
 
-This button deploys the stable `main` templates.
+This button deploys the stable `main` templates. Use completion scripts from the same release; changes merged into `integration` reach this button only after promotion to `main`.
 
 | Tab | You provide |
 |---|---|
@@ -63,21 +84,18 @@ This button deploys the stable `main` templates.
 | **Monitoring & cost** | Daily ingestion cap, Sentinel, platform-logs/metrics-export DCRs, LAW replication |
 | **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, optional AI, SRE Agent, and Observability Agent stages |
 
-After the portal deployment succeeds, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)**, select **PowerShell**, and run the commands below to complete the post-deployment configuration:
+After the portal deployment succeeds, return to the same Cloud Shell session and complete the post-deployment configuration:
 
 ```powershell
-git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
-cd azure-monitor-lab
-$tenantId = Read-Host 'Tenant ID'
-$subscriptionId = Read-Host 'Subscription ID'
-$resourceGroup = Read-Host 'Resource group name'
-./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup
+./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
 ```
+
+The wrapper detects deployed optional integrations, including Fabric, and reports any remaining manual actions. If the Cloud Shell session expired, reopen the clone and restore the variables above without repeating deployment.
 
 If you enabled the optional AI stage and want to generate AI telemetry, run this next from the same Cloud Shell session. Skip it when AI is disabled:
 
 ```powershell
-./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix amlab
+./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
 ```
 
 After the wrapper succeeds, deployment is complete. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
@@ -104,7 +122,7 @@ Fill in `basicConfiguration` in your local `lab.config.json` for a default deplo
 <details>
 <summary><b>VM and AKS node SKU choices</b></summary>
 
-The [config example](lab.config.json.example) uses `Standard_EC2as_v5` for VMs and VMSS, and two `Standard_EC4as_v5` AKS system nodes. These starting points are not guaranteed for every subscription or region. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` under `advancedConfiguration.compute` for regional availability and quota; keep AKS system nodes on supported non-burstable sizes. Pre-flight checks availability, quota, and system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
+New portal, Bicep, Terraform, and scripted defaults match the [config example](lab.config.json.example): `Standard_EC2as_v5` for VMs and VMSS, and two `Standard_EC4as_v5` AKS system nodes. Existing explicit config values are preserved. These confidential-compute choices are not burstable or guaranteed for every subscription/region. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` under `advancedConfiguration.compute` for availability and quota; VM/VMSS replacements must support the templates' confidential-VM security settings. Pre-flight checks availability, quota, and AKS system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
 
 </details>
 

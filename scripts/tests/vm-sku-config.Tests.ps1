@@ -59,8 +59,8 @@ try {
   if ($example.aksNodeCount -ne 2) { throw 'The example must configure two AKS system nodes.' }
   $template = Get-Content -LiteralPath (Join-Path $repoRoot 'infra\main.parameters.json.template') -Raw | ConvertFrom-Json
   foreach ($name in @('vmSize', 'aksNodeVmSize', 'vmssSize')) {
-    if ([string]::IsNullOrWhiteSpace($example.$name) -or [string]::IsNullOrWhiteSpace($template.parameters.$name.value)) {
-      throw "Example inputs must expose '$name'."
+    if ($template.parameters.$name.value -ne $exampleSizes[$name]) {
+      throw "Parameter template default '$name' must match the config example."
     }
     if ([string]::IsNullOrWhiteSpace($example.appServiceLocation) -or [string]::IsNullOrWhiteSpace($template.parameters.appServiceLocation.value)) {
       throw 'Example inputs must expose appServiceLocation.'
@@ -68,6 +68,46 @@ try {
   }
 
   $ui = Get-Content -LiteralPath (Join-Path $repoRoot 'infra\createUiDefinition.json') -Raw | ConvertFrom-Json
+  $computeDefaults = $exampleSizes.Clone()
+  $computeDefaults.aksNodeCount = 2
+  foreach ($name in $computeDefaults.Keys) {
+    $control = @($ui.parameters.steps | Where-Object name -eq 'workloads').elements | Where-Object name -eq $name
+    if ($control.defaultValue -ne $computeDefaults[$name] -or $template.parameters.$name.value -ne $computeDefaults[$name]) {
+      throw "Portal and parameter-file defaults must agree on '$name'."
+    }
+    foreach ($relative in @('infra/main.json', 'infra/stages/10-workloads.json', 'infra/stages/20-alerting.json')) {
+      $compiled = Get-Content -LiteralPath (Join-Path $repoRoot $relative) -Raw | ConvertFrom-Json -AsHashtable
+      if ($compiled.parameters.ContainsKey($name) -and $compiled.parameters[$name].defaultValue -ne $computeDefaults[$name]) {
+        throw "$relative default '$name' must match the config example."
+      }
+    }
+  }
+  foreach ($name in @('vmSize', 'aksNodeVmSize', 'vmssSize', 'aksNodeCount')) { $config.Remove($name) }
+  $config | ConvertTo-Json | Set-Content -LiteralPath $configPath
+  & $helper -ConfigPath $configPath
+  $defaults = Get-Content -LiteralPath (Join-Path $root 'infra\main.parameters.json') -Raw | ConvertFrom-Json
+  foreach ($name in $computeDefaults.Keys) {
+    if ($defaults.parameters.$name.value -ne $computeDefaults[$name]) { throw "Config sync fallback '$name' must match public deployment defaults." }
+  }
+  $preflightAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'scripts/preflight-check.ps1'), [ref]$null, [ref]$null)
+  $deployDefaults = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/deploy.ps1') -Raw
+  foreach ($name in $computeDefaults.Keys) {
+    $parameter = $preflightAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -ieq $name }
+    if ($parameter.DefaultValue.SafeGetValue() -ne $computeDefaults[$name]) { throw "Preflight default '$name' must match deployment." }
+    $valuePattern = if ($name -eq 'aksNodeCount') { '2' } else { "'$([regex]::Escape($computeDefaults[$name]))'" }
+    if ($deployDefaults -notmatch "(?m)^\`$pf$name\s*=\s*$valuePattern\s*$") { throw "One-shot preflight fallback '$name' must match deployment." }
+  }
+  foreach ($module in @(
+    @{ Path = 'vm-linux'; Parameter = 'vmSize'; Value = $exampleSizes.vmSize },
+    @{ Path = 'vm-windows'; Parameter = 'vmSize'; Value = $exampleSizes.vmSize },
+    @{ Path = 'vmss'; Parameter = 'vmSize'; Value = $exampleSizes.vmssSize },
+    @{ Path = 'aks'; Parameter = 'nodeVmSize'; Value = $exampleSizes.aksNodeVmSize },
+    @{ Path = 'aks'; Parameter = 'nodeCount'; Value = 2 }
+  )) {
+    $text = Get-Content -LiteralPath (Join-Path $repoRoot "infra/modules/$($module.Path).bicep") -Raw
+    $valuePattern = if ($module.Parameter -eq 'nodeCount') { '2' } else { "'$([regex]::Escape($module.Value))'" }
+    if ($text -notmatch "(?m)^param $($module.Parameter) (?:string|int) = $valuePattern\s*$") { throw "Module $($module.Path) default must match deployment." }
+  }
   $vmssControl = @($ui.parameters.steps | Where-Object name -eq 'workloads').elements | Where-Object name -eq 'vmssSize'
   if ($null -eq $vmssControl -or $ui.parameters.outputs.vmssSize -ne "[steps('workloads').vmssSize]") {
     throw 'Portal deployment must expose and output vmssSize.'

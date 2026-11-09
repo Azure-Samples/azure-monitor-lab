@@ -173,17 +173,27 @@ This deploys [foundation only](../infra/stages/00-foundation.bicep). `--confirm-
 ### Stage B deploy
 
 Connection Monitor and flow logs require the shared regional Network Watcher.
-Before the raw Stage B command below, restore missing prerequisites with explicit
-confirmation; an existing watcher is reused without changes:
+Use the versioned helper for Stage B. It prepares missing Network Watcher
+prerequisites, previews and confirms deployment, and uses the same narrowly scoped
+customer-slot failure recovery as `deploy.ps1`:
 
 ```powershell
-. ./scripts/network-watcher.ps1
-Ensure-LabNetworkWatcher -SubscriptionId $sub -TenantId $tenant -Location $config.location -Confirm
+. ./scripts/staged-deploy-helpers.ps1
+Invoke-LabStage -Stage 10-workloads
+./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $false
 ```
 
 Classic VM Insights and additive OpenTelemetry metrics are **both enabled by default**. `enableVmOtelMetrics` defaults to `true` in central configuration (including when omitted), Stage B, and the one-shot template; the portal Workloads page defaults to **Yes**. To opt out, set `"enableVmOtelMetrics": false` **before** the input-bootstrap/sync and stage-parameter generation above, or explicitly pass `enableVmOtelMetrics=false`. Stage A and VMSS are unchanged. See [both monitoring views and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics). Setting the flag to `false` on an incremental redeployment does not remove existing OTel associations.
 
+<details>
+<summary>Raw Azure CLI alternative (no automatic customer-slot recovery)</summary>
+
+Prepare the shared watcher before this infrastructure-only command; run completion
+only after deployment succeeds:
+
 ```powershell
+. ./scripts/network-watcher.ps1
+Ensure-LabNetworkWatcher -SubscriptionId $sub -TenantId $tenant -Location $config.location -Confirm
 az deployment group create `
    --subscription $sub --resource-group $rg --name stage-10-workloads `
    --template-file ./infra/stages/10-workloads.bicep `
@@ -191,6 +201,8 @@ az deployment group create `
    --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $false
 ```
+
+</details>
 
 Completion publishes and verifies the App Service, initializes the Control Center and approved operator access, applies AKS workloads, and creates the summary rule. It prepares available AI agents without traffic and validates any deployed SRE Agent. Stage E is explicitly off here because it has not been deployed yet. For noninteractive setup, pass approved user IDs through `-ConsoleOperatorObjectIds`; otherwise existing operators or the signed-in user are used.
 

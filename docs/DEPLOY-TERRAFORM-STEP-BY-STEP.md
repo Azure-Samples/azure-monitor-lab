@@ -227,11 +227,13 @@ If your shell reports "Too many command line arguments", retype the command manu
 
 ### Step 6 - Enable Stage B, then C, then D, then E
 
-Flip one stage flag at a time in `stages.tfvars` and rerun plan/apply. Stage B adds both its ARM deployment and `terraform_data.console_ready`. This completion hook publishes the app and AKS workloads and automatically provisions console sign-in, health permissions, the registry/image/job, and selected agent integrations. Do not run another post-deployment command after a successful apply.
+Flip one stage flag at a time in `stages.tfvars` and rerun plan/apply. Stage B adds its ARM deployment, `terraform_data.network_watcher`, and `terraform_data.console_ready`. Before workloads deploy, the prerequisite hook verifies the CLI subscription against the selected subscription and provider tenant and creates only a missing shared group/watcher. Existing shared resources remain unchanged and are not deleted by `terraform destroy`. The completion hook publishes the app and AKS workloads and automatically provisions console sign-in, health permissions, the registry/image/job, and selected agent integrations. Do not run another post-deployment command after a successful apply.
+
+The Terraform apply approval includes missing Network Watcher creation; the hook does not prompt again. If the shared watcher is deleted outside Terraform after that hook has succeeded, restore it with `terraform -chdir=terraform apply -var-file stages.tfvars '-replace=terraform_data.network_watcher[0]'` before retrying workloads.
 
 The machine running apply needs PowerShell 7, Azure CLI signed into the selected subscription, the .NET 8 SDK, and the lab workload tools. The deployer needs Azure role-definition/assignment and Entra registration permissions. Optional AI/SRE packaging also needs Python/npm/tar. For a service-principal deployment, set `console_operator_object_ids` to approved tenant user object IDs. See [console prerequisites](../workloads/webapp/LAB-OPERATIONS.md#prerequisites).
 
-Changes to relevant stages or source files rerun initialization. Terraform passes Stage E and SRE selections explicitly, including false, so stale central config cannot enable or skip that completion work. A failed completion hook fails apply, so incomplete setup is not reported as deployment success. The hook has no destroy-time provisioner: the registry/job and other nested resources follow the lab's existing resource-group cleanup model.
+Changes to relevant stages or source files rerun initialization. Terraform passes Stage E, SRE, and Fabric selections explicitly, including false, so stale central config cannot enable or skip that completion work. Completion waits for the selected Fabric capacity even when Stage E is disabled. A failed completion hook fails apply, so incomplete setup is not reported as deployment success. The hook has no destroy-time provisioner: the registry/job and other nested resources follow the lab's existing resource-group cleanup model.
 
 ### Step 7 - Enable Stage AI (optional)
 
@@ -298,15 +300,16 @@ enable_stage_fabric = true
 fabric_admin_email = "<FABRIC-ADMIN-UPN>"
 ```
 
-Then apply from the repository root and create the tenant-scoped Fabric items:
+Then apply from the repository root:
 
 ```powershell
 terraform -chdir=terraform plan -var-file stages.tfvars
 terraform -chdir=terraform apply -var-file stages.tfvars
-./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
 ```
 
-The setup script attempts to create the Event Hubs connection and publish the complete topology. If the tenant rejects public API connection creation, create only the connection once in Fabric and rerun the setup script. Follow the [Fabric post-deploy checklist](STAGE-FABRIC.md#after-deployps1-checklist), then suspend F2 when the demo is idle:
+Apply automatically runs Fabric setup after the capacity is ready, through console completion when Stage B is enabled or a standalone hook otherwise. Fabric script changes rerun completion. Workspace monitoring, Operations Agent authoring, tenant settings, and licensing still require the guided manual steps; a configured capacity is not proof of working ingestion.
+
+The setup script attempts to create the Event Hubs connection and publish the complete topology. If the tenant rejects public API connection creation, create only the connection once in Fabric and rerun `./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg`. Follow the [Fabric post-deploy checklist](STAGE-FABRIC.md#after-deployps1-checklist), then suspend F2 when the demo is idle:
 
 ```powershell
 ./scripts/suspend-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg

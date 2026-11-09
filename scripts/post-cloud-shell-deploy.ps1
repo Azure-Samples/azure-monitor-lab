@@ -5,7 +5,11 @@
 .DESCRIPTION
   Signs in to the selected tenant, pins and verifies the selected subscription, discovers the portal-deployed lab
   resources, resolves Application Insights through the core ARM CLI surface, and
-  runs the same workload, Health Model, SLI, SRE, and Observability Agent validation helpers used by deploy.ps1.
+  runs the same workload, Health Model, SLI, Fabric, SRE, and Observability Agent helpers used by deploy.ps1.
+
+.PARAMETER EnableStageFabric
+  Complete Fabric setup when true. When omitted, detect the deployed capacity.
+  Explicit false skips setup without changing or suspending the capacity.
 
 .PARAMETER EnableStageSreAgent
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
@@ -36,7 +40,8 @@ param(
   [string] $CustomerDependencyDeploymentName,
   [switch] $ApproveCustomerDependencies = $true,
   [bool] $EnableStageSreAgent = $false,
-  [bool] $EnableStageObservabilityAgent = $false
+  [bool] $EnableStageObservabilityAgent = $false,
+  [bool] $EnableStageFabric = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,6 +74,9 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageSreAgent')) {
 }
 if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
   $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
+}
+if (-not $PSBoundParameters.ContainsKey('EnableStageFabric')) {
+  $EnableStageFabric = @($resources | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' }).Count -gt 0
 }
 $webApp = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and $_.name -notmatch '-customer$'
@@ -146,6 +154,12 @@ try {
   }
   $sliSourceMetricsVerified = $false
   Write-Warning 'Cloud Shell cannot request the Managed Prometheus token audience. SLI permissions are prepared, but source metric series were not verified. Continuing post-deployment.'
+}
+
+if ($EnableStageFabric) {
+  Write-Step 'Completing the deployed Fabric capacity (billable while active)'
+  & (Join-Path $PSScriptRoot 'setup-fabric.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
 }
 
 if ($EnableStageSreAgent) {

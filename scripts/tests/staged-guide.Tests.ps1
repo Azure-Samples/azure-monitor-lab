@@ -11,6 +11,30 @@ if ($guideStageE -lt 0 -or $guideSentinelContent -le $guideStageE -or
 }
 $blocks = [regex]::Matches($guide, '(?ms)^```powershell\r?\n(.*?)^```')
 $helperImport = '. ./scripts/staged-deploy-helpers.ps1'
+$workloadSection = $guide.Substring($guide.IndexOf('### Stage B deploy'), $guide.IndexOf('### Stage C deploy') - $guide.IndexOf('### Stage B deploy'))
+if ($workloadSection.IndexOf('Invoke-LabStage -Stage 10-workloads') -lt 0 -or
+    $workloadSection.IndexOf('Invoke-LabStage -Stage 10-workloads') -gt $workloadSection.IndexOf('<details>') -or
+    $workloadSection -notmatch [regex]::Escape($helperImport)) {
+  throw 'Stage B must recommend the shared prerequisite/recovery helper before its raw CLI alternative.'
+}
+$readme = Get-Content -LiteralPath (Join-Path $source 'README.md') -Raw
+$portalPrerequisite = $readme.IndexOf('Ensure-LabNetworkWatcher')
+$portalButton = $readme.IndexOf('[![Deploy to Azure]')
+$ui = Get-Content -LiteralPath (Join-Path $source 'infra/createUiDefinition.json') -Raw | ConvertFrom-Json
+if ($portalPrerequisite -lt 0 -or $portalPrerequisite -gt $portalButton -or
+    @($ui.parameters.basics | Where-Object name -eq 'networkWatcherPrerequisite').Count -ne 1 -or
+    $readme -notmatch 'post-cloud-shell-deploy\.ps1[^\r\n]+-NamePrefix \$namePrefix') {
+  throw 'Portal instructions must prepare Network Watcher before deployment and preserve the selected name prefix at completion.'
+}
+$template = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json -AsHashtable
+foreach ($name in $ui.parameters.outputs.PSObject.Properties.Name) {
+  if (-not $template.parameters.ContainsKey($name)) { throw "Portal output '$name' is not a template parameter." }
+}
+foreach ($name in $template.parameters.Keys) {
+  if (-not $template.parameters[$name].ContainsKey('defaultValue') -and $name -notin $ui.parameters.outputs.PSObject.Properties.Name) {
+    throw "Required template parameter '$name' has no portal output."
+  }
+}
 foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-FABRIC.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
   $text = Get-Content -LiteralPath (Join-Path $source $relativePath) -Raw
   foreach ($example in [regex]::Matches($text, '(?ms)^```powershell\r?\n(.*?)^```')) {

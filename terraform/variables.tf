@@ -66,22 +66,22 @@ variable "enable_vm_otel_metrics" {
 
 variable "vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_EC2as_v5"
 }
 
 variable "aks_node_vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_EC4as_v5"
 }
 
 variable "vmss_size" {
   type    = string
-  default = "Standard_B1s"
+  default = "Standard_EC2as_v5"
 }
 
 variable "aks_node_count" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "grafana_admin_object_id" {

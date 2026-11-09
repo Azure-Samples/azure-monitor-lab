@@ -11,6 +11,32 @@ data "azurerm_resource_group" "lab" {
   name = var.resource_group_name
 }
 
+data "azurerm_client_config" "current" {
+  count = var.enable_stage_b ? 1 : 0
+}
+
+resource "terraform_data" "network_watcher" {
+  count = var.enable_stage_b ? 1 : 0
+
+  triggers_replace = {
+    subscription = var.subscription_id
+    tenant       = data.azurerm_client_config.current[0].tenant_id
+    location     = var.location
+    helper       = filesha256("${path.module}/../scripts/network-watcher.ps1")
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["pwsh", "-NoProfile", "-NonInteractive", "-Command"]
+    command     = ". (Join-Path $env:LAB_REPOSITORY_ROOT 'scripts/network-watcher.ps1'); Ensure-LabNetworkWatcher -SubscriptionId $env:LAB_SUBSCRIPTION_ID -TenantId $env:LAB_TENANT_ID -Location $env:LAB_LOCATION -Confirm:$false"
+    environment = {
+      LAB_REPOSITORY_ROOT = abspath("${path.module}/..")
+      LAB_SUBSCRIPTION_ID = var.subscription_id
+      LAB_TENANT_ID       = data.azurerm_client_config.current[0].tenant_id
+      LAB_LOCATION        = var.location
+    }
+  }
+}
+
 check "slot_failure_requires_workloads" {
   assert {
     condition     = !var.enable_slot_failure_scenario || var.enable_stage_b
@@ -48,7 +74,7 @@ resource "azapi_resource" "stage_b" {
   parent_id = data.azurerm_resource_group.lab.id
 
   # Stage B references Stage A's LAW via 'existing' — wait for A to finish.
-  depends_on = [azapi_resource.stage_a]
+  depends_on = [azapi_resource.stage_a, terraform_data.network_watcher]
 
   body = {
     properties = {

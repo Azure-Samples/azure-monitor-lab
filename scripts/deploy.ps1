@@ -53,12 +53,12 @@ function Write-Step($msg) {
 
 # Deployment sizing used by the pre-flight availability/quota check. Defaults match the
 # Bicep defaults; overridden from lab.config.json below when present.
-$pfAksNodeCount    = 1
+$pfAksNodeCount    = 2
 $pfDeployWindowsVm = $true
 $pfDeployLinuxVm   = $true
-$pfVmSize          = 'Standard_B2s'
-$pfAksNodeVmSize   = 'Standard_B2s'
-$pfVmssSize        = 'Standard_B1s'
+$pfVmSize          = 'Standard_EC2as_v5'
+$pfAksNodeVmSize   = 'Standard_EC4as_v5'
+$pfVmssSize        = 'Standard_EC2as_v5'
 $pfAppServiceLocation = 'westeurope'
 $pfDeployObservabilityAgent = $false
 $pfObservabilityAgentLocation = 'westeurope'

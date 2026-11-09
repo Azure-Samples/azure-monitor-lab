@@ -25,6 +25,13 @@
     },
     "basics": [
       {
+        "name": "networkWatcherPrerequisite",
+        "type": "Microsoft.Common.TextBlock",
+        "options": {
+          "text": "Before deploying, prepare NetworkWatcher_<region> in NetworkWatcherRG for this subscription and selected Region using the README's Cloud Shell prerequisite step. Automatic Network Watcher enablement is not guaranteed. After deployment, run the Cloud Shell completion wrapper from the same release."
+        }
+      },
+      {
         "name": "namePrefix",
         "type": "Microsoft.Common.TextBox",
         "label": "Name prefix",
@@ -131,36 +138,36 @@
             "name": "vmSize",
             "type": "Microsoft.Common.TextBox",
             "label": "VM size",
-            "defaultValue": "Standard_B2s",
-            "toolTip": "VM size for the demo VMs (kept small for a lab).",
+            "defaultValue": "Standard_EC2as_v5",
+            "toolTip": "Confidential-compute size for the demo VMs. Check regional eligibility and quota; these sizes are not burstable.",
             "constraints": {
               "required": true,
               "regex": "^[A-Za-z0-9_]+$",
-              "validationMessage": "Enter a valid VM SKU, e.g. Standard_B2s."
+              "validationMessage": "Enter a compatible confidential VM SKU, e.g. Standard_EC2as_v5."
             }
           },
           {
             "name": "aksNodeVmSize",
             "type": "Microsoft.Common.TextBox",
             "label": "AKS node VM size",
-            "defaultValue": "Standard_B2s",
-            "toolTip": "VM size for AKS nodes.",
+            "defaultValue": "Standard_EC4as_v5",
+            "toolTip": "AKS system-node size. Use a supported non-B-series SKU with at least 4 vCPUs and 4 GiB RAM; check regional eligibility and quota.",
             "constraints": {
               "required": true,
               "regex": "^[A-Za-z0-9_]+$",
-              "validationMessage": "Enter a valid VM SKU, e.g. Standard_B2s."
+              "validationMessage": "Enter an AKS-supported system-node SKU, e.g. Standard_EC4as_v5."
             }
           },
           {
             "name": "vmssSize",
             "type": "Microsoft.Common.TextBox",
             "label": "Predictive autoscale VMSS size",
-            "defaultValue": "Standard_B1s",
-            "toolTip": "VM size for the predictive-autoscale scale set.",
+            "defaultValue": "Standard_EC2as_v5",
+            "toolTip": "Confidential-compute size for the predictive-autoscale scale set. Check regional eligibility and quota.",
             "constraints": {
               "required": true,
               "regex": "^[A-Za-z0-9_]+$",
-              "validationMessage": "Enter a valid VM SKU, e.g. Standard_B1s."
+              "validationMessage": "Enter a compatible confidential VM SKU, e.g. Standard_EC2as_v5."
             }
           },
           {
@@ -181,7 +188,7 @@
             "min": 1,
             "max": 5,
             "label": "AKS node count",
-            "defaultValue": 1,
+            "defaultValue": 2,
             "showStepMarkers": true,
             "toolTip": "Number of nodes in the AKS node pool.",
             "constraints": {
@@ -378,7 +385,7 @@
             "type": "Microsoft.Common.TextBlock",
             "visible": "[equals(steps('advanced').enableFabric, true)]",
             "options": {
-              "text": "Cost warning: Fabric F2 is pinned to swedencentral and bills while active at an indicative PAYG retail cost of about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies and additional Fabric usage may add charges. The deployment creates only the ARM capacity. Run ./scripts/setup-fabric.ps1 afterward to create Fabric SaaS items, and suspend the capacity when the demo is idle."
+              "text": "Cost warning: Fabric F2 is pinned to swedencentral and bills while active at an indicative PAYG retail cost of about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies and additional Fabric usage may add charges. The deployment creates only the ARM capacity. The README's Cloud Shell completion wrapper detects it and runs Fabric SaaS setup. Review its manual-action results and suspend the capacity when the demo is idle."
             }
           },
           {

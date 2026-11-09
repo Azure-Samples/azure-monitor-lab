@@ -62,7 +62,7 @@ rg-azure-monitor-lab/
 │   ├─ vmwinXXXX                  ← Optional Windows VM + AMA + Dependency Agent + DCR
 │   │  └─ shutdown-computevm-*    ← Daily 23:00 CET/CEST auto-shutdown schedule
 │   ├─ vmss-amlab                 ← Linux VMSS + Predictive autoscale
-│   ├─ aks-amlab                  ← AKS (Free tier, 1 × B2s by default) + Container Insights + Managed Prom
+│   ├─ aks-amlab                  ← AKS (Free tier, 2 × EC4as_v5 by default) + Container Insights + Managed Prom
 │   ├─ amlab-aks-prom-rules        ← Managed Prometheus recording + alerting rule group
 │   ├─ plan-amlab + app-amlab-XX  ← Linux App Service B1 + .NET 8 sample (auto-instrumented), in appServiceLocation
 │   └─ availability test + alert   ← Standard URL test from 5 global locations

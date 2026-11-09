@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "7331232495192763243"
+      "templateHash": "5761674375643973390"
     }
   },
   "parameters": {
@@ -81,28 +81,28 @@
     },
     "vmSize": {
       "type": "string",
-      "defaultValue": "Standard_B2s",
+      "defaultValue": "Standard_EC2as_v5",
       "metadata": {
         "description": "VM size (kept small for a demo lab)."
       }
     },
     "aksNodeVmSize": {
       "type": "string",
-      "defaultValue": "Standard_B2s",
+      "defaultValue": "Standard_EC4as_v5",
       "metadata": {
         "description": "AKS node VM size."
       }
     },
     "vmssSize": {
       "type": "string",
-      "defaultValue": "Standard_B1s",
+      "defaultValue": "Standard_EC2as_v5",
       "metadata": {
         "description": "Predictive-autoscale VMSS instance size."
       }
     },
     "aksNodeCount": {
       "type": "int",
-      "defaultValue": 1,
+      "defaultValue": 2,
       "metadata": {
         "description": "AKS node count."
       }
@@ -3155,7 +3155,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "3721574997013875600"
+              "templateHash": "14744096280615074103"
             }
           },
           "parameters": {
@@ -3173,7 +3173,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU."
               }
@@ -3424,7 +3424,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4986736003627378185"
+              "templateHash": "14683978266823128703"
             }
           },
           "parameters": {
@@ -3443,7 +3443,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU."
               }
@@ -3718,7 +3718,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4720308177047516325"
+              "templateHash": "913029475329877512"
             }
           },
           "parameters": {
@@ -3742,14 +3742,14 @@
             },
             "nodeVmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC4as_v5",
               "metadata": {
                 "description": "Node VM size."
               }
             },
             "nodeCount": {
               "type": "int",
-              "defaultValue": 1,
+              "defaultValue": 2,
               "metadata": {
                 "description": "Node count."
               }
@@ -62037,7 +62037,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "12020505676555017969"
+              "templateHash": "7667011808131489377"
             }
           },
           "parameters": {
@@ -62055,7 +62055,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B1s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU (kept tiny for a demo lab)."
               }
