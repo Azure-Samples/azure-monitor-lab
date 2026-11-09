@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "7121304056793433657"
+      "templateHash": "12893633579412507127"
     }
   },
   "parameters": {
@@ -66587,7 +66587,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "13139541800600823615"
+              "templateHash": "18111455804260716321"
             }
           },
           "parameters": {
@@ -68177,7 +68177,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.37.4.10188",
-                      "templateHash": "658929154324485004"
+                      "templateHash": "3523047170107716515"
                     }
                   },
                   "functions": [
@@ -68408,32 +68408,32 @@
                         "name": "cafe-website",
                         "displayName": "Café website",
                         "icon": "SystemComponent",
-                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-menu-requests', 'Failed menu requests', 'AppRequests\r\n| where TimeGenerated > ago(5min)\r\n| extend path = tostring(parse_url(Url).Path)\r\n| where path in (\"\", \"/\", \"/api/menu\")  // the root URL has an empty path\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules')), __bicep.logSignal('synthetic-browse-failures', 'Synthetic customer cannot open the menu', 'AppAvailabilityResults\r\n| where TimeGenerated > ago(5min)\r\n| where Name == \"synthetic-browse-menu\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-menu-requests', 'Failed menu requests', 'AppRequests\n| where TimeGenerated > ago(5min)\n| extend path = tostring(parse_url(Url).Path)\n| where path in (\"\", \"/\", \"/api/menu\")  // the root URL has an empty path\n| summarize value = countif(Success == false)\n', 'Count', variables('failureRules')), __bicep.logSignal('synthetic-browse-failures', 'Synthetic customer cannot open the menu', 'AppAvailabilityResults\n| where TimeGenerated > ago(5min)\n| where Name == \"synthetic-browse-menu\"\n| summarize value = countif(Success == false)\n', 'Count', variables('failureRules'))))]"
                       },
                       {
                         "name": "menu-catalog",
                         "displayName": "Menu catalog",
                         "icon": "SystemComponent",
-                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-menu-reads', 'Failed menu reads from storage', 'AppDependencies\r\n| where TimeGenerated > ago(5min)\r\n| where Target has \"blob.core.windows.net\" and Data has \"/menu/\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-menu-reads', 'Failed menu reads from storage', 'AppDependencies\n| where TimeGenerated > ago(5min)\n| where Target has \"blob.core.windows.net\" and Data has \"/menu/\"\n| summarize value = countif(Success == false)\n', 'Count', variables('failureRules'))))]"
                       },
                       {
                         "name": "order-api",
                         "displayName": "Order API",
                         "icon": "SystemComponent",
-                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-order-requests', 'Failed order requests', 'AppRequests\r\n| where TimeGenerated > ago(5min)\r\n| where Url has \"/api/orders\"\r\n| summarize value = countif(ResultCode startswith \"5\")  // a 404 for a mistyped order ID is not an outage\r\n', 'Count', variables('failureRules')), __bicep.logSignal('slow-orders', 'Order time for most customers (p95)', 'AppRequests\r\n| where TimeGenerated > ago(5min)\r\n| where Url has \"/api/orders\"\r\n| summarize p95 = percentile(DurationMs, 95)\r\n| project value = coalesce(p95, 0.0)\r\n', 'MilliSeconds', __bicep.rules('GreaterThan', '1000', '3000')), __bicep.logSignal('synthetic-order-failures', 'Synthetic customer cannot order', 'AppAvailabilityResults\r\n| where TimeGenerated > ago(5min)\r\n| where Name == \"synthetic-order-coffee\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-order-requests', 'Failed order requests', 'AppRequests\n| where TimeGenerated > ago(5min)\n| where Url has \"/api/orders\"\n| summarize value = countif(ResultCode startswith \"5\")  // a 404 for a mistyped order ID is not an outage\n', 'Count', variables('failureRules')), __bicep.logSignal('slow-orders', 'Order time for most customers (p95)', 'AppRequests\n| where TimeGenerated > ago(5min)\n| where Url has \"/api/orders\"\n| summarize p95 = percentile(DurationMs, 95)\n| project value = coalesce(p95, 0.0)\n', 'MilliSeconds', __bicep.rules('GreaterThan', '1000', '3000')), __bicep.logSignal('synthetic-order-failures', 'Synthetic customer cannot order', 'AppAvailabilityResults\n| where TimeGenerated > ago(5min)\n| where Name == \"synthetic-order-coffee\"\n| summarize value = countif(Success == false)\n', 'Count', variables('failureRules'))))]"
                       },
                       {
                         "name": "order-store",
                         "displayName": "Order store",
                         "icon": "SystemComponent",
-                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-order-writes', 'Failed order storage calls', 'AppDependencies\r\n| where TimeGenerated > ago(5min)\r\n| where Target has \"blob.core.windows.net\" and Data has \"/orders/\"\r\n| summarize value = countif(Success == false and ResultCode != \"404\")  // 404: looked-up order doesn''t exist\r\n', 'Count', variables('failureRules'))))]"
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-order-writes', 'Failed order storage calls', 'AppDependencies\n| where TimeGenerated > ago(5min)\n| where Target has \"blob.core.windows.net\" and Data has \"/orders/\"\n| summarize value = countif(Success == false and ResultCode != \"404\")  // 404: looked-up order doesn''t exist\n', 'Count', variables('failureRules'))))]"
                       },
                       {
                         "name": "barista-display",
                         "displayName": "Barista display (optional)",
                         "icon": "SystemComponent",
                         "impact": "Limited",
-                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-barista-notifications', 'Orders the barista display missed', 'AppDependencies\r\n| where TimeGenerated > ago(5min)\r\n| where Target has \"queue.core.windows.net\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-barista-notifications', 'Orders the barista display missed', 'AppDependencies\n| where TimeGenerated > ago(5min)\n| where Target has \"queue.core.windows.net\"\n| summarize value = countif(Success == false)\n', 'Count', variables('failureRules'))))]"
                       },
                       {
                         "name": "menu-app",
@@ -68461,7 +68461,7 @@
                         "signalGroups": "[__bicep.resourceSignals(parameters('storageId'), 'sd-storage-availability')]"
                       }
                     ],
-                    "canvas": "[json('{\r\n  \"order-coffee\": { \"x\": -312.5, \"y\": 193 },\r\n  \"browse-menu\": { \"x\": 312.5, \"y\": 193 },\r\n  \"order-store\": { \"x\": -562.5, \"y\": 386 },\r\n  \"order-api\": { \"x\": -312.5, \"y\": 386 },\r\n  \"barista-display\": { \"x\": -62.5, \"y\": 386 },\r\n  \"menu-catalog\": { \"x\": 187.5, \"y\": 386 },\r\n  \"cafe-website\": { \"x\": 437.5, \"y\": 386 },\r\n  \"order-storage\": { \"x\": -562.5, \"y\": 579 },\r\n  \"order-app\": { \"x\": -312.5, \"y\": 579 },\r\n  \"queue-storage\": { \"x\": -62.5, \"y\": 579 },\r\n  \"menu-storage\": { \"x\": 187.5, \"y\": 579 },\r\n  \"menu-app\": { \"x\": 437.5, \"y\": 579 }\r\n}\r\n')]",
+                    "canvas": "[json('{\n  \"order-coffee\": { \"x\": -312.5, \"y\": 193 },\n  \"browse-menu\": { \"x\": 312.5, \"y\": 193 },\n  \"order-store\": { \"x\": -562.5, \"y\": 386 },\n  \"order-api\": { \"x\": -312.5, \"y\": 386 },\n  \"barista-display\": { \"x\": -62.5, \"y\": 386 },\n  \"menu-catalog\": { \"x\": 187.5, \"y\": 386 },\n  \"cafe-website\": { \"x\": 437.5, \"y\": 386 },\n  \"order-storage\": { \"x\": -562.5, \"y\": 579 },\n  \"order-app\": { \"x\": -312.5, \"y\": 579 },\n  \"queue-storage\": { \"x\": -62.5, \"y\": 579 },\n  \"menu-storage\": { \"x\": 187.5, \"y\": 579 },\n  \"menu-app\": { \"x\": 437.5, \"y\": 579 }\n}\n')]",
                     "edges": [
                       {
                         "parent": "[parameters('healthModelName')]",

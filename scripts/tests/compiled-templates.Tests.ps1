@@ -3,6 +3,18 @@ param([string] $BicepExecutable)
 
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# Bicep preserves newlines in multiline literals and hashes their exact payload.
+# Match .gitattributes before compiling, rather than hiding drift in the outputs.
+$embeddedSources = @(
+  Get-ChildItem -LiteralPath (Join-Path $source 'infra') -Recurse -File |
+    Where-Object { $_.Extension -in @('.bicep', '.kql') -or $_.Name -like '*workbook.json' }
+)
+foreach ($file in $embeddedSources) {
+  if ([IO.File]::ReadAllText($file.FullName).Contains("`r")) {
+    throw "Infrastructure compile input '$($file.FullName)' must use LF line endings per .gitattributes. Normalize it and regenerate affected ARM templates; CRLF changes embedded strings and template hashes."
+  }
+}
+Write-Output 'PASS: infrastructure compile inputs use canonical LF line endings.'
 $appInsightsWorkbookFiles = @(
   Join-Path $source 'infra/modules/appinsights-investigation-workbook.json'
   Join-Path $source 'infra/modules/appinsights-usage-workbook.json'
