@@ -1,6 +1,5 @@
 // Lab Café: a tiny coffee shop API for the health model tutorial.
-// No npm dependencies on purpose: App Service auto-instrumentation records every
-// request and every outgoing storage call, so the health model has data to read.
+// Azure Monitor records requests and outgoing storage calls for the health model.
 //
 //   GET  /                 menu page            (user flow: browse the menu)
 //   GET  /api/menu         menu as JSON         (user flow: browse the menu)
@@ -10,6 +9,11 @@
 //
 // Storage access uses the web app's managed identity (no keys).
 // CHAOS_ORDER_FAILURE_PERCENT simulates a bad release of the order code.
+
+if (process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
+  const { useAzureMonitor } = require('@azure/monitor-opentelemetry');
+  useAzureMonitor({ samplingRatio: 1 });
+}
 
 const http = require('http');
 const https = require('https');

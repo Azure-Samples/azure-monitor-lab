@@ -6,6 +6,9 @@ on:
     paths:
       - 'workloads/webapp/**'
       - 'workloads/webapp.Tests/**'
+      - 'workloads/cafe/**'
+      - 'scripts/deploy-healthmodel-tutorial.ps1'
+      - 'scripts/build-healthmodel-tutorial.ps1'
       - 'scripts/invoke-lab-operation.ps1'
       - 'scripts/app-insights-target.ps1'
       - 'scripts/initialize-webapp-console.ps1'
@@ -168,6 +171,9 @@ jobs:
         run: |
           python -m pip install paramiko
           python -B -m unittest discover -s scripts/tests -p 'test_customer_sql_tunnel.py' -v
+      - name: Cafe instrumentation and request regressions
+        working-directory: workloads/cafe
+        run: npm test
       - name: Browser regressions without live integrations
         working-directory: workloads/webapp
         run: |

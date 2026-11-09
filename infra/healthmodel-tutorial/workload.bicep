@@ -217,10 +217,11 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
       minTlsVersion: '1.2'
       appSettings: [
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
-        { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
+        { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: 'disabled' }
         { name: 'STORAGE_ACCOUNT_NAME', value: storage.name }
         { name: 'CHAOS_ORDER_FAILURE_PERCENT', value: '0' }
-        { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
+        { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true' }
+        { name: 'ENABLE_ORYX_BUILD', value: 'true' }
       ]
     }
   }

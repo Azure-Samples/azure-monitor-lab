@@ -5,7 +5,8 @@
 .DESCRIPTION
   Creates the resource group, deploys infra/healthmodel-tutorial/workload.bicep
   (App Service, storage, Application Insights, availability tests) and publishes
-  workloads/cafe to the web app. Takes about 5 minutes.
+  workloads/cafe to the web app. App Service builds its locked npm dependencies.
+  Takes about 5 minutes.
 
   Next step: ./scripts/build-healthmodel-tutorial.ps1 -SkipFailedOrderSignal
   Walkthrough: docs/HEALTH-MODEL-TUTORIAL.md
@@ -76,8 +77,9 @@ Write-Info "Web app: $webAppName"
 Write-Step 'Publishing the café app'
 $zip = Join-Path ([System.IO.Path]::GetTempPath()) "lab-cafe-$([guid]::NewGuid()).zip"
 try {
-  Compress-Archive -Path (Join-Path $appDir '*') -DestinationPath $zip
-  az webapp deploy -g $ResourceGroup -n $webAppName --src-path $zip --type zip --async false -o none
+  $files = @('server.js', 'package.json', 'package-lock.json') | ForEach-Object { Join-Path $appDir $_ }
+  Compress-Archive -LiteralPath $files -DestinationPath $zip
+  az webapp deployment source config-zip -g $ResourceGroup -n $webAppName --src $zip --timeout 1200 -o none
   Assert-NativeCommandSucceeded 'Publishing the app'
 } finally {
   Remove-Item $zip -ErrorAction SilentlyContinue

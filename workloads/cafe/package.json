@@ -5,9 +5,13 @@
   "description": "Tiny coffee shop API used by the health model tutorial",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/*.test.cjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@azure/monitor-opentelemetry": "^1.21.0"
   }
 }

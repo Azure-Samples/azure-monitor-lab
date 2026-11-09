@@ -94,7 +94,7 @@ Other terms will show up, you find all of them here 📚 [Health model concepts]
 ./scripts/build-healthmodel-tutorial.ps1 -SkipFailedOrderSignal
 ```
 
-The first script deploys the café ([infra/healthmodel-tutorial/workload.bicep](../infra/healthmodel-tutorial/workload.bicep)), publishes the app and places a test order (about 5 minutes). The second builds the health model with the `az monitor health-models` CLI (about 2 minutes). It leaves one signal out on purpose: you add it in §4.
+The first script deploys the café ([infra/healthmodel-tutorial/workload.bicep](../infra/healthmodel-tutorial/workload.bicep)), publishes the app and places a test order (about 5 minutes). ZipDeploy runs an Oryx build on App Service to install the locked npm dependencies; the app initializes the Azure Monitor OpenTelemetry SDK before loading HTTP modules to collect requests and storage dependencies. The platform monitoring agent is disabled to avoid duplicate instrumentation. The second builds the health model with the `az monitor health-models` CLI (about 2 minutes). It leaves one signal out on purpose: you add it in §4.
 
 | Route | What it does | What it touches |
 |---|---|---|
@@ -105,7 +105,7 @@ The first script deploys the café ([infra/healthmodel-tutorial/workload.bicep](
 
 Application Insights records every request and every storage call. Two availability tests act as synthetic customers that open the menu and order a flat white every 5 minutes, so the model has data even at 3 a.m. Storage only accepts private traffic, through VNet integration and private endpoints, which gives us a realistic way to break things later.
 
-> ✅ **Done when:** the printed URL opens the café, and **Monitor → Health models → hm-lab-cafe** shows the graph. Startup failures leave the signal windows after five minutes, plus telemetry and evaluation delay. Log signals can also say *insufficient access* for about 10 minutes while the model's role arrives. Wait; don't rerun the build or recreate entities, that deletes their history. Start §3 in the meantime.
+> ✅ **Done when:** the printed URL opens the café, **Monitor → Health models → hm-lab-cafe** shows the graph, and the café workspace contains recent `AppRequests` and `AppDependencies` records after browsing and ordering. A zero-failure signal alone does not prove telemetry is arriving. Startup failures leave the signal windows after five minutes, plus telemetry and evaluation delay. Log signals can also say *insufficient access* for about 10 minutes while the model's role arrives. Wait; don't rerun the build or recreate entities, that deletes their history. Start §3 in the meantime.
 
 ## 3. Look around
 
