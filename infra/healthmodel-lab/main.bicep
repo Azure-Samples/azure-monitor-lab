@@ -305,17 +305,17 @@ var entities = [
     displayName: 'Control Center'
     icon: 'SystemComponent'
     signalGroups: lawGroup(appInsightsWorkspaceId, [
-      logSignal('failed-console-requests', 'Failed console requests', $'''
+      logSignal('failed-console-requests', 'Failed console requests', format('''
 AppRequests
 | extend path = tostring(parse_url(Url).Path)
-| where ${consolePathFilter}
+| where {0}
 | summarize value = countif(ResultCode startswith "5")
-''', 'PT5M', 'Count', rules('GreaterThan', 0, 5))
-      logSignal('console-availability-failures', 'Test visitor cannot load the console', $'''
+''', consolePathFilter), 'PT5M', 'Count', rules('GreaterThan', 0, 5))
+      logSignal('console-availability-failures', 'Test visitor cannot load the console', format('''
 AppAvailabilityResults
-| where Name == "${availabilityTestName}"
+| where Name == "{0}"
 | summarize value = countif(Success == false)
-''', 'PT15M', 'Count', rules('GreaterThan', 0, 4))
+''', availabilityTestName), 'PT15M', 'Count', rules('GreaterThan', 0, 4))
     ])
   }
   {
@@ -407,9 +407,9 @@ KubePodInventory
     icon: 'SystemComponent'
     impact: 'Limited'
     signalGroups: lawGroup(centralWorkspaceId, [
-      logSignal('vms-without-heartbeat', 'VMs silent for 10 minutes', $'''
-print value = ${length(vmIds)} - toscalar(Heartbeat | where TimeGenerated > ago(10m) and _ResourceId has "/microsoft.compute/virtualmachines/" | summarize dcount(_ResourceId))
-''', 'PT15M', 'Count', rules('GreaterThan', 0, 1))
+      logSignal('vms-without-heartbeat', 'VMs silent for 10 minutes', format('''
+print value = {0} - toscalar(Heartbeat | where TimeGenerated > ago(10m) and _ResourceId has "/microsoft.compute/virtualmachines/" | summarize dcount(_ResourceId))
+''', length(vmIds)), 'PT15M', 'Count', rules('GreaterThan', 0, 1))
     ])
   }
 

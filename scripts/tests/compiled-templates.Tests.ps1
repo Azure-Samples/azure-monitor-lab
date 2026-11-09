@@ -134,4 +134,25 @@ try {
     if ($actual -cne $expected) { throw "$relative.json differs from its Bicep source. Regenerate it before publishing." }
     Write-Output "PASS: $relative.json matches its Bicep source."
   }
+  foreach ($relative in @('infra/healthmodel-lab/main', 'infra/healthmodel-tutorial/workload')) {
+    $compiled = Join-Path $temporary (($relative -replace '/', '-') + '.json')
+    $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
+    if ($LASTEXITCODE -ne 0) { $messages; throw "Standalone health-model Bicep compilation failed: $relative" }
+    $null = Get-Content -LiteralPath $compiled -Raw | ConvertFrom-Json
+    Write-Output "PASS: $relative.bicep compiles with the pinned Bicep version."
+  }
+  foreach ($relative in @('infra/main.json', 'infra/stages/10-workloads.json')) {
+    $template = Get-Content -LiteralPath (Join-Path $source $relative) -Raw | ConvertFrom-Json
+    $aksModule = @($template.resources | Where-Object name -eq 'aks')
+    $aks = @($aksModule.properties.template.resources | Where-Object type -eq 'Microsoft.ContainerService/managedClusters')
+    if ($aks.Count -ne 1 -or $aks[0].apiVersion -cne '2024-05-01' -or
+        $aks[0].properties.networkProfile.networkPlugin -cne 'azure' -or
+        $aks[0].properties.networkProfile.networkPolicy -cne 'azure' -or
+        $aks[0].properties.networkProfile.PSObject.Properties['networkPluginMode'] -or
+        $aks[0].properties.networkProfile.PSObject.Properties['networkDataplane'] -or
+        $aks[0].properties.PSObject.Properties['nodeProvisioningProfile']) {
+      throw "$relative must preserve the existing AKS networking and stop-compatible node provisioning."
+    }
+  }
+  Write-Output 'PASS: one-shot and staged AKS preserve the existing upgrade and shutdown behavior.'
 } finally { Remove-Item -LiteralPath $temporary -Recurse -Force }

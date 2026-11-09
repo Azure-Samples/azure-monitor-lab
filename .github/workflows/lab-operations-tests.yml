@@ -50,6 +50,10 @@ on:
       - 'scripts/tests/fabric-monitoring.Tests.ps1'
       - 'scripts/tests/fabric-tenant.Tests.ps1'
       - 'scripts/tests/service-group.Tests.ps1'
+      - 'scripts/deploy-lab-healthmodel.ps1'
+      - 'scripts/tests/healthmodel-deployment.Tests.ps1'
+      - 'infra/healthmodel-lab/**'
+      - 'infra/healthmodel-tutorial/**'
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/sre-agent-cleanup.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
@@ -152,6 +156,7 @@ jobs:
           ./scripts/tests/fabric-monitoring.Tests.ps1
           ./scripts/tests/fabric-tenant.Tests.ps1
           ./scripts/tests/service-group.Tests.ps1
+          ./scripts/tests/healthmodel-deployment.Tests.ps1
           ./scripts/tests/teardown.Tests.ps1
           ./scripts/tests/sre-agent-cleanup.Tests.ps1
           ./scripts/tests/observability-agent-config.Tests.ps1

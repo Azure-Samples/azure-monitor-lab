@@ -120,4 +120,6 @@ Read top to bottom: what presenters do, the parts of the lab that make it work, 
 ## What to do next?
 
 - Deploy with `./scripts/deploy-lab-healthmodel.ps1` (needs a deployed lab).
+- The script reads resource group and name prefix from grouped or legacy `lab.config.json`; explicit `-ResourceGroup` and `-Location` override their defaults. It selects the Control Center, not the optional customer app, and rejects missing or ambiguous matches.
+- This add-on does not change AKS networking or node provisioning; existing lab upgrades and `stop-the-lab.ps1` keep their current behavior.
 - Alerts go to the lab's action group `ag-amlab-email`.

@@ -35,6 +35,7 @@ function Assert-NativeCommandSucceeded([string] $Operation) {
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'lab-config.ps1')
 
 # --- Subscription guardrail ----------------------------------------------------
 $targetFile = Join-Path $repoRoot '.azure-target.json'
@@ -48,7 +49,7 @@ if (Test-Path $targetFile) {
 }
 
 $labConfig = Join-Path $repoRoot 'lab.config.json'
-$config = if (Test-Path $labConfig) { Get-Content -Raw $labConfig | ConvertFrom-Json } else { $null }
+$config = if (Test-Path $labConfig) { Read-LabConfig -Path $labConfig } else { $null }
 if (-not $ResourceGroup) { $ResourceGroup = $config.resourceGroup ?? 'rg-azure-monitor-lab' }
 $prefix = $config.namePrefix ?? 'amlab'
 if (-not $Location) {
@@ -68,7 +69,7 @@ function Get-LabResourceId([string] $Type, [string] $Where) {
 
 $parameters = @{
   location               = @{ value = $Location }
-  webAppId               = @{ value = Get-LabResourceId 'Microsoft.Web/sites' "starts_with(name, 'app-$prefix')" }
+  webAppId               = @{ value = Get-LabResourceId 'Microsoft.Web/sites' "starts_with(name, 'app-$prefix-') && !ends_with(name, '-customer')" }
   appInsightsWorkspaceId = @{ value = Get-LabResourceId 'Microsoft.OperationalInsights/workspaces' "starts_with(name, 'law-$prefix-appinsights')" }
   centralWorkspaceId     = @{ value = Get-LabResourceId 'Microsoft.OperationalInsights/workspaces' "starts_with(name, 'law-$prefix-central')" }
   monitorWorkspaceId     = @{ value = Get-LabResourceId 'Microsoft.Monitor/accounts' "name == 'amw-$prefix'" }
