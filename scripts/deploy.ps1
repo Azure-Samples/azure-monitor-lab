@@ -213,7 +213,7 @@ Write-Step "Ensuring Network Watcher prerequisites in $Location"
 Ensure-LabNetworkWatcher -SubscriptionId $target.expectedSubscriptionId -TenantId $target.expectedTenantId `
   -Location $Location -Confirm:$false
 
-Write-Step "Deploying main.bicep (this takes about 5 minutes: AKS + VMs + Grafana)"
+Write-Step "Deploying lab infrastructure (main.bicep)"
 $deploymentName = "amlab-$(Get-Date -Format 'yyyyMMddHHmmss')"
 $mainBicep = Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'
 . (Join-Path $PSScriptRoot 'deployment-slot-recovery.ps1')

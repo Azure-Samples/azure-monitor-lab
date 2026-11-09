@@ -20,9 +20,9 @@
       "namePrefix": "amlab"
     },
     "compute": {
-      "vmSize": "Standard_B2als_v2",
-      "vmssSize": "Standard_B2als_v2",
-      "aksNodeVmSize": "Standard_D4as_v5",
+      "vmSize": "Standard_EC2as_v5",
+      "vmssSize": "Standard_EC2as_v5",
+      "aksNodeVmSize": "Standard_EC4as_v5",
       "aksNodeCount": 2,
       "deployWindowsVm": true,
       "deployLinuxVm": true,
