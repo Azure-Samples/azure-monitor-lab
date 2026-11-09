@@ -422,4 +422,12 @@ if ($fabricCapacity) {
   }
 }
 
+if (@($allResources | Where-Object {
+  $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -in @('hm-amlab-flows', 'hm-lab-cafe')
+}).Count -gt 0) {
+  Write-Host 'Removing verified lab-scoped Health Model reporter roles and their assignments ...' -ForegroundColor Yellow
+  & (Join-Path $PSScriptRoot 'remove-health-model-demo-roles.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -Confirm:$false
+}
+
 Remove-MatchingResourceGroups -Names $resourceGroupsToDelete

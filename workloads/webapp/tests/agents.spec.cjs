@@ -244,6 +244,8 @@ test('tabs preserve console state, support keyboard navigation, and validate age
   await expect(page.locator('#tab-health')).toBeFocused();
   await expect(page.locator('#panel-health')).toBeVisible();
   await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#panel-healthmodel')).toBeVisible();
+  await page.keyboard.press('ArrowRight');
   await expect(page.locator('#panel-console')).toBeVisible();
   await expect(page.locator('#total')).toHaveText('2');
   await page.getByRole('button', { name: 'Clear session results' }).click();

@@ -1,6 +1,6 @@
 # Azure Monitor Lab Control Center
 
-The ASP.NET Core 8 app serves **Azure Monitor Lab Control Center** at `/`. Five keyboard-accessible tabs separate Infra Health (first/default), Traffic & Faults, Lab Operations, SRE MCP Assistant, and Foundry Playground. It runs in the existing App Service and uses the existing Application Insights integration. Normal deployment configures operator sign-in, health access, an independent Azure job runner, and available optional agents automatically. Basic traffic actions remain anonymous; protected operations require an approved operator.
+The ASP.NET Core 8 app serves **Azure Monitor Lab Control Center** at `/`. Six keyboard-accessible tabs separate Infra Health (first/default), Health Model, Traffic & Faults, Lab Operations, SRE MCP Assistant, and Foundry Playground. It runs in the existing App Service and uses the existing Application Insights integration. Normal deployment configures operator sign-in, health access, an independent Azure job runner, and available optional agents automatically. Basic traffic actions remain anonymous; protected operations require an approved operator.
 
 Start with the [Control Center guide](../../docs/LAB-CONTROL-CENTER.md) for the application overview, screenshot, and scenario mapping. This page is the technical reference for configuration, local development, deployment, and runtime limits. The shared environment strip reuses existing context/catalog calls; it does not perform background model requests. Guide and Related Scenarios links open repository documentation without executing actions.
 
@@ -37,6 +37,8 @@ The normal deployment bootstrap discovers the central workspace, configures sing
 
 The caller needs role-assignment and app-configuration permissions, plus permission to manage the sign-in registration under the tenant's policy. A setup failure stops deployment. Allow Azure RBAC and telemetry propagation before treating missing data as a workload fault. The existing [health access helper](../../scripts/setup-webapp-health-access.ps1) remains available for targeted administrative repair; it is not required after a successful normal deployment.
 
+Health Model requests explicitly use same-origin referrers so authenticated reports pass App Service's CSRF checks. The site's default `no-referrer` policy remains unchanged for external requests.
+
 The shared backend identity can read metadata across this lab and logs in the assigned workspaces. The API fixes the scope and returns only aggregates; this is not delegated browser-user access. Disabling `LabConsole__Health__Enabled` stops future queries but does not revoke existing roles.
 
 ### Configuration And Limits
@@ -54,7 +56,7 @@ For local access, use the existing config helper with `-EnableInfrastructureHeal
 
 The UI checks once on first opening and offers manual refresh. A per-instance semaphore coalesces concurrent checks; snapshots are cached for 60 seconds and top-level failures for 15 seconds. The endpoint allows 30 requests per minute per app instance. One check is bounded by 45 seconds, at most 10 pages / 500 resources per ARM list, and at most three concurrent fixed telemetry queries against the central workspace. Each Logs query has a 15-second server timeout, a one-hour upper time range, a 500-row cap, and at most one SDK retry. Pagination cannot change the ARM host or scoped path; redirects are disabled. No background queries or model calls are scheduled. Usual Azure Monitor data/query charges and workspace policies still apply.
 
-Snapshot age and failed refreshes remain visible. Platform reports older than 30 minutes are unknown. Missing tables are not created; missing or partial queries are discarded for that signal. VM scale sets use platform availability only; other supporting resource types and out-of-group resources such as AKS-managed infrastructure are excluded. This is not the preview Azure Monitor Health Model or an autonomous remediation engine.
+Snapshot age and failed refreshes remain visible. Platform reports older than 30 minutes are unknown. Missing tables are not created; missing or partial queries are discarded for that signal. VM scale sets use platform availability only; other supporting resource types and out-of-group resources such as AKS-managed infrastructure are excluded. This is not the Azure Monitor Health Model or an autonomous remediation engine.
 
 The shared **Web app health** header independently probes `/healthz` on initial page load and each accepted Infra Health refresh. The probe bypasses the browser cache, rejects redirects, and times out after 10 seconds. It never contributes to traffic counters, latency charts, or request history, but the server can still record the HTTP request in telemetry. Manual health actions continue to update both the header and traffic results. Clearing traffic preserves the last header result; request sequencing prevents an older response from overwriting a newer check. These probes do not poll in the background or depend on Azure operator access.
 

@@ -363,7 +363,7 @@ Readiness can be rerun with `test-customer-dependencies.ps1 @common`: it verifie
 all three seeded products, the bounded active queue, and discoverable functions.
 It does **not** submit an order or prove queue-to-worker completion. Submit one
 synthetic order explicitly and verify `Completed` before claiming end-to-end
-health. Health Model relationships and diagnostics are configured, but preview
+health. Health Model relationships and diagnostics are configured, but
 Health Model APIs, regional Flex support, private DNS, identity propagation and
 live logs still need operator-side verification.
 
@@ -494,6 +494,16 @@ Focused checks: `pwsh -NoProfile -File scripts\tests\customer-publication.Tests.
 
 Offline configuration/UI regression check: `pwsh -NoProfile -File scripts\tests\vm-otel-config.Tests.ps1`. It copies the sync script into a disposable fixture under `scripts/tests`, uses synthetic inputs, and removes the fixture afterwards; it does not read local configuration/secrets or call Azure. Terraform's companion mocked plan test is `terraform/tests/vm-otel-metrics.tftest.hcl` (run `terraform validate` first, then `terraform test` filtered to that file from the Terraform directory).
 
+### Optional Health Model Demo
+
+Set `advancedConfiguration.stageToggles.enableStageHealthModelDemo` to the JSON Boolean `true` and retain stages A, B, C and E (including core availability tests). Config sync projects it into Bicep `enableHealthModelDemo` and Terraform `enable_stage_health_model_demo`; missing means `false`. The [stage guide](../docs/STAGE-HEALTH-MODEL-DEMO.md) covers costs and deployment paths.
+
+`setup-health-model-demo.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix` publishes only the existing Cafe app, connects both existing models to the console and verifies one ordinary stored order plus new request/dependency telemetry. Normal full, portal and staged completion invoke it automatically when selected/discovered. Explicit `-EnableStageHealthModelDemo:$false` skips portal/staged completion without removing resources. No CLI Health Models extension is needed.
+
+`publish-healthmodel-cafe.ps1` is shared with the standalone tutorial and uses locked dependencies with ZipDeploy/Oryx. It retries only the recognized SCM-restart race. Completion does not recreate models or inject failures.
+
+During confirmed lab teardown, `remove-health-model-demo-roles.ps1` removes only recognized custom reporter roles with the exact lab RG as their sole assignable scope and only the documented read/report actions. It checks every assignment remains inside that RG, removes assignments before definitions, and leaves shared, broader and unrelated roles untouched. This does not change the Azure Monitor-managed group protections.
+
 ## Lab lifecycle and demo control
 
 The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes allowlisted scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls, bounded customer traffic, and the opt-in isolated customer slot-failure operation. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
@@ -569,6 +579,17 @@ It supports `-WhatIf`, confirmation and `-VerificationTimeoutSeconds`. A `curren
 | [setup-rbac-demo.ps1](setup-rbac-demo.ps1) | Creates three lab-specific, ownership-tagged app registrations and service principals for the granular RBAC demonstration. A stable scope suffix separates labs; repeated setup reuses the same lab's identities. | `./scripts/setup-rbac-demo.ps1 -ResourceGroup <rg>` |
 | `demo-granular-rbac.ps1` | Runs the granular RBAC demonstration query using the generated local RBAC configuration. | `./scripts/demo-granular-rbac.ps1` |
 
+## Health model tutorial and lab user-flow model
+
+The tutorial scripts are standalone: they use their own resource group and don't need the lab. See [docs/HEALTH-MODEL-TUTORIAL.md](../docs/HEALTH-MODEL-TUTORIAL.md).
+
+| Script | Purpose | Example |
+|---|---|---|
+| `deploy-healthmodel-tutorial.ps1` | Deploys the Lab Café workload (`infra/healthmodel-tutorial/workload.bicep`, `workloads/cafe`). | `./scripts/deploy-healthmodel-tutorial.ps1` |
+| `build-healthmodel-tutorial.ps1` | Builds the café health model with the `az monitor health-models` CLI. | `./scripts/build-healthmodel-tutorial.ps1 [-SkipFailedOrderSignal] [-ControlCenterPrincipalId <id>]` |
+| `break-healthmodel-tutorial.ps1` | Breaks or restores the café: `BaristaQueue`, `BadRelease`, `NetworkCut`. | `./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease [-Restore]` |
+| `deploy-lab-healthmodel.ps1` | Deploys the lab's user-flow health model `hm-amlab-flows` (`infra/healthmodel-lab/main.bicep`) next to `hm-amlab-workload`. Needs a deployed lab. | `./scripts/deploy-lab-healthmodel.ps1 -ResourceGroup <rg>` |
+
 ## Recommended sequence after deployment
 
 Start with the [deployment option](../README.md#deploy) you used. Its instructions state when setup is complete, and the staged guides include their own completion commands. Use the [manual scenario setup](../docs/POST-DEPLOYMENT.md) only for scenarios you plan to present. The commands below generate optional demo telemetry; they are not required after every deployment. AI traffic always returns after background startup; keep the deployment host and sign-in available until the finite batch ends. The printed PID and log/status paths identify the run.
@@ -624,6 +645,8 @@ Azure removes the Monitor managed group when its workspace is deleted. These gro
 New labs use a tenant-scoped Service Group ID of `amlab-workload-<scope-hash>`. The suffix is the first 12 lowercase hexadecimal characters of SHA-256 over the lowercased full resource-group ARM ID, including the subscription ID. Two resource groups in the same subscription get different IDs, while redeployments reuse the same ID. A subscription-only suffix or a new random ID on every run would not provide both guarantees. A new group's default display name includes the resource-group name. Existing groups retain their display names (including legacy, custom/shared, and explicitly selected groups) unless `-ServiceGroupDisplayName` is supplied. Failed or invalid group reads stop setup rather than silently renaming an existing group.
 
 [setup-health-model.ps1](setup-health-model.ps1) and [setup-slis.ps1](setup-slis.ps1) share [resolve-service-group-id.ps1](resolve-service-group-id.ps1). They reuse the selected RG's existing membership target before deriving a name, preserving legacy `amlab-workload` groups and custom IDs. An explicit `-ServiceGroupId` still overrides discovery. Existing memberships are not automatically migrated or reparented; membership lookup failures stop rather than silently selecting a different group. This applies to one-shot, staged, Cloud Shell, and Terraform post-deployment setup because they invoke these same helpers.
+
+SLI setup discovers the selected resource group's unique `id-sli-<prefix>` identity and its matching `amw-<prefix>` workspace, so custom prefixes also work without a local config. Missing or ambiguous identities stop setup rather than selecting another lab's resources.
 
 Teardown checks for the exact `sgm-amlab-rg` membership in the selected resource group before attempting tenant-scoped SLI or Service Group deletion; the helpers resolve its actual target. If the membership is absent, shared cleanup is skipped automatically. When the membership exists but other labs share a legacy or explicitly chosen Service Group and SLIs, add `-KeepServiceGroup` to preserve them. The selected lab's resource-group membership is removed with its resource group.
 

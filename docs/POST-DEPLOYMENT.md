@@ -28,6 +28,8 @@ The exact investigator instructions, filters, and response-plan values are in [S
 
 ## Other conditional features
 
+The optional [Health Model Demo stage](STAGE-HEALTH-MODEL-DEMO.md) is completed automatically: Café publication, both console model targets, one successful stored order and actual request/dependency telemetry are verified. No tutorial fault injection or separate model builder is required.
+
 These features are deployed only when selected in the portal or enabled in the deployment configuration. They do not require another general post-deployment script.
 
 | Feature | What remains after deployment |

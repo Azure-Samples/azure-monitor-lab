@@ -32,6 +32,7 @@ builder.Services.AddSingleton<ISreMcpClient, SreMcpClient>();
 builder.Services.AddSingleton<ISreModel, SreModel>();
 builder.Services.AddSingleton<SreAssistant>();
 builder.Services.AddSingleton<InfrastructureHealthService>();
+builder.Services.AddSingleton<HealthModelService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ILabOperationsRunner>(services => new ContainerJobOperations(
     services.GetRequiredService<IConfiguration>(), services.GetRequiredService<IHttpClientFactory>()));
@@ -78,6 +79,18 @@ builder.Services.AddRateLimiter(options =>
     options.AddFixedWindowLimiter("infrastructure-health", limiter =>
     {
         limiter.PermitLimit = 30;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("health-model-reads", limiter =>
+    {
+        limiter.PermitLimit = 30;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("health-model-reports", limiter =>
+    {
+        limiter.PermitLimit = 6;
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
@@ -180,7 +193,7 @@ app.UseStaticFiles();
 app.UseSession();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path == "/api/infra/health" || context.Request.Path.StartsWithSegments("/api/agents") || context.Request.Path.StartsWithSegments("/api/sre") || context.Request.Path.StartsWithSegments("/api/operations"))
+    if (context.Request.Path.StartsWithSegments("/api/infra/health") || context.Request.Path.StartsWithSegments("/api/healthmodels") || context.Request.Path.StartsWithSegments("/api/agents") || context.Request.Path.StartsWithSegments("/api/sre") || context.Request.Path.StartsWithSegments("/api/operations"))
     {
         var hosted = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"));
         var allowed = hosted
@@ -264,6 +277,12 @@ app.MapGet("/api/console/version", () => Results.Json(new
 }));
 app.MapGet("/api/infra/health", (InfrastructureHealthService service, CancellationToken cancellationToken) => service.CheckAsync(cancellationToken))
     .RequireRateLimiting("infrastructure-health");
+app.MapGet("/api/healthmodels", (HealthModelService service) => Results.Json(new { models = service.Targets() }))
+    .RequireRateLimiting("health-model-reads");
+app.MapGet("/api/healthmodels/{model}", (string model, HealthModelService service, CancellationToken cancellationToken) => service.ReadAsync(model, cancellationToken))
+    .RequireRateLimiting("health-model-reads");
+app.MapPost("/api/healthmodels/{model}/reports", (string model, HealthReportRequest request, HealthModelService service, CancellationToken cancellationToken) =>
+    service.ReportAsync(model, request, cancellationToken)).RequireRateLimiting("health-model-reports");
 
 app.MapGet("/api/operations/catalog", (HttpContext context, LabOperationsService service, CancellationToken cancellationToken) =>
     service.CatalogAsync((string)context.Items["OperationsOwner"]!, cancellationToken)).RequireRateLimiting("lab-operation-reads");

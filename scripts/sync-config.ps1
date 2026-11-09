@@ -110,6 +110,17 @@ if ($null -eq $stages) { $stages = [pscustomobject]@{ enableStageA=$true; enable
 # AI and Fabric stages are optional and default off when absent from the config.
 $enableStageAI = if ($null -eq $stages.enableStageAI) { $false } else { [bool]$stages.enableStageAI }
 $enableStageFabric = if ($null -eq $stages.enableStageFabric) { $false } else { [bool]$stages.enableStageFabric }
+if ($null -ne $stages.PSObject.Properties['enableStageHealthModelDemo'] -and $stages.enableStageHealthModelDemo -isnot [bool]) {
+  throw 'stageToggles.enableStageHealthModelDemo must be a JSON Boolean.'
+}
+$enableStageHealthModelDemo = $stages.enableStageHealthModelDemo -eq $true
+if ($enableStageHealthModelDemo -and
+    ($stages.enableStageA -isnot [bool] -or $stages.enableStageA -ne $true -or
+     $stages.enableStageB -isnot [bool] -or $stages.enableStageB -ne $true -or
+     $stages.enableStageC -isnot [bool] -or $stages.enableStageC -ne $true -or
+     $stages.enableStageE -isnot [bool] -or $stages.enableStageE -ne $true)) {
+  throw 'Health Model Demo requires stageToggles.enableStageA, enableStageB, enableStageC and enableStageE=true (including core availability tests).'
+}
 if ($enableStageFabric -and [string]::IsNullOrWhiteSpace($fabricAdminEmail)) {
   Write-Error 'lab.config.json has enableStageFabric=true but fabricAdminEmail is empty. Set it to a Microsoft Entra user UPN in the deployment tenant; do not use an external alert alias.'
   return
@@ -205,6 +216,7 @@ $bicepParams = [ordered]@{
     'grafanaAdminObjectId' = @{ value = $grafanaAdminObjectId }
     'enableAi'        = @{ value = $enableStageAI }
     'enableFabric'    = @{ value = $enableStageFabric }
+    'enableHealthModelDemo' = @{ value = $enableStageHealthModelDemo }
     'fabricAdminEmail'= @{ value = $fabricAdminEmail }
     'enableSreAgent'  = @{ value = $enableStageSreAgent }
     'enableSlotFailureScenario' = @{ value = $enableSlotFailureScenario }
@@ -267,6 +279,7 @@ $tfLines = @(
   "enable_stage_e = $((($stages.enableStageE -as [bool]).ToString()).ToLower())"
   "enable_stage_ai = $($enableStageAI.ToString().ToLower())"
   "enable_stage_fabric = $($enableStageFabric.ToString().ToLower())"
+  "enable_stage_health_model_demo = $($enableStageHealthModelDemo.ToString().ToLower())"
   "fabric_admin_email = `"$(Esc $fabricAdminEmail)`""
   "enable_stage_sre_agent = $($enableStageSreAgent.ToString().ToLower())"
   "enable_slot_failure_scenario = $($enableSlotFailureScenario.ToString().ToLower())"

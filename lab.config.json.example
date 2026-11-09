@@ -82,6 +82,7 @@
       "enableStageE": true,
       "enableStageAI": false,
       "enableStageFabric": false,
+      "enableStageHealthModelDemo": false,
       "enableStageSreAgent": false,
       "enableStageObservabilityAgent": false,
       "enableSlotFailureScenario": false,

@@ -3,6 +3,18 @@ param([string] $BicepExecutable)
 
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# Bicep preserves newlines in multiline literals and hashes their exact payload.
+# Match .gitattributes before compiling, rather than hiding drift in the outputs.
+$embeddedSources = @(
+  Get-ChildItem -LiteralPath (Join-Path $source 'infra') -Recurse -File |
+    Where-Object { $_.Extension -in @('.bicep', '.kql') -or $_.Name -like '*workbook.json' }
+)
+foreach ($file in $embeddedSources) {
+  if ([IO.File]::ReadAllText($file.FullName).Contains("`r")) {
+    throw "Infrastructure compile input '$($file.FullName)' must use LF line endings per .gitattributes. Normalize it and regenerate affected ARM templates; CRLF changes embedded strings and template hashes."
+  }
+}
+Write-Output 'PASS: infrastructure compile inputs use canonical LF line endings.'
 $appInsightsWorkbookFiles = @(
   Join-Path $source 'infra/modules/appinsights-investigation-workbook.json'
   Join-Path $source 'infra/modules/appinsights-usage-workbook.json'
@@ -23,6 +35,7 @@ if (@(Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-k
 }
 $appInsightsWorkbookFiles | ForEach-Object { $null = Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
+& (Join-Path $source 'infra/tests/health-model-demo.Tests.ps1')
 foreach ($moduleName in @('sre-agent', 'lab-console-platform')) {
   $module = @($mainTemplate.resources | Where-Object name -eq $moduleName)
   $slotAssignments = @($module.properties.template.resources | Where-Object {
@@ -125,7 +138,7 @@ if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Bicep CLI version 0\.37\.4\b') 
 $temporary = Join-Path $source ('.artifacts\amlab-template-check-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary
 try {
-  foreach ($relative in @('infra/main', 'infra/customer-application', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/60-fabric', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job', 'infra/modules/lab-console-fabric-access', 'infra/modules/fabric-auto-suspend')) {
+  foreach ($relative in @('infra/main', 'infra/customer-application', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/60-fabric', 'infra/stages/70-observability-agent', 'infra/stages/80-health-model-demo', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job', 'infra/modules/lab-console-fabric-access', 'infra/modules/fabric-auto-suspend')) {
     $compiled = Join-Path $temporary ([IO.Path]::GetFileName($relative) + '.json')
     $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
     if ($LASTEXITCODE -ne 0) { $messages; throw "Bicep compilation failed: $relative" }
@@ -134,4 +147,25 @@ try {
     if ($actual -cne $expected) { throw "$relative.json differs from its Bicep source. Regenerate it before publishing." }
     Write-Output "PASS: $relative.json matches its Bicep source."
   }
+  foreach ($relative in @('infra/healthmodel-lab/main', 'infra/healthmodel-tutorial/workload', 'infra/healthmodel-tutorial/model')) {
+    $compiled = Join-Path $temporary (($relative -replace '/', '-') + '.json')
+    $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
+    if ($LASTEXITCODE -ne 0) { $messages; throw "Standalone health-model Bicep compilation failed: $relative" }
+    $null = Get-Content -LiteralPath $compiled -Raw | ConvertFrom-Json
+    Write-Output "PASS: $relative.bicep compiles with the pinned Bicep version."
+  }
+  foreach ($relative in @('infra/main.json', 'infra/stages/10-workloads.json')) {
+    $template = Get-Content -LiteralPath (Join-Path $source $relative) -Raw | ConvertFrom-Json
+    $aksModule = @($template.resources | Where-Object name -eq 'aks')
+    $aks = @($aksModule.properties.template.resources | Where-Object type -eq 'Microsoft.ContainerService/managedClusters')
+    if ($aks.Count -ne 1 -or $aks[0].apiVersion -cne '2024-05-01' -or
+        $aks[0].properties.networkProfile.networkPlugin -cne 'azure' -or
+        $aks[0].properties.networkProfile.networkPolicy -cne 'azure' -or
+        $aks[0].properties.networkProfile.PSObject.Properties['networkPluginMode'] -or
+        $aks[0].properties.networkProfile.PSObject.Properties['networkDataplane'] -or
+        $aks[0].properties.PSObject.Properties['nodeProvisioningProfile']) {
+      throw "$relative must preserve the existing AKS networking and stop-compatible node provisioning."
+    }
+  }
+  Write-Output 'PASS: one-shot and staged AKS preserve the existing upgrade and shutdown behavior.'
 } finally { Remove-Item -LiteralPath $temporary -Recurse -Force }

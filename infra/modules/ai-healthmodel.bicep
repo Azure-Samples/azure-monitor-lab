@@ -11,7 +11,7 @@
 // signals for error-rate and token volume.
 //
 // Region-pinned (aiLocation, swedencentral) like the workload health model — the
-// CloudHealth preview is region-limited. Discovery + signals run under the model's
+// CloudHealth is region-limited. Discovery + signals run under the model's
 // system-assigned identity (Reader + Monitoring Reader + Log Analytics Reader on the RG).
 // =====================================================================================
 
@@ -48,7 +48,7 @@ var agents = [
   { key: 'context-rich-assistant', display: 'Context-Rich Assistant', x: 420, y: 320 }
 ]
 
-resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-05-01-preview' = {
+resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-11-01' = {
   name: healthModelName
   location: location
   tags: tags
@@ -56,7 +56,7 @@ resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-05-01-preview' = {
   properties: {}
 }
 
-resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@2026-05-01-preview' = {
+resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@2026-11-01' = {
   parent: healthModel
   name: authSettingName
   properties: {
@@ -67,7 +67,7 @@ resource authSetting 'Microsoft.CloudHealth/healthmodels/authenticationsettings@
 }
 
 // 1) Agents + app dependencies from Application Insights topology.
-resource discoverAgents 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-05-01-preview' = {
+resource discoverAgents 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-11-01' = {
   parent: healthModel
   name: 'agents-topology'
   properties: {
@@ -85,7 +85,7 @@ resource discoverAgents 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-
 }
 
 // 2) Foundry (AI Services) account.
-resource discoverAccount 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-05-01-preview' = {
+resource discoverAccount 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-11-01' = {
   parent: healthModel
   name: 'foundry-account'
   properties: {
@@ -103,7 +103,7 @@ resource discoverAccount 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026
 }
 
 // 3) Foundry projects.
-resource discoverProjects 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-05-01-preview' = {
+resource discoverProjects 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-11-01' = {
   parent: healthModel
   name: 'foundry-projects'
   properties: {
@@ -121,7 +121,7 @@ resource discoverProjects 'Microsoft.CloudHealth/healthmodels/discoveryrules@202
 }
 
 // 4) Observability services that capture the signals.
-resource discoverObservability 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-05-01-preview' = {
+resource discoverObservability 'Microsoft.CloudHealth/healthmodels/discoveryrules@2026-11-01' = {
   parent: healthModel
   name: 'observability-services'
   properties: {
@@ -172,7 +172,7 @@ resource logAnalyticsReaderAssignment 'Microsoft.Authorization/roleAssignments@2
 // signals from the workspace-based App Insights `AppDependencies` table:
 //   - error-rate : failed runs %      -> health of the agent
 //   - token-volume : total tokens/hour -> anomalous volume drives the entity unhealthy
-resource agentEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-05-01-preview' = [for a in agents: {
+resource agentEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [for a in agents: {
   parent: healthModel
   name: 'agent-${a.key}'
   properties: {

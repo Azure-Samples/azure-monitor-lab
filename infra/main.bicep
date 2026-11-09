@@ -19,6 +19,15 @@ param appServiceLocation string = 'westeurope'
 @maxLength(8)
 param namePrefix string = 'amlab'
 
+@description('Deploy the optional Cafe workload and Cafe/lab user-flow health models. Does not change the baseline health model.')
+param enableHealthModelDemo bool = false
+
+@description('Cafe workload region. Keep the existing standalone workload region when adopting it.')
+param healthModelDemoCafeLocation string = 'swedencentral'
+
+@description('Optional existing Cafe RG Monitoring Reader assignment GUID. Empty uses non-conflicting resource-scoped read access.')
+param healthModelDemoCafeMonitoringReaderAssignmentName string = ''
+
 @description('Email address that receives Action Group notifications.')
 param alertEmail string
 
@@ -179,7 +188,7 @@ var observabilityAgentName = 'obs-${namePrefix}-${take(suffix, 5)}'
 var observabilityAgentMonitoringAccountName = 'amw-${namePrefix}-obs'
 
 // AI feature (Foundry) is pinned to swedencentral, independent of the lab region —
-// the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth preview are region-limited.
+// the gpt-5-* / model-router SKUs + Foundry portal + CloudHealth are region-limited.
 var aiLocation = 'swedencentral'
 
 // Fabric F2 is pinned independently from the main lab region. The capacity is
@@ -1017,7 +1026,7 @@ module costWorkbook 'modules/cost-workbook.bicep' = {
 }
 
 // ---------------------------------------------------------------------------------
-// Azure Monitor Health Model (preview) -- scenario 45
+// Azure Monitor Health Model -- scenario 45
 //
 // Builds a 3-tier model rolling up to a single root: frontend (webapp +
 // App Insights), compute (VMs + VMSS + AKS), platform (KV + Storage), each
@@ -1028,9 +1037,8 @@ module healthModel 'modules/health-model.bicep' = {
   name: 'health-model'
   params: {
     healthModelName: 'hm-${namePrefix}-workload'
-    // Health Model (preview) is only available in a limited set of regions
-    // (UK South, Canada Central, Central US, Sweden Central, Southeast Asia),
-    // so its region is pinned to swedencentral independent of the lab location.
+    // Health models are not available in every region (az provider show -n Microsoft.CloudHealth
+    // lists them), so the region is pinned to swedencentral independent of the lab location.
     location: 'swedencentral'
     tags: commonTags
     webAppId: appService.outputs.webAppId
@@ -1049,6 +1057,27 @@ module healthModel 'modules/health-model.bicep' = {
     // Fold the Fabric F2 capacity into a Real-Time Intelligence tier when enabled.
     enableFabric: enableFabric
     fabricCapacityId: enableFabric ? fabricCapacity!.outputs.id : ''
+  }
+}
+
+module healthModelDemo 'stages/80-health-model-demo.bicep' = if (enableHealthModelDemo) {
+  name: 'health-model-demo'
+  params: {
+    location: healthModelDemoCafeLocation
+    webAppId: appService.outputs.webAppId
+    appInsightsWorkspaceId: lawAppInsights.outputs.id
+    centralWorkspaceId: lawCentral.outputs.id
+    monitorWorkspaceId: amw.outputs.id
+    aksId: aks.outputs.id
+    vmssId: vmss.outputs.vmssId
+    availabilityTestName: availabilityTest.outputs.testName
+    vmIds: concat(
+      deployLinuxVm ? [vmLinux!.outputs.vmId] : [],
+      deployWindowsVm ? [vmWindows!.outputs.vmId] : []
+    )
+    actionGroupId: actionGroup.outputs.id
+    cafeMonitoringReaderAssignmentName: healthModelDemoCafeMonitoringReaderAssignmentName
+    tags: commonTags
   }
 }
 

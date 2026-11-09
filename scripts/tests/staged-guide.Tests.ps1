@@ -56,6 +56,7 @@ foreach ($name in $template.parameters.Keys) {
 $example = Read-LabConfig -Path (Join-Path $source 'lab.config.json.example')
 $stageAliases = @{
   enableAi = 'enableStageAI'; enableFabric = 'enableStageFabric'
+  enableHealthModelDemo = 'enableStageHealthModelDemo'
   enableSreAgent = 'enableStageSreAgent'; enableObservabilityAgent = 'enableStageObservabilityAgent'
 }
 foreach ($control in @($ui.parameters.basics) + @($ui.parameters.steps.elements)) {

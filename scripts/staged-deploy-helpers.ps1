@@ -25,7 +25,7 @@ function Assert-LabAccount {
 
 function Invoke-LabStage {
   param(
-    [ValidateSet('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')]
+    [ValidateSet('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent', '80-health-model-demo')]
     [string] $Stage,
     [hashtable] $Overrides = @{}
   )

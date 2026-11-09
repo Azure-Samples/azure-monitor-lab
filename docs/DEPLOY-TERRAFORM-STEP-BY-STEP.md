@@ -35,6 +35,7 @@ For workshop planning and customer expectation-setting, use:
 - [STAGE-E-OPTIONAL-ADVANCED.md](STAGE-E-OPTIONAL-ADVANCED.md)
 - [STAGE-AI.md](STAGE-AI.md)
 - [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md)
+- [STAGE-HEALTH-MODEL-DEMO.md](STAGE-HEALTH-MODEL-DEMO.md) - optional `enable_stage_health_model_demo`, requiring stages A, B, C and E.
 
 ## 3) Stage model (same as Bicep)
 
@@ -336,7 +337,7 @@ Migrate in this order:
 2. Workload resources (VM, AKS, App Service, Grafana)
 3. Alerting resources (action groups, metric/log/activity alerts)
 4. Security posture query alerts and RBAC
-5. Optional preview resources (health model, SLI, Sentinel)
+5. Optional resources (health model, SLI preview, Sentinel)
 
 Use `azapi_resource` for preview/control-plane resources not fully covered in `azurerm`.
 

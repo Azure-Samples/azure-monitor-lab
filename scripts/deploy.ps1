@@ -171,7 +171,7 @@ if ($SkipPreflight) {
 Write-Step "Ensuring resource group $ResourceGroup in $Location"
 az group create -n $ResourceGroup -l $Location --tags purpose=azure-monitor-lab owner=demo-lab | Out-Null
 
-# 1b. Resource provider registration — Health Models (preview) is not auto-registered
+# 1b. Resource provider registration — Health Models is not auto-registered
 function Register-ResourceProvider {
   param([string] $Namespace)
   $state = az provider show -n $Namespace --query registrationState -o tsv 2>$null
@@ -495,6 +495,13 @@ if ($fabricEnabled) {
     Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
     Write-Host "  ./scripts/suspend-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
   }
+}
+
+if ($deploymentInputs.parameters.enableHealthModelDemo.value -eq $true) {
+  $healthModelDemoNamePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+  & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup `
+    -NamePrefix $healthModelDemoNamePrefix
 }
 
 $completionMessage = 'Lab setup complete.'

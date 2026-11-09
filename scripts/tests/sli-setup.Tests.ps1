@@ -12,6 +12,7 @@ $fixture = @{
   Mode = 'unsupported'; Queries = 0; TokenRequests = 0; Token = [guid]::NewGuid().ToString('N')
   Diagnostic = [guid]::NewGuid().ToString('N'); ExplicitSubscription = $false
   DeleteError = ''; Deletes = [Collections.Generic.List[string]]::new(); Teardown = $false
+  Prefix = 'amlab'; IdentityCount = 1; IdentityError = $false
 }
 
 $sliResourceIds = @('sli-aks-pods-running', 'sli-aks-pod-start-latency') |
@@ -58,11 +59,26 @@ function az {
       }
       return '{"properties":{"provisioningState":"Succeeded"}}'
     }
-    'identity show' { return @{ id = 'test-identity'; clientId = $fixture.Principal; principalId = $fixture.Principal } | ConvertTo-Json }
+    'identity list' {
+      if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString() -or
+          $args[[Array]::IndexOf($args, '-g') + 1] -ne 'test-rg' -or
+          $args[[Array]::IndexOf($args, '--query') + 1] -ne "[?starts_with(name, 'id-sli-')]") {
+        throw 'SLI identity discovery must be scoped to the verified lab and reserved identity prefix.'
+      }
+      if ($fixture.IdentityError) { $global:LASTEXITCODE = 1; return }
+      return ConvertTo-Json -InputObject @(
+        for ($i = 0; $i -lt $fixture.IdentityCount; $i++) {
+          @{ name = "id-sli-$($fixture.Prefix)"; id = "test-identity-$i"; clientId = $fixture.Principal; principalId = $fixture.Principal }
+        }
+      )
+    }
     'resource show' {
       if ($args -contains '--ids') {
         if ($args[[Array]::IndexOf($args, '--ids') + 1] -ne $memberId) { throw 'Unexpected membership lookup.' }
         return @{ properties = @{ targetId = $fixture.ServiceGroupResourceId } } | ConvertTo-Json
+      }
+      if ($args[[Array]::IndexOf($args, '-n') + 1] -ne "amw-$($fixture.Prefix)") {
+        throw 'The workspace name must follow the discovered SLI identity prefix.'
       }
       return @{
         id = 'test-amw'
@@ -211,6 +227,25 @@ try {
         $result.Text -notmatch 'All four documented source metrics are currently flowing' -or
         -not $result.Text.Contains("$serviceGroupId/serviceLevelIndicators")) { throw "Successful SLI verification must use the lab membership and query all four metrics: $($result.Failure)" }
   }
+  $fixture.Prefix = 'pr42lab'
+  $result = Invoke-TestSliSetup
+  if ($result.Failure -or $fixture.Queries -ne 4) {
+    throw "A custom lab prefix must discover the matching identity and workspace without local config: $($result.Failure)"
+  }
+  foreach ($count in @(0, 2)) {
+    $fixture.IdentityCount = $count
+    $result = Invoke-TestSliSetup
+    if ($result.Failure -notlike '*Expected exactly one SLI identity*' -or $fixture.Queries -or $fixture.TokenRequests) {
+      throw 'Missing or ambiguous SLI identities must stop before metric verification.'
+    }
+  }
+  $fixture.IdentityCount = 1
+  $fixture.IdentityError = $true
+  $result = Invoke-TestSliSetup
+  if ($result.Failure -notlike '*Could not list SLI identities*' -or $fixture.Queries -or $fixture.TokenRequests) {
+    throw 'SLI identity discovery failures must stop explicitly.'
+  }
+  Write-Output 'PASS: Default and custom SLI prefixes resolve without local config; missing, ambiguous and failed identity discovery stop explicitly. No Azure calls.'
   Write-Output 'PASS: Cloud Shell audience errors direct wrapper users to the automatic fallback without leaking credentials; other failures stop; all four metrics remain required. No Azure calls.'
 } finally {
   Remove-Item -LiteralPath $root -Recurse -Force
