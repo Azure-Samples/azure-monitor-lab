@@ -167,6 +167,8 @@ $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 ./scripts/teardown.ps1 -ResourceGroup $rg -Yes   # deletes the whole resource group
 ```
 
+Some resources, such as Key Vault and Microsoft Foundry accounts, retain their names during a soft-delete retention period after teardown. Because this lab generates resource names from the resource group ID, redeploying with the same resource group name can be blocked until retention expires or the affected resource is explicitly recovered or purged (where permitted).
+
 `NetworkWatcherRG` is preserved by default. To also delete that **entire shared resource group**, explicitly opt in with `./scripts/teardown.ps1 -ResourceGroup $rg --delete-networkwatcherrg yes`. This can disrupt monitoring for unrelated workloads in the same subscription. `-Yes` only skips confirmation; it does not enable Network Watcher cleanup.
 
 Bicep script deployments recreate a missing regional watcher before deployment. For portal/raw Bicep redeployment after deleting this group, [restore the Network Watcher prerequisite](https://github.com/Azure-Samples/azure-monitor-lab/blob/feature/fabric-stage/scripts/README.md#network-watcher-prerequisites) first.
