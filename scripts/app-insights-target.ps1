@@ -16,7 +16,8 @@ function Resolve-LabAppInsightsName {
     --query '[].{name:name,tags:tags}' --output json
   if ($LASTEXITCODE -ne 0) { throw 'Could not discover the lab Application Insights target.' }
   $components = @($json | ConvertFrom-Json | Where-Object {
-    $_.tags.'amlab-component' -cne 'customer-web-app' -and $_.name -notlike '*-customer'
+    $_.tags.'amlab-component' -cne 'customer-web-app' -and $_.name -notlike '*-customer' -and
+    $_.name -notmatch '^appi-cafe-[a-z0-9]{13}$'
   })
   if ($AppInsightsName) { $components = @($components | Where-Object name -CEQ $AppInsightsName) }
   if ($components.Count -ne 1) {

@@ -35,6 +35,7 @@ For workshop planning and customer expectation-setting, use:
 - [STAGE-E-OPTIONAL-ADVANCED.md](STAGE-E-OPTIONAL-ADVANCED.md)
 - [STAGE-AI.md](STAGE-AI.md)
 - [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md)
+- [STAGE-HEALTH-MODEL-DEMO.md](STAGE-HEALTH-MODEL-DEMO.md) - optional `enable_stage_health_model_demo`, requiring stages A, B, C and E.
 
 ## 3) Stage model (same as Bicep)
 

@@ -58,11 +58,13 @@ Write-Info "Account: $($account.name)"
 Write-Info "Project endpoint: $projectEndpoint"
 
 Write-Step "Resolving Application Insights through ARM"
+$appInsightsFilter = "starts_with(name, 'appi-$NamePrefix-') && !ends_with(name, '-customer')"
+if ($NamePrefix -ieq 'cafe') { $appInsightsFilter += ' && length(name) == `15`' }
 $appInsights = az resource list `
   --subscription $SubscriptionId `
   --resource-group $ResourceGroup `
   --resource-type Microsoft.Insights/components `
-  --query "[?starts_with(name, 'appi-$NamePrefix-')] | sort_by(@, &name) | [0].{id:id,name:name}" `
+  --query "[?$appInsightsFilter] | sort_by(@, &name) | [0].{id:id,name:name}" `
   -o json | ConvertFrom-Json
 if (-not $appInsights) {
   throw "Application Insights 'appi-$NamePrefix-<suffix>' was not found in '$ResourceGroup'."

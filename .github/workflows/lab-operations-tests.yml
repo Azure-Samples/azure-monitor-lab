@@ -8,6 +8,12 @@ on:
       - 'workloads/webapp.Tests/**'
       - 'workloads/cafe/**'
       - 'scripts/deploy-healthmodel-tutorial.ps1'
+      - 'scripts/publish-healthmodel-cafe.ps1'
+      - 'scripts/setup-health-model-demo.ps1'
+      - 'scripts/trigger-code-optimization.ps1'
+      - 'scripts/tests/health-model-demo.Tests.ps1'
+      - 'scripts/remove-health-model-demo-roles.ps1'
+      - 'scripts/tests/health-model-demo-cleanup.Tests.ps1'
       - 'scripts/build-healthmodel-tutorial.ps1'
       - 'scripts/invoke-lab-operation.ps1'
       - 'scripts/app-insights-target.ps1'
@@ -57,6 +63,7 @@ on:
       - 'scripts/tests/healthmodel-deployment.Tests.ps1'
       - 'infra/healthmodel-lab/**'
       - 'infra/healthmodel-tutorial/**'
+      - 'infra/tests/**'
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/sre-agent-cleanup.Tests.ps1'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
@@ -102,6 +109,7 @@ on:
       - 'docs/DEPLOY-*-STEP-BY-STEP.md'
       - 'docs/POST-DEPLOYMENT.md'
       - 'docs/STAGE-AI.md'
+      - 'docs/STAGE-HEALTH-MODEL-DEMO.md'
       - 'docs/STAGE-OBSERVABILITY-AGENT.md'
       - 'scripts/README.md'
       - 'terraform/**'
@@ -143,6 +151,8 @@ jobs:
           ./scripts/tests/preflight-guidance.Tests.ps1
           ./scripts/tests/vm-sku-config.Tests.ps1
           ./scripts/tests/lab-config.Tests.ps1
+          ./scripts/tests/health-model-demo.Tests.ps1
+          ./scripts/tests/health-model-demo-cleanup.Tests.ps1
           ./scripts/tests/customer-completion.Tests.ps1
           ./scripts/tests/customer-dependencies.Tests.ps1
           ./scripts/tests/webapp-publication.Tests.ps1

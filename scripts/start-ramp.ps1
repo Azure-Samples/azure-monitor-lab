@@ -30,7 +30,7 @@ if (-not $WebAppHost) {
   $matches = if ($WebAppName) {
     @($apps | Where-Object { $_.name -ceq $WebAppName })
   } else {
-    @($apps | Where-Object { $_.name -like 'app-*' })
+    @($apps | Where-Object { $_.name -like 'app-*' -and $_.name -notmatch '-customer$|^app-cafe-[a-z0-9]{13}$' })
   }
   if ($matches.Count -ne 1 -or [string]::IsNullOrWhiteSpace($matches[0].defaultHostName)) {
     throw 'Exactly one matching Web App with a default host is required.'

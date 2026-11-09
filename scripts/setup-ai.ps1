@@ -169,7 +169,9 @@ Write-Host "   Endpoint: $ProjectEndpoint" -ForegroundColor Green
 # --- App Insights connection string (enables tracing export) ---
 if ([string]::IsNullOrWhiteSpace($AppInsightsConnectionString)) {
   Write-Step "Looking up Application Insights connection string (appi-$NamePrefix-<suffix>)"
-  $appInsightsName = az resource list -g $ResourceGroup --resource-type Microsoft.Insights/components --query "[?starts_with(name, 'appi-$NamePrefix-')] | sort_by(@, &name) | [0].name" -o tsv 2>$null
+  $appInsightsFilter = "starts_with(name, 'appi-$NamePrefix-') && !ends_with(name, '-customer')"
+  if ($NamePrefix -ieq 'cafe') { $appInsightsFilter += ' && length(name) == `15`' }
+  $appInsightsName = az resource list -g $ResourceGroup --resource-type Microsoft.Insights/components --query "[?$appInsightsFilter] | sort_by(@, &name) | [0].name" -o tsv 2>$null
   if (-not [string]::IsNullOrWhiteSpace($appInsightsName)) {
     $AppInsightsConnectionString = az monitor app-insights component show -g $ResourceGroup -a $appInsightsName --query connectionString -o tsv 2>$null
   }

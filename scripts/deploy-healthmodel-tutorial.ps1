@@ -59,11 +59,16 @@ Write-Info "Tenant      : $($active.tenantId)"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $template = Join-Path $repoRoot 'infra/healthmodel-tutorial/workload.bicep'
-$appDir = Join-Path $repoRoot 'workloads/cafe'
 
-Write-Step "Creating resource group $ResourceGroup in $Location"
-az group create -n $ResourceGroup -l $Location --tags purpose=health-model-tutorial -o none
-Assert-NativeCommandSucceeded 'Creating the resource group'
+$exists = az group exists -n $ResourceGroup -o tsv
+Assert-NativeCommandSucceeded 'Checking the resource group'
+if ($exists -eq 'false') {
+  Write-Step "Creating resource group $ResourceGroup in $Location"
+  az group create -n $ResourceGroup -l $Location --tags purpose=health-model-tutorial -o none
+  Assert-NativeCommandSucceeded 'Creating the resource group'
+} elseif ($exists -ne 'true') {
+  throw 'Azure CLI did not return a Boolean resource group existence result.'
+}
 
 Write-Step 'Deploying the café workload (App Service, storage, Application Insights)'
 $outputs = az deployment group create -g $ResourceGroup -n healthmodel-tutorial-workload `
@@ -75,15 +80,8 @@ $webAppUrl = $outputs.webAppUrl.value
 Write-Info "Web app: $webAppName"
 
 Write-Step 'Publishing the café app'
-$zip = Join-Path ([System.IO.Path]::GetTempPath()) "lab-cafe-$([guid]::NewGuid()).zip"
-try {
-  $files = @('server.js', 'package.json', 'package-lock.json') | ForEach-Object { Join-Path $appDir $_ }
-  Compress-Archive -LiteralPath $files -DestinationPath $zip
-  az webapp deployment source config-zip -g $ResourceGroup -n $webAppName --src $zip --timeout 1200 -o none
-  Assert-NativeCommandSucceeded 'Publishing the app'
-} finally {
-  Remove-Item $zip -ErrorAction SilentlyContinue
-}
+& (Join-Path $PSScriptRoot 'publish-healthmodel-cafe.ps1') `
+  -SubscriptionId $active.id -ResourceGroup $ResourceGroup -WebAppName $webAppName
 
 Write-Step 'Waiting for the café to open its doors'
 $deadline = (Get-Date).AddMinutes(5)

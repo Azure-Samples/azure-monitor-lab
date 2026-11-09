@@ -23,6 +23,7 @@ if (@(Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-k
 }
 $appInsightsWorkbookFiles | ForEach-Object { $null = Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
+& (Join-Path $source 'infra/tests/health-model-demo.Tests.ps1')
 foreach ($moduleName in @('sre-agent', 'lab-console-platform')) {
   $module = @($mainTemplate.resources | Where-Object name -eq $moduleName)
   $slotAssignments = @($module.properties.template.resources | Where-Object {
@@ -125,7 +126,7 @@ if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Bicep CLI version 0\.37\.4\b') 
 $temporary = Join-Path $source ('.artifacts\amlab-template-check-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary
 try {
-  foreach ($relative in @('infra/main', 'infra/customer-application', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/60-fabric', 'infra/stages/70-observability-agent', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job', 'infra/modules/lab-console-fabric-access', 'infra/modules/fabric-auto-suspend')) {
+  foreach ($relative in @('infra/main', 'infra/customer-application', 'infra/stages/00-foundation', 'infra/stages/10-workloads', 'infra/stages/20-alerting', 'infra/stages/40-optional-advanced', 'infra/stages/41-sentinel-content', 'infra/stages/50-ai', 'infra/stages/60-sre-agent', 'infra/stages/60-fabric', 'infra/stages/70-observability-agent', 'infra/stages/80-health-model-demo', 'infra/modules/lab-console-platform', 'infra/modules/lab-console-job', 'infra/modules/lab-console-fabric-access', 'infra/modules/fabric-auto-suspend')) {
     $compiled = Join-Path $temporary ([IO.Path]::GetFileName($relative) + '.json')
     $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
     if ($LASTEXITCODE -ne 0) { $messages; throw "Bicep compilation failed: $relative" }
@@ -134,7 +135,7 @@ try {
     if ($actual -cne $expected) { throw "$relative.json differs from its Bicep source. Regenerate it before publishing." }
     Write-Output "PASS: $relative.json matches its Bicep source."
   }
-  foreach ($relative in @('infra/healthmodel-lab/main', 'infra/healthmodel-tutorial/workload')) {
+  foreach ($relative in @('infra/healthmodel-lab/main', 'infra/healthmodel-tutorial/workload', 'infra/healthmodel-tutorial/model')) {
     $compiled = Join-Path $temporary (($relative -replace '/', '-') + '.json')
     $messages = @(& $BicepExecutable build (Join-Path $source "$relative.bicep") --outfile $compiled 2>&1)
     if ($LASTEXITCODE -ne 0) { $messages; throw "Standalone health-model Bicep compilation failed: $relative" }

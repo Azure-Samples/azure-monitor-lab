@@ -497,6 +497,13 @@ if ($fabricEnabled) {
   }
 }
 
+if ($deploymentInputs.parameters.enableHealthModelDemo.value -eq $true) {
+  $healthModelDemoNamePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+  & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup `
+    -NamePrefix $healthModelDemoNamePrefix
+}
+
 $completionMessage = 'Lab setup complete.'
 if ($aiTrafficStarted) { $completionMessage += ' Agent traffic started in the background.' }
 Write-Host "`n$completionMessage" -ForegroundColor Green

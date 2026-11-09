@@ -21,7 +21,7 @@ $fixture = @{
   Subscription = [guid]::NewGuid().ToString(); Tenant = [guid]::NewGuid().ToString(); Revision = ('a' * 40)
   Calls = [Collections.Generic.List[object]]::new(); Http = [Collections.Generic.List[object]]::new(); Credentials = 0; Conversions = 0
   BadTenant = $false; DenyKubernetes = $false; FailVmStart = $false; FailKubernetes = $false; ObservedTarget = $false
-  FailLogin = $false; VmssStopped = $false; AllResourcesStopped = $false; FailVmInventory = $false
+  FailLogin = $false; VmssStopped = $false; AllResourcesStopped = $false; FailVmInventory = $false; CafeStopped = $true
   FabricState = 'Paused'; FabricResumes = 0
   WebAppFailures = 0; CustomerFailures = 0; Sleeps = [Collections.Generic.List[int]]::new()
   ProductionStatus = 200; BrokenStatus = 503; SlotSwaps = 0; FailSlotSwap = $false
@@ -143,8 +143,9 @@ function Invoke-FakeAzure {
       if ($fixture.WebAppFailures -gt 0) { $fixture.WebAppFailures--; $global:LASTEXITCODE = 4; return 'private diagnostic output' }
       if (($args -join ' ') -match 'defaultHostName' -and $args -contains 'tsv') { return 'app-test.azurewebsites.net' }
       if (($args -join ' ') -match '\[0\]\.name') { return 'app-test' }
-      if ($fixture.AllResourcesStopped) { return '[{"name":"app-test","state":"Stopped"}]' }
-      return '[{"name":"app-test","state":"Running","defaultHostName":"app-test.azurewebsites.net"}]'
+      if ($fixture.AllResourcesStopped) { return '[{"name":"app-test","state":"Stopped"},{"name":"app-cafe-abcdefghijklm","state":"Stopped"}]' }
+      if ($fixture.CafeStopped) { return '[{"name":"app-test","state":"Running","defaultHostName":"app-test.azurewebsites.net"},{"name":"app-cafe-abcdefghijklm","state":"Stopped","defaultHostName":"app-cafe-abcdefghijklm.azurewebsites.net"}]' }
+      return '[{"name":"app-test","state":"Running","defaultHostName":"app-test.azurewebsites.net"},{"name":"app-cafe-abcdefghijklm","state":"Running","defaultHostName":"app-cafe-abcdefghijklm.azurewebsites.net"}]'
     }
     'resource show' {
       if ($args -contains '2023-11-01' -and $args -contains 'properties.state') { return $fixture.FabricState }
@@ -161,6 +162,11 @@ function Invoke-FakeAzure {
       return @{ name = $name; defaultHostName = "$name.azurewebsites.net"; state = 'Running' } | ConvertTo-Json
     }
     'webapp stop' { return }
+    'webapp start' { $fixture.CafeStopped = $false; return }
+    'webapp show' {
+      if ($args -notcontains 'state') { throw 'Unexpected Web App verification.' }
+      return 'Running'
+    }
     'webapp config' {
       if (($args[2..3] -join ' ') -eq 'appsettings list') { return $(if ($fixture.DependenciesEnabled) { '["true"]' } else { '["false"]' }) }
       if (($args[2..3] -join ' ') -eq 'appsettings set') { return }
@@ -198,6 +204,7 @@ function Invoke-FakeAzure {
           'dual' { @($customer, $core) }
           'reversed' { @($core, $customer) }
           'single' { @($core) }
+          'cafe' { @(@{ name = 'appi-cafe-abcdefghijklm'; tags = @{} }, $customer, $core) }
           'missing' { @($customer) }
           'empty' { @() }
           'ambiguous' { @($core, @{ name = 'appi-other'; tags = @{} }) }
@@ -308,7 +315,7 @@ try {
   }
   $env:LAB_WEB_APP_NAME = ''
   . (Join-Path $scriptDirectory 'app-insights-target.ps1')
-  foreach ($mode in @('dual', 'reversed', 'single')) {
+  foreach ($mode in @('dual', 'reversed', 'single', 'cafe')) {
     $fixture.AppInsightsMode = $mode
     if ((Resolve-LabAppInsightsName -ResourceGroup 'test-rg') -cne 'appi-amlab-test') { throw 'Standalone core discovery changed with inventory order.' }
   }
@@ -530,6 +537,12 @@ try {
   foreach ($expectedStop in @('vm deallocate', 'vmss deallocate', 'aks stop', 'webapp stop')) {
     if (-not @($fixture.Calls | Where-Object { $_.Tool -eq 'az' -and ($_.Arguments[0..1] -join ' ') -eq $expectedStop }).Count) {
       throw "Stop Lab did not issue '$expectedStop'."
+    }
+    foreach ($action in @('webapp start', 'webapp stop')) {
+      if (-not @($fixture.Calls | Where-Object {
+        $_.Tool -eq 'az' -and ($_.Arguments[0..1] -join ' ') -eq $action -and
+        $_.Arguments -contains 'app-cafe-abcdefghijklm'
+      }).Count) { throw "Health Model Demo Cafe must participate in $action." }
     }
   }
   Write-Output 'PASS: scoped runner scripts, working-slot recovery/no-op/ambiguous-state guards, Stop Lab cost controls, bounded customer traffic, read-only preflight retries, safe phase diagnostics, bounded dual-VM CPU submission, preflight failures, repeated AKS login, parameters, and cleanup verified. No Azure calls, browser traffic, or CPU load executed.'

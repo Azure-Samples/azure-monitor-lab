@@ -324,6 +324,13 @@
             }
           },
           {
+            "name": "enableHealthModelDemo",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable Health Model Demo (Café and lab user flows)",
+            "defaultValue": false,
+            "toolTip": "Adds a billable B1 Café app, private storage/networking, monitoring and two health models. Cloud Shell completion publishes the app and connects the Control Center. Off by default."
+          },
+          {
             "name": "enableFabric",
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable Fabric stage (Real-Time Intelligence)",
@@ -543,6 +550,7 @@
       "siemWebhookUrl": "[steps('advanced').siemWebhookUrl]",
       "enableAi": "[steps('stages').enableAi]",
       "enableFabric": "[steps('stages').enableFabric]",
+      "enableHealthModelDemo": "[steps('stages').enableHealthModelDemo]",
       "fabricAdminEmail": "[steps('stages').fabricAdminEmail]",
       "enableSreAgent": "[steps('stages').enableSreAgent]",
       "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",

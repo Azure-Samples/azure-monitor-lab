@@ -36,6 +36,10 @@
   Complete Fabric setup when true. When omitted, detect the deployed capacity.
   Explicit false skips setup without changing or suspending the capacity.
 
+.PARAMETER EnableStageHealthModelDemo
+  Publish and verify the Health Model Demo when true. When omitted, detect its
+  deployed Cafe model. Explicit false skips completion without deleting anything.
+
 .EXAMPLE
   ./scripts/post-staged-deploy.ps1 -ResourceGroup rg-azure-monitor-lab
 
@@ -53,7 +57,8 @@ param(
   [bool] $EnableStageE = $false,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false,
-  [bool] $EnableStageFabric = $false
+  [bool] $EnableStageFabric = $false,
+  [bool] $EnableStageHealthModelDemo = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,7 +110,8 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageFabric')) {
   $EnableStageFabric = @($resources | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' }).Count -gt 0
 }
 $webApp = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and $_.name -notmatch '-customer$'
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and
+  $_.name -notmatch '-customer$|^app-cafe-[a-z0-9]{13}$'
 }) | Select-Object -First 1
 $aks = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.ContainerService/managedClusters' -and $_.name -ieq "aks-$NamePrefix"
@@ -202,6 +208,16 @@ if ($EnableStageObservabilityAgent) {
     -SubscriptionId $active.id `
     -ResourceGroup $ResourceGroup `
     -ObservabilityAgent
+}
+
+if (-not $PSBoundParameters.ContainsKey('EnableStageHealthModelDemo')) {
+  $EnableStageHealthModelDemo = @($resources | Where-Object {
+    $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -ceq 'hm-lab-cafe'
+  }).Count -gt 0
+}
+if ($EnableStageHealthModelDemo) {
+  & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
 }
 
 Write-Host "`nPost-staged deployment setup completed." -ForegroundColor Green

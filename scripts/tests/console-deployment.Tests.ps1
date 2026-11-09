@@ -12,6 +12,7 @@ $fixture = @{
   StageEResources = $false; ServiceGroupCalls = 0; SliCalls = 0; SliUnsupportedAudience = $false
   DeploymentId = ''; VersionChecks = 0
   SreResources = $false; ResourceDiscoveryFails = $false
+  HealthModelDemoResources = $false; HealthModelDemoFails = $false
   ActivityDiagnosticCreates = 0; ExistingActivityWorkspace = ''
   UploadFailure = ''; UploadFailuresRemaining = 0
   WebAppQuotaExceeded = $false; WebAppConfigWrites = 0
@@ -69,6 +70,12 @@ if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') 
 $fixture.Events.Add('sre')
 if ($fixture.SreSetupFails) { throw 'SRE verification failed.' }
 '@ | Set-Content (Join-Path $directory 'setup-sre-agent.ps1')
+@'
+param([guid]$SubscriptionId, $ResourceGroup, $NamePrefix)
+if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg' -or $NamePrefix -ne 'amlab') { throw 'Health Model Demo lost its verified target.' }
+$fixture.Events.Add('health-model-demo')
+if ($fixture.HealthModelDemoFails) { throw 'Health Model Demo completion failed.' }
+'@ | Set-Content (Join-Path $directory 'setup-health-model-demo.ps1')
 @'
 param([guid]$SubscriptionId, $ResourceGroup, $NamePrefix)
 if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg' -or $NamePrefix -ne 'amlab') { throw 'Fabric setup lost the verified target or prefix.' }
@@ -209,6 +216,7 @@ function az {
       if ($fixture.SreResources) { $resources += @{ name = 'sre-amlab-test'; type = 'Microsoft.App/agents' } }
       if ($fixture.ObservabilityResources) { $resources += @{ name = 'obs-amlab-test'; type = 'Microsoft.Monitor/observabilityAgents' } }
       if ($fixture.FabricResources) { $resources += @{ name = 'fabamlabtest'; type = 'Microsoft.Fabric/capacities' } }
+      if ($fixture.HealthModelDemoResources) { $resources += @{ name = 'hm-lab-cafe'; type = 'Microsoft.CloudHealth/healthmodels' } }
       return ConvertTo-Json -InputObject $resources
     }
     'resource show' { return 'offline-connection' }
@@ -304,6 +312,29 @@ try {
     if ($fixture.CustomerApproval) { throw 'Staged/Cloud Shell wrapper must preserve explicit false for interactive customer approval.' }
   }
   $fixture.ExistingActivityWorkspace = ''
+  foreach ($name in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
+    foreach ($selection in @(
+      @{ Resources = $false; Explicit = @{}; Expected = 'post-deploy' },
+      @{ Resources = $true; Explicit = @{}; Expected = 'post-deploy,health-model-demo' },
+      @{ Resources = $true; Explicit = @{ EnableStageHealthModelDemo = $false }; Expected = 'post-deploy' },
+      @{ Resources = $false; Explicit = @{ EnableStageHealthModelDemo = $true }; Expected = 'post-deploy,health-model-demo' }
+    )) {
+      $fixture.HealthModelDemoResources = $selection.Resources
+      $fixture.Events.Clear()
+      $selectionArguments = $selection.Explicit
+      if ($name -eq 'post-cloud-shell-deploy.ps1') { $selectionArguments.TenantId = $fixture.Tenant }
+      & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) @selectionArguments | Out-Null
+      $expected = if ($name -eq 'post-cloud-shell-deploy.ps1') { "login,$($selection.Expected)" } else { $selection.Expected }
+      if (($fixture.Events -join ',') -ne $expected) { throw "$name ignored explicit or discovered Health Model Demo selection." }
+    }
+    $fixture.HealthModelDemoFails = $true
+    $rejected = $false
+    try { & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) @selectionArguments | Out-Null }
+    catch { $rejected = $_.Exception.Message -eq 'Health Model Demo completion failed.' }
+    if (-not $rejected) { throw "$name hid a Health Model Demo completion failure." }
+    $fixture.HealthModelDemoFails = $false
+  }
+  $fixture.HealthModelDemoResources = $false
   foreach ($name in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
     foreach ($selection in @(
       @{ Resources = $false; Config = $true; Explicit = @{}; Expected = 'post-deploy' },

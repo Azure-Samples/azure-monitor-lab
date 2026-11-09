@@ -11,6 +11,10 @@
   Complete Fabric setup when true. When omitted, detect the deployed capacity.
   Explicit false skips setup without changing or suspending the capacity.
 
+.PARAMETER EnableStageHealthModelDemo
+  Publish and verify the Health Model Demo when true. When omitted, detect its
+  deployed Cafe model. Explicit false skips completion without deleting anything.
+
 .PARAMETER EnableStageSreAgent
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
@@ -41,7 +45,8 @@ param(
   [switch] $ApproveCustomerDependencies = $true,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false,
-  [bool] $EnableStageFabric = $false
+  [bool] $EnableStageFabric = $false,
+  [bool] $EnableStageHealthModelDemo = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -79,7 +84,8 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageFabric')) {
   $EnableStageFabric = @($resources | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' }).Count -gt 0
 }
 $webApp = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and $_.name -notmatch '-customer$'
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and
+  $_.name -notmatch '-customer$|^app-cafe-[a-z0-9]{13}$'
 }) | Select-Object -First 1
 $aks = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.ContainerService/managedClusters' -and $_.name -ieq "aks-$NamePrefix"
@@ -88,7 +94,8 @@ $centralLaw = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.OperationalInsights/workspaces' -and $_.name -like "law-$NamePrefix-central-*"
 }) | Select-Object -First 1
 $appInsights = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -like "appi-$NamePrefix-*"
+  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -like "appi-$NamePrefix-*" -and
+  $_.name -notmatch '^appi-cafe-[a-z0-9]{13}$'
 } | Sort-Object name) | Select-Object -First 1
 if (-not $appInsights) {
   $appInsights = @($resources | Where-Object {
@@ -174,6 +181,16 @@ if ($EnableStageObservabilityAgent) {
     -SubscriptionId $SubscriptionId `
     -ResourceGroup $ResourceGroup `
     -ObservabilityAgent
+}
+
+if (-not $PSBoundParameters.ContainsKey('EnableStageHealthModelDemo')) {
+  $EnableStageHealthModelDemo = @($resources | Where-Object {
+    $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -ceq 'hm-lab-cafe'
+  }).Count -gt 0
+}
+if ($EnableStageHealthModelDemo) {
+  & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
+    -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
 }
 
 Write-Host @"

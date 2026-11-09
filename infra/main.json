@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "18072849540210899441"
+      "templateHash": "7121304056793433657"
     }
   },
   "parameters": {
@@ -30,6 +30,27 @@
       "maxLength": 8,
       "metadata": {
         "description": "Short prefix used to build resource names. Lowercase, 3-8 chars."
+      }
+    },
+    "enableHealthModelDemo": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy the optional Cafe workload and Cafe/lab user-flow health models. Does not change the baseline health model."
+      }
+    },
+    "healthModelDemoCafeLocation": {
+      "type": "string",
+      "defaultValue": "swedencentral",
+      "metadata": {
+        "description": "Cafe workload region. Keep the existing standalone workload region when adopting it."
+      }
+    },
+    "healthModelDemoCafeMonitoringReaderAssignmentName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional existing Cafe RG Monitoring Reader assignment GUID. Empty uses non-conflicting resource-scoped read access."
       }
     },
     "alertEmail": {
@@ -66506,6 +66527,2320 @@
         "[resourceId('Microsoft.Resources/deployments', 'keyvault')]",
         "[resourceId('Microsoft.Resources/deployments', 'law-appinsights')]",
         "[resourceId('Microsoft.Resources/deployments', 'storage-account')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-linux')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vmss')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-windows')]"
+      ]
+    },
+    {
+      "condition": "[parameters('enableHealthModelDemo')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "health-model-demo",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('healthModelDemoCafeLocation')]"
+          },
+          "webAppId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppId.value]"
+          },
+          "appInsightsWorkspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
+          },
+          "centralWorkspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+          },
+          "monitorWorkspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+          },
+          "aksId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2022-09-01').outputs.id.value]"
+          },
+          "vmssId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2022-09-01').outputs.vmssId.value]"
+          },
+          "availabilityTestName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'availability-test'), '2022-09-01').outputs.testName.value]"
+          },
+          "vmIds": {
+            "value": "[concat(if(parameters('deployLinuxVm'), createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value), createArray()), if(parameters('deployWindowsVm'), createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value), createArray()))]"
+          },
+          "actionGroupId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+          },
+          "cafeMonitoringReaderAssignmentName": {
+            "value": "[parameters('healthModelDemoCafeMonitoringReaderAssignmentName')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "13139541800600823615"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "defaultValue": "swedencentral",
+              "metadata": {
+                "description": "Region of the Cafe workload. Must be supported by App Service."
+              }
+            },
+            "healthModelLocation": {
+              "type": "string",
+              "defaultValue": "swedencentral",
+              "metadata": {
+                "description": "CloudHealth-supported model region."
+              }
+            },
+            "namePrefix": {
+              "type": "string",
+              "defaultValue": "amlab",
+              "minLength": 3,
+              "maxLength": 8
+            },
+            "deployLinuxVm": {
+              "type": "bool",
+              "defaultValue": true
+            },
+            "deployWindowsVm": {
+              "type": "bool",
+              "defaultValue": true
+            },
+            "webAppId": {
+              "type": "string",
+              "defaultValue": "[resourceId('Microsoft.Web/sites', format('app-{0}-{1}', parameters('namePrefix'), take(uniqueString(resourceGroup().id), 5)))]",
+              "metadata": {
+                "description": "The exact core Control Center Web App resource ID, never the Cafe site."
+              }
+            },
+            "appInsightsWorkspaceId": {
+              "type": "string",
+              "defaultValue": "[resourceId('Microsoft.OperationalInsights/workspaces', format('law-{0}-appinsights-{1}', parameters('namePrefix'), take(uniqueString(resourceGroup().id), 5)))]"
+            },
+            "centralWorkspaceId": {
+              "type": "string",
+              "defaultValue": "[resourceId('Microsoft.OperationalInsights/workspaces', format('law-{0}-central-{1}', parameters('namePrefix'), take(uniqueString(resourceGroup().id), 5)))]"
+            },
+            "monitorWorkspaceId": {
+              "type": "string",
+              "defaultValue": "[resourceId('Microsoft.Monitor/accounts', format('amw-{0}', parameters('namePrefix')))]"
+            },
+            "aksId": {
+              "type": "string",
+              "defaultValue": "[resourceId('Microsoft.ContainerService/managedClusters', format('aks-{0}', parameters('namePrefix')))]"
+            },
+            "vmssId": {
+              "type": "string",
+              "defaultValue": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', format('vmss-{0}', parameters('namePrefix')))]"
+            },
+            "availabilityTestName": {
+              "type": "string",
+              "defaultValue": "[format('test-{0}-app', parameters('namePrefix'))]",
+              "metadata": {
+                "description": "Name of the console availability test deployed by Stage E. One-shot main passes its own test name explicitly."
+              }
+            },
+            "vmIds": {
+              "type": "array",
+              "defaultValue": "[concat(if(parameters('deployLinuxVm'), createArray(resourceId('Microsoft.Compute/virtualMachines', format('vm-{0}-lin', parameters('namePrefix')))), createArray()), if(parameters('deployWindowsVm'), createArray(resourceId('Microsoft.Compute/virtualMachines', format('vmwin{0}', take(uniqueString(resourceGroup().id), 4)))), createArray()))]"
+            },
+            "actionGroupId": {
+              "type": "string",
+              "defaultValue": "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}-email', parameters('namePrefix')))]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "cafeMonitoringReaderAssignmentName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional existing Cafe RG Monitoring Reader assignment GUID. Empty uses non-conflicting resource-scoped read access."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "health-model-demo-cafe-workload",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "location": {
+                    "value": "[parameters('location')]"
+                  },
+                  "namePrefix": {
+                    "value": "cafe"
+                  },
+                  "tags": {
+                    "value": "[union(parameters('tags'), createObject('workload', 'lab-cafe', 'purpose', 'health-model-tutorial'))]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "14591162796429087051"
+                    }
+                  },
+                  "parameters": {
+                    "location": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().location]",
+                      "metadata": {
+                        "description": "Region for every resource in the tutorial."
+                      }
+                    },
+                    "namePrefix": {
+                      "type": "string",
+                      "defaultValue": "cafe",
+                      "maxLength": 8,
+                      "metadata": {
+                        "description": "Short prefix for resource names."
+                      }
+                    },
+                    "tags": {
+                      "type": "object",
+                      "defaultValue": {
+                        "workload": "lab-cafe",
+                        "purpose": "health-model-tutorial"
+                      },
+                      "metadata": {
+                        "description": "Resource tags."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "suffix": "[uniqueString(resourceGroup().id)]",
+                    "webAppName": "[format('app-{0}-{1}', parameters('namePrefix'), variables('suffix'))]",
+                    "storageName": "[take(format('st{0}{1}', parameters('namePrefix'), variables('suffix')), 24)]",
+                    "blobContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+                    "queueSenderRoleId": "c6a89b2d-59bc-44d0-9896-0f6e12d7b80a",
+                    "testLocations": [
+                      {
+                        "Id": "emea-se-sto-edge"
+                      },
+                      {
+                        "Id": "emea-nl-ams-azr"
+                      },
+                      {
+                        "Id": "emea-gb-db3-azr"
+                      }
+                    ]
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.OperationalInsights/workspaces",
+                      "apiVersion": "2023-09-01",
+                      "name": "[format('law-{0}-{1}', parameters('namePrefix'), variables('suffix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "sku": {
+                          "name": "PerGB2018"
+                        },
+                        "retentionInDays": 30
+                      }
+                    },
+                    {
+                      "type": "Microsoft.Insights/components",
+                      "apiVersion": "2020-02-02",
+                      "name": "[format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "kind": "web",
+                      "properties": {
+                        "Application_Type": "web",
+                        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('law-{0}-{1}', parameters('namePrefix'), variables('suffix')))]",
+                        "IngestionMode": "LogAnalytics"
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.OperationalInsights/workspaces', format('law-{0}-{1}', parameters('namePrefix'), variables('suffix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Storage/storageAccounts",
+                      "apiVersion": "2023-05-01",
+                      "name": "[variables('storageName')]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "sku": {
+                        "name": "Standard_LRS"
+                      },
+                      "kind": "StorageV2",
+                      "properties": {
+                        "allowSharedKeyAccess": false,
+                        "allowBlobPublicAccess": false,
+                        "minimumTlsVersion": "TLS1_2",
+                        "publicNetworkAccess": "Disabled",
+                        "networkAcls": {
+                          "defaultAction": "Deny",
+                          "bypass": "AzureServices"
+                        }
+                      }
+                    },
+                    {
+                      "type": "Microsoft.Network/virtualNetworks",
+                      "apiVersion": "2024-05-01",
+                      "name": "[format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "addressSpace": {
+                          "addressPrefixes": [
+                            "10.42.0.0/16"
+                          ]
+                        },
+                        "subnets": [
+                          {
+                            "name": "snet-app",
+                            "properties": {
+                              "addressPrefix": "10.42.1.0/24",
+                              "delegations": [
+                                {
+                                  "name": "web",
+                                  "properties": {
+                                    "serviceName": "Microsoft.Web/serverFarms"
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "name": "snet-private-endpoints",
+                            "properties": {
+                              "addressPrefix": "10.42.2.0/24"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "copy": {
+                        "name": "privateEndpoints",
+                        "count": "[length(createArray('blob', 'queue'))]"
+                      },
+                      "type": "Microsoft.Network/privateEndpoints",
+                      "apiVersion": "2024-05-01",
+                      "name": "[format('pe-{0}-{1}', variables('storageName'), createArray('blob', 'queue')[copyIndex()])]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "subnet": {
+                          "id": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix'))), '2024-05-01').subnets[1].id]"
+                        },
+                        "privateLinkServiceConnections": [
+                          {
+                            "name": "[createArray('blob', 'queue')[copyIndex()]]",
+                            "properties": {
+                              "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
+                              "groupIds": [
+                                "[createArray('blob', 'queue')[copyIndex()]]"
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
+                        "[resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix')))]"
+                      ]
+                    },
+                    {
+                      "copy": {
+                        "name": "dnsZones",
+                        "count": "[length(createArray('blob', 'queue'))]"
+                      },
+                      "type": "Microsoft.Network/privateDnsZones",
+                      "apiVersion": "2024-06-01",
+                      "name": "[format('privatelink.{0}.{1}', createArray('blob', 'queue')[copyIndex()], environment().suffixes.storage)]",
+                      "location": "global",
+                      "tags": "[parameters('tags')]"
+                    },
+                    {
+                      "copy": {
+                        "name": "dnsLinks",
+                        "count": "[length(createArray('blob', 'queue'))]"
+                      },
+                      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+                      "apiVersion": "2024-06-01",
+                      "name": "[format('{0}/{1}', format('privatelink.{0}.{1}', createArray('blob', 'queue')[copyIndex()], environment().suffixes.storage), format('link-{0}', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix'))))]",
+                      "location": "global",
+                      "properties": {
+                        "virtualNetwork": {
+                          "id": "[resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix')))]"
+                        },
+                        "registrationEnabled": false
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', createArray('blob', 'queue')[copyIndex()], environment().suffixes.storage))]",
+                        "[resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix')))]"
+                      ]
+                    },
+                    {
+                      "copy": {
+                        "name": "dnsZoneGroups",
+                        "count": "[length(createArray('blob', 'queue'))]"
+                      },
+                      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+                      "apiVersion": "2024-05-01",
+                      "name": "[format('{0}/{1}', format('pe-{0}-{1}', variables('storageName'), createArray('blob', 'queue')[copyIndex()]), 'default')]",
+                      "properties": {
+                        "privateDnsZoneConfigs": [
+                          {
+                            "name": "[createArray('blob', 'queue')[copyIndex()]]",
+                            "properties": {
+                              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', createArray('blob', 'queue')[copyIndex()], environment().suffixes.storage))]"
+                            }
+                          }
+                        ]
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', createArray('blob', 'queue')[copyIndex()], environment().suffixes.storage))]",
+                        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-{1}', variables('storageName'), createArray('blob', 'queue')[copyIndex()]))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Storage/storageAccounts/blobServices",
+                      "apiVersion": "2023-05-01",
+                      "name": "[format('{0}/{1}', variables('storageName'), 'default')]",
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+                      "apiVersion": "2023-05-01",
+                      "name": "[format('{0}/{1}/{2}', variables('storageName'), 'default', 'menu')]",
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageName'), 'default')]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+                      "apiVersion": "2023-05-01",
+                      "name": "[format('{0}/{1}/{2}', variables('storageName'), 'default', 'orders')]",
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageName'), 'default')]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Storage/storageAccounts/queueServices",
+                      "apiVersion": "2023-05-01",
+                      "name": "[format('{0}/{1}', variables('storageName'), 'default')]",
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Storage/storageAccounts/queueServices/queues",
+                      "apiVersion": "2023-05-01",
+                      "name": "[format('{0}/{1}/{2}', variables('storageName'), 'default', 'order-events')]",
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts/queueServices', variables('storageName'), 'default')]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Web/serverfarms",
+                      "apiVersion": "2023-12-01",
+                      "name": "[format('plan-{0}-{1}', parameters('namePrefix'), variables('suffix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "sku": {
+                        "name": "B1",
+                        "tier": "Basic",
+                        "capacity": 1
+                      },
+                      "kind": "linux",
+                      "properties": {
+                        "reserved": true
+                      }
+                    },
+                    {
+                      "type": "Microsoft.Web/sites",
+                      "apiVersion": "2023-12-01",
+                      "name": "[variables('webAppName')]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "kind": "app,linux",
+                      "identity": {
+                        "type": "SystemAssigned"
+                      },
+                      "properties": {
+                        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', format('plan-{0}-{1}', parameters('namePrefix'), variables('suffix')))]",
+                        "httpsOnly": true,
+                        "virtualNetworkSubnetId": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix'))), '2024-05-01').subnets[0].id]",
+                        "vnetRouteAllEnabled": true,
+                        "siteConfig": {
+                          "linuxFxVersion": "NODE|22-lts",
+                          "appCommandLine": "node server.js",
+                          "alwaysOn": true,
+                          "healthCheckPath": "/healthz",
+                          "ftpsState": "Disabled",
+                          "minTlsVersion": "1.2",
+                          "appSettings": [
+                            {
+                              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                              "value": "[reference(resourceId('Microsoft.Insights/components', format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix'))), '2020-02-02').ConnectionString]"
+                            },
+                            {
+                              "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
+                              "value": "disabled"
+                            },
+                            {
+                              "name": "STORAGE_ACCOUNT_NAME",
+                              "value": "[variables('storageName')]"
+                            },
+                            {
+                              "name": "CHAOS_ORDER_FAILURE_PERCENT",
+                              "value": "0"
+                            },
+                            {
+                              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+                              "value": "true"
+                            },
+                            {
+                              "name": "ENABLE_ORYX_BUILD",
+                              "value": "true"
+                            }
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/components', format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix')))]",
+                        "[resourceId('Microsoft.Web/serverfarms', format('plan-{0}-{1}', parameters('namePrefix'), variables('suffix')))]",
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
+                        "[resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageName'))]",
+                      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('webAppName')), variables('blobContributorRoleId'))]",
+                      "properties": {
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('blobContributorRoleId'))]",
+                        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId]",
+                        "principalType": "ServicePrincipal"
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]",
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageName'))]",
+                      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('webAppName')), variables('queueSenderRoleId'))]",
+                      "properties": {
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('queueSenderRoleId'))]",
+                        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId]",
+                        "principalType": "ServicePrincipal"
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]",
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/webtests",
+                      "apiVersion": "2022-06-15",
+                      "name": "synthetic-browse-menu",
+                      "location": "[parameters('location')]",
+                      "tags": "[union(parameters('tags'), createObject(format('hidden-link:{0}', resourceId('Microsoft.Insights/components', format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix')))), 'Resource'))]",
+                      "kind": "standard",
+                      "properties": {
+                        "SyntheticMonitorId": "synthetic-browse-menu",
+                        "Name": "synthetic-browse-menu",
+                        "Description": "A synthetic customer opens the café menu every 5 minutes.",
+                        "Enabled": true,
+                        "Frequency": 300,
+                        "Timeout": 30,
+                        "Kind": "standard",
+                        "RetryEnabled": false,
+                        "Locations": "[variables('testLocations')]",
+                        "Request": {
+                          "RequestUrl": "[format('https://{0}/', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName)]",
+                          "HttpVerb": "GET",
+                          "ParseDependentRequests": false,
+                          "FollowRedirects": true
+                        },
+                        "ValidationRules": {
+                          "ExpectedHttpStatusCode": 200,
+                          "SSLCheck": false
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/components', format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix')))]",
+                        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/webtests",
+                      "apiVersion": "2022-06-15",
+                      "name": "synthetic-order-coffee",
+                      "location": "[parameters('location')]",
+                      "tags": "[union(parameters('tags'), createObject(format('hidden-link:{0}', resourceId('Microsoft.Insights/components', format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix')))), 'Resource'))]",
+                      "kind": "standard",
+                      "properties": {
+                        "SyntheticMonitorId": "synthetic-order-coffee",
+                        "Name": "synthetic-order-coffee",
+                        "Description": "A synthetic customer orders a flat white every 5 minutes.",
+                        "Enabled": true,
+                        "Frequency": 300,
+                        "Timeout": 30,
+                        "Kind": "standard",
+                        "RetryEnabled": false,
+                        "Locations": "[variables('testLocations')]",
+                        "Request": {
+                          "RequestUrl": "[format('https://{0}/api/orders', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName)]",
+                          "HttpVerb": "POST",
+                          "RequestBody": "[base64('{\"item\":\"flat-white\"}')]",
+                          "Headers": [
+                            {
+                              "key": "Content-Type",
+                              "value": "application/json"
+                            }
+                          ],
+                          "ParseDependentRequests": false,
+                          "FollowRedirects": true
+                        },
+                        "ValidationRules": {
+                          "ExpectedHttpStatusCode": 201,
+                          "SSLCheck": false
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/components', format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix')))]",
+                        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+                      ]
+                    }
+                  ],
+                  "outputs": {
+                    "appSubnetId": {
+                      "type": "string",
+                      "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('vnet-{0}-{1}', parameters('namePrefix'), variables('suffix'))), '2024-05-01').subnets[0].id]"
+                    },
+                    "webAppName": {
+                      "type": "string",
+                      "value": "[variables('webAppName')]"
+                    },
+                    "webAppId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+                    },
+                    "webAppUrl": {
+                      "type": "string",
+                      "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName)]"
+                    },
+                    "storageAccountName": {
+                      "type": "string",
+                      "value": "[variables('storageName')]"
+                    },
+                    "storageAccountId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+                    },
+                    "logAnalyticsWorkspaceId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.OperationalInsights/workspaces', format('law-{0}-{1}', parameters('namePrefix'), variables('suffix')))]"
+                    },
+                    "appInsightsName": {
+                      "type": "string",
+                      "value": "[format('appi-{0}-{1}', parameters('namePrefix'), variables('suffix'))]"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "health-model-demo-flows",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "healthModelName": {
+                    "value": "hm-amlab-flows"
+                  },
+                  "location": {
+                    "value": "[parameters('healthModelLocation')]"
+                  },
+                  "webAppId": {
+                    "value": "[parameters('webAppId')]"
+                  },
+                  "appInsightsWorkspaceId": {
+                    "value": "[parameters('appInsightsWorkspaceId')]"
+                  },
+                  "centralWorkspaceId": {
+                    "value": "[parameters('centralWorkspaceId')]"
+                  },
+                  "monitorWorkspaceId": {
+                    "value": "[parameters('monitorWorkspaceId')]"
+                  },
+                  "aksId": {
+                    "value": "[parameters('aksId')]"
+                  },
+                  "vmssId": {
+                    "value": "[parameters('vmssId')]"
+                  },
+                  "availabilityTestName": {
+                    "value": "[parameters('availabilityTestName')]"
+                  },
+                  "vmIds": {
+                    "value": "[parameters('vmIds')]"
+                  },
+                  "actionGroupId": {
+                    "value": "[parameters('actionGroupId')]"
+                  },
+                  "tags": {
+                    "value": "[parameters('tags')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "languageVersion": "2.0",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "16052135121585649016"
+                    }
+                  },
+                  "functions": [
+                    {
+                      "namespace": "__bicep",
+                      "members": {
+                        "rules": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "operator"
+                            },
+                            {
+                              "type": "int",
+                              "name": "degraded"
+                            },
+                            {
+                              "type": "int",
+                              "name": "unhealthy"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "degradedRule": {
+                                "operator": "[parameters('operator')]",
+                                "threshold": "[parameters('degraded')]"
+                              },
+                              "unhealthyRule": {
+                                "operator": "[parameters('operator')]",
+                                "threshold": "[parameters('unhealthy')]"
+                              }
+                            }
+                          }
+                        },
+                        "logSignal": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "name"
+                            },
+                            {
+                              "type": "string",
+                              "name": "displayName"
+                            },
+                            {
+                              "type": "string",
+                              "name": "query"
+                            },
+                            {
+                              "type": "string",
+                              "name": "window"
+                            },
+                            {
+                              "type": "string",
+                              "name": "unit"
+                            },
+                            {
+                              "type": "object",
+                              "name": "evaluationRules"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "name": "[parameters('name')]",
+                              "signalKind": "LogAnalyticsQuery",
+                              "displayName": "[parameters('displayName')]",
+                              "queryText": "[parameters('query')]",
+                              "valueColumnName": "value",
+                              "timeGrain": "[parameters('window')]",
+                              "refreshInterval": "PT1M",
+                              "dataUnit": "[parameters('unit')]",
+                              "evaluationRules": "[parameters('evaluationRules')]"
+                            }
+                          }
+                        },
+                        "promSignal": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "name"
+                            },
+                            {
+                              "type": "string",
+                              "name": "displayName"
+                            },
+                            {
+                              "type": "string",
+                              "name": "query"
+                            },
+                            {
+                              "type": "string",
+                              "name": "unit"
+                            },
+                            {
+                              "type": "object",
+                              "name": "evaluationRules"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "name": "[parameters('name')]",
+                              "signalKind": "PrometheusMetricsQuery",
+                              "displayName": "[parameters('displayName')]",
+                              "queryText": "[parameters('query')]",
+                              "timeGrain": "PT5M",
+                              "refreshInterval": "PT1M",
+                              "dataUnit": "[parameters('unit')]",
+                              "evaluationRules": "[parameters('evaluationRules')]"
+                            }
+                          }
+                        },
+                        "metricSignal": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "name"
+                            },
+                            {
+                              "type": "string",
+                              "name": "displayName"
+                            },
+                            {
+                              "type": "string",
+                              "name": "namespace"
+                            },
+                            {
+                              "type": "string",
+                              "name": "metric"
+                            },
+                            {
+                              "type": "string",
+                              "name": "aggregation"
+                            },
+                            {
+                              "type": "string",
+                              "name": "unit"
+                            },
+                            {
+                              "type": "object",
+                              "name": "evaluationRules"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "name": "[parameters('name')]",
+                              "signalKind": "AzureResourceMetric",
+                              "displayName": "[parameters('displayName')]",
+                              "metricNamespace": "[parameters('namespace')]",
+                              "metricName": "[parameters('metric')]",
+                              "aggregationType": "[parameters('aggregation')]",
+                              "timeGrain": "PT5M",
+                              "refreshInterval": "PT1M",
+                              "dataUnit": "[parameters('unit')]",
+                              "evaluationRules": "[parameters('evaluationRules')]"
+                            }
+                          }
+                        },
+                        "definitionSignals": {
+                          "parameters": [
+                            {
+                              "type": "array",
+                              "name": "names"
+                            }
+                          ],
+                          "output": {
+                            "type": "array",
+                            "value": "[map(parameters('names'), lambda('n', createObject('name', substring(lambdaVariables('n'), 3), 'signalKind', 'AzureResourceMetric', 'signalDefinitionName', lambdaVariables('n'))))]"
+                          }
+                        },
+                        "lawGroup": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "workspaceId"
+                            },
+                            {
+                              "type": "array",
+                              "name": "signals"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "azureLogAnalytics": {
+                                "authenticationSetting": "system-assigned",
+                                "logAnalyticsWorkspaceResourceId": "[parameters('workspaceId')]",
+                                "signals": "[parameters('signals')]"
+                              }
+                            }
+                          }
+                        },
+                        "resourceGroupOf": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "resourceId"
+                            },
+                            {
+                              "type": "array",
+                              "name": "signals"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "azureResource": {
+                                "authenticationSetting": "system-assigned",
+                                "azureResourceId": "[parameters('resourceId')]",
+                                "signals": "[parameters('signals')]"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "parameters": {
+                    "healthModelName": {
+                      "type": "string",
+                      "defaultValue": "hm-amlab-flows",
+                      "minLength": 3,
+                      "maxLength": 44
+                    },
+                    "location": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().location]",
+                      "metadata": {
+                        "description": "Region for the health model: az provider show -n Microsoft.CloudHealth lists them."
+                      }
+                    },
+                    "webAppId": {
+                      "type": "string"
+                    },
+                    "appInsightsWorkspaceId": {
+                      "type": "string"
+                    },
+                    "centralWorkspaceId": {
+                      "type": "string"
+                    },
+                    "monitorWorkspaceId": {
+                      "type": "string"
+                    },
+                    "aksId": {
+                      "type": "string"
+                    },
+                    "vmssId": {
+                      "type": "string"
+                    },
+                    "availabilityTestName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the lab availability test that loads the console."
+                      }
+                    },
+                    "vmIds": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Resource IDs of the demo VMs that send heartbeats (Linux and Windows, when deployed)."
+                      }
+                    },
+                    "actionGroupId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Action group notified by the user flow alerts."
+                      }
+                    },
+                    "tags": {
+                      "type": "object",
+                      "defaultValue": {}
+                    }
+                  },
+                  "variables": {
+                    "copy": [
+                      {
+                        "name": "vmEntities",
+                        "count": "[length(parameters('vmIds'))]",
+                        "input": {
+                          "name": "[format('vm-{0}', copyIndex('vmEntities'))]",
+                          "displayName": "[format('VM: {0}', last(split(parameters('vmIds')[copyIndex('vmEntities')], '/')))]",
+                          "signalGroups": "[__bicep.resourceGroupOf(parameters('vmIds')[copyIndex('vmEntities')], __bicep.definitionSignals(createArray('sd-vm-cpu')))]",
+                          "canvasPosition": {
+                            "x": "[sub(add(1750, mul(250, copyIndex('vmEntities'))), variables('rootX'))]",
+                            "y": 579
+                          }
+                        }
+                      }
+                    ],
+                    "actionGroupIds": [
+                      "[parameters('actionGroupId')]"
+                    ],
+                    "auth": "system-assigned",
+                    "monitoringReaderRoleId": "43d0d8ad-25c7-4714-9337-8ba259a9fe05",
+                    "monitoringDataReaderRoleId": "b0d8363b-8ddd-447d-831f-62ca05bff136",
+                    "metricDefinitions": [
+                      {
+                        "name": "sd-app-health-check",
+                        "displayName": "Web app health check",
+                        "metricNamespace": "Microsoft.Web/sites",
+                        "metricName": "HealthCheckStatus",
+                        "aggregationType": "Average",
+                        "dataUnit": "Percent",
+                        "evaluationRules": "[__bicep.rules('LessThan', 100, 50)]"
+                      },
+                      {
+                        "name": "sd-node-cpu",
+                        "displayName": "Cluster node CPU",
+                        "metricNamespace": "Microsoft.ContainerService/managedClusters",
+                        "metricName": "node_cpu_usage_percentage",
+                        "aggregationType": "Average",
+                        "dataUnit": "Percent",
+                        "evaluationRules": "[__bicep.rules('GreaterThan', 80, 95)]"
+                      },
+                      {
+                        "name": "sd-node-memory",
+                        "displayName": "Cluster node memory",
+                        "metricNamespace": "Microsoft.ContainerService/managedClusters",
+                        "metricName": "node_memory_working_set_percentage",
+                        "aggregationType": "Average",
+                        "dataUnit": "Percent",
+                        "evaluationRules": "[__bicep.rules('GreaterThan', 80, 95)]"
+                      },
+                      {
+                        "name": "sd-vm-cpu",
+                        "displayName": "VM CPU",
+                        "metricNamespace": "Microsoft.Compute/virtualMachines",
+                        "metricName": "Percentage CPU",
+                        "aggregationType": "Average",
+                        "dataUnit": "Percent",
+                        "evaluationRules": "[__bicep.rules('GreaterThan', 80, 95)]"
+                      }
+                    ],
+                    "consolePathFilter": "path in (\"\", \"/\", \"/index.html\", \"/healthz\", \"/api/console/config\", \"/api/console/version\", \"/api/infra/health\")",
+                    "webAppName": "[last(split(parameters('webAppId'), '/'))]",
+                    "aksName": "[last(split(parameters('aksId'), '/'))]",
+                    "entities": [
+                      {
+                        "name": "operate-lab",
+                        "displayName": "Operate the lab",
+                        "icon": "UserFlow",
+                        "healthObjective": "[json('99.5')]",
+                        "alerts": {
+                          "unhealthy": {
+                            "severity": "Sev2",
+                            "description": "Presenters cannot use the Lab Control Center",
+                            "actionGroupIds": "[variables('actionGroupIds')]"
+                          }
+                        }
+                      },
+                      {
+                        "name": "shop-demo",
+                        "displayName": "Show the shop app live",
+                        "icon": "UserFlow",
+                        "healthObjective": "[json('99.5')]",
+                        "alerts": {
+                          "degraded": {
+                            "severity": "Sev3",
+                            "description": "The shop demo is losing checkouts or traffic",
+                            "actionGroupIds": "[variables('actionGroupIds')]"
+                          },
+                          "unhealthy": {
+                            "severity": "Sev2",
+                            "description": "The shop demo shows no live checkouts",
+                            "actionGroupIds": "[variables('actionGroupIds')]"
+                          }
+                        }
+                      },
+                      {
+                        "name": "live-telemetry",
+                        "displayName": "Show live infrastructure data",
+                        "icon": "UserFlow",
+                        "healthObjective": "[json('99')]",
+                        "alerts": {
+                          "unhealthy": {
+                            "severity": "Sev2",
+                            "description": "Dashboards and queries show stale or broken lab data",
+                            "actionGroupIds": "[variables('actionGroupIds')]"
+                          }
+                        }
+                      },
+                      {
+                        "name": "control-center",
+                        "displayName": "Control Center",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.lawGroup(parameters('appInsightsWorkspaceId'), createArray(__bicep.logSignal('failed-console-requests', 'Failed console requests', format('AppRequests\n| extend path = tostring(parse_url(Url).Path)\n| where {0}\n| summarize value = countif(ResultCode startswith \"5\")\n', variables('consolePathFilter')), 'PT5M', 'Count', __bicep.rules('GreaterThan', 0, 5)), __bicep.logSignal('console-availability-failures', 'Test visitor cannot load the console', format('AppAvailabilityResults\n| where Name == \"{0}\"\n| summarize value = countif(Success == false)\n', parameters('availabilityTestName')), 'PT15M', 'Count', __bicep.rules('GreaterThan', 0, 4))))]"
+                      },
+                      {
+                        "name": "lab-operations",
+                        "displayName": "Lab operations (optional)",
+                        "icon": "SystemComponent",
+                        "impact": "Limited",
+                        "signalGroups": "[__bicep.lawGroup(parameters('appInsightsWorkspaceId'), createArray(__bicep.logSignal('failed-operation-requests', 'Failed lab operation requests', 'AppRequests\n| where tostring(parse_url(Url).Path) startswith \"/api/operations/\"\n| summarize value = countif(ResultCode startswith \"5\")\n', 'PT15M', 'Count', __bicep.rules('GreaterThan', 0, 2))))]"
+                      },
+                      {
+                        "name": "shop-api",
+                        "displayName": "Shop API",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.lawGroup(parameters('appInsightsWorkspaceId'), createArray(__bicep.logSignal('failed-checkouts', 'Checkouts failing with server errors', 'AppRequests\n| where tostring(parse_url(Url).Path) == \"/api/checkout\"\n| summarize value = countif(ResultCode startswith \"5\")\n', 'PT5M', 'Count', __bicep.rules('GreaterThan', 0, 2)), __bicep.logSignal('completed-checkouts', 'Completed checkouts', 'AppEvents\n| where Name == \"CheckoutCompleted\"\n| summarize value = count()\n', 'PT15M', 'Count', __bicep.rules('LessThan', 5, 1))))]"
+                      },
+                      {
+                        "name": "synthetic-shoppers",
+                        "displayName": "Test shoppers",
+                        "icon": "SystemComponent",
+                        "signalGroups": {
+                          "azureMonitorWorkspace": {
+                            "authenticationSetting": "[variables('auth')]",
+                            "azureMonitorWorkspaceResourceId": "[parameters('monitorWorkspaceId')]",
+                            "signals": [
+                              "[__bicep.promSignal('shopper-replicas-available', 'Test shopper apps running', 'sum(kube_deployment_status_replicas_available{namespace=\"demo\", deployment=~\"otel-caller|nodeapp-otel\"}) or vector(0)', 'Count', __bicep.rules('LessThan', 2, 1))]"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "name": "log-pipeline",
+                        "displayName": "Log pipeline",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('log-freshness', 'Minutes since the newest log record', 'union isfuzzy=true KubeNodeInventory, AppServiceHTTPLogs\n| summarize newest = max(TimeGenerated)\n| project value = coalesce(datetime_diff(''minute'', now(), newest), 30)\n', 'PT30M', 'Count', __bicep.rules('GreaterThan', 10, 20))))]"
+                      },
+                      {
+                        "name": "metrics-pipeline",
+                        "displayName": "Metrics pipeline",
+                        "icon": "SystemComponent",
+                        "signalGroups": {
+                          "azureMonitorWorkspace": {
+                            "authenticationSetting": "[variables('auth')]",
+                            "azureMonitorWorkspaceResourceId": "[parameters('monitorWorkspaceId')]",
+                            "signals": [
+                              "[__bicep.promSignal('scrape-targets-up', 'Metric sources answering', '(sum(up) / count(up) * 100) or vector(0)', 'Percent', __bicep.rules('LessThan', 100, 90))]"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "name": "kubernetes-workloads",
+                        "displayName": "Kubernetes workloads",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('crashlooping-containers', 'Containers crash-looping in the demo namespace', 'KubePodInventory\n| where Namespace == \"demo\" and ContainerStatusReason == \"CrashLoopBackOff\"\n| summarize value = dcount(ContainerName)\n', 'PT5M', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
+                      },
+                      {
+                        "name": "virtual-machines",
+                        "displayName": "Virtual machines (optional)",
+                        "icon": "SystemComponent",
+                        "impact": "Limited",
+                        "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('vms-without-heartbeat', 'VMs silent for 10 minutes', format('print value = {0} - toscalar(Heartbeat | where TimeGenerated > ago(10m) and _ResourceId has \"/microsoft.compute/virtualmachines/\" | summarize dcount(_ResourceId))\n', length(parameters('vmIds'))), 'PT15M', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
+                      },
+                      {
+                        "name": "console-app",
+                        "displayName": "[format('App Service: {0} (console)', variables('webAppName'))]",
+                        "signalGroups": "[__bicep.resourceGroupOf(parameters('webAppId'), __bicep.definitionSignals(createArray('sd-app-health-check')))]"
+                      },
+                      {
+                        "name": "shop-app",
+                        "displayName": "[format('App Service: {0} (shop)', variables('webAppName'))]",
+                        "signalGroups": "[__bicep.resourceGroupOf(parameters('webAppId'), __bicep.definitionSignals(createArray('sd-app-health-check')))]"
+                      },
+                      {
+                        "name": "shoppers-aks",
+                        "displayName": "[format('AKS: {0} (shoppers)', variables('aksName'))]",
+                        "signalGroups": "[__bicep.resourceGroupOf(parameters('aksId'), __bicep.definitionSignals(createArray('sd-node-cpu', 'sd-node-memory')))]"
+                      },
+                      {
+                        "name": "central-law",
+                        "displayName": "[format('Log Analytics: {0}', last(split(parameters('centralWorkspaceId'), '/')))]",
+                        "signalGroups": "[__bicep.resourceGroupOf(parameters('centralWorkspaceId'), createArray(__bicep.metricSignal('query-availability', 'Query availability', 'Microsoft.OperationalInsights/workspaces', 'AvailabilityRate_Query', 'Average', 'Percent', __bicep.rules('LessThan', 99, 95)), __bicep.metricSignal('ingestion-time', 'Ingestion delay', 'Microsoft.OperationalInsights/workspaces', 'Ingestion Time', 'Average', 'Seconds', __bicep.rules('GreaterThan', 300, 900))))]"
+                      },
+                      {
+                        "name": "monitor-workspace",
+                        "displayName": "[format('Azure Monitor workspace: {0}', last(split(parameters('monitorWorkspaceId'), '/')))]",
+                        "signalGroups": "[__bicep.resourceGroupOf(parameters('monitorWorkspaceId'), createArray(__bicep.metricSignal('ingestion-limit-used', 'Ingestion limit used', 'Microsoft.Monitor/accounts', 'EventsPerMinuteIngestedPercentUtilization', 'Average', 'Percent', __bicep.rules('GreaterThan', 80, 95))))]"
+                      },
+                      {
+                        "name": "cluster-aks",
+                        "displayName": "[format('AKS: {0} (cluster)', variables('aksName'))]",
+                        "signalGroups": "[__bicep.resourceGroupOf(parameters('aksId'), __bicep.definitionSignals(createArray('sd-node-cpu', 'sd-node-memory')))]"
+                      },
+                      {
+                        "name": "vmss",
+                        "displayName": "[format('VM scale set: {0}', last(split(parameters('vmssId'), '/')))]",
+                        "signalGroups": "[__bicep.resourceGroupOf(parameters('vmssId'), createArray(__bicep.metricSignal('vmss-cpu', 'Scale set CPU', 'Microsoft.Compute/virtualMachineScaleSets', 'Percentage CPU', 'Average', 'Percent', __bicep.rules('GreaterThan', 80, 95))))]"
+                      }
+                    ],
+                    "vmssX": "[add(1750, mul(250, length(parameters('vmIds'))))]",
+                    "rootX": "[div(add(125, div(add(1000, variables('vmssX')), 2)), 2)]",
+                    "canvasLayout": {
+                      "operate-lab": {
+                        "x": 125,
+                        "y": 193
+                      },
+                      "shop-demo": {
+                        "x": 625,
+                        "y": 193
+                      },
+                      "live-telemetry": {
+                        "x": "[div(add(1000, variables('vmssX')), 2)]",
+                        "y": 193
+                      },
+                      "control-center": {
+                        "x": 0,
+                        "y": 386
+                      },
+                      "lab-operations": {
+                        "x": 250,
+                        "y": 386
+                      },
+                      "shop-api": {
+                        "x": 500,
+                        "y": 386
+                      },
+                      "synthetic-shoppers": {
+                        "x": 750,
+                        "y": 386
+                      },
+                      "log-pipeline": {
+                        "x": 1000,
+                        "y": 386
+                      },
+                      "metrics-pipeline": {
+                        "x": 1250,
+                        "y": 386
+                      },
+                      "kubernetes-workloads": {
+                        "x": 1500,
+                        "y": 386
+                      },
+                      "virtual-machines": {
+                        "x": "[div(add(1750, variables('vmssX')), 2)]",
+                        "y": 386
+                      },
+                      "console-app": {
+                        "x": 0,
+                        "y": 579
+                      },
+                      "shop-app": {
+                        "x": 500,
+                        "y": 579
+                      },
+                      "shoppers-aks": {
+                        "x": 750,
+                        "y": 579
+                      },
+                      "central-law": {
+                        "x": 1000,
+                        "y": 579
+                      },
+                      "monitor-workspace": {
+                        "x": 1250,
+                        "y": 579
+                      },
+                      "cluster-aks": {
+                        "x": 1500,
+                        "y": 579
+                      },
+                      "vmss": {
+                        "x": "[variables('vmssX')]",
+                        "y": 579
+                      }
+                    },
+                    "canvas": "[toObject(items(variables('canvasLayout')), lambda('item', lambdaVariables('item').key), lambda('item', createObject('x', sub(lambdaVariables('item').value.x, variables('rootX')), 'y', lambdaVariables('item').value.y)))]",
+                    "edges": "[concat(createArray(createObject('parent', parameters('healthModelName'), 'child', 'operate-lab'), createObject('parent', parameters('healthModelName'), 'child', 'shop-demo'), createObject('parent', parameters('healthModelName'), 'child', 'live-telemetry'), createObject('parent', 'operate-lab', 'child', 'control-center'), createObject('parent', 'operate-lab', 'child', 'lab-operations'), createObject('parent', 'shop-demo', 'child', 'shop-api'), createObject('parent', 'shop-demo', 'child', 'synthetic-shoppers'), createObject('parent', 'live-telemetry', 'child', 'log-pipeline'), createObject('parent', 'live-telemetry', 'child', 'metrics-pipeline'), createObject('parent', 'live-telemetry', 'child', 'kubernetes-workloads'), createObject('parent', 'live-telemetry', 'child', 'virtual-machines'), createObject('parent', 'control-center', 'child', 'console-app'), createObject('parent', 'shop-api', 'child', 'shop-app'), createObject('parent', 'synthetic-shoppers', 'child', 'shoppers-aks'), createObject('parent', 'log-pipeline', 'child', 'central-law'), createObject('parent', 'metrics-pipeline', 'child', 'monitor-workspace'), createObject('parent', 'kubernetes-workloads', 'child', 'cluster-aks'), createObject('parent', 'virtual-machines', 'child', 'vmss')), map(range(0, length(parameters('vmIds'))), lambda('i', createObject('parent', 'virtual-machines', 'child', format('vm-{0}', lambdaVariables('i'))))))]"
+                  },
+                  "resources": {
+                    "healthModel": {
+                      "type": "Microsoft.CloudHealth/healthmodels",
+                      "apiVersion": "2026-11-01",
+                      "name": "[parameters('healthModelName')]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "identity": {
+                        "type": "SystemAssigned"
+                      },
+                      "properties": {}
+                    },
+                    "consoleApp": {
+                      "existing": true,
+                      "type": "Microsoft.Web/sites",
+                      "apiVersion": "2023-12-01",
+                      "subscriptionId": "[split(parameters('webAppId'), '/')[2]]",
+                      "resourceGroup": "[split(parameters('webAppId'), '/')[4]]",
+                      "name": "[last(split(parameters('webAppId'), '/'))]"
+                    },
+                    "reporterRole": {
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "name": "[guid(resourceGroup().id, 'health-model-reporter')]",
+                      "properties": {
+                        "roleName": "[format('Health Model Reporter {0}', take(uniqueString(resourceGroup().id), 8))]",
+                        "description": "Read a health model and send external health reports to its entities.",
+                        "type": "CustomRole",
+                        "assignableScopes": [
+                          "[resourceGroup().id]"
+                        ],
+                        "permissions": [
+                          {
+                            "actions": [
+                              "Microsoft.CloudHealth/healthmodels/read",
+                              "Microsoft.CloudHealth/healthmodels/entities/read",
+                              "Microsoft.CloudHealth/healthmodels/relationships/read",
+                              "Microsoft.CloudHealth/healthmodels/signaldefinitions/read",
+                              "Microsoft.CloudHealth/healthmodels/entities/ingestHealthReport/action"
+                            ],
+                            "notActions": [],
+                            "dataActions": [],
+                            "notDataActions": []
+                          }
+                        ]
+                      }
+                    },
+                    "authSetting": {
+                      "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), variables('auth'))]",
+                      "properties": {
+                        "displayName": "System-assigned managed identity",
+                        "authenticationKind": "ManagedIdentity",
+                        "managedIdentityName": "SystemAssigned"
+                      },
+                      "dependsOn": [
+                        "healthModel",
+                        "monitoringDataReader",
+                        "monitoringReader"
+                      ]
+                    },
+                    "signalDefinitions": {
+                      "copy": {
+                        "name": "signalDefinitions",
+                        "count": "[length(variables('metricDefinitions'))]"
+                      },
+                      "type": "Microsoft.CloudHealth/healthmodels/signaldefinitions",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), variables('metricDefinitions')[copyIndex()].name)]",
+                      "properties": {
+                        "signalKind": "AzureResourceMetric",
+                        "displayName": "[variables('metricDefinitions')[copyIndex()].displayName]",
+                        "metricNamespace": "[variables('metricDefinitions')[copyIndex()].metricNamespace]",
+                        "metricName": "[variables('metricDefinitions')[copyIndex()].metricName]",
+                        "aggregationType": "[variables('metricDefinitions')[copyIndex()].aggregationType]",
+                        "timeGrain": "PT5M",
+                        "refreshInterval": "PT1M",
+                        "dataUnit": "[variables('metricDefinitions')[copyIndex()].dataUnit]",
+                        "evaluationRules": "[variables('metricDefinitions')[copyIndex()].evaluationRules]"
+                      },
+                      "dependsOn": [
+                        "healthModel"
+                      ]
+                    },
+                    "root": {
+                      "type": "Microsoft.CloudHealth/healthmodels/entities",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), parameters('healthModelName'))]",
+                      "properties": {
+                        "canvasPosition": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      },
+                      "dependsOn": [
+                        "healthModel"
+                      ]
+                    },
+                    "entityResources": {
+                      "copy": {
+                        "name": "entityResources",
+                        "count": "[length(concat(variables('entities'), variables('vmEntities')))]"
+                      },
+                      "type": "Microsoft.CloudHealth/healthmodels/entities",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), concat(variables('entities'), variables('vmEntities'))[copyIndex()].name)]",
+                      "properties": {
+                        "displayName": "[concat(variables('entities'), variables('vmEntities'))[copyIndex()].displayName]",
+                        "icon": "[if(contains(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'icon'), createObject('iconName', concat(variables('entities'), variables('vmEntities'))[copyIndex()].icon), null())]",
+                        "impact": "[coalesce(tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'impact'), 'Standard')]",
+                        "healthObjective": "[tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'healthObjective')]",
+                        "alerts": "[tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'alerts')]",
+                        "signalGroups": "[tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'signalGroups')]",
+                        "canvasPosition": "[coalesce(tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'canvasPosition'), variables('canvas')[concat(variables('entities'), variables('vmEntities'))[copyIndex()].name])]"
+                      },
+                      "dependsOn": [
+                        "authSetting",
+                        "healthModel",
+                        "signalDefinitions"
+                      ]
+                    },
+                    "relationships": {
+                      "copy": {
+                        "name": "relationships",
+                        "count": "[length(variables('edges'))]"
+                      },
+                      "type": "Microsoft.CloudHealth/healthmodels/relationships",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), format('{0}--{1}', variables('edges')[copyIndex()].parent, variables('edges')[copyIndex()].child))]",
+                      "properties": {
+                        "parentEntityName": "[variables('edges')[copyIndex()].parent]",
+                        "childEntityName": "[variables('edges')[copyIndex()].child]"
+                      },
+                      "dependsOn": [
+                        "entityResources",
+                        "healthModel",
+                        "root"
+                      ]
+                    },
+                    "monitoringReader": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('{0}-monitoring-reader', parameters('healthModelName'))]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "principalId": {
+                            "value": "[reference('healthModel', '2026-11-01', 'full').identity.principalId]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReaderRoleId'))]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "5665340490566376816"
+                            }
+                          },
+                          "parameters": {
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "healthModel"
+                      ]
+                    },
+                    "monitoringDataReader": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('{0}-amw-reader', parameters('healthModelName'))]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "monitorWorkspaceName": {
+                            "value": "[last(split(parameters('monitorWorkspaceId'), '/'))]"
+                          },
+                          "principalId": {
+                            "value": "[reference('healthModel', '2026-11-01', 'full').identity.principalId]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringDataReaderRoleId'))]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "12804070414532032208"
+                            }
+                          },
+                          "parameters": {
+                            "monitorWorkspaceName": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.Monitor/accounts/{0}', parameters('monitorWorkspaceName'))]",
+                              "name": "[guid(resourceId('Microsoft.Monitor/accounts', parameters('monitorWorkspaceName')), parameters('principalId'), parameters('roleDefinitionId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "healthModel"
+                      ]
+                    },
+                    "consoleReporter": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('{0}-console-reporter', parameters('healthModelName'))]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "healthModelName": {
+                            "value": "[parameters('healthModelName')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('consoleApp', '2023-12-01', 'full').identity.principalId]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'health-model-reporter'))]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "3210358924528756385"
+                            }
+                          },
+                          "parameters": {
+                            "healthModelName": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.CloudHealth/healthmodels/{0}', parameters('healthModelName'))]",
+                              "name": "[guid(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), parameters('principalId'), parameters('roleDefinitionId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "consoleApp",
+                        "healthModel",
+                        "reporterRole"
+                      ]
+                    }
+                  },
+                  "outputs": {
+                    "healthModelId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                    },
+                    "principalId": {
+                      "type": "string",
+                      "value": "[reference('healthModel', '2026-11-01', 'full').identity.principalId]"
+                    },
+                    "reporterRoleDefinitionId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'health-model-reporter'))]"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "health-model-demo-cafe",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "healthModelName": {
+                    "value": "hm-lab-cafe"
+                  },
+                  "location": {
+                    "value": "[parameters('healthModelLocation')]"
+                  },
+                  "webAppId": {
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppId.value]"
+                  },
+                  "storageId": {
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.storageAccountId.value]"
+                  },
+                  "workspaceId": {
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.logAnalyticsWorkspaceId.value]"
+                  },
+                  "actionGroupId": {
+                    "value": "[parameters('actionGroupId')]"
+                  },
+                  "controlCenterWebAppId": {
+                    "value": "[parameters('webAppId')]"
+                  },
+                  "reporterRoleDefinitionId": {
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-flows'), '2022-09-01').outputs.reporterRoleDefinitionId.value]"
+                  },
+                  "monitoringReaderAssignmentName": {
+                    "value": "[parameters('cafeMonitoringReaderAssignmentName')]"
+                  },
+                  "tags": {
+                    "value": "[parameters('tags')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "languageVersion": "2.0",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "658929154324485004"
+                    }
+                  },
+                  "functions": [
+                    {
+                      "namespace": "__bicep",
+                      "members": {
+                        "rules": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "operator"
+                            },
+                            {
+                              "type": "string",
+                              "name": "degraded"
+                            },
+                            {
+                              "type": "string",
+                              "name": "unhealthy"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "degradedRule": {
+                                "operator": "[parameters('operator')]",
+                                "threshold": "[json(parameters('degraded'))]"
+                              },
+                              "unhealthyRule": {
+                                "operator": "[parameters('operator')]",
+                                "threshold": "[json(parameters('unhealthy'))]"
+                              }
+                            }
+                          }
+                        },
+                        "logSignal": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "name"
+                            },
+                            {
+                              "type": "string",
+                              "name": "displayName"
+                            },
+                            {
+                              "type": "string",
+                              "name": "query"
+                            },
+                            {
+                              "type": "string",
+                              "name": "unit"
+                            },
+                            {
+                              "type": "object",
+                              "name": "evaluationRules"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "name": "[parameters('name')]",
+                              "displayName": "[parameters('displayName')]",
+                              "signalKind": "LogAnalyticsQuery",
+                              "queryText": "[parameters('query')]",
+                              "valueColumnName": "value",
+                              "timeGrain": "PT5M",
+                              "refreshInterval": "PT1M",
+                              "dataUnit": "[parameters('unit')]",
+                              "evaluationRules": "[parameters('evaluationRules')]"
+                            }
+                          }
+                        },
+                        "logGroup": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "workspaceId"
+                            },
+                            {
+                              "type": "array",
+                              "name": "signals"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "azureLogAnalytics": {
+                                "authenticationSetting": "auth-system",
+                                "logAnalyticsWorkspaceResourceId": "[parameters('workspaceId')]",
+                                "signals": "[parameters('signals')]"
+                              }
+                            }
+                          }
+                        },
+                        "resourceSignals": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "id"
+                            },
+                            {
+                              "type": "string",
+                              "name": "definition"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "azureResource": {
+                                "authenticationSetting": "auth-system",
+                                "azureResourceId": "[parameters('id')]",
+                                "signals": [
+                                  {
+                                    "name": "[substring(parameters('definition'), 3)]",
+                                    "signalKind": "AzureResourceMetric",
+                                    "signalDefinitionName": "[parameters('definition')]"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "parameters": {
+                    "healthModelName": {
+                      "type": "string",
+                      "defaultValue": "hm-lab-cafe",
+                      "metadata": {
+                        "description": "Stable model name; updating it preserves the existing model history."
+                      }
+                    },
+                    "location": {
+                      "type": "string",
+                      "defaultValue": "swedencentral"
+                    },
+                    "webAppId": {
+                      "type": "string"
+                    },
+                    "storageId": {
+                      "type": "string"
+                    },
+                    "workspaceId": {
+                      "type": "string"
+                    },
+                    "actionGroupId": {
+                      "type": "string"
+                    },
+                    "controlCenterWebAppId": {
+                      "type": "string"
+                    },
+                    "reporterRoleDefinitionId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Shared reporter role created by healthmodel-lab/main.bicep."
+                      }
+                    },
+                    "monitoringReaderAssignmentName": {
+                      "type": "string",
+                      "defaultValue": "",
+                      "metadata": {
+                        "description": "Optional existing RG Monitoring Reader assignment GUID. Empty grants resource-scoped read access without conflicting with a standalone CLI assignment."
+                      }
+                    },
+                    "tags": {
+                      "type": "object",
+                      "defaultValue": {}
+                    }
+                  },
+                  "variables": {
+                    "definitions": [
+                      {
+                        "name": "sd-app-health-check",
+                        "displayName": "Web app health check",
+                        "metricNamespace": "Microsoft.Web/sites",
+                        "metricName": "HealthCheckStatus",
+                        "evaluationRules": "[__bicep.rules('LessThan', '100', '50')]"
+                      },
+                      {
+                        "name": "sd-storage-availability",
+                        "displayName": "Storage availability",
+                        "metricNamespace": "Microsoft.Storage/storageAccounts",
+                        "metricName": "Availability",
+                        "evaluationRules": "[__bicep.rules('LessThan', '99.9', '99')]"
+                      }
+                    ],
+                    "failureRules": "[__bicep.rules('GreaterThan', '0', '2')]",
+                    "actionGroupIds": [
+                      "[parameters('actionGroupId')]"
+                    ],
+                    "webAppName": "[last(split(parameters('webAppId'), '/'))]",
+                    "storageName": "[last(split(parameters('storageId'), '/'))]",
+                    "entities": [
+                      {
+                        "name": "browse-menu",
+                        "displayName": "Browse the menu",
+                        "icon": "UserFlow",
+                        "healthObjective": "[json('99.5')]",
+                        "alerts": {
+                          "unhealthy": {
+                            "severity": "Sev2",
+                            "description": "Customers cannot see the café menu",
+                            "actionGroupIds": "[variables('actionGroupIds')]"
+                          }
+                        }
+                      },
+                      {
+                        "name": "order-coffee",
+                        "displayName": "Order coffee",
+                        "icon": "UserFlow",
+                        "healthObjective": "[json('99.9')]",
+                        "alerts": {
+                          "degraded": {
+                            "severity": "Sev3",
+                            "description": "Ordering coffee is slow or partly failing",
+                            "actionGroupIds": "[variables('actionGroupIds')]"
+                          },
+                          "unhealthy": {
+                            "severity": "Sev1",
+                            "description": "Customers cannot order coffee",
+                            "actionGroupIds": "[variables('actionGroupIds')]"
+                          }
+                        }
+                      },
+                      {
+                        "name": "cafe-website",
+                        "displayName": "Café website",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-menu-requests', 'Failed menu requests', 'AppRequests\r\n| where TimeGenerated > ago(5min)\r\n| extend path = tostring(parse_url(Url).Path)\r\n| where path in (\"\", \"/\", \"/api/menu\")  // the root URL has an empty path\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules')), __bicep.logSignal('synthetic-browse-failures', 'Synthetic customer cannot open the menu', 'AppAvailabilityResults\r\n| where TimeGenerated > ago(5min)\r\n| where Name == \"synthetic-browse-menu\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                      },
+                      {
+                        "name": "menu-catalog",
+                        "displayName": "Menu catalog",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-menu-reads', 'Failed menu reads from storage', 'AppDependencies\r\n| where TimeGenerated > ago(5min)\r\n| where Target has \"blob.core.windows.net\" and Data has \"/menu/\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                      },
+                      {
+                        "name": "order-api",
+                        "displayName": "Order API",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-order-requests', 'Failed order requests', 'AppRequests\r\n| where TimeGenerated > ago(5min)\r\n| where Url has \"/api/orders\"\r\n| summarize value = countif(ResultCode startswith \"5\")  // a 404 for a mistyped order ID is not an outage\r\n', 'Count', variables('failureRules')), __bicep.logSignal('slow-orders', 'Order time for most customers (p95)', 'AppRequests\r\n| where TimeGenerated > ago(5min)\r\n| where Url has \"/api/orders\"\r\n| summarize p95 = percentile(DurationMs, 95)\r\n| project value = coalesce(p95, 0.0)\r\n', 'MilliSeconds', __bicep.rules('GreaterThan', '1000', '3000')), __bicep.logSignal('synthetic-order-failures', 'Synthetic customer cannot order', 'AppAvailabilityResults\r\n| where TimeGenerated > ago(5min)\r\n| where Name == \"synthetic-order-coffee\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                      },
+                      {
+                        "name": "order-store",
+                        "displayName": "Order store",
+                        "icon": "SystemComponent",
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-order-writes', 'Failed order storage calls', 'AppDependencies\r\n| where TimeGenerated > ago(5min)\r\n| where Target has \"blob.core.windows.net\" and Data has \"/orders/\"\r\n| summarize value = countif(Success == false and ResultCode != \"404\")  // 404: looked-up order doesn''t exist\r\n', 'Count', variables('failureRules'))))]"
+                      },
+                      {
+                        "name": "barista-display",
+                        "displayName": "Barista display (optional)",
+                        "icon": "SystemComponent",
+                        "impact": "Limited",
+                        "signalGroups": "[__bicep.logGroup(parameters('workspaceId'), createArray(__bicep.logSignal('failed-barista-notifications', 'Orders the barista display missed', 'AppDependencies\r\n| where TimeGenerated > ago(5min)\r\n| where Target has \"queue.core.windows.net\"\r\n| summarize value = countif(Success == false)\r\n', 'Count', variables('failureRules'))))]"
+                      },
+                      {
+                        "name": "menu-app",
+                        "displayName": "[format('App Service: {0} (menu)', variables('webAppName'))]",
+                        "signalGroups": "[__bicep.resourceSignals(parameters('webAppId'), 'sd-app-health-check')]"
+                      },
+                      {
+                        "name": "menu-storage",
+                        "displayName": "[format('Storage: {0} (menu blob)', variables('storageName'))]",
+                        "signalGroups": "[__bicep.resourceSignals(parameters('storageId'), 'sd-storage-availability')]"
+                      },
+                      {
+                        "name": "order-app",
+                        "displayName": "[format('App Service: {0} (orders)', variables('webAppName'))]",
+                        "signalGroups": "[__bicep.resourceSignals(parameters('webAppId'), 'sd-app-health-check')]"
+                      },
+                      {
+                        "name": "order-storage",
+                        "displayName": "[format('Storage: {0} (order blobs)', variables('storageName'))]",
+                        "signalGroups": "[__bicep.resourceSignals(parameters('storageId'), 'sd-storage-availability')]"
+                      },
+                      {
+                        "name": "queue-storage",
+                        "displayName": "[format('Storage: {0} (order queue)', variables('storageName'))]",
+                        "signalGroups": "[__bicep.resourceSignals(parameters('storageId'), 'sd-storage-availability')]"
+                      }
+                    ],
+                    "canvas": "[json('{\r\n  \"order-coffee\": { \"x\": -312.5, \"y\": 193 },\r\n  \"browse-menu\": { \"x\": 312.5, \"y\": 193 },\r\n  \"order-store\": { \"x\": -562.5, \"y\": 386 },\r\n  \"order-api\": { \"x\": -312.5, \"y\": 386 },\r\n  \"barista-display\": { \"x\": -62.5, \"y\": 386 },\r\n  \"menu-catalog\": { \"x\": 187.5, \"y\": 386 },\r\n  \"cafe-website\": { \"x\": 437.5, \"y\": 386 },\r\n  \"order-storage\": { \"x\": -562.5, \"y\": 579 },\r\n  \"order-app\": { \"x\": -312.5, \"y\": 579 },\r\n  \"queue-storage\": { \"x\": -62.5, \"y\": 579 },\r\n  \"menu-storage\": { \"x\": 187.5, \"y\": 579 },\r\n  \"menu-app\": { \"x\": 437.5, \"y\": 579 }\r\n}\r\n')]",
+                    "edges": [
+                      {
+                        "parent": "[parameters('healthModelName')]",
+                        "child": "order-coffee"
+                      },
+                      {
+                        "parent": "[parameters('healthModelName')]",
+                        "child": "browse-menu"
+                      },
+                      {
+                        "parent": "order-coffee",
+                        "child": "order-store"
+                      },
+                      {
+                        "parent": "order-coffee",
+                        "child": "order-api"
+                      },
+                      {
+                        "parent": "order-coffee",
+                        "child": "barista-display"
+                      },
+                      {
+                        "parent": "browse-menu",
+                        "child": "menu-catalog"
+                      },
+                      {
+                        "parent": "browse-menu",
+                        "child": "cafe-website"
+                      },
+                      {
+                        "parent": "order-store",
+                        "child": "order-storage"
+                      },
+                      {
+                        "parent": "order-api",
+                        "child": "order-app"
+                      },
+                      {
+                        "parent": "barista-display",
+                        "child": "queue-storage"
+                      },
+                      {
+                        "parent": "menu-catalog",
+                        "child": "menu-storage"
+                      },
+                      {
+                        "parent": "cafe-website",
+                        "child": "menu-app"
+                      }
+                    ]
+                  },
+                  "resources": {
+                    "healthModel": {
+                      "type": "Microsoft.CloudHealth/healthmodels",
+                      "apiVersion": "2026-11-01",
+                      "name": "[parameters('healthModelName')]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "identity": {
+                        "type": "SystemAssigned"
+                      },
+                      "properties": {}
+                    },
+                    "console": {
+                      "existing": true,
+                      "type": "Microsoft.Web/sites",
+                      "apiVersion": "2023-12-01",
+                      "subscriptionId": "[split(parameters('controlCenterWebAppId'), '/')[2]]",
+                      "resourceGroup": "[split(parameters('controlCenterWebAppId'), '/')[4]]",
+                      "name": "[last(split(parameters('controlCenterWebAppId'), '/'))]"
+                    },
+                    "auth": {
+                      "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), 'auth-system')]",
+                      "properties": {
+                        "displayName": "System-assigned managed identity",
+                        "authenticationKind": "ManagedIdentity",
+                        "managedIdentityName": "SystemAssigned"
+                      },
+                      "dependsOn": [
+                        "healthModel",
+                        "reader"
+                      ]
+                    },
+                    "signalDefinitions": {
+                      "copy": {
+                        "name": "signalDefinitions",
+                        "count": "[length(variables('definitions'))]"
+                      },
+                      "type": "Microsoft.CloudHealth/healthmodels/signaldefinitions",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), variables('definitions')[copyIndex()].name)]",
+                      "properties": {
+                        "signalKind": "AzureResourceMetric",
+                        "displayName": "[variables('definitions')[copyIndex()].displayName]",
+                        "metricNamespace": "[variables('definitions')[copyIndex()].metricNamespace]",
+                        "metricName": "[variables('definitions')[copyIndex()].metricName]",
+                        "aggregationType": "Average",
+                        "timeGrain": "PT5M",
+                        "refreshInterval": "PT1M",
+                        "dataUnit": "Percent",
+                        "evaluationRules": "[variables('definitions')[copyIndex()].evaluationRules]"
+                      },
+                      "dependsOn": [
+                        "healthModel"
+                      ]
+                    },
+                    "root": {
+                      "type": "Microsoft.CloudHealth/healthmodels/entities",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), parameters('healthModelName'))]",
+                      "properties": {
+                        "canvasPosition": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      },
+                      "dependsOn": [
+                        "healthModel"
+                      ]
+                    },
+                    "entityResources": {
+                      "copy": {
+                        "name": "entityResources",
+                        "count": "[length(variables('entities'))]"
+                      },
+                      "type": "Microsoft.CloudHealth/healthmodels/entities",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), variables('entities')[copyIndex()].name)]",
+                      "properties": {
+                        "displayName": "[variables('entities')[copyIndex()].displayName]",
+                        "icon": "[if(contains(variables('entities')[copyIndex()], 'icon'), createObject('iconName', variables('entities')[copyIndex()].icon), null())]",
+                        "impact": "[coalesce(tryGet(variables('entities')[copyIndex()], 'impact'), 'Standard')]",
+                        "healthObjective": "[tryGet(variables('entities')[copyIndex()], 'healthObjective')]",
+                        "alerts": "[tryGet(variables('entities')[copyIndex()], 'alerts')]",
+                        "signalGroups": "[tryGet(variables('entities')[copyIndex()], 'signalGroups')]",
+                        "canvasPosition": "[variables('canvas')[variables('entities')[copyIndex()].name]]"
+                      },
+                      "dependsOn": [
+                        "auth",
+                        "healthModel",
+                        "signalDefinitions"
+                      ]
+                    },
+                    "relationships": {
+                      "copy": {
+                        "name": "relationships",
+                        "count": "[length(variables('edges'))]"
+                      },
+                      "type": "Microsoft.CloudHealth/healthmodels/relationships",
+                      "apiVersion": "2026-11-01",
+                      "name": "[format('{0}/{1}', parameters('healthModelName'), format('{0}--{1}', variables('edges')[copyIndex()].parent, variables('edges')[copyIndex()].child))]",
+                      "properties": {
+                        "parentEntityName": "[variables('edges')[copyIndex()].parent]",
+                        "childEntityName": "[variables('edges')[copyIndex()].child]"
+                      },
+                      "dependsOn": [
+                        "entityResources",
+                        "healthModel",
+                        "root"
+                      ]
+                    },
+                    "reader": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('{0}-monitoring-reader', parameters('healthModelName'))]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "principalId": {
+                            "value": "[reference('healthModel', '2026-11-01', 'full').identity.principalId]"
+                          },
+                          "assignmentName": {
+                            "value": "[parameters('monitoringReaderAssignmentName')]"
+                          },
+                          "webAppId": {
+                            "value": "[parameters('webAppId')]"
+                          },
+                          "storageId": {
+                            "value": "[parameters('storageId')]"
+                          },
+                          "workspaceId": {
+                            "value": "[parameters('workspaceId')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "6225522080980377547"
+                            }
+                          },
+                          "parameters": {
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "assignmentName": {
+                              "type": "string",
+                              "defaultValue": ""
+                            },
+                            "webAppId": {
+                              "type": "string"
+                            },
+                            "storageId": {
+                              "type": "string"
+                            },
+                            "workspaceId": {
+                              "type": "string"
+                            }
+                          },
+                          "variables": {
+                            "roleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]"
+                          },
+                          "resources": [
+                            {
+                              "condition": "[not(empty(parameters('assignmentName')))]",
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "name": "[parameters('assignmentName')]",
+                              "properties": {
+                                "principalId": "[parameters('principalId')]",
+                                "roleDefinitionId": "[variables('roleId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            },
+                            {
+                              "condition": "[empty(parameters('assignmentName'))]",
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('webAppId'), '/')))]",
+                              "name": "[guid(parameters('webAppId'), parameters('principalId'), variables('roleId'))]",
+                              "properties": {
+                                "principalId": "[parameters('principalId')]",
+                                "roleDefinitionId": "[variables('roleId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            },
+                            {
+                              "condition": "[empty(parameters('assignmentName'))]",
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', last(split(parameters('storageId'), '/')))]",
+                              "name": "[guid(parameters('storageId'), parameters('principalId'), variables('roleId'))]",
+                              "properties": {
+                                "principalId": "[parameters('principalId')]",
+                                "roleDefinitionId": "[variables('roleId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            },
+                            {
+                              "condition": "[empty(parameters('assignmentName'))]",
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', last(split(parameters('workspaceId'), '/')))]",
+                              "name": "[guid(parameters('workspaceId'), parameters('principalId'), variables('roleId'))]",
+                              "properties": {
+                                "principalId": "[parameters('principalId')]",
+                                "roleDefinitionId": "[variables('roleId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "healthModel"
+                      ]
+                    },
+                    "reporter": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('{0}-console-reporter', parameters('healthModelName'))]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "healthModelName": {
+                            "value": "[parameters('healthModelName')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('console', '2023-12-01', 'full').identity.principalId]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[parameters('reporterRoleDefinitionId')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "3210358924528756385"
+                            }
+                          },
+                          "parameters": {
+                            "healthModelName": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.CloudHealth/healthmodels/{0}', parameters('healthModelName'))]",
+                              "name": "[guid(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), parameters('principalId'), parameters('roleDefinitionId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "ServicePrincipal"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "console",
+                        "healthModel"
+                      ]
+                    }
+                  },
+                  "outputs": {
+                    "healthModelId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Resources/deployments', 'health-model-demo-flows')]",
+                "[resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "healthModelDemoCafeWebAppName": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppName.value]"
+            },
+            "healthModelDemoCafeWebAppUrl": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppUrl.value]"
+            },
+            "healthModelDemoCafeModelName": {
+              "type": "string",
+              "value": "hm-lab-cafe"
+            },
+            "healthModelDemoFlowModelName": {
+              "type": "string",
+              "value": "hm-amlab-flows"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'actiongroup')]",
+        "[resourceId('Microsoft.Resources/deployments', 'aks')]",
+        "[resourceId('Microsoft.Resources/deployments', 'amw')]",
+        "[resourceId('Microsoft.Resources/deployments', 'appservice')]",
+        "[resourceId('Microsoft.Resources/deployments', 'availability-test')]",
+        "[resourceId('Microsoft.Resources/deployments', 'law-appinsights')]",
+        "[resourceId('Microsoft.Resources/deployments', 'law-central')]",
         "[resourceId('Microsoft.Resources/deployments', 'vm-linux')]",
         "[resourceId('Microsoft.Resources/deployments', 'vmss')]",
         "[resourceId('Microsoft.Resources/deployments', 'vm-windows')]"

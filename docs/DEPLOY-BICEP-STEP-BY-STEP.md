@@ -28,6 +28,7 @@ For workshop planning and customer expectation-setting, use:
 - [STAGE-AI.md](STAGE-AI.md)
 - [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md)
 - [STAGE-OBSERVABILITY-AGENT.md](STAGE-OBSERVABILITY-AGENT.md)
+- [STAGE-HEALTH-MODEL-DEMO.md](STAGE-HEALTH-MODEL-DEMO.md) - optional Café and lab user-flow models after stages A, B, C and E.
 
 ## 3) Stage model (recommended)
 

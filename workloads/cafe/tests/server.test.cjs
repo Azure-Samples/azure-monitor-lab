@@ -10,9 +10,11 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 test('deployment uses ZipDeploy and an Oryx build for the locked SDK dependencies', () => {
   const root = path.join(__dirname, '..', '..', '..');
   const deploy = fs.readFileSync(path.join(root, 'scripts', 'deploy-healthmodel-tutorial.ps1'), 'utf8');
+  const publish = fs.readFileSync(path.join(root, 'scripts', 'publish-healthmodel-cafe.ps1'), 'utf8');
   const template = fs.readFileSync(path.join(root, 'infra', 'healthmodel-tutorial', 'workload.bicep'), 'utf8');
-  assert.match(deploy, /az webapp deployment source config-zip\b/);
-  assert.match(deploy, /'server\.js', 'package\.json', 'package-lock\.json'/);
+  assert.match(deploy, /publish-healthmodel-cafe\.ps1/);
+  assert.match(publish, /az webapp deployment source config-zip\b/);
+  assert.match(publish, /'server\.js', 'package\.json', 'package-lock\.json'/);
   assert.match(template, /name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true'/);
   assert.match(template, /name: 'ENABLE_ORYX_BUILD', value: 'true'/);
   assert.match(template, /name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: 'disabled'/);

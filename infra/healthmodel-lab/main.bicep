@@ -493,6 +493,15 @@ var canvasLayout = {
 }
 var canvas = toObject(items(canvasLayout), item => item.key, item => { x: item.value.x - rootX, y: item.value.y })
 
+// Update the service-created root at its existing ID, preserving the model itself.
+resource root 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
+  parent: healthModel
+  name: healthModelName
+  properties: {
+    canvasPosition: { x: 0, y: 0 }
+  }
+}
+
 resource entityResources 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [
   for e in concat(entities, vmEntities): {
     parent: healthModel
@@ -549,6 +558,7 @@ resource relationships 'Microsoft.CloudHealth/healthmodels/relationships@2026-11
       childEntityName: edge.child
     }
     dependsOn: [
+      root
       entityResources
     ]
   }
@@ -556,3 +566,4 @@ resource relationships 'Microsoft.CloudHealth/healthmodels/relationships@2026-11
 
 output healthModelId string = healthModel.id
 output principalId string = healthModel.identity.principalId
+output reporterRoleDefinitionId string = reporterRole.id

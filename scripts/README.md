@@ -494,6 +494,16 @@ Focused checks: `pwsh -NoProfile -File scripts\tests\customer-publication.Tests.
 
 Offline configuration/UI regression check: `pwsh -NoProfile -File scripts\tests\vm-otel-config.Tests.ps1`. It copies the sync script into a disposable fixture under `scripts/tests`, uses synthetic inputs, and removes the fixture afterwards; it does not read local configuration/secrets or call Azure. Terraform's companion mocked plan test is `terraform/tests/vm-otel-metrics.tftest.hcl` (run `terraform validate` first, then `terraform test` filtered to that file from the Terraform directory).
 
+### Optional Health Model Demo
+
+Set `advancedConfiguration.stageToggles.enableStageHealthModelDemo` to the JSON Boolean `true` and retain stages A, B, C and E (including core availability tests). Config sync projects it into Bicep `enableHealthModelDemo` and Terraform `enable_stage_health_model_demo`; missing means `false`. The [stage guide](../docs/STAGE-HEALTH-MODEL-DEMO.md) covers costs and deployment paths.
+
+`setup-health-model-demo.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix` publishes only the existing Cafe app, connects both existing models to the console and verifies one ordinary stored order plus new request/dependency telemetry. Normal full, portal and staged completion invoke it automatically when selected/discovered. Explicit `-EnableStageHealthModelDemo:$false` skips portal/staged completion without removing resources. No CLI Health Models extension is needed.
+
+`publish-healthmodel-cafe.ps1` is shared with the standalone tutorial and uses locked dependencies with ZipDeploy/Oryx. It retries only the recognized SCM-restart race. Completion does not recreate models or inject failures.
+
+During confirmed lab teardown, `remove-health-model-demo-roles.ps1` removes only recognized custom reporter roles with the exact lab RG as their sole assignable scope and only the documented read/report actions. It checks every assignment remains inside that RG, removes assignments before definitions, and leaves shared, broader and unrelated roles untouched. This does not change the Azure Monitor-managed group protections.
+
 ## Lab lifecycle and demo control
 
 The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes allowlisted scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls, bounded customer traffic, and the opt-in isolated customer slot-failure operation. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.

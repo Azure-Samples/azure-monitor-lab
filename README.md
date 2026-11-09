@@ -17,7 +17,7 @@ It's built for demos, microhacks, and hackathons. Deploy it, poke around, break 
 |---|---|
 | **Guided Scenarios** | Follow the existing [scenario walkthroughs](docs/DEMO-SCENARIOS.md) for the story, Azure portal steps, queries, and expected results. |
 | **Lab Control Center** | Check infrastructure health, generate traffic, try Foundry agents, and perform approved SRE MCP operations. Open the [Control Center guide](docs/LAB-CONTROL-CENTER.md) for screenshots, access requirements, and linked scenarios. |
-| **Health Model Tutorial** | A separate short course in its own resource group: open a tiny café on Azure with a ready health model, add one signal yourself and break the café on purpose to watch health roll up. About 45 minutes, no lab deployment needed: [health model tutorial](docs/HEALTH-MODEL-TUTORIAL.md). |
+| **Health Model Demo** | Add Café and lab user-flow models through the [optional stage](docs/STAGE-HEALTH-MODEL-DEMO.md), or take the independent 45-minute [Café tutorial](docs/HEALTH-MODEL-TUTORIAL.md) without deploying the lab. |
 
 The guided scenarios and the Control Center are complementary entry points into the same lab. The Control Center links to the guided scenarios; it does not replace their setup or walkthroughs. The health model tutorial is a standalone course with its own small workload.
 
@@ -90,10 +90,10 @@ This button deploys the `integration` templates and portal UI, which may contain
 | **Basics** | Resource group (recommended `rg-azure-monitor-lab`), Region (recommended `northeurope`), name prefix, alert email, VM admin username + password |
 | **Workloads** | Deploy Linux/Windows VMs, VM size, AKS node size + count |
 | **Monitoring & cost** | Daily ingestion cap, Sentinel, platform-logs/metrics-export DCRs, LAW replication |
-| **Optional stages** | Enable AI (Microsoft Foundry), Fabric (Real-Time Intelligence), SRE Agent, or Observability Agent; all default off, with stage-specific settings shown when enabled |
+| **Optional stages** | Enable AI (Microsoft Foundry), Fabric (Real-Time Intelligence), SRE Agent, Observability Agent, or Health Model Demo; all default off |
 | **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, and customer application scenarios |
 
-Core stages A-E deploy together. Their individual workload and monitoring features remain configurable; the **Optional stages** tab adds any combination of the four integrations.
+Core stages A-E deploy together. Their individual workload and monitoring features remain configurable; the **Optional stages** tab adds any combination of the five integrations.
 
 The slot scenario automatically uses Standard `S2` with one worker. SQL Entra administrator details appear and are required only when **Advanced > Enable broken deployment-slot recovery scenario** and **Enable real customer SQL, orders queue and processor** are both enabled. The administrator type is automatically `Group`: supply the Entra group's object ID and name; no SQL password is needed. Complete setup as a member of that group. Both customer options default off, as in the config example. Fabric separately requires a capacity-administrator UPN when enabled.
 
@@ -188,6 +188,8 @@ Step-by-step guides:
 - [Terraform staged deployment](docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md)
 
 Each staged guide includes the required completion command for every selected stage. After completion, use the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
+
+**Optional [Health Model Demo](docs/STAGE-HEALTH-MODEL-DEMO.md):** enable `advancedConfiguration.stageToggles.enableStageHealthModelDemo` to add the Café tutorial and lab user-flow model to the same resource group. It defaults off. Normal completion publishes the Café, connects both models to the Control Center, and verifies real requests, stored orders and telemetry.
 
 ### Lab Control Center
 

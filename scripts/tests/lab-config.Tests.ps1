@@ -47,6 +47,11 @@ try {
   $flat | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
   & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
   $defaultHashes = (Get-FileHash -LiteralPath $outputs).Hash
+  $defaultBicep = Get-Content -LiteralPath $outputs[1] -Raw | ConvertFrom-Json
+  if ($defaultBicep.parameters.enableHealthModelDemo.value -ne $false -or
+      (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_stage_health_model_demo = false') {
+    throw 'Health Model Demo must default off in both deployment formats.'
+  }
   $flat | Add-Member -NotePropertyName grafanaAdminObjectId -NotePropertyValue ''
   $flat | Add-Member -NotePropertyName forbiddenSubscriptionIds -NotePropertyValue @()
   $flat.fabricAutomation | Add-Member -NotePropertyName appInsightsMirrorConnectionId -NotePropertyValue ''
@@ -65,6 +70,7 @@ try {
   $flat.stageToggles.enableStageSreAgent = $true
   $flat.stageToggles.enableStageObservabilityAgent = $true
   $flat.stageToggles.enableStageFabric = $true
+  $flat.stageToggles.enableStageHealthModelDemo = $true
   $flat.stageToggles.enableSlotFailureScenario = $true
   $flat.stageToggles.enableCustomerDependencies = $true
   $flat.sqlEntraAdminObjectId = [guid]::NewGuid().ToString()
@@ -91,6 +97,33 @@ try {
   & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
   if (Compare-Object $before (Get-FileHash -LiteralPath $outputs).Hash) {
     throw 'Grouped config changed generated Bicep, Terraform, or account inputs.'
+  }
+  $enabledBicep = Get-Content -LiteralPath $outputs[1] -Raw | ConvertFrom-Json
+  if ($enabledBicep.parameters.enableHealthModelDemo.value -ne $true -or
+      (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_stage_health_model_demo = true') {
+    throw 'Health Model Demo enablement was lost during config generation.'
+  }
+  foreach ($value in @('false', 0, $null)) {
+    $invalidStage = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    $invalidStage.stageToggles.enableStageHealthModelDemo = $value
+    $invalidStage | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+    $rejected = $false
+    try { & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath } catch {
+      if ($_.Exception.Message -notmatch 'enableStageHealthModelDemo must be a JSON Boolean') { throw }
+      $rejected = $true
+    }
+    if (-not $rejected) { throw 'Health Model Demo accepted a non-Boolean toggle.' }
+  }
+  foreach ($stage in @('enableStageA', 'enableStageB', 'enableStageC', 'enableStageE')) {
+    $invalidStage = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    $invalidStage.stageToggles.$stage = $false
+    $invalidStage | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+    $rejected = $false
+    try { & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath } catch {
+      if ($_.Exception.Message -notmatch 'Health Model Demo requires') { throw }
+      $rejected = $true
+    }
+    if (-not $rejected) { throw "Health Model Demo accepted missing prerequisite $stage." }
   }
 
   foreach ($invalid in @(
