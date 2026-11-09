@@ -105,8 +105,8 @@ Verify the Model Router version available in the chosen AI region before deploym
 
 ## 7) Tear-down nuance
 
-- Deleting the resource group removes everything. CognitiveServices accounts are **soft-deleted** — if you plan to redeploy the same name, purge it: `az cognitiveservices account purge -l swedencentral -g <rg> -n <account>`.
-- A redeployment collision appears as `FlagMustBeSetForRestore`. The one-shot `deploy.ps1` workflow now extracts the exact account name from that error, verifies it in the deleted-account list, purges only that lab account, and retries once. Staged deployments still require the manual purge command above.
+- Use [teardown.ps1](../scripts/teardown.ps1) for cleanup. Normal Azure soft-delete recovery is preserved by default, including with `-Yes`. To release reserved names, explicitly add `-PurgeSoftDeletedResources`; its confirmed plan permanently destroys the lab's Foundry/Cognitive Services account data, Key Vault secrets and Log Analytics logs using their actual regions. See [cleanup safeguards and permissions](../scripts/README.md#permanent-cleanup-for-same-name-redeployment).
+- Deleting only the resource group leaves Cognitive Services accounts **soft-deleted**. Rerun teardown against that exact group with `-PurgeSoftDeletedResources` to purge them, or explicitly purge the account with `az cognitiveservices account purge -l <actual-region> -g <rg> -n <account> --subscription <sub>`. A redeployment collision appears as `FlagMustBeSetForRestore`; the one-shot `deploy.ps1` workflow also has an exact-account purge-and-retry fallback.
 - The health model's role assignments (Reader / Monitoring Reader / Log Analytics Reader on the RG) are removed with the RG.
 - Agents created by `setup-ai.ps1` live in the Foundry project and go with the account; `workloads/ai/agents.json` (their ids) is git-ignored local state.
 - To stop token spend without deleting anything, just stop the traffic simulator — models bill per token, near-zero when idle.

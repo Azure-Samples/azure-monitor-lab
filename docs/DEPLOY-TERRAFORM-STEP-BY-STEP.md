@@ -366,7 +366,7 @@ The resource group is BYO (Terraform does not own it via data source), so `terra
 
 ### Option A - run the teardown wrapper (recommended)
 
-The wrapper cleans up Azure dependencies before deleting the resource group. This is the same cleanup path used after one-shot or staged Bicep deployments.
+The wrapper cleans up Azure dependencies before deleting the resource group. This is the same cleanup path used after one-shot or staged Bicep deployments. Normal Azure soft-delete recovery is preserved, including with `-Yes`. Add `-PurgeSoftDeletedResources` only when you want **irreversible deletion** of the lab's Key Vault secrets, Foundry/Cognitive Services account data and Log Analytics logs to release reserved names. See [permanent cleanup safeguards and permissions](../scripts/README.md#permanent-cleanup-for-same-name-redeployment).
 
 ```powershell
 . ./scripts/lab-config.ps1
@@ -399,32 +399,11 @@ az group delete --subscription $sub -n $rg --yes --no-wait
 
 A few resources are subscription-scoped or live in `NetworkWatcherRG` and survive RG deletion.
 
-1. Soft-deleted Log Analytics workspaces (14-day grace period; names stay reserved until purged or expired):
+1. Log Analytics workspaces, Key Vaults and Foundry/Cognitive Services accounts can retain soft-deleted data and reserved names after either option. Explicitly run `./scripts/teardown.ps1 -ResourceGroup $rg -PurgeSoftDeletedResources` to permanently clean up only the exact lab and approved auxiliary groups, including after an earlier group deletion. Workspace cleanup recovers the workspace first, temporarily recreating its original group if needed, then permanently deletes it and includes that group in final deletion.
 
-```powershell
-# Keep the filter in PowerShell. Windows Azure CLI can strip quoted JMESPath
-# expressions before az receives them, producing "] was unexpected at this time."
-$deletedLaw = az monitor log-analytics workspace list-deleted-workspaces --subscription $sub -o json | ConvertFrom-Json
-$deletedLaw | Where-Object { $_.name -like '*amlab*' } | Format-Table
-# Permanent purge if needed:
-# az rest --method delete --url "https://management.azure.com/subscriptions/$sub/providers/Microsoft.OperationalInsights/locations/northeurope/deletedWorkspaces/<name>?api-version=2023-09-01"
-```
+2. Application Insights components use ordinary group deletion; their workspace-backed data follows the Log Analytics cleanup above. No separate component purge command is required here.
 
-2. Soft-deleted Application Insights components (also 14-day grace):
-
-```powershell
-$deletedAppInsights = az monitor app-insights component list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedAppInsights | Where-Object { $_.name -like '*amlab*' } | Format-Table
-```
-
-3. Soft-deleted Key Vault (7-day retention, `enablePurgeProtection: null` so it can be purged). Key Vault names are deterministic (`kv-${namePrefix}-${take(suffix,5)}` from `resourceGroup().id`), so redeploying to the **same RG name** before the vault is purged fails with `VaultAlreadyExists`:
-
-```powershell
-$deletedVaults = az keyvault list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedVaults | Where-Object { $_.name -like 'kv-amlab-*' } | Format-Table name, @{n='location';e={$_.properties.location}}
-# Purge before redeploying to the same RG name:
-# az keyvault purge --name <vaultName> --subscription $sub
-```
+3. Key Vault purge protection cannot be bypassed. Wait for retention expiry or omit `-PurgeSoftDeletedResources` to retain normal recovery. Wait for asynchronous resource-group deletion and normal service/DNS propagation before attempting same-name redeployment.
 
 4. NSG/VNet flow logs in `NetworkWatcherRG` (Stage B creates them outside the lab RG):
 

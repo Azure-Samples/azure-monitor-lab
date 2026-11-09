@@ -26,9 +26,17 @@
   Preserve Entra app registrations and service principals. Otherwise, remove only
   identities explicitly tagged as owned by this lab after directory preflight.
 
+.PARAMETER PurgeSoftDeletedResources
+  Opt into permanent cleanup of Key Vaults, Foundry/Cognitive Services accounts,
+  and Log Analytics workspaces in the approved lab groups. This destroys their
+  secrets and data after confirmation. Default teardown preserves normal Azure
+  soft-delete recovery. Purge protection cannot be bypassed.
+
 .PARAMETER Yes
   Approve the displayed cleanup plan without interactive confirmation. Nested
   deletions never prompt again after this approval or the initial DELETE prompt.
+  This switch does not enable permanent cleanup; that requires
+  -PurgeSoftDeletedResources as well.
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
@@ -38,6 +46,7 @@ param(
   [string] $DeleteNetworkWatcherRG = 'no',
   [switch] $KeepServiceGroup,
   [switch] $KeepEntraApplications,
+  [switch] $PurgeSoftDeletedResources,
   [switch] $Yes,
   [Parameter(ValueFromRemainingArguments)]
   [string[]] $RemainingArguments
@@ -93,6 +102,10 @@ function Remove-MatchingResourceGroups {
   param([string[]] $Names)
 
   $PSNativeCommandUseErrorActionPreference = $false
+  if ($purgeResources.Count) {
+    & $softDeleteCleanup -SubscriptionId $active.id -TenantId $active.tenantId `
+      -ResourceGroups $purgeResourceGroups -Resources $purgeResources -Confirm:$false
+  }
   $submittedDeletes = 0
   foreach ($name in $Names) {
     if ($name -in $monitorManagedResourceGroupNames) {
@@ -173,6 +186,24 @@ $resourceGroupsToDelete = @(
 )
 $primaryResourceGroupExists = @($allResourceGroupNames | Where-Object { $_ -ieq $ResourceGroup }).Count -gt 0
 $resourceGroupId = "/subscriptions/$($active.id)/resourceGroups/$ResourceGroup"
+$softDeleteCleanup = Join-Path $PSScriptRoot 'remove-lab-soft-deleted-resources.ps1'
+$purgeResources = @()
+$purgeResourceGroups = @()
+if ($PurgeSoftDeletedResources) {
+  $purgeResourceGroups = @(@($ResourceGroup) + @($resourceGroupsToDelete | Where-Object { $_ -notin $monitorManagedResourceGroupNames }) | Sort-Object -Unique)
+  $purgeResources = @(& $softDeleteCleanup -SubscriptionId $active.id -TenantId $active.tenantId `
+    -ResourceGroups $purgeResourceGroups -ExistingResourceGroups @($purgeResourceGroups | Where-Object { $_ -in $allResourceGroupNames }) -PlanOnly)
+  $protectedVaults = @($purgeResources | Where-Object PurgeProtected)
+  if ($protectedVaults.Count) {
+    throw "Purge protection prevents permanent cleanup of: $($protectedVaults.Id -join ', '). It cannot be bypassed. Wait for retention expiry or rerun teardown without -PurgeSoftDeletedResources."
+  }
+  $recoveryGroups = @($purgeResources | Where-Object {
+    $_.Deleted -and $_.Type -eq 'Microsoft.OperationalInsights/workspaces' -and $_.ResourceGroup -notin $allResourceGroupNames
+  } | Select-Object -ExpandProperty ResourceGroup -Unique)
+  $resourceGroupsToDelete = @(@($resourceGroupsToDelete) + $recoveryGroups | Sort-Object -Unique {
+    if ($_ -ieq $ResourceGroup) { 0 } elseif ($_ -in $monitorManagedResourceGroupNames) { 3 } elseif ($_ -ieq 'NetworkWatcherRG') { 2 } else { 1 }
+  }, { $_ })
+}
 $activityDiagnosticName = 'amlab-activity-to-law'
 $activityLogWorkspaceId = az monitor diagnostic-settings subscription list --subscription $active.id `
   --query "value[?name=='$activityDiagnosticName'].workspaceId | [0]" -o tsv --only-show-errors
@@ -194,7 +225,7 @@ if (-not $KeepEntraApplications) {
   $entraIdentities = @(& $entraCleanup -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -PlanOnly)
 }
 
-if ($resourceGroupsToDelete.Count -eq 0 -and $entraIdentities.Count -eq 0 -and -not $ownsActivityDiagnostic) {
+if ($resourceGroupsToDelete.Count -eq 0 -and $entraIdentities.Count -eq 0 -and -not $ownsActivityDiagnostic -and $purgeResources.Count -eq 0) {
   Write-Host "No matching resource groups or verified lab-owned Entra identities found for '$ResourceGroup'. Nothing to delete." -ForegroundColor Yellow
   return
 }
@@ -207,6 +238,15 @@ if ($DeleteNetworkWatcherRG -eq 'yes') {
   }
 }
 
+if ($purgeResources.Count) {
+  Write-Warning 'Permanent cleanup destroys the listed secrets, AI account data and logs without recovery. Log Analytics recovery may temporarily recreate an original resource group; that group is included in deletion.'
+  $purgeResources | ForEach-Object {
+    Write-Host "  - PERMANENT: $($_.Id) [$($_.Location)]" -ForegroundColor Yellow
+  }
+} elseif (-not $PurgeSoftDeletedResources) {
+  Write-Host 'Preserving normal Azure soft-delete recovery. Reserved names may block same-name redeployment; permanent cleanup requires -PurgeSoftDeletedResources.' -ForegroundColor Yellow
+}
+
 if (-not $Yes) {
   Write-Host "The following resource groups match or are managed by workspaces in '$ResourceGroup' and will be cleaned up:" -ForegroundColor Yellow
   $resourceGroupsToDelete | ForEach-Object {
@@ -215,7 +255,9 @@ if (-not $Yes) {
   }
   if ($ownsActivityDiagnostic) { Write-Host "  - Subscription diagnostic setting: $activityDiagnosticName" -ForegroundColor Yellow }
   $entraIdentities | ForEach-Object { Write-Host "  - Entra: $($_.DisplayName), app $($_.ApplicationObjectId), principal $($_.ServicePrincipalObjectId)" -ForegroundColor Yellow }
-  $confirm = Read-Host 'Type DELETE to confirm deletion of the listed resource groups and lab-owned Entra identities'
+  $confirmation = 'Type DELETE to confirm deletion of the listed resource groups and lab-owned Entra identities'
+  if ($purgeResources.Count) { $confirmation += ', including the listed permanent resource/data cleanup' }
+  $confirm = Read-Host $confirmation
   if ($confirm -ne 'DELETE') { Write-Host "Aborted." -ForegroundColor Yellow; return }
 } else {
   Write-Host "Cleaning up resource groups matching or managed by workspaces in '$ResourceGroup':" -ForegroundColor Yellow
@@ -241,7 +283,7 @@ if ($ownsActivityDiagnostic) {
 
 if (-not $primaryResourceGroupExists) {
   Write-Host "The original resource group no longer exists; deleting matched auxiliary groups and verifying Azure-managed Monitor cleanup." -ForegroundColor Yellow
-  if ($resourceGroupsToDelete.Count) { Remove-MatchingResourceGroups -Names $resourceGroupsToDelete }
+  if ($resourceGroupsToDelete.Count -or $purgeResources.Count) { Remove-MatchingResourceGroups -Names $resourceGroupsToDelete }
   return
 }
 

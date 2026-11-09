@@ -22,6 +22,8 @@ $fixture = @{
   SreAgentExists = $false; SreDiscoveryFails = $false; SreCleanupFails = $false
   ActivityWorkspaceId = ''; ActivityDiagnosticDeletes = 0
   EntraPlan = @(); EntraCalls = [Collections.Generic.List[string]]::new(); EntraFails = ''
+  PurgePlan = @(); PurgeCalls = 0; PurgePlans = 0; PurgeFails = $false
+  HideMonitorGroup = $false
 }
 $resourceGroupId = "/subscriptions/$($fixture.Subscription)/resourceGroups/$($fixture.ResourceGroup)"
 $workspaceId = "$resourceGroupId/providers/Microsoft.OperationalInsights/workspaces/law-test"
@@ -94,6 +96,20 @@ $fixture.Deletes.Add($ResourceId)
 return $true
 '@ | Set-Content -LiteralPath (Join-Path $directory 'remove-sre-agent.ps1')
 
+@'
+[CmdletBinding(SupportsShouldProcess)]
+param($SubscriptionId, $TenantId, $ResourceGroups, $ExistingResourceGroups, [switch]$PlanOnly, $Resources)
+if ($SubscriptionId -ne $fixture.Subscription -or $TenantId -ne $fixture.Tenant -or
+    $ResourceGroups -notcontains $fixture.ResourceGroup -or $ResourceGroups -contains $monitorGroup -or
+    $ResourceGroups -contains 'rg-other-lab') { throw 'Purge cleanup escaped the verified target.' }
+if ($PlanOnly) { $fixture.PurgePlans++; $fixture.PurgePlan; return }
+if (-not $PSBoundParameters.ContainsKey('Confirm') -or $PSBoundParameters.Confirm) { throw 'Nested purge approval must be suppressed.' }
+if (($Resources | ConvertTo-Json -Depth 5 -Compress) -ne ($fixture.PurgePlan | ConvertTo-Json -Depth 5 -Compress)) { throw 'Purge must use only the confirmed plan.' }
+if (@($fixture.Deletes | Where-Object { $_ -like 'group:*' }).Count) { throw 'Purge must precede group deletion.' }
+$fixture.PurgeCalls++
+if ($fixture.PurgeFails) { throw 'Purge denied: AuthorizationFailed.' }
+'@ | Set-Content -LiteralPath (Join-Path $directory 'remove-lab-soft-deleted-resources.ps1')
+
 if ($IsWindows) {
   $argumentScript = Join-Path $directory 'capture-arguments.ps1'
   'ConvertTo-Json -InputObject @($args) -Compress' | Set-Content -LiteralPath $argumentScript
@@ -139,6 +155,7 @@ function az {
       $groups = @($groupInventory | Where-Object {
         ($fixture.PrimaryGroupExists -or $_.name -ne $fixture.ResourceGroup) -and
         ($fixture.AuxiliaryGroupExists -or $_.name -ne $auxiliaryGroup) -and
+        (-not $fixture.HideMonitorGroup -or $_.name -ne $monitorGroup) -and
         ($fixture.NetworkWatcherGroupExists -or $_.name -ne 'NetworkWatcherRG')
       })
       return ConvertTo-Json -InputObject $groups -Depth 4
@@ -325,6 +342,64 @@ function az {
 
 try {
   $fixture.DiscoveryError = 'ERROR: (UnsupportedResourceType) Associations unsupported for this resource.'
+  $fixture.PurgePlan = @([pscustomobject]@{
+    Id = "$resourceGroupId/providers/Microsoft.KeyVault/vaults/kv-test"
+    Type = 'Microsoft.KeyVault/vaults'; Name = 'kv-test'; ResourceGroup = $fixture.ResourceGroup
+    Location = 'northeurope'; Deleted = $false; PurgeProtected = $false
+  })
+  foreach ($purgeOption in @(@{}, @{ PurgeSoftDeletedResources = $false })) {
+    $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+    $messages = & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes @purgeOption 3>&1 6>&1 | Out-String
+    if ($fixture.PurgePlans -or $fixture.PurgeCalls -or $messages -match 'PERMANENT:' -or
+        $fixture.Deletes -notcontains "group:$($fixture.ResourceGroup)") {
+      throw 'Default teardown, including -Yes and explicit false, must delete the group without permanent-cleanup discovery or execution.'
+    }
+  }
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  $fixture.Confirm = 'cancel'
+  $messages = & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -PurgeSoftDeletedResources 3>&1 6>&1 | Out-String
+  if ($fixture.PurgeCalls -or $fixture.Deletes.Count -or $messages -notmatch 'PERMANENT:' -or $messages -notmatch 'without recovery') {
+    throw 'Cancellation must preserve resources and show irreversible purge scope.'
+  }
+  $fixture.Confirm = 'DELETE'
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -PurgeSoftDeletedResources -Yes | Out-Null
+  if ($fixture.PurgeCalls -ne 1 -or $fixture.ConfirmationReads) { throw 'Explicit opt-in must execute the confirmed purge plan without another prompt.' }
+  $plans = $fixture.PurgePlans
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes | Out-Null
+  if ($fixture.PurgeCalls -ne 1 -or $fixture.PurgePlans -ne $plans) { throw 'Omitting the opt-in must skip purge discovery and execution.' }
+  $fixture.PurgePlan[0].PurgeProtected = $true
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  $failure = ''
+  try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -PurgeSoftDeletedResources -Yes | Out-Null } catch { $failure = $_.Exception.Message }
+  if ($failure -notlike '*Purge protection*without -PurgeSoftDeletedResources*' -or $fixture.Deletes.Count) { throw 'Purge protection must block permanent cleanup before any deletion.' }
+  $fixture.PurgePlan[0].PurgeProtected = $false
+  $fixture.PurgeFails = $true
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  $failure = ''
+  try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -PurgeSoftDeletedResources -Yes | Out-Null } catch { $failure = $_.Exception.Message }
+  if ($failure -notlike '*AuthorizationFailed*' -or @($fixture.Deletes | Where-Object { $_ -like 'group:*' }).Count) { throw 'Failed purge must stop before group deletion.' }
+  $fixture.PurgeFails = $false
+  $fixture.PrimaryGroupExists = $false; $fixture.AuxiliaryGroupExists = $false
+  $fixture.HideMonitorGroup = $true
+  $fixture.PurgePlan[0].Deleted = $true
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  $purges = $fixture.PurgeCalls
+  & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -PurgeSoftDeletedResources -Yes | Out-Null
+  if ($fixture.PurgeCalls -ne $purges + 1 -or $fixture.Deletes.Count) { throw 'Deleted vault purge must work when no resource groups remain.' }
+  $fixture.HideMonitorGroup = $false
+  $fixture.PurgePlan[0].Type = 'Microsoft.OperationalInsights/workspaces'
+  $fixture.PurgePlan[0].Name = 'law-test'
+  $fixture.PurgePlan[0].Id = $workspaceId
+  $fixture.PurgePlan[0].Deleted = $true
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -PurgeSoftDeletedResources -Yes | Out-Null
+  if ($fixture.Deletes -notcontains "group:$($fixture.ResourceGroup)") { throw 'A recreated recovery group must be included in final group deletion.' }
+  $fixture.PrimaryGroupExists = $true; $fixture.AuxiliaryGroupExists = $true
+  $fixture.PurgePlan = @()
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  Write-Output 'PASS: default and -Yes preserve recovery without purge discovery; explicit purge is scoped, confirmed, precedes group deletion, blocks on protection/errors and includes recreated recovery groups. No Azure calls.'
   foreach ($invalidCase in @(
     @{ Arguments = @('--delete-networkwatcherrg'); Named = @{} },
     @{ Arguments = @('--delete-networkwatcherrg', 'true'); Named = @{} },
