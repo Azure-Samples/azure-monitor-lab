@@ -145,15 +145,17 @@ $entities = @(
     logSignals = @(
       New-LogSignal 'failed-menu-requests' 'Failed menu requests' @'
 AppRequests
+| where TimeGenerated > ago(5min)
 | extend path = tostring(parse_url(Url).Path)
 | where path in ("", "/", "/api/menu")  // the root URL has an empty path
 | summarize value = countif(Success == false)
 '@ 'Count' 'PT5M' $failureRules
       New-LogSignal 'synthetic-browse-failures' 'Synthetic customer cannot open the menu' @'
 AppAvailabilityResults
+| where TimeGenerated > ago(5min)
 | where Name == "synthetic-browse-menu"
 | summarize value = countif(Success == false)
-'@ 'Count' 'PT15M' $failureRules
+'@ 'Count' 'PT5M' $failureRules
     )
   }
   @{
@@ -161,6 +163,7 @@ AppAvailabilityResults
     logSignals = @(
       New-LogSignal 'failed-menu-reads' 'Failed menu reads from storage' @'
 AppDependencies
+| where TimeGenerated > ago(5min)
 | where Target has "blob.core.windows.net" and Data has "/menu/"
 | summarize value = countif(Success == false)
 '@ 'Count' 'PT5M' $failureRules
@@ -171,20 +174,23 @@ AppDependencies
     logSignals = @(
       New-LogSignal 'failed-order-requests' 'Failed order requests' @'
 AppRequests
+| where TimeGenerated > ago(5min)
 | where Url has "/api/orders"
 | summarize value = countif(ResultCode startswith "5")  // a 404 for a mistyped order ID is not an outage
 '@ 'Count' 'PT5M' $failureRules
       New-LogSignal 'slow-orders' 'Order time for most customers (p95)' @'
 AppRequests
+| where TimeGenerated > ago(5min)
 | where Url has "/api/orders"
 | summarize p95 = percentile(DurationMs, 95)
 | project value = coalesce(p95, 0.0)
-'@ 'MilliSeconds' 'PT15M' (New-Rules 'GreaterThan' 1000 3000)
+'@ 'MilliSeconds' 'PT5M' (New-Rules 'GreaterThan' 1000 3000)
       New-LogSignal 'synthetic-order-failures' 'Synthetic customer cannot order' @'
 AppAvailabilityResults
+| where TimeGenerated > ago(5min)
 | where Name == "synthetic-order-coffee"
 | summarize value = countif(Success == false)
-'@ 'Count' 'PT15M' $failureRules
+'@ 'Count' 'PT5M' $failureRules
     )
   }
   @{
@@ -192,6 +198,7 @@ AppAvailabilityResults
     logSignals = @(
       New-LogSignal 'failed-order-writes' 'Failed order storage calls' @'
 AppDependencies
+| where TimeGenerated > ago(5min)
 | where Target has "blob.core.windows.net" and Data has "/orders/"
 | summarize value = countif(Success == false and ResultCode != "404")  // 404: looked-up order doesn't exist
 '@ 'Count' 'PT5M' $failureRules
@@ -202,6 +209,7 @@ AppDependencies
     logSignals = @(
       New-LogSignal 'failed-barista-notifications' 'Orders the barista display missed' @'
 AppDependencies
+| where TimeGenerated > ago(5min)
 | where Target has "queue.core.windows.net"
 | summarize value = countif(Success == false)
 '@ 'Count' 'PT5M' $failureRules

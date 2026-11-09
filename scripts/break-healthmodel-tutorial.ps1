@@ -121,9 +121,7 @@ $results = foreach ($i in 1..10) {
 }
 $results | Group-Object | ForEach-Object { Write-Info "$($_.Name): $($_.Count)x" }
 
-# Longest signal window that sees the failure: the synthetic customers look back 15 minutes.
-$recoveryMinutes = @{ BaristaQueue = 5; BadRelease = 15; NetworkCut = 15 }[$Scenario]
-$hint = if ($Restore) { "Old failures can keep signals red for $recoveryMinutes minutes after the last failure, plus telemetry and evaluation delay." } else { 'Watch now: signals evaluate every minute after telemetry arrives.' }
+$hint = if ($Restore) { 'Old failures can keep signals red for 5 minutes after the last failure, plus telemetry and evaluation delay.' } else { 'Watch now: signals evaluate every minute after telemetry arrives.' }
 $verb = if ($Restore) { 'restored' } else { 'broken' }
 Write-Host "`n$Scenario $verb. $hint Check with:" -ForegroundColor Green
 Write-Host "   az monitor health-models entity list -g $ResourceGroup --health-model-name hm-lab-cafe --query `"[].{Entity:properties.displayName,Health:properties.healthState}`" -o table"

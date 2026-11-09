@@ -79,7 +79,7 @@ flowchart TB
 
 **Colors:** green = user flows; blue = parts of the system; orange with a dashed border = optional part; gray = Azure resources; amber = health signals.
 
-Read top to bottom: what customers do, the parts of the café that make it work, then the Azure resources behind them. Each flow has its own copy of the web app and storage, which keeps every part under exactly one parent. What stops a problem only ordering sees from turning browsing red is the parts in blue: their signals only count that flow's requests. If the web app or storage itself fails, both flows show it, as they should. Solid arrows mean **depends on**; dotted arrows connect to **health signals**. Each part takes the worst health of what it depends on. The barista display has **limited impact**: when it fails, ordering is at most degraded, never unhealthy. Counts are per 5 minutes (15 minutes for the test customer and order time).
+Read top to bottom: what customers do, the parts of the café that make it work, then the Azure resources behind them. Each flow has its own copy of the web app and storage, which keeps every part under exactly one parent. What stops a problem only ordering sees from turning browsing red is the parts in blue: their signals only count that flow's requests. If the web app or storage itself fails, both flows show it, as they should. Solid arrows mean **depends on**; dotted arrows connect to **health signals**. Each part takes the worst health of what it depends on. The barista display has **limited impact**: when it fails, ordering is at most degraded, never unhealthy. All signal windows are five minutes, refreshed every minute.
 
 ## What happens when something breaks
 

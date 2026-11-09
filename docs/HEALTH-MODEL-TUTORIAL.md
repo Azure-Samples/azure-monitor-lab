@@ -1,25 +1,18 @@
 # Health Model Tutorial: Lab Café ☕🩺
 
-In this tutorial you finally done it. You run your own coffee shop! In the cloud. 
+In this tutorial you've finally done it. You run your own coffee shop! In the cloud. 
 
-But you will see that a lot can go wrong, but a health model help you have an overview of your café's health and the chance to drill down into the details.
-
-If you're used to just alerts on some metrics, they can give you the full picture, they are just a signal that something is not right.
-
-But once you give meaning to the signals, combine or route them, you can start to understand the impact of it. 
-
-E.g. if you're CPU load is high, an alert might fire, but in the end, who cares that you're using your CPU a lot. If though your orders start to get delayed, it affects customers in your café.
+But you will see that a lot can go wrong, luckily a health model can help you you.
 
 **After this tutorial you can:**
 
-1. Read a health model: user flows, system components and Azure resources.
-2. Explain where an entity's state comes from: signals, thresholds and rollup.
-3. Add a signal that still returns a number when nobody visits.
-4. Predict how a failure rolls up, and use impact to say what matters to customers.
+1. Read a health model and know what it can do for you. Convert signals into health information.
+2. Explain where health comes from: signals, thresholds and rollup.
+3. Be ready to think about workload health for your application and services.
 
 | | |
 |---|---|
-| ⏱️ Time | About 45 minutes, half of it waiting while you read, look around or predict |
+| ⏱️ Time | About 45 minutes, depedning on how much you explore. |
 | 💶 Cost | Roughly EUR 1-2 per day: App Service B1, two private endpoints, two availability tests, a little Log Analytics. Delete the resource group when you're done ([§6](#6-clean-up)) |
 | 📍 Region | `swedencentral` by default, everything in its own resource group `rg-healthmodel-tutorial`. Other regions that offer health models work too (`-Location`) |
 | 🧩 Standalone | You don't need the rest of the lab. Its own health models are in [scenario 45](DEMO-SCENARIOS.md#s45) |
@@ -77,33 +70,22 @@ And this is the health model, in **Monitor → Health models → hm-lab-cafe →
 
 ![The finished hm-lab-cafe health model in the portal graph: the root, two user flows, five system components and five Azure resources, all Healthy](images/healthmodel-cafe-graph.png)
 
-## Official documentation
 
-This tutorial is for seeing and trying; the Microsoft Learn pages are the reference. Each section links the page that goes deeper.
+## 1. Health model basics
 
-| Topic | Microsoft Learn | Used in |
-|---|---|---|
-| What health models are | [Overview](https://learn.microsoft.com/azure/azure-monitor/health-models/overview), [concepts](https://learn.microsoft.com/azure/azure-monitor/health-models/concepts) | §1 |
-| How to design one | [Health modeling with health models](https://learn.microsoft.com/azure/azure-monitor/health-models/health-modeling), [Well-Architected health modeling](https://learn.microsoft.com/azure/well-architected/design-guides/health-modeling) | §3 |
-| Graph, timeline, entity details | [Analyze health state](https://learn.microsoft.com/azure/azure-monitor/health-models/analyze-health), [designer](https://learn.microsoft.com/azure/azure-monitor/health-models/designer) | §3, §5 |
-| Alerts and health objectives | [Alerts](https://learn.microsoft.com/azure/azure-monitor/health-models/alerts), [health objective](https://learn.microsoft.com/azure/azure-monitor/health-models/concepts#health-objective) | §3 |
-| Signals and signal definitions | [Signals](https://learn.microsoft.com/azure/azure-monitor/health-models/signals), [configure signals](https://learn.microsoft.com/azure/azure-monitor/health-models/tutorial-signals) | §3, §4 |
-| Rollup and impact | [Configure health rollup](https://learn.microsoft.com/azure/azure-monitor/health-models/rollup) | §5 |
-| Build with the CLI | [Create a health model with the Azure CLI](https://learn.microsoft.com/azure/azure-monitor/health-models/cli) | §4 |
-| Questions | [FAQ](https://learn.microsoft.com/azure/azure-monitor/health-models/health-models-faq) | |
-
-## 1. Four words to start with
-
-Start the deploy in [§2](#2-open-the-café) first, then read this while it runs.
+In Azure Monitor health models, we use these terms to describe certain things:
 
 | Term | What it means at the café |
 |---|---|
 | **Entity** | Anything that has a health state: something customers do ("Order coffee"), a part of the system ("Order API") or an Azure resource ("App Service: app-cafe-..."). Every model has a **root** entity named like the model |
-| **Signal** | Evidence for an entity: an Azure Monitor metric, a KQL query on Log Analytics, or a PromQL query. Each signal has a *degraded* and an *unhealthy* threshold |
-| **Relationship** | "Parent depends on child". Health flows upward, from child to parent |
+| **User flow entity** | Something that a user trigger or does, like a use case. |
+| **System component entity** | A part of the system that supports user flows, like an API or a database. |
+| **Other entities** | In the end, all entities are the same, the notion of type is just the icon you see in the graph. |
+| **Signal** | Data e.g. metrics or query results that will make an entity to become healthy, degraded, or unhealthy |
+| **Relationship** | Connection between entities, where the health will roll up to. |
 | **Health state** | 🟢 Healthy, 🟡 Degraded, 🔴 Unhealthy, ⚪ Unknown (no evidence, for example a query that returns nothing) |
 
-The other terms (signal definition, rollup, impact, health objective) show up where you first see them. 📚 [Health model concepts](https://learn.microsoft.com/azure/azure-monitor/health-models/concepts)
+Other terms will show up, you find all of them here 📚 [Health model concepts](https://learn.microsoft.com/azure/azure-monitor/health-models/concepts)
 
 ## 2. Open the café
 
@@ -114,8 +96,6 @@ The other terms (signal definition, rollup, impact, health objective) show up wh
 
 The first script deploys the café ([infra/healthmodel-tutorial/workload.bicep](../infra/healthmodel-tutorial/workload.bicep)), publishes the app and places a test order (about 5 minutes). The second builds the health model with the `az monitor health-models` CLI (about 2 minutes). It leaves one signal out on purpose: you add it in §4.
 
-The café is one Node file with no dependencies ([workloads/cafe/server.js](../workloads/cafe/server.js)):
-
 | Route | What it does | What it touches |
 |---|---|---|
 | `GET /` and `GET /api/menu` | Shows the menu | Reads blob `menu/menu.json` |
@@ -125,7 +105,7 @@ The café is one Node file with no dependencies ([workloads/cafe/server.js](../w
 
 Application Insights records every request and every storage call. Two availability tests act as synthetic customers that open the menu and order a flat white every 5 minutes, so the model has data even at 3 a.m. Storage only accepts private traffic, through VNet integration and private endpoints, which gives us a realistic way to break things later.
 
-> ✅ **Done when:** the printed URL opens the café, and **Monitor → Health models → hm-lab-cafe** shows the graph. Give it up to 15 minutes to turn green: the café's first requests can fail while it starts, and those stay in the signal windows for a while. Log signals can also say *insufficient access* for about 10 minutes while the model's role arrives. Wait; don't rerun the build or recreate entities, that deletes their history. Start §3 in the meantime.
+> ✅ **Done when:** the printed URL opens the café, and **Monitor → Health models → hm-lab-cafe** shows the graph. Startup failures leave the signal windows after five minutes, plus telemetry and evaluation delay. Log signals can also say *insufficient access* for about 10 minutes while the model's role arrives. Wait; don't rerun the build or recreate entities, that deletes their history. Start §3 in the meantime.
 
 ## 3. Look around
 
@@ -138,7 +118,7 @@ Open **Monitor → Health models → hm-lab-cafe → Graph** (the picture under 
 
 Select **Order API** to open its details. They show its state, the rollup rule (*Worst of*: a parent takes the worst state of its children; Unknown children don't count) and a 24-hour history:
 
-![Entity details of Order API: Healthy, impact Standard, rollup Worst of, health objective not set, with a 24-hour history bar](images/healthmodel-cafe-entity-details.png)
+![Entity details of Order API](images/healthmodel-cafe-entity-details.png)
 
 Now select **Order coffee** and choose **Edit**. A user flow carries what the business cares about. The *General* tab holds the impact and the **health objective**, the share of time the flow should be Healthy. Only Unhealthy time counts against it; Degraded doesn't. 99.9% over 30 days allows about 43 minutes of Unhealthy time. The *Alerts* tab has one alert per state:
 
@@ -152,7 +132,7 @@ Close the editor without saving. Last stop: **Signal definitions**. A signal def
 
 📚 [Analyze the health state](https://learn.microsoft.com/azure/azure-monitor/health-models/analyze-health), [alerts](https://learn.microsoft.com/azure/azure-monitor/health-models/alerts), [health objective](https://learn.microsoft.com/azure/azure-monitor/health-models/concepts#health-objective). Why the model looks like this: [docs/healthmodel/cafe/plan.md](healthmodel/cafe/plan.md).
 
-## 4. Add one signal
+## 4. Add a signal
 
 *Order API* watches slow orders and the synthetic customer, but nothing counts orders that fail for real customers. Add that signal.
 
@@ -160,6 +140,7 @@ First try the query yourself in **Log Analytics workspace `law-cafe-…` → Log
 
 ```kusto
 AppRequests
+| where TimeGenerated > ago(5min)
 | where Url has "/api/orders"
 | summarize value = countif(ResultCode startswith "5")
 ```
@@ -182,34 +163,9 @@ Now add it in the portal:
 
 3. **Add to entity**, then **Save**.
 
-<details>
-<summary><b>Or with the CLI</b></summary>
-
-`az monitor health-models entity update` replaces a whole signal group, so this reads the entity, adds the signal (or replaces it, if it's already there) and writes it back:
-
-```powershell
-$model = az monitor health-models show -g rg-healthmodel-tutorial -n hm-lab-cafe --query id -o tsv
-$url = "https://management.azure.com$model/entities/order-api?api-version=2026-11-01"
-$entity = az rest --url $url -o json | ConvertFrom-Json
-$group = $entity.properties.signalGroups.azureLogAnalytics
-$group.signals = @($group.signals | Where-Object name -ne 'failed-order-requests') + @{
-  name = 'failed-order-requests'; displayName = 'Failed order requests'; signalKind = 'LogAnalyticsQuery'
-  queryText = 'AppRequests | where Url has "/api/orders" | summarize value = countif(ResultCode startswith "5")'
-  valueColumnName = 'value'; timeGrain = 'PT5M'; refreshInterval = 'PT1M'; dataUnit = 'Count'
-  evaluationRules = @{ degradedRule = @{ operator = 'GreaterThan'; threshold = 0 }; unhealthyRule = @{ operator = 'GreaterThan'; threshold = 2 } }
-}
-$file = New-TemporaryFile
-$entity | ConvertTo-Json -Depth 20 | Set-Content $file
-az rest --method put --url $url --body "@$file"
-```
-
-</details>
-
 > ✅ **Done when:** within a few minutes the Order API's signal table shows *Failed order requests* at 0, Healthy:
 >
 > ![Signals table of Order API: Failed order requests 0, Order time for most customers 596 ms, Synthetic customer cannot order 0, all Healthy, with their degraded and unhealthy thresholds](images/healthmodel-cafe-entity-signals.png)
-
-Don't run the build script again from here on: it replaces every entity, so your signal would be gone.
 
 📚 [Configure signals](https://learn.microsoft.com/azure/azure-monitor/health-models/tutorial-signals). The [build script](../scripts/build-healthmodel-tutorial.ps1) creates every other signal, entity and relationship from one table; [Create a health model with the Azure CLI](https://learn.microsoft.com/azure/azure-monitor/health-models/cli) walks through the commands.
 
@@ -223,7 +179,7 @@ Then break, watch the signals, compare and restore. Open the answer only after y
 
 ### Watch health and signal values
 
-Signals refresh every minute after telemetry arrives. Failures count until they leave their query window.
+All KQL signals look back five minutes and refresh every minute after telemetry arrives.
 
 Show entity health:
 
@@ -236,10 +192,10 @@ Select **Barista display (optional)** in the portal for values and thresholds, o
 
 ```powershell
 az monitor health-models entity show -g rg-healthmodel-tutorial --health-model-name hm-lab-cafe -n barista-display `
-  --query "properties.signalGroups.azureLogAnalytics.signals[].{Signal:displayName,Value:status.value,Health:status.healthState,Window:timeGrain,Updated:status.reportedAt,Error:status.error}" -o table
+   --query "properties.signalGroups.azureLogAnalytics.signals[].{Signal:displayName,Value:status.value,Health:status.healthState,Window:timeGrain,Updated:status.reportedAt,Error:status.error}" -o table
 ```
 
-Rerun every minute. **Updated** is the last evaluation; check **Error** before trusting values. For other experiments, replace `barista-display` with `order-api`, `cafe-website` or `menu-catalog`.
+You can rerun that instead of checking in the Portal. **Updated** is the last evaluation; check **Error** before trusting values. For other experiments, replace `barista-display` with `order-api`, `cafe-website` or `menu-catalog`.
 
 ### 5.1 The optional barista
 
@@ -250,7 +206,15 @@ az monitor health-models entity update -g rg-healthmodel-tutorial --health-model
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario BaristaQueue
 ```
 
-Predict: what color does *Order coffee* turn? Look. Then switch the impact back and predict again:
+Predict: what color does *Order coffee* turn?
+
+You can again check with this command, or in the Portal:
+```powershell
+az monitor health-models entity show -g rg-healthmodel-tutorial --health-model-name hm-lab-cafe -n barista-display `
+   --query "properties.signalGroups.azureLogAnalytics.signals[].{Signal:displayName,Value:status.value,Health:status.healthState,Window:timeGrain,Updated:status.reportedAt,Error:status.error}" -o table
+```
+
+Then switch the impact back and predict again:
 
 ```powershell
 az monitor health-models entity update -g rg-healthmodel-tutorial --health-model-name hm-lab-cafe -n barista-display --impact Limited
@@ -275,7 +239,7 @@ Watch the barista signal again after restoring. It counts failed notifications i
 
 Wait for this signal to reach 0 before the next experiment, so its remaining failures don't obscure the new result. A healthy queue-storage resource alone doesn't prove notifications have recovered.
 
-### 5.2 A bad release
+### 5.2 A bad software configuration
 
 An app setting makes every order fail with HTTP 500, like a bad deploy. Predict: what happens to *Order API*, *Order coffee*, *Browse the menu* and the root? Which signal fires first?
 
@@ -296,7 +260,7 @@ An app setting makes every order fail with HTTP 500, like a bad deploy. Predict:
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease -Restore
 ```
 
-Use the signal command above with `-n order-api` to watch recovery. Failed order requests look back five minutes; the synthetic customer and slow-order signals look back 15 minutes. They can keep Order API red after the failed request count reaches 0. Allow 15 minutes after the last bad result, plus telemetry and evaluation delay. Wait for Order API to recover before 5.3 if you want to distinguish the experiments in the graph.
+Watch recovery with `-n order-api`. All its signals look back five minutes. Allow five minutes after the last bad result, plus telemetry and evaluation delay, before starting 5.3.
 
 ### 5.3 A network change
 
@@ -321,7 +285,7 @@ If you clean up next ([§6](#6-clean-up)), skip the restore. Otherwise it redepl
 ./scripts/break-healthmodel-tutorial.ps1 -Scenario NetworkCut -Restore
 ```
 
-Watch the signals on **Café website**, **Menu catalog** and **Order API**. Request and dependency counts look back five minutes; synthetic failures and order latency look back 15 minutes. Their windows can keep the flows red after storage access works again.
+Watch the signals on **Café website**, **Menu catalog** and **Order API**. All look back five minutes, so old failures can keep the flows red after storage access works again.
 
 ### Look back
 
@@ -349,3 +313,18 @@ az group delete -n rg-healthmodel-tutorial --yes
 - **Design one for your app:** [health modeling in the Well-Architected Framework](https://learn.microsoft.com/azure/well-architected/design-guides/health-modeling). Using an AI coding agent? The `healthmodel-plan` skill writes a plan like [the café's](healthmodel/cafe/plan.md) from your code and IaC.
 - **Grow a model without hand work:** [discovery rules](https://learn.microsoft.com/azure/azure-monitor/health-models/discoveries) add entities for resources that match a query.
 - **Everything else:** the [official documentation table](#official-documentation) above.
+
+## Official documentation
+
+Dig deeper into the health modelling topics with our documentation:
+
+| Topic | Microsoft Learn | Used in |
+|---|---|---|
+| What health models are | [Overview](https://learn.microsoft.com/azure/azure-monitor/health-models/overview), [concepts](https://learn.microsoft.com/azure/azure-monitor/health-models/concepts) | §1 |
+| How to design one | [Health modeling with health models](https://learn.microsoft.com/azure/azure-monitor/health-models/health-modeling), [Well-Architected health modeling](https://learn.microsoft.com/azure/well-architected/design-guides/health-modeling) | §3 |
+| Graph, timeline, entity details | [Analyze health state](https://learn.microsoft.com/azure/azure-monitor/health-models/analyze-health), [designer](https://learn.microsoft.com/azure/azure-monitor/health-models/designer) | §3, §5 |
+| Alerts and health objectives | [Alerts](https://learn.microsoft.com/azure/azure-monitor/health-models/alerts), [health objective](https://learn.microsoft.com/azure/azure-monitor/health-models/concepts#health-objective) | §3 |
+| Signals and signal definitions | [Signals](https://learn.microsoft.com/azure/azure-monitor/health-models/signals), [configure signals](https://learn.microsoft.com/azure/azure-monitor/health-models/tutorial-signals) | §3, §4 |
+| Rollup and impact | [Configure health rollup](https://learn.microsoft.com/azure/azure-monitor/health-models/rollup) | §5 |
+| Build with the CLI | [Create a health model with the Azure CLI](https://learn.microsoft.com/azure/azure-monitor/health-models/cli) | §4 |
+| Questions | [FAQ](https://learn.microsoft.com/azure/azure-monitor/health-models/health-models-faq) | |

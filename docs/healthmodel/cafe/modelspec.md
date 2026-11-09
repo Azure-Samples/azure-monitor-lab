@@ -56,6 +56,7 @@ flowchart TB
 | S5 | Health modelling guidance: three layers, tree with one parent, per-flow copies, signals on data that exists today | healthmodel-plan skill, [WAF health modeling](https://learn.microsoft.com/azure/well-architected/design-guides/health-modeling) | 2026-11-02 | done |
 | S6 | `Microsoft.CloudHealth/healthmodels` API `2026-11-01` available, Sweden Central supported | `az provider show -n Microsoft.CloudHealth` | 2026-11-02 | done |
 | S7 | Deployment and verification: `build-healthmodel-tutorial.ps1` to `rg-healthmodel-tutorial` in a test subscription; signal states read with `az monitor health-models entity list/show`; scenarios BadRelease, BaristaQueue, NetworkCut via `break-healthmodel-tutorial.ps1`. Log Analytics signals failed with insufficient access for about 10 minutes after the role assignment | [Signals](#signals) Verification column | 2026-11-02 11:51-12:55 UTC | done |
+| S8 | User requested five-minute lookbacks for all Lab Café KQL signals, keeping one-minute evaluation | Conversation: "All Lab Café KQL signals" | 2026-11-06 | accepted; deployment pending |
 
 ## Flows
 
@@ -86,16 +87,16 @@ Place and track are grouped into one flow (S5: group similar flows).
 
 ## Signals
 
-All log signals run on the workspace `law-cafe-<suffix>` that backs Application Insights. Metric signals use the signal definitions `sd-app-health-check` and `sd-storage-availability`. Refresh every minute.
+All log signals run on the workspace `law-cafe-<suffix>` that backs Application Insights, with explicit `TimeGenerated > ago(5min)` filters. Metric signals use the signal definitions `sd-app-health-check` and `sd-storage-availability`. All windows are five minutes; refresh every minute.
 
 | Signal | Entity | Kind and data source | Measurement | Degraded and unhealthy rule | Sources or gap | Verification | Status |
 |---|---|---|---|---|---|---|---|
 | failed-menu-requests | E_WEB | Log Analytics query | `AppRequests`, path empty (root page), `/` or `/api/menu`, `countif(Success == false)`; 5 min | > 0, > 2 | S2, G2 | Baseline 0 (Healthy); NetworkCut 4 (Unhealthy) after fixing empty root path, S7 | done |
-| synthetic-browse-failures | E_WEB | Log Analytics query | `AppAvailabilityResults`, test `synthetic-browse-menu`, failed runs; 15 min | > 0, > 2 | S3, G2 | Baseline 0; NetworkCut 5-6 (Unhealthy), S7 | done |
+| synthetic-browse-failures | E_WEB | Log Analytics query | `AppAvailabilityResults`, test `synthetic-browse-menu`, failed runs; 5 min | > 0, > 2 | S3, S8, G2 | Previous 15-minute window: baseline 0; NetworkCut 5-6 (Unhealthy), S7. Five-minute window not deployed | pending deployment |
 | failed-menu-reads | E_MENU | Log Analytics query | `AppDependencies`, blob target, `Data has "/menu/"`, failed calls; 5 min | > 0, > 2 | S2, G2 | Baseline 0; NetworkCut 7 (Unhealthy), S7 | done |
 | failed-order-requests | E_API | Log Analytics query | `AppRequests`, `Url has "/api/orders"`, `ResultCode` 5xx (a 404 for a mistyped ID is not an outage); 5 min | > 0, > 2 | S2, G2 | Baseline 0; BadRelease 3 (Unhealthy), S7 | done |
-| slow-orders | E_API | Log Analytics query | `AppRequests`, `Url has "/api/orders"`, p95 `DurationMs`, 0 without traffic; 15 min | > 1000 ms, > 3000 ms | S2, G2 | Baseline 100-540 ms (Healthy); cold start after deploy 8567 ms (Unhealthy), S7 | done |
-| synthetic-order-failures | E_API | Log Analytics query | `AppAvailabilityResults`, test `synthetic-order-coffee`, failed runs; 15 min | > 0, > 2 | S3, G2 | Baseline 0; BadRelease 6 (Unhealthy), S7 | done |
+| slow-orders | E_API | Log Analytics query | `AppRequests`, `Url has "/api/orders"`, p95 `DurationMs`, 0 without traffic; 5 min | > 1000 ms, > 3000 ms | S2, S8, G2 | Previous 15-minute window: baseline 100-540 ms (Healthy); cold start 8567 ms (Unhealthy), S7. Five-minute window not deployed | pending deployment |
+| synthetic-order-failures | E_API | Log Analytics query | `AppAvailabilityResults`, test `synthetic-order-coffee`, failed runs; 5 min | > 0, > 2 | S3, S8, G2 | Previous 15-minute window: baseline 0; BadRelease 6 (Unhealthy), S7. Five-minute window not deployed | pending deployment |
 | failed-order-writes | E_STORE | Log Analytics query | `AppDependencies`, blob target, `Data has "/orders/"`, failed except 404 (order lookup of an unknown ID); 5 min | > 0, > 2 | S2, G2 | Baseline 0; stays 0 during NetworkCut (orders fail earlier at menu read), S7 | done |
 | failed-barista-notifications | E_BARISTA | Log Analytics query | `AppDependencies`, queue target, failed; 5 min | > 0, > 2 | S2, G2 | Baseline 0; BaristaQueue 2-3 (Degraded to Unhealthy), S7 | done |
 | app-health-check | R_MENU_APP, R_ORDER_APP | Metric `Microsoft.Web/sites` `HealthCheckStatus` | Average; 5 min | < 100, < 50 | S3, G2 | 100 on both entities, also during NetworkCut, S7 | done |
@@ -111,6 +112,7 @@ All log signals run on the workspace `law-cafe-<suffix>` that backs Application 
 | G4: model in the same region and resource group as the workload | assumption | M_CAFE | Docs suggest a separate region so the model keeps reporting during a regional outage; kept together for easy cleanup | none for the tutorial | new |
 | G5: alert routing | user input | E_BROWSE, E_ORDER | No action group named; alerts fire without notifications | Pass `-ActionGroupId` to the build script | new |
 | G6: storage availability doesn't drop when the network path is cut (rejected requests aren't counted) | research/lookup | R_MENU_ST, R_ORDER_ST, R_QUEUE_ST | Observed during NetworkCut, S7; component dependency queries catch it instead | none, kept as a tutorial lesson | done |
+| G7: five-minute synthetic windows can miss late test results | assumption | E_WEB, E_API | Tests run every five minutes; an empty window returns 0 failures even if a delayed run failed | Accepted shorter windows for the tutorial, S8 | accepted |
 
 ## Intent acceptance
 
