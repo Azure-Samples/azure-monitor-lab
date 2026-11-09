@@ -4,7 +4,12 @@ $fixture = Join-Path $PSScriptRoot ('customer-config-fixture-' + [guid]::NewGuid
 New-Item -ItemType Directory -Path (Join-Path $fixture 'scripts'), (Join-Path $fixture 'infra'), (Join-Path $fixture 'terraform') -Force | Out-Null
 try {
   Copy-Item (Join-Path $repo 'scripts\sync-config.ps1') (Join-Path $fixture 'scripts\sync-config.ps1')
-  $cfg = Get-Content (Join-Path $repo 'lab.config.json.example') -Raw | ConvertFrom-Json
+  Copy-Item (Join-Path $repo 'scripts\lab-config.ps1') (Join-Path $fixture 'scripts\lab-config.ps1')
+  . (Join-Path $repo 'scripts\lab-config.ps1')
+  $cfg = Read-LabConfig -Path (Join-Path $repo 'lab.config.json.example')
+  foreach ($parameter in @('slotAppServicePlanSku','sqlEntraAdminType')) {
+    if ($cfg.PSObject.Properties[$parameter]) { throw "The config example must inherit '$parameter' automatically." }
+  }
   $cfg.subscriptionId = [guid]::NewGuid().ToString()
   $cfg.tenantId = [guid]::NewGuid().ToString()
   $cfg.vmAdminPassword = 'Fixture-only-N0tASecret!'
@@ -15,7 +20,8 @@ try {
   }
   Invoke-FixtureSync
   $parameters = (Get-Content (Join-Path $fixture 'infra\main.parameters.json') -Raw | ConvertFrom-Json).parameters
-  if ($parameters.enableCustomerDependencies.value -ne $false -or $parameters.slotAppServicePlanSku.value -ne 'S2') { throw 'Dependencies must default false; current S2 slot plan must be retained.' }
+  if ($parameters.enableCustomerDependencies.value -ne $false -or $parameters.slotAppServicePlanSku.value -ne 'S2' -or
+      $parameters.sqlEntraAdminType.value -ne 'Group') { throw 'Dependencies must default false; omitted settings must automatically use S2 and Group.' }
   $tf = Get-Content (Join-Path $fixture 'terraform\stages.tfvars') -Raw
   if ($tf -match 'customer_dependencies|sql_entra') { throw 'Disabled baseline must not introduce unsupported Terraform settings.' }
   foreach ($invalid in @('true',1,$null)) {
@@ -44,18 +50,46 @@ try {
   Invoke-FixtureSync
   $parameters = (Get-Content (Join-Path $fixture 'infra\main.parameters.json') -Raw | ConvertFrom-Json).parameters
   if ($parameters.enableCustomerDependencies.value -ne $true -or $parameters.sqlEntraAdminName.value -ne 'Customer SQL Operators' -or $parameters.sqlEntraAdminType.value -ne 'Group') { throw 'Enabled Entra configuration was not materialized.' }
+  $cfg | Add-Member -NotePropertyName slotAppServicePlanSku -NotePropertyValue 'S1'
+  $cfg | Add-Member -NotePropertyName sqlEntraAdminType -NotePropertyValue 'User'
+  Invoke-FixtureSync
+  $parameters = (Get-Content (Join-Path $fixture 'infra\main.parameters.json') -Raw | ConvertFrom-Json).parameters
+  if ($parameters.slotAppServicePlanSku.value -ne 'S1' -or $parameters.sqlEntraAdminType.value -ne 'User') {
+    throw 'Existing explicit scripted overrides must remain supported.'
+  }
+  $cfg.PSObject.Properties.Remove('slotAppServicePlanSku')
+  $cfg.PSObject.Properties.Remove('sqlEntraAdminType')
   $cfg.sqlEntraAdminObjectId = ''
   $failed = $false
   try { Invoke-FixtureSync } catch { $failed = $true }
   if (-not $failed) { throw 'Enabled feature must require explicit Entra administrator.' }
   $ui = Get-Content (Join-Path $repo 'infra\createUiDefinition.json') -Raw | ConvertFrom-Json
   $elements = @($ui.parameters.steps | Where-Object name -eq 'advanced').elements
-  if (@($elements | Where-Object name -eq 'enableCustomerDependencies').defaultValue -ne $false -or
-      @($elements | Where-Object name -eq 'slotAppServicePlanSku').defaultValue -ne 'S2') { throw 'Portal customer feature defaults do not match deployment defaults.' }
-  foreach ($parameter in @('enableCustomerDependencies','slotAppServicePlanSku','sqlEntraAdminObjectId','sqlEntraAdminName','sqlEntraAdminType')) {
+  if (@($elements | Where-Object name -eq 'enableCustomerDependencies').defaultValue -ne $false) { throw 'Portal customer feature must default off.' }
+  $template = Get-Content (Join-Path $repo 'infra\main.json') -Raw | ConvertFrom-Json
+  foreach ($entry in @{ slotAppServicePlanSku = 'S2'; sqlEntraAdminType = 'Group' }.GetEnumerator()) {
+    if (@($ui.parameters.basics + $ui.parameters.steps.elements | Where-Object name -eq $entry.Key).Count -ne 0 -or
+        $ui.parameters.outputs.PSObject.Properties[$entry.Key] -or
+        $template.parameters.($entry.Key).defaultValue -cne $entry.Value) {
+      throw "Portal must inherit '$($entry.Key)' = '$($entry.Value)' from the template without a control or output override."
+    }
+  }
+  foreach ($parameter in @('enableCustomerDependencies','sqlEntraAdminObjectId','sqlEntraAdminName')) {
     if (-not $ui.parameters.outputs.$parameter) { throw "Portal is missing output $parameter." }
   }
-  Write-Output 'PASS: customer feature default-off, Boolean validation, Stage B/slot prerequisites, Entra admin parameters, S2 preservation and Terraform disabled compatibility.'
+  $sqlCondition = "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]"
+  foreach ($parameter in @('sqlEntraAdminObjectId','sqlEntraAdminName')) {
+    $field = @($elements | Where-Object name -eq $parameter)
+    if ($field.Count -ne 1 -or $field[0].visible -cne $sqlCondition -or $field[0].constraints.required -cne $sqlCondition) {
+      throw "Portal SQL administrator field '$parameter' must be visible and required only when both customer options are enabled."
+    }
+  }
+  $sqlInfo = @($elements | Where-Object name -eq 'sqlEntraAdminInfo')
+  if ($sqlInfo.Count -ne 1 -or $sqlInfo[0].visible -cne $sqlCondition -or
+      $ui.parameters.outputs.enableCustomerDependencies -cne $sqlCondition) {
+    throw 'Portal SQL guidance and deployment must follow the same effective customer-dependency selection.'
+  }
+  Write-Output 'PASS: customer feature default-off, prerequisites, automatic S2/Group settings, conditional SQL group inputs, legacy overrides and Terraform disabled compatibility.'
 } finally {
   Remove-Item -LiteralPath $fixture -Recurse -Force
 }

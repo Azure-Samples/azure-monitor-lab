@@ -9,6 +9,7 @@
   When public SQL access is disabled, UseCustomerPrivateTunnel uses an existing
   authenticated Azure CLI customer App Service SSH tunnel on SshPort. Requires
   .NET 8 SDK and Python paramiko, not Invoke-Sqlcmd. Tokens use encrypted stdin.
+  CheckOnly verifies login with SELECT 1 without changing schema, data or users.
 #>
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
@@ -20,6 +21,7 @@ param(
   [switch] $ApproveTemporaryFirewall,
   [string] $OperatorIpv4,
   [switch] $UseCustomerPrivateTunnel,
+  [switch] $CheckOnly,
   [ValidateRange(1, 65535)][int] $SshPort = 22446
 )
 $ErrorActionPreference = 'Stop'
@@ -47,8 +49,9 @@ if ($ApproveTemporaryFirewall) {
     throw 'Temporary firewall approval requires one explicit routable OperatorIpv4 address; blanket Azure-services rules are prohibited.'
   }
 } elseif ($OperatorIpv4) { throw 'OperatorIpv4 requires -ApproveTemporaryFirewall.' }
-$query = Get-CustomerSqlBootstrap -CustomerClientId $context.customerIdentityClientId -WorkerClientId $context.workerIdentityClientId
-if (-not $PSCmdlet.ShouldProcess($context.sqlDatabaseId, 'Bootstrap schema/users with SQL Entra administrator token; optionally add one temporary operator firewall rule')) { return }
+$query = if ($CheckOnly) { 'SELECT 1;' } else { Get-CustomerSqlBootstrap -CustomerClientId $context.customerIdentityClientId -WorkerClientId $context.workerIdentityClientId }
+$operation = if ($CheckOnly) { 'Check SQL login with SELECT 1; optionally add one temporary operator firewall rule' } else { 'Bootstrap schema/users with SQL Entra administrator token; optionally add one temporary operator firewall rule' }
+if (-not $PSCmdlet.ShouldProcess($context.sqlDatabaseId, $operation)) { return }
 $firewallName = 'customer-bootstrap-' + [guid]::NewGuid().ToString('N')
 $firewallCreated = $false
 $accessToken = $null
@@ -64,8 +67,10 @@ try {
       --configuration Release --output $publish --nologo --verbosity quiet
     if ($LASTEXITCODE -ne 0) { throw 'Private SQL bootstrap tool publication failed.' }
     $privatePayload = @{ AccessToken = $accessToken; Query = $query; SqlServerName = $context.sqlServerName } | ConvertTo-Json -Compress
-    $privatePayload | python (Join-Path $PSScriptRoot 'customer-sql-bootstrap\bootstrap-over-ssh.py') --publish $publish --port $SshPort
-    if ($LASTEXITCODE -ne 0) { throw 'Private SQL bootstrap failed. Verify the authenticated customer App Service tunnel and private DNS/network connectivity.' }
+    $privateArguments = @((Join-Path $PSScriptRoot 'customer-sql-bootstrap\bootstrap-over-ssh.py'), '--publish', $publish, '--port', $SshPort)
+    if ($CheckOnly) { $privateArguments += '--check-only' }
+    $privatePayload | python @privateArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Private SQL operation failed. See the SQL login, initialization or verification error above; check private connectivity and the configured SQL Entra administrator.' }
     return
   }
   if ($ApproveTemporaryFirewall) {
@@ -76,7 +81,11 @@ try {
   }
   $connection = "Server=tcp:$($context.sqlServerName).database.windows.net,1433;Database=$($context.sqlDatabaseName);Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
   Invoke-Sqlcmd -ConnectionString $connection -AccessToken $accessToken -Query $query -QueryTimeout 60 -AbortOnError | Out-Null
-  Write-Host 'Customer SQL schema, seed products and object-scoped users are ready. No Graph directory grant was required.'
+  if ($CheckOnly) {
+    Write-Host 'Customer SQL connection check passed. No schema or data was changed.'
+  } else {
+    Write-Host 'Customer SQL schema, seed products and object-scoped users are ready. No Graph directory grant was required.'
+  }
 } finally {
   $accessToken = $null
   $privatePayload = $null

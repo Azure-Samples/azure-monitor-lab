@@ -105,7 +105,8 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 # Fall back to lab.config.json for RG + prefix when not passed explicitly.
 $labConfigPath = Join-Path $repoRoot 'lab.config.json'
 if (Test-Path $labConfigPath) {
-  $labCfg = Get-Content -Raw $labConfigPath | ConvertFrom-Json
+  . (Join-Path $PSScriptRoot 'lab-config.ps1')
+  $labCfg = Read-LabConfig -Path $labConfigPath
   if ([string]::IsNullOrWhiteSpace($ResourceGroup) -and -not [string]::IsNullOrWhiteSpace($labCfg.resourceGroup)) {
     $ResourceGroup = $labCfg.resourceGroup
     Write-Host "   Using resourceGroup '$ResourceGroup' from lab.config.json (pass -g to override)" -ForegroundColor DarkGray

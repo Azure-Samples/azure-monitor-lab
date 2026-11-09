@@ -105,6 +105,16 @@ try {
   if (-not $config.LabConsole.Health.CentralWorkspaceResourceId) { throw 'The lab central health workspace was not found.' }
   $tagInventory = @(az resource list --subscription $SubscriptionId --resource-group $ResourceGroup --output json --only-show-errors | ConvertFrom-Json)
   if ($LASTEXITCODE -ne 0) { throw 'Runner tag discovery failed. No runner deployment was submitted.' }
+  $fabricCapacities = @($tagInventory | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' })
+  if ($fabricCapacities.Count -gt 1) { throw 'Multiple Fabric capacities found. No runner capacity access was granted.' }
+  $fabricCapacityName = ''
+  if ($fabricCapacities.Count -eq 1) {
+    $capacity = $fabricCapacities[0]
+    if ($capacity.id -ine "$resourceBase/providers/Microsoft.Fabric/capacities/$($capacity.name)" -or $capacity.sku.name -ne 'F2') {
+      throw 'The Fabric resume target must be an F2 capacity in the selected lab. No runner capacity access was granted.'
+    }
+    $fabricCapacityName = $capacity.name
+  }
   $existingResourceTags = @{}
   foreach ($resource in @($tagInventory | Where-Object { $_.type -in @('Microsoft.ContainerRegistry/registries', 'Microsoft.App/managedEnvironments', 'Microsoft.ManagedIdentity/userAssignedIdentities', 'Microsoft.App/jobs') })) {
     if (-not $resource.id.StartsWith("$resourceBase/providers/", [StringComparison]::OrdinalIgnoreCase)) { throw 'Runner tag discovery returned a resource outside the lab.' }
@@ -136,6 +146,7 @@ try {
   $tagParameters.parameters.enableSlotFailureScenario = @{ value = $slotScenarioEnabled }
   $tagParameters.parameters.customerWebAppName = @{ value = $CustomerWebAppName }
   $tagParameters.parameters.customerWorkerName = @{ value = $customerWorkerName }
+  $tagParameters.parameters.fabricCapacityName = @{ value = $fabricCapacityName }
   $tagParameters | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $platformParametersPath -Encoding utf8
   $platform = Invoke-ConsoleDeployment 'lab-console-platform' (Join-Path $root 'infra/modules/lab-console-platform.json') @(
     "webAppName=$WebAppName", "customerWebAppName=$CustomerWebAppName", "centralLawId=$($config.LabConsole.Health.CentralWorkspaceResourceId)", "location=$($web.location)", "@$platformParametersPath"

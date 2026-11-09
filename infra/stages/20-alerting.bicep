@@ -26,7 +26,7 @@ param vmAdminUsername string = 'azureuser'
 param vmAdminPassword string
 
 @description('Predictive-autoscale VMSS instance size.')
-param vmssSize string = 'Standard_B1s'
+param vmssSize string = 'Standard_EC2as_v5'
 
 @description('Deploy the Windows demo VM.')
 param deployWindowsVm bool = true

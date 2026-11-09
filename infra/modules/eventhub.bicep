@@ -50,6 +50,16 @@ resource sendRule 'Microsoft.EventHub/namespaces/authorizationRules@2024-01-01' 
   }
 }
 
+// Least-privilege consumer rule used by the optional Fabric Eventstream source.
+// The connection key is entered interactively in Fabric and is never output by IaC.
+resource listenRule 'Microsoft.EventHub/namespaces/authorizationRules@2024-01-01' = {
+  parent: ns
+  name: 'diagnostics-listen'
+  properties: {
+    rights: [ 'Listen' ]
+  }
+}
+
 // Diag settings on the namespace itself (operational telemetry to LAW).
 resource diagNs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: ns
@@ -69,3 +79,4 @@ output namespaceId string   = ns.id
 output namespaceName string = ns.name
 output hubName string       = hub.name
 output sendRuleId string    = sendRule.id
+output listenRuleName string = listenRule.name

@@ -13,5 +13,6 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <ProjectReference Include="../webapp/AmlabHello.csproj" />
     <ProjectReference Include="../customer-processor/CustomerProcessor.csproj" />
+    <ProjectReference Include="../../scripts/customer-sql-bootstrap/CustomerSqlBootstrap.csproj" />
   </ItemGroup>
 </Project>

@@ -15,6 +15,8 @@
        in the region.
     4. When requested, the Observability Agent location is supported and the
        subscription has not reached the five-agent preview limit.
+    5. AKS system nodes are non-B-series, have at least 4 vCPUs and 4 GiB RAM,
+       and the system pool contains at least two nodes.
 
   Prints a PASS / WARN / FAIL table and returns a non-zero exit code (and throws when
   invoked from deploy.ps1) if any hard blocker is found, so you fail in ~15 seconds
@@ -24,16 +26,16 @@
   Target region (e.g. swedencentral). Required.
 
 .PARAMETER VmSize
-  SKU for the Linux + Windows demo VMs. Defaults to the Bicep default (Standard_B2s).
+  SKU for the Linux + Windows demo VMs. Defaults to the Bicep default (Standard_EC2as_v5).
 
 .PARAMETER AksNodeVmSize
-  SKU for the AKS node pool. Defaults to the Bicep default (Standard_B2s).
+  SKU for the AKS node pool. Defaults to the Bicep default (Standard_EC4as_v5).
 
 .PARAMETER AksNodeCount
-  AKS node count. Defaults to 1 (Bicep default).
+  AKS node count. Defaults to 2 (Bicep default).
 
 .PARAMETER VmssSize
-  SKU for the predictive-autoscale VMSS. Defaults to the Bicep default (Standard_B1s).
+  SKU for the predictive-autoscale VMSS. Defaults to the Bicep default (Standard_EC2as_v5).
 
 .PARAMETER DeployLinuxVm
   Whether the Linux VM is part of the deployment. Default true.
@@ -65,10 +67,10 @@
 param(
   [Parameter(Mandatory)]
   [string] $Location,
-  [string] $VmSize          = 'Standard_B2s',
-  [string] $AksNodeVmSize   = 'Standard_B2s',
-  [int]    $AksNodeCount    = 1,
-  [string] $VmssSize        = 'Standard_B1s',
+  [string] $VmSize          = 'Standard_EC2as_v5',
+  [string] $AksNodeVmSize   = 'Standard_EC4as_v5',
+  [int]    $AksNodeCount    = 2,
+  [string] $VmssSize        = 'Standard_EC2as_v5',
   [bool]   $DeployLinuxVm   = $true,
   [bool]   $DeployWindowsVm = $true,
   [bool]   $DeployObservabilityAgent = $false,
@@ -161,10 +163,28 @@ Add-VmDemand $VmssSize 1   # predictive-autoscale VMSS, always 1 instance
 # 1. VM SKU availability + subscription restrictions (single list-skus call).
 # ---------------------------------------------------------------------------
 Write-Step "Checking VM SKU availability + restrictions"
-$skusJson = az vm list-skus --location $Location --resource-type virtualMachines --all -o json 2>$null
-$skus = if ($skusJson) { $skusJson | ConvertFrom-Json } else { @() }
+$skusJson = @(az vm list-skus --subscription $sub.id --location $Location --resource-type virtualMachines --all -o json)
+if ($LASTEXITCODE -ne 0 -or -not $skusJson) {
+  throw "Could not query VM SKUs for subscription '$($sub.id)' in '$Location'. Check Azure CLI sign-in and read permissions; this is not evidence that a SKU is unavailable. Azure details: $($skusJson -join ' ')"
+}
+$skus = ($skusJson -join "`n") | ConvertFrom-Json
 $skuBySize = @{}
 foreach ($s in $skus) { $skuBySize[$s.name] = $s }
+$computeGuidanceNeeded = $false
+
+$aksSku = $skuBySize[$AksNodeVmSize]
+if ($aksSku) {
+  $aksCpu = [int](($aksSku.capabilities | Where-Object name -eq 'vCPUs' | Select-Object -First 1).value)
+  $aksMemory = [double](($aksSku.capabilities | Where-Object name -eq 'MemoryGB' | Select-Object -First 1).value)
+  if ($AksNodeVmSize -match '^Standard_B' -or $aksCpu -lt 4 -or $aksMemory -lt 4) {
+    Add-Result 'AKS system node size' "aksNodeVmSize='$AksNodeVmSize' does not meet system-pool requirements: non-B-series, at least 4 vCPUs and 4 GiB RAM. Generic VM availability is not AKS compatibility." 'FAIL'
+    $computeGuidanceNeeded = $true
+  }
+}
+if ($AksNodeCount -lt 2) {
+  Add-Result 'AKS system node count' "aksNodeCount=$AksNodeCount; configure at least two system nodes. See https://learn.microsoft.com/azure/aks/use-system-pools" 'FAIL'
+  $computeGuidanceNeeded = $true
+}
 
 # size -> family, and per-family required vCPU totals (for the quota check below).
 $familyRequired = @{}   # familyValue -> required vCPUs
@@ -175,6 +195,7 @@ foreach ($size in $vmDemand.Keys) {
   $sku = $skuBySize[$size]
   if ($null -eq $sku) {
     Add-Result "VM SKU $size" "not offered in $Location (x$count needed)" 'FAIL'
+    $computeGuidanceNeeded = $true
     continue
   }
 
@@ -193,6 +214,7 @@ foreach ($size in $vmDemand.Keys) {
   if ($locRestricted) {
     $reason = (@($sku.restrictions) | Where-Object { $_.type -eq 'Location' } | Select-Object -First 1).reasonCode
     Add-Result "VM SKU $size" "restricted in $Location for this subscription ($reason). Request access or pick another size/region." 'FAIL'
+    $computeGuidanceNeeded = $true
     continue
   }
 
@@ -214,8 +236,11 @@ foreach ($size in $vmDemand.Keys) {
 # 2. Per-family + total regional vCPU quota headroom.
 # ---------------------------------------------------------------------------
 Write-Step "Checking vCPU quota headroom"
-$usageJson = az vm list-usage --location $Location -o json 2>$null
-$usage = if ($usageJson) { $usageJson | ConvertFrom-Json } else { @() }
+$usageJson = @(az vm list-usage --subscription $sub.id --location $Location -o json)
+if ($LASTEXITCODE -ne 0 -or -not $usageJson) {
+  throw "Could not query vCPU quota for subscription '$($sub.id)' in '$Location'. Check Azure CLI sign-in and read permissions. Azure details: $($usageJson -join ' ')"
+}
+$usage = ($usageJson -join "`n") | ConvertFrom-Json
 $usageByName = @{}
 foreach ($u in $usage) { $usageByName[$u.name.value] = $u }
 
@@ -223,12 +248,16 @@ foreach ($family in $familyRequired.Keys) {
   $need = $familyRequired[$family]
   $u = $usageByName[$family]
   if ($null -eq $u) {
-    Add-Result "Quota $family" "need $need vCPU — usage/limit not reported (assuming default). Verify manually if deploy fails." 'WARN'
+    Add-Result "Quota $family" "need $need vCPU - usage/limit not reported. Verify in Azure Portal > Quotas before deploying." 'WARN'
+    $computeGuidanceNeeded = $true
     continue
   }
   $available = [int]$u.limit - [int]$u.currentValue
   $detail = "need $need vCPU, have $available free (limit $($u.limit), used $($u.currentValue))"
-  if ($need -gt $available) { Add-Result "Quota $family" "$detail — INSUFFICIENT, request an increase" 'FAIL' }
+  if ($need -gt $available) {
+    Add-Result "Quota $family" "$detail - INSUFFICIENT, request an increase" 'FAIL'
+    $computeGuidanceNeeded = $true
+  }
   else { Add-Result "Quota $family" $detail 'PASS' }
 }
 
@@ -237,8 +266,56 @@ $coresUsage = $usageByName['cores']
 if ($coresUsage) {
   $availCores = [int]$coresUsage.limit - [int]$coresUsage.currentValue
   $detail = "need $totalRequiredCores vCPU, have $availCores free (limit $($coresUsage.limit), used $($coresUsage.currentValue))"
-  if ($totalRequiredCores -gt $availCores) { Add-Result 'Quota Total Regional Cores' "$detail — INSUFFICIENT" 'FAIL' }
+  if ($totalRequiredCores -gt $availCores) {
+    Add-Result 'Quota Total Regional Cores' "$detail - INSUFFICIENT" 'FAIL'
+    $computeGuidanceNeeded = $true
+  }
   else { Add-Result 'Quota Total Regional Cores' $detail 'PASS' }
+} else {
+  Add-Result 'Quota Total Regional Cores' 'Regional usage/limit not reported. Verify in Azure Portal > Quotas before deploying.' 'WARN'
+  $computeGuidanceNeeded = $true
+}
+
+if ($computeGuidanceNeeded) {
+  Write-Step 'Resolving compute SKU and quota blockers'
+  Write-Host "   Checked subscription: $($sub.name) ($($sub.id)); region: $Location"
+  Write-Host '   Edit lab.config.json, not lab.config.json.example or the generated parameter files.'
+  Write-Host '   Standalone preflight does not read lab.config.json; pass your sizes explicitly or rerun deploy.ps1 to sync and check them.'
+  Write-Host '   Insufficient quota: Azure Portal > Quotas > Compute > select subscription/region > Request increase.'
+  Write-Host '   Request a new TOTAL limit covering existing usage plus lab demand, for both the VM family and Total Regional vCPUs.'
+  Write-Host '   NotAvailableForSubscription: SKU eligibility is separate from quota. More quota may not remove the restriction.'
+  Write-Host '   Choose an eligible size/region first; if needed, request SKU access through Azure Help + support.'
+  $targets = @(
+    @{ Key = 'vmSize'; Size = $VmSize; Count = ([int]$DeployLinuxVm + [int]$DeployWindowsVm); Purpose = 'standalone Linux/Windows VMs'; Candidates = @('Standard_B2als_v2', 'Standard_B2as_v2', 'Standard_D2as_v5', 'Standard_D2s_v5', 'Standard_EC2as_v5') }
+    @{ Key = 'aksNodeVmSize'; Size = $AksNodeVmSize; Count = $AksNodeCount; Purpose = 'AKS system nodes'; Candidates = @('Standard_D4as_v5', 'Standard_D4s_v5', 'Standard_F4s_v2', 'Standard_EC4as_v5') }
+    @{ Key = 'vmssSize'; Size = $VmssSize; Count = 1; Purpose = 'VM scale set'; Candidates = @('Standard_B2als_v2', 'Standard_B2as_v2', 'Standard_D2as_v5', 'Standard_D2s_v5', 'Standard_EC2as_v5') }
+  )
+  foreach ($target in $targets) {
+    if ($target.Count -le 0) { continue }
+    Write-Host "   $($target.Key)='$($target.Size)' controls $($target.Purpose). Candidate shortlist:"
+    $candidateCount = 0
+    foreach ($candidateName in $target.Candidates) {
+      $candidate = $skuBySize[$candidateName]
+      if (-not $candidate -or @($candidate.restrictions | Where-Object type -eq 'Location').Count) { continue }
+      $cpu = [int](($candidate.capabilities | Where-Object name -eq 'vCPUs' | Select-Object -First 1).value)
+      $memory = [double](($candidate.capabilities | Where-Object name -eq 'MemoryGB' | Select-Object -First 1).value)
+      if ($cpu -le 0 -or $memory -le 0) { continue }
+      if ($target.Key -eq 'aksNodeVmSize' -and ($cpu -lt 4 -or $memory -lt 4)) { continue }
+      $quota = $usageByName[$candidate.family]
+      if (-not $quota -or -not $coresUsage) { continue }
+      $free = [int]$quota.limit - [int]$quota.currentValue
+      $need = $cpu * $target.Count
+      if ($free -lt $need -or $availCores -lt $need) { continue }
+      $zoneNote = if (@($candidate.restrictions | Where-Object type -eq 'Zone').Count) { '; zone-restricted, non-zonal only' } else { '' }
+      Write-Host "     $candidateName : $cpu vCPUs, $memory GiB RAM; family '$($candidate.family)' has $free free vCPUs$zoneNote"
+      $candidateCount++
+    }
+    if (-not $candidateCount) { Write-Host '     No shortlist candidate has verified eligibility and headroom for this setting; check other sizes/regions or request access/quota.' }
+  }
+  Write-Host '   Candidates are not price-ranked or full compatibility guarantees. ECasv5 is confidential compute and may cost more.'
+  Write-Host '   Headroom above is per setting, not a combined reservation. VMSS checks cover its initial instance, not autoscale maximum.'
+  Write-Host '   Recheck combined demand after edits; AKS-specific acceptance and live capacity still require deployment validation.'
+  Write-Host '   Nothing was changed automatically. Keep preflight enabled; -WarnOnly reports blockers without making deployment safe.'
 }
 
 # ---------------------------------------------------------------------------

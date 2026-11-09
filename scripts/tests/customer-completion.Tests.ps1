@@ -155,15 +155,32 @@ if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
   Reset-Fixture
   $fixture.Enabled = ''
   Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer } 'explicitly be true or false'
+  foreach ($reply in @('no', '', '   ', 'y', 'yes please', 'yes no', $null)) {
+    Reset-Fixture
+    $fixture.Reply = $reply
+    Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer -ApproveCustomerDependencies:$false } 'not approved'
+    Assert-True ($fixture.Prompts -eq 1 -and $fixture.Events.Count -eq 0) 'Only an explicit yes may approve a tunnel, SQL or publication; blank and declined replies must stop.'
+  }
+
+  foreach ($reply in @(' yes', 'yes ', '  YeS  ', 'YES', "`tyes`t")) {
+    Reset-Fixture
+    $fixture.Reply = $reply
+    & $complete @common -CustomerWebAppName app-test-customer -ApproveCustomerDependencies:$false
+    Assert-True ($fixture.Prompts -eq 1) 'Whitespace and case normalization must not bypass the approval prompt.'
+    Assert-True (($fixture.Events -join ',') -eq 'tunnel-start,bootstrap,tunnel-stop,tunnel-remove,publish,upload,functions,products,functions') 'An explicit yes with surrounding whitespace must complete the same approved lifecycle.'
+    Assert-True (-not (Test-Path (Join-Path $root '.artifacts\customer-processor-*'))) 'Whitespace-normalized approval must retain publication cleanup.'
+  }
+
   Reset-Fixture
   $fixture.Reply = 'no'
-  Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer } 'not approved'
-  Assert-True ($fixture.Prompts -eq 1 -and $fixture.Events.Count -eq 0) 'Declined approval must stop before any tunnel, token, SQL or publication.'
+  & $complete @common -CustomerWebAppName app-test-customer
+  Assert-True ($fixture.Prompts -eq 0 -and $fixture.Events.Contains('bootstrap') -and
+    $fixture.Events.Contains('upload') -and $fixture.Events.Contains('products')) 'Default enabled completion must initialize SQL, publish and verify readiness without an extra prompt.'
 
   foreach ($approved in @($false, $true)) {
     Reset-Fixture
     & $complete @common -CustomerWebAppName app-test-customer -ApproveCustomerDependencies:$approved
-    Assert-True ($fixture.Prompts -eq [int](-not $approved)) 'Only explicitly preapproved completion may skip the prompt.'
+    Assert-True ($fixture.Prompts -eq [int](-not $approved)) 'Explicit false must retain the prompt; true must skip it.'
     Assert-True (($fixture.Events -join ',') -eq 'tunnel-start,bootstrap,tunnel-stop,tunnel-remove,publish,upload,functions,products,functions') 'SQL-first publication, early tunnel cleanup and readiness ordering changed.'
     Assert-True (-not (Test-Path (Join-Path $root '.artifacts\customer-processor-*'))) 'Successful completion must remove its own publication files.'
   }

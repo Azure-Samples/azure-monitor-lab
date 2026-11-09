@@ -3,6 +3,7 @@ $root = Join-Path ([IO.Path]::GetTempPath()) "observability-agent-config-test-$(
 $null = New-Item -ItemType Directory -Path (Join-Path $root 'scripts'), (Join-Path $root 'infra'), (Join-Path $root 'terraform') -Force
 $helper = Join-Path $root 'scripts/sync-config.ps1'
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../sync-config.ps1') -Destination $helper
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\lab-config.ps1') -Destination (Join-Path $root 'scripts')
 $configPath = Join-Path $root 'lab.config.json'
 $config = @{
   subscriptionId = [guid]::NewGuid().ToString(); tenantId = [guid]::NewGuid().ToString()

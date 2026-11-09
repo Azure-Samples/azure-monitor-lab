@@ -8,7 +8,7 @@ The Web App prepares approvals and reads execution status. It does not execute P
 
 | Action | Script | Scope and effect |
 |---|---|---|
-| Start Lab | [start-the-lab.ps1](../../scripts/start-the-lab.ps1) | Starts stopped VMs, VMSS instances, AKS, and web apps. Waits up to 20 minutes for startup. Running resources incur charges. |
+| Start Lab | [start-the-lab.ps1](../../scripts/start-the-lab.ps1) | Starts stopped VMs, VMSS instances, AKS, and web apps; resumes the optional Fabric F2 capacity. Waits up to 20 minutes for startup. Running resources and active F2 incur charges. |
 | Stop Lab | [stop-the-lab.ps1](../../scripts/stop-the-lab.ps1) | Deallocates VMs and VMSS instances, stops AKS, then stops the Web App hosting the Control Center. This reduces compute usage but does not stop fixed services, disks/IPs, retained data, telemetry, or optional-agent charges. |
 | Break Lab | [break-the-lab.ps1](../../scripts/break-the-lab.ps1) | Deallocates VMs, replaces the AKS demo frontend image, changes the load-generator error rate, starts a short load job, and adds an incident annotation. |
 | Restore Lab | [restore-the-lab.ps1](../../scripts/restore-the-lab.ps1) | Starts VMs and restores the known demo frontend/load-generator configuration. Adds a release annotation. This is not a rollback of arbitrary changes. |
@@ -20,6 +20,14 @@ The Web App prepares approvals and reads execution status. It does not execute P
 | Add Release Marker | [send-release-annotation.ps1](../../scripts/send-release-annotation.ps1) | Adds a marker with a 1-80 character name and Deployment or Incident category. |
 
 No arbitrary commands, script paths, deployment, teardown, permission setup, or AI execution are exposed. Existing SRE MCP approvals and health permissions are unchanged.
+
+### Fabric startup permissions
+
+The runner's resource-group Reader role can discover F2 but cannot resume it. The separate [Fabric access template](../../infra/modules/lab-console-fabric-access.bicep) grants only capacity read/resume, with its assignment scoped to the exact capacity. One-shot deployment and console bootstrap configure this when Fabric is present; bootstrap rejects ambiguous, non-F2, or out-of-group targets.
+
+For an existing lab with the current runner image but missing resume access, deploy just that template using the lab's subscription/resource group, existing `capacityName`, and runner managed identity `principalId`. This does not rebuild the image, change the Web App, or resume capacity. After inspecting any partial startup, approve a new **Start Lab** operation to verify recovery. If adding Fabric after console setup, rerun console bootstrap (or the normal console upgrade) to discover and grant the new capacity access.
+
+Updating the branch alone does not repair an existing Azure role assignment or update the deployed button description. Apply the capacity access template (or rerun console bootstrap) for permissions, and republish the Web App for the updated description. The description comes from the server-side operation catalog, not the browser bundle.
 
 ### Release marker target
 

@@ -2,12 +2,12 @@
   <img src="docs/azure-monitor-lab-logo.svg" alt="Azure Monitor Lab" width="680">
 </h1>
 
-A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability Agent, and Azure SRE Agent, with optional Microsoft Sentinel scenarios. Everything runs from a single config file that stays out of git, so you can stand the whole thing up in your own subscription and tear it back down when you're finished.
+A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability Agent, and Azure SRE Agent, with optional Microsoft Sentinel and Microsoft Fabric Real-Time Intelligence scenarios. Everything runs from a single config file that stays out of git, so you can stand the whole thing up in your own subscription and tear it back down when you're finished.
 
-- One resource group: the whole lab lands in `rg-azure-monitor-lab`.
+- One primary resource group: Azure resources land in `rg-azure-monitor-lab`; AKS has a managed resource group, and Fabric workspace items and Entra registrations are tenant-scoped.
 - Two ways to deploy it: Bicep or Terraform.
-- Three ways to run it: a single-click [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) button for the Azure portal, a scripted one-shot deployment using PowerShell, or a 5-stage workshop you can walk through piece by piece.
-- 69 demo scenarios that cover Azure Monitor, agentic-application observability, GitHub Copilot CLI, and Azure SRE Agent from end to end.
+- Three ways to deploy it: a [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) portal wizard, a scripted one-shot deployment using PowerShell, or a five-stage core workshop with optional AI, SRE Agent, Observability Agent, and Fabric extensions.
+- **80 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
 
 It's built for demos, microhacks, and hackathons. Deploy it, poke around, break it, restore it, and tear it down.
 
@@ -21,70 +21,94 @@ It's built for demos, microhacks, and hackathons. Deploy it, poke around, break 
 
 The guided scenarios and the Control Center are complementary entry points into the same lab. The Control Center links to the guided scenarios; it does not replace their setup or walkthroughs. The health model tutorial is a standalone course with its own small workload.
 
+### Scenario coverage
+
+Explore the [guided scenarios](docs/DEMO-SCENARIOS.md) for walkthroughs, queries, and expected results. Optional scenarios require their corresponding stages, permissions, and preparation.
+
 ## Architecture
 
-Everything lands in a single resource group (`rg-azure-monitor-lab`), with telemetry flowing from left to right:
+The lab combines application, infrastructure, and AI workloads with Azure Monitor to demonstrate end-to-end observability, alerting, troubleshooting, and agent-assisted operations. See the [resource inventory](docs/REFERENCE.md#what-gets-deployed) for deployed components.
 
-1. Workloads emit signals.
-2. Agents and policies collect them.
-3. The telemetry backplane stores them.
-4. The consumption layer turns them into dashboards, alerts, and responses.
-
-The GenAI workload, Azure Copilot Observability Agent, and Azure SRE Agent can also be deployed on the same telemetry backbone. Observability Agent receives Application Insights and alert context and stores correlated issues in its dedicated Azure Monitor workspace.
-
-> 📦 For a full, resource-by-resource list of what gets created, see [REFERENCE.md → What gets deployed](docs/REFERENCE.md#what-gets-deployed).
-
-[![Azure Monitor Lab architecture: workloads, collection, telemetry, and response, including OpenTelemetry VM metrics and Azure Copilot Observability Agent](docs/architecture-overview-sre.svg)](docs/architecture.drawio)
+[![Azure Monitor Lab architecture: operational telemetry and response, customer application, and optional Event Hubs to Fabric Real-Time Intelligence analytics](docs/architecture-overview-sre.svg)](docs/architecture.drawio)
 
 ## Prerequisites
 
+- An active Azure subscription
+- Azure permissions to deploy resources and create custom roles and role assignments, plus Microsoft Entra permissions to manage the application and service principal used for Control Center sign-in and validate operator users. See [console deployment prerequisites](workloads/webapp/LAB-OPERATIONS.md#prerequisites) for details; Azure ownership does not override tenant restrictions on application registration.
 - Azure CLI (`az`) 2.60 or later, logged in with `az login`
 - `kubectl` (any recent version)
 - Bicep CLI (bundled with `az` 2.20+), or Terraform 1.6+ if you take the Terraform path
 - PowerShell 7+
 - .NET 8 SDK for publishing the Control Center
-- Azure and Microsoft Entra permissions to deploy the lab and configure Control Center access. See [console deployment prerequisites](workloads/webapp/LAB-OPERATIONS.md#prerequisites) for the required roles.
 - Optional AI stage: [Python 3.10+](https://www.python.org/downloads/)
 - Optional SRE Agent stage: [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) and [tar](https://www.gnu.org/software/tar/)
 
 ## Deploy
 
-> Recommended region: `northeurope` (the default), which has the widest feature availability. The Health Model and optional GenAI / AI stage (Microsoft Foundry and its models) go to `swedencentral`. App Service and its co-located diagnostic Storage and Event Hub dependencies use configurable `appServiceLocation` (default `westeurope`) so subscriptions closed to new customers in that region can select another supported region.
-
 ### Option 1: Deploy to Azure (portal, no local setup)
+
+<details>
+<summary><b>Check for Network Watcher in your subscription and region - if missing, prepare it here</b></summary>
+
+In the Azure portal, check that `NetworkWatcher_<region>` exists in `NetworkWatcherRG` for your target subscription and is ready. If it is, skip preparation. If missing, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and run the commands below. Use the same subscription and region in the portal wizard:
+
+```powershell
+git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
+cd azure-monitor-lab
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+$tenantId = Read-Host 'Tenant ID'
+$subscriptionId = Read-Host 'Subscription ID'
+$resourceGroup = Read-Host 'Resource group name'
+$location = Read-Host 'Azure region (for example northeurope)'
+$namePrefix = Read-Host 'Name prefix (press Enter for amlab)'
+if ([string]::IsNullOrWhiteSpace($namePrefix)) { $namePrefix = 'amlab' }
+az login --tenant $tenantId --use-device-code --output none
+az account set --subscription $subscriptionId
+. ./scripts/network-watcher.ps1
+Ensure-LabNetworkWatcher -SubscriptionId $subscriptionId -TenantId $tenantId -Location $location -Confirm
+```
+
+Existing shared resources are preserved; only a missing group/watcher is created.
+
+</details>
+
+Once Network Watcher is ready, open the wizard:
 
 <div align="center">
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2FcreateUiDefinition.json)
 
 </div>
 
-Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Sensible defaults are pre-filled throughout; the only things you have to supply are an alert email and a VM admin password.
+Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Shared settings match the config example, including App Service in `francecentral` and Observability Agent in `uksouth`. Select your subscription, resource group and main region in Basics, and supply your own alert email and VM admin password; sample identities and credentials are not pre-filled.
 
-This button deploys the stable `main` templates.
+This button deploys the `integration` templates and portal UI, which may contain changes not yet released to stable `main`. The Cloud Shell commands above use the same branch.
 
 | Tab | You provide |
 |---|---|
 | **Basics** | Resource group (recommended `rg-azure-monitor-lab`), Region (recommended `northeurope`), name prefix, alert email, VM admin username + password |
 | **Workloads** | Deploy Linux/Windows VMs, VM size, AKS node size + count |
 | **Monitoring & cost** | Daily ingestion cap, Sentinel, platform-logs/metrics-export DCRs, LAW replication |
-| **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, optional AI, SRE Agent, and Observability Agent stages |
+| **Optional stages** | Enable AI (Microsoft Foundry), Fabric (Real-Time Intelligence), SRE Agent, or Observability Agent; all default off, with stage-specific settings shown when enabled |
+| **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, and customer application scenarios |
 
-After the portal deployment succeeds, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in the Azure portal, select **PowerShell**, and run the commands below. The Cloud Shell wrapper discovers the deployed resources, publishes the App Service sample, installs the AKS and Health Model demo components, and prepares the identity and RBAC prerequisites for the SLI demo without requiring optional Azure CLI extensions. It attempts to verify the Managed Prometheus source metrics and continues with a warning if Cloud Shell cannot request that token audience:
+Core stages A-E deploy together. Their individual workload and monitoring features remain configurable; the **Optional stages** tab adds any combination of the four integrations.
+
+The slot scenario automatically uses Standard `S2` with one worker. SQL Entra administrator details appear and are required only when **Advanced > Enable broken deployment-slot recovery scenario** and **Enable real customer SQL, orders queue and processor** are both enabled. The administrator type is automatically `Group`: supply the Entra group's object ID and name; no SQL password is needed. Complete setup as a member of that group. Both customer options default off, as in the config example. Fabric separately requires a capacity-administrator UPN when enabled.
+
+After the portal deployment succeeds, open PowerShell Cloud Shell to complete the post-deployment configuration. If you skipped preparation, first run the expandable section's commands through `az account set` to clone the repository and set your deployment variables; the final Network Watcher commands are not needed.
 
 ```powershell
-git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
-cd azure-monitor-lab
-$tenantId = Read-Host 'Tenant ID'
-$subscriptionId = Read-Host 'Subscription ID'
-$resourceGroup = Read-Host 'Resource group name'
-./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup
+./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
 ```
+
+The wrapper detects deployed optional integrations, including Fabric, and reports any remaining manual actions. If the Cloud Shell session expired, reopen the clone and restore the variables above without repeating deployment.
 
 If you enabled the optional AI stage and want to generate AI telemetry, run this next from the same Cloud Shell session. Skip it when AI is disabled:
 
 ```powershell
-./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix amlab
+./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
 ```
 
 After the wrapper succeeds, deployment is complete. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
@@ -95,36 +119,51 @@ After the wrapper succeeds, deployment is complete. Continue with the [manual sc
 # 1. Clone the repo and enter it
 git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
+git switch integration
 
-# 2. Copy the template and fill in subscriptionId, tenantId, alertEmail, vmAdminPassword, ...
+# 2. Copy the template and fill in basicConfiguration for your subscription
 Copy-Item lab.config.json.example lab.config.json
 notepad lab.config.json
 # Save your changes and close Notepad before continuing.
-# One-shot ignores enableStageA-E; enableStageAI, enableStageSreAgent, and enableSlotFailureScenario remain optional.
+# One-shot ignores enableStageA-E; AI, SRE Agent, Observability Agent, and customer scenarios remain optional.
 
 # 3. Deploy (deploy.ps1 calls sync-config.ps1 for you)
 ./scripts/deploy.ps1
-
-# Or target a custom resource group / region (created if it doesn't exist yet):
-./scripts/deploy.ps1 -ResourceGroup rg-my-lab -Location westeurope
 ```
 
-Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`. Override them with `-ResourceGroup` / `-Location` (explicit args win over `lab.config.json`, then defaults). The group is created or reused. Infrastructure provisioning, native packaging, and the cloud runner build can take tens of minutes. A successful run includes console sign-in, health, the eight-operation Azure runner, and access to selected optional agents. See [deployment reference](docs/REFERENCE.md#deploy) for config and guardrails.
+Fill in `basicConfiguration` in your local `lab.config.json` for a default deployment, including the resource group and regions. `advancedConfiguration` groups compute sizes, monitoring, access, and optional stage toggles. Existing flat configs still work. Defaults are `rg-azure-monitor-lab` and `northeurope`; the group is created or reused. Deployment can take tens of minutes and includes Control Center setup and selected optional agents. See [config layout](docs/REFERENCE.md#config-layout-and-compatibility) and [deployment reference](docs/REFERENCE.md#deploy).
+
+<details>
+<summary><b>VM and AKS node SKU choices</b></summary>
+
+New portal, Bicep, Terraform, and scripted defaults match the [config example](lab.config.json.example): `Standard_EC2as_v5` for VMs and VMSS, and two `Standard_EC4as_v5` AKS system nodes. Existing explicit config values are preserved. These confidential-compute choices are not burstable or guaranteed for every subscription/region. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` under `advancedConfiguration.compute` for availability and quota; VM/VMSS replacements must support the templates' confidential-VM security settings. Pre-flight checks availability, quota, and AKS system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
+
+</details>
 
 <details>
 <summary><b>Pre-flight check</b> (region SKU / quota validation before deploy)</summary>
 
 Before creating anything, `deploy.ps1` runs [`scripts/preflight-check.ps1`](scripts/preflight-check.ps1), which checks in about 15 seconds that every VM SKU, vCPU quota, and PaaS resource type the lab needs is actually available in the region you picked for your subscription. It fails fast with a PASS/WARN/FAIL table instead of blowing up 20 minutes into the deployment. You can run it on its own to vet a region before committing (`./scripts/preflight-check.ps1 -Location westeurope`), or skip it with `./scripts/deploy.ps1 -SkipPreflight`.
 
-The pre-flight checks *availability and quota*, not *live service capacity*. Transient, region-wide shortages like AKS `AksCapacityHeavyUsage` have no pre-check API and only surface at deploy time. If one hits, `deploy.ps1` catches it and points you to the fix: deploy to another region (`-Location northeurope`) or retry (`-MaxDeployRetries 3`), since capacity frees up as other clusters are deleted.
+If compute checks fail, pre-flight names the config keys to edit and lists candidates from a curated shortlist using the subscription's live SKU inventory and quota. Candidates are not automatically selected, price-ranked, or guaranteed to pass service-specific deployment validation. Their headroom is checked per setting; rerun deployment after editing to validate combined demand. The VMSS quota check covers its initial instance, not its autoscale maximum. A standalone pre-flight invocation uses its command-line defaults, not your local config; to check the example sizes explicitly:
+
+```powershell
+.\scripts\preflight-check.ps1 -Location northeurope -VmSize Standard_EC2as_v5 -AksNodeVmSize Standard_EC4as_v5 -AksNodeCount 2 -VmssSize Standard_EC2as_v5
+```
+
+For **insufficient quota**, open Azure Portal > Quotas > Compute, select the checked subscription and region, and request a new total family/regional vCPU limit covering existing usage plus lab demand. For **NotAvailableForSubscription**, more quota may not remove SKU restrictions: use an eligible size or region, or request SKU access through Help + support if needed. Do not copy an EC2as_v5 workaround into AKS: system pools require non-B-series nodes with at least 4 vCPUs and 4 GiB RAM, and at least two nodes ([AKS requirements](https://learn.microsoft.com/azure/aks/use-system-pools)). Keep pre-flight enabled rather than bypassing known blockers.
+
+The pre-flight checks *availability and quota*, not *live service capacity*. Transient, region-wide shortages like AKS `AksCapacityHeavyUsage` have no pre-check API and only surface at deploy time. If one hits, change `location` in your local `lab.config.json` or retry (`-MaxDeployRetries 3`), since capacity frees up as other clusters are deleted.
 
 </details>
+
+**Deployment blocked by region access?** For `RequestDisallowedByAzure` / "The selected region is currently not accepting new customers", change the affected region in your local `lab.config.json` and rerun deployment. `location` controls the main infrastructure; `appServiceLocation` controls web apps, customer dependencies, diagnostic storage, and Event Hubs; `observabilityAgentLocation` controls the optional Observability Agent and its workspace. Region eligibility varies by subscription and service. Changing config does not move existing resources: after a partial deployment, review what was created and use a new resource group when resources cannot be relocated. See [known issues and recovery steps](docs/REFERENCE.md#troubleshooting), including SKU/quota restrictions, stopped AKS, and Fabric update failures.
 
 A successful `deploy.ps1` run completes the selected setup. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
 
 ### Option 3: Staged workshop (progressive deployment)
 
-Use the staged approach when you want to pause between capabilities, walk through the lab with an audience, or deploy only the stages needed for a particular demo. Stages A to E can be toggled in `lab.config.json`. The optional AI and SRE Agent stages can be enabled separately after Stage A. Bicep deploys SRE Agent with `infra/stages/60-sre-agent.bicep`; Terraform deploys the compiled stage when `enable_stage_sre_agent = true`.
+Use the staged approach when you want to pause between capabilities, walk through the lab with an audience, or deploy only the stages needed for a particular demo. Select stages under `advancedConfiguration.stageToggles` in `lab.config.json` (`stageToggles` in legacy flat configs). The optional AI, SRE Agent, Observability Agent, and Fabric stages have separate toggles and prerequisites. Bicep deploys SRE Agent with `infra/stages/60-sre-agent.bicep`; Terraform deploys the compiled stage when `enable_stage_sre_agent = true`.
 
 Step-by-step guides:
 
@@ -148,31 +187,40 @@ az webapp list --subscription $subscriptionId --resource-group $resourceGroup --
 ## Cost and lifecycle
 
 > [!WARNING]
-> **Ballpark:** default Stages A-E lab: **EUR 6-10/day** (EUR 180-300/month). Everything enabled with light Foundry and agent use: **EUR 10-25/day** (EUR 300-750/month), assuming an eligible SRE Agent trial and automatic Observability Agent investigations remain off. These September 2026 public-retail estimates are not quotes; heavier token/AAC use, post-trial SRE Agent charges, region, agreement, telemetry, and traffic can exceed the range. See the [cost guide](docs/COST-GUIDE.md).
+> **Ballpark:** Stages A-E: **EUR 6-10/day**; optional capabilities with light AI and agent use: **EUR 10-25/day**, assuming an eligible SRE Agent trial and automatic Observability Agent investigations remain off. These September 2026 estimates are not quotes or spending caps; region, telemetry, traffic, and usage can increase costs. See the [cost guide](docs/COST-GUIDE.md) for assumptions and service-specific charges.
 
 > [!IMPORTANT]
-> **Control costs:** VMs auto-shutdown at **23:00 CET/CEST**; VM notifications are suppressed until **07:00**. When idle, use **Control Center → Lab Operations → Stop Lab**. Fixed services and retained data still bill. When finished, tear down the lab and verify deletion.
+> **Control costs:** Use **Control Center → Lab Operations → Stop Lab** when idle. VMs also auto-shutdown at **23:00 CET/CEST**. Fixed services and retained data still bill.
 
-When the lab is no longer needed, set `$rg` to the resource group where you deployed the lab, then run the command below. If you used the default configuration, use `rg-azure-monitor-lab`.
+When finished, run teardown for your lab's resource group and verify deletion:
 
 ```powershell
 $rg = "rg-azure-monitor-lab"   # change this to the RG used for your deployment
 ./scripts/teardown.ps1 -ResourceGroup $rg -Yes   # deletes the whole resource group
 ```
 
+Some resources, such as Key Vault and Microsoft Foundry accounts, retain their names during a soft-delete retention period after teardown. Because this lab generates resource names from the resource group ID, redeploying with the same resource group name can be blocked until retention expires or the affected resource is explicitly recovered or purged (where permitted).
+
+`NetworkWatcherRG` is preserved by default. To also delete that **entire shared resource group**, explicitly opt in with `./scripts/teardown.ps1 -ResourceGroup $rg --delete-networkwatcherrg yes`. This can disrupt monitoring for unrelated workloads in the same subscription. `-Yes` only skips confirmation; it does not enable Network Watcher cleanup.
+
+Bicep script deployments recreate a missing regional watcher before deployment. For portal/raw Bicep redeployment after deleting this group, [restore the Network Watcher prerequisite](https://github.com/Azure-Samples/azure-monitor-lab/blob/feature/fabric-stage/scripts/README.md#network-watcher-prerequisites) first.
+
+Verify cleanup of any tenant-scoped items too; deleting the Azure resource group or running `terraform destroy` alone does not remove Fabric workspace items. See [optional Fabric lifecycle and cleanup](docs/STAGE-FABRIC.md#suspend-and-resume).
+
 ## Documentation
 
 | Doc | What's in it |
 |---|---|
 | [REFERENCE.md](docs/REFERENCE.md) | Full capability matrix · every deployed resource · demo walkthrough · cost breakdown · folder layout · optional add-ons · troubleshooting |
+| [STAGE-FABRIC.md](docs/STAGE-FABRIC.md) | Optional F2 capacity, keyless Extended Eventstream, three dashboards, dual-workspace mirroring, verification, administrator prerequisites, scheduled suspension, and tenant-item cleanup |
 | [COST-GUIDE.md](docs/COST-GUIDE.md) | Dated resource inventory · public-rate examples · usage formulas · optional agents · stop-versus-delete guidance |
 | [Lab Control Center](docs/LAB-CONTROL-CENTER.md) | Application guide, screenshot, traffic and agent capabilities, safety boundaries, and links to the guided scenarios |
 | [HEALTH-MODEL-TUTORIAL.md](docs/HEALTH-MODEL-TUTORIAL.md) | Standalone course: explore, extend and break a user-flow health model on a small café workload; the [lab user-flow model plan](docs/healthmodel/lab/plan.md) is a bigger model of the same kind for this lab |
-| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | Numbered demo scenarios with stories, click-paths, starter prompts, and audience-pivoted shortlists; includes the [application troubleshooting agent](docs/DEMO-SCENARIOS.md#s72) and [real customer PaaS dependencies](docs/DEMO-SCENARIOS.md#s73) |
+| [DEMO-SCENARIOS.md](docs/DEMO-SCENARIOS.md) | 80 numbered scenarios plus an introductory pitch, with stories, click-paths, starter prompts, and workload-based shortlists; includes [application troubleshooting](docs/DEMO-SCENARIOS.md#s72), [real customer PaaS dependencies](docs/DEMO-SCENARIOS.md#s73), and [Fabric Real-Time Intelligence](docs/DEMO-SCENARIOS.md#s74) |
 | [POST-DEPLOYMENT.md](docs/POST-DEPLOYMENT.md) | Manual and optional preparation required by specific demo scenarios after deployment is complete |
 | [PM feature integration guide](docs/PM-FEATURE-INTEGRATION-GUIDE.md) | End-to-end workflow and validation checklist for product managers adding new Azure features to every deployment path |
 | [docs/DEPLOY-BICEP-STEP-BY-STEP.md](docs/DEPLOY-BICEP-STEP-BY-STEP.md) · [docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md](docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md) | Staged deployment tutorials |
-| Stage notes: [A](docs/STAGE-A-FOUNDATION.md) · [B](docs/STAGE-B-WORKLOADS.md) · [C](docs/STAGE-C-ALERTING.md) · [D](docs/STAGE-D-SECURITY-POSTURE.md) · [E](docs/STAGE-E-OPTIONAL-ADVANCED.md) · [AI](docs/STAGE-AI.md) · [SRE Agent](docs/STAGE-SRE-AGENT.md) · [Observability Agent](docs/STAGE-OBSERVABILITY-AGENT.md) | Per-stage speaker notes, including optional AI FinOps and agent evaluation stages |
+| Stage notes: [A](docs/STAGE-A-FOUNDATION.md) · [B](docs/STAGE-B-WORKLOADS.md) · [C](docs/STAGE-C-ALERTING.md) · [D](docs/STAGE-D-SECURITY-POSTURE.md) · [E](docs/STAGE-E-OPTIONAL-ADVANCED.md) · [AI](docs/STAGE-AI.md) · [SRE Agent](docs/STAGE-SRE-AGENT.md) · [Observability Agent](docs/STAGE-OBSERVABILITY-AGENT.md) · [Fabric](docs/STAGE-FABRIC.md) | Per-stage speaker notes, including optional AI FinOps, agent evaluation, and Real-Time Intelligence stages |
 | [docs/CUSTOMER-STAGE-HANDOUT.md](docs/CUSTOMER-STAGE-HANDOUT.md) | Per-stage time + cost cheat sheet |
 
 ## Contributing & license

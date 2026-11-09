@@ -28,13 +28,13 @@ param deployLinuxVm bool = true
 param enableVmOtelMetrics bool = true
 
 @description('VM size.')
-param vmSize string = 'Standard_B2s'
+param vmSize string = 'Standard_EC2as_v5'
 
 @description('AKS node VM size.')
-param aksNodeVmSize string = 'Standard_B2s'
+param aksNodeVmSize string = 'Standard_EC4as_v5'
 
 @description('AKS node count.')
-param aksNodeCount int = 1
+param aksNodeCount int = 2
 
 @description('Optional Microsoft Entra object ID of the Grafana lab operator or group. Empty grants Grafana Admin to the deployment identity; set explicitly for CI deployments.')
 param grafanaAdminObjectId string = ''

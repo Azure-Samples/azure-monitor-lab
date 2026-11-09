@@ -8,7 +8,7 @@ $fixture = @{
   Events = [Collections.Generic.List[string]]::new(); FailSetup = $false; BadTenant = $false; Uploads = 0
   OperatorRoles = 0; DeploymentWrites = 0
   DefaultOperator = $false; CurrentUserLookups = 0; ExistingOperatorRole = $false; CurrentUserUnavailable = $false
-  AiSetupFails = $false; SreSetupFails = $false
+  AiSetupFails = $false; SreSetupFails = $false; FabricSetupFails = $false; FabricResources = $false
   StageEResources = $false; ServiceGroupCalls = 0; SliCalls = 0; SliUnsupportedAudience = $false
   DeploymentId = ''; VersionChecks = 0
   SreResources = $false; ResourceDiscoveryFails = $false
@@ -19,9 +19,15 @@ $fixture = @{
   PublicationMode = ''; AksCredentialRequests = 0
   Packages = [Collections.Generic.List[string]]::new()
 }
-foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1', 'deployment-slot-recovery.ps1')) {
+foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1', 'deployment-slot-recovery.ps1', 'lab-config.ps1', 'network-watcher.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source "scripts/$name") -Destination $directory
 }
+@'
+function Invoke-LabDeploymentCommand {
+  param($Arguments, $DeploymentName)
+  az @Arguments
+}
+'@ | Add-Content (Join-Path $directory 'deployment-slot-recovery.ps1')
 $null = New-Item -ItemType Directory -Path (Join-Path $root 'infra') -Force
 '{"parameters":{}}' | Set-Content (Join-Path $root 'infra\main.parameters.json')
 @{ expectedSubscriptionId = [guid]::NewGuid(); expectedTenantId = [guid]::NewGuid() } | ConvertTo-Json | Set-Content (Join-Path $root '.azure-target.json')
@@ -53,7 +59,7 @@ $fixture.CustomerDeploymentName = $CustomerDependencyDeploymentName
 @'
 param($SubscriptionId,$TenantId,$ResourceGroup,$CustomerWebAppName,$DeploymentName,[switch]$ApproveCustomerDependencies)
 if ($CustomerWebAppName -ne 'app-amlab-test-customer') { throw 'Customer completion lost the dedicated storefront.' }
-if ($DeploymentName -eq 'test-customer-deployment' -and -not $ApproveCustomerDependencies) { throw 'Customer completion lost its explicit approval.' }
+$fixture.CustomerCompletionApproval = $ApproveCustomerDependencies.IsPresent
 $fixture.Events.Add('customer-completion')
 if ($fixture.CustomerCompletionFails) { throw 'Customer backend readiness failed.' }
 '@ | Set-Content (Join-Path $directory 'complete-customer-dependencies.ps1')
@@ -63,6 +69,13 @@ if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') 
 $fixture.Events.Add('sre')
 if ($fixture.SreSetupFails) { throw 'SRE verification failed.' }
 '@ | Set-Content (Join-Path $directory 'setup-sre-agent.ps1')
+@'
+param([guid]$SubscriptionId, $ResourceGroup, $NamePrefix)
+if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg' -or $NamePrefix -ne 'amlab') { throw 'Fabric setup lost the verified target or prefix.' }
+if (-not $fixture.FabricResources) { throw 'Fabric capacity missing.' }
+$fixture.Events.Add('fabric')
+if ($fixture.FabricSetupFails) { throw 'Fabric setup failed.' }
+'@ | Set-Content (Join-Path $directory 'setup-fabric.ps1')
 @'
 param([guid]$SubscriptionId, $ResourceGroup)
 if ($SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg') { throw 'Observability Agent setup lost the verified target.' }
@@ -106,6 +119,13 @@ function dotnet {
 function az {
   $global:LASTEXITCODE = 0
   switch ($args[0..1] -join ' ') {
+    'network watcher' {
+      if ($args[2] -ne 'list') { throw 'Deployment must reuse the existing shared watcher without writes.' }
+      return ConvertTo-Json -InputObject @(@{
+        id = "/subscriptions/$($fixture.Subscription)/resourceGroups/NetworkWatcherRG/providers/Microsoft.Network/networkWatchers/NetworkWatcher_northeurope"
+        location = 'northeurope'; provisioningState = 'Succeeded'
+      })
+    }
     'login --tenant' {
       if ($args[2] -ne $fixture.Tenant.ToString() -or $args -notcontains '--use-device-code' -or $args -notcontains '--scope' -or $args -notcontains 'https://prometheus.monitor.azure.com/.default') {
         throw 'Cloud Shell login did not target the tenant and Managed Prometheus scope.'
@@ -188,6 +208,7 @@ function az {
       if ($fixture.StageEResources) { $resources += @{ name = 'id-sli-amlab'; type = 'Microsoft.ManagedIdentity/userAssignedIdentities' } }
       if ($fixture.SreResources) { $resources += @{ name = 'sre-amlab-test'; type = 'Microsoft.App/agents' } }
       if ($fixture.ObservabilityResources) { $resources += @{ name = 'obs-amlab-test'; type = 'Microsoft.Monitor/observabilityAgents' } }
+      if ($fixture.FabricResources) { $resources += @{ name = 'fabamlabtest'; type = 'Microsoft.Fabric/capacities' } }
       return ConvertTo-Json -InputObject $resources
     }
     'resource show' { return 'offline-connection' }
@@ -265,7 +286,7 @@ try {
     $fixture.ServiceGroupCalls = 0
     $wrapperArguments = if ($name -eq 'post-cloud-shell-deploy.ps1') { @{ TenantId = $fixture.Tenant } } else { @{} }
     & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) `
-      -CustomerDependencyDeploymentName test-customer-deployment -ApproveCustomerDependencies @wrapperArguments | Out-Null
+      -CustomerDependencyDeploymentName test-customer-deployment @wrapperArguments | Out-Null
     if (-not $fixture.CustomerApproval -or $fixture.CustomerDeploymentName -ne 'test-customer-deployment') { throw 'Staged/Cloud Shell wrapper lost customer completion approval or the selected deployment.' }
     $expectedEvents = if ($name -eq 'post-cloud-shell-deploy.ps1') { 'login,post-deploy' } else { 'post-deploy' }
     if (($fixture.Events -join ',') -ne $expectedEvents) { throw 'Deployment completion did not invoke the expected login and shared console path.' }
@@ -276,6 +297,12 @@ try {
   $fixture.ExistingActivityWorkspace = "/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg/providers/Microsoft.OperationalInsights/workspaces/law-amlab-central-test"
   & (Join-Path $directory 'setup-activity-log.ps1') -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -WorkspaceName law-amlab-central-test | Out-Null
   if ($fixture.ActivityDiagnosticCreates -ne 2) { throw 'Matching Activity Log routing must be idempotent.' }
+  foreach ($name in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
+    $wrapperArguments = if ($name -eq 'post-cloud-shell-deploy.ps1') { @{ TenantId = $fixture.Tenant } } else { @{} }
+    & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) `
+      -CustomerDependencyDeploymentName test-customer-deployment -ApproveCustomerDependencies:$false @wrapperArguments | Out-Null
+    if ($fixture.CustomerApproval) { throw 'Staged/Cloud Shell wrapper must preserve explicit false for interactive customer approval.' }
+  }
   $fixture.ExistingActivityWorkspace = ''
   foreach ($name in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
     foreach ($selection in @(
@@ -322,6 +349,39 @@ try {
     }
   }
   $fixture.ObservabilityResources = $false
+  $fixture.SreResources = $false
+  foreach ($name in @('post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1')) {
+    foreach ($selection in @(
+      @{ Resources = $false; Config = $true; Explicit = @{}; Expected = 'post-deploy' },
+      @{ Resources = $true; Config = $false; Explicit = @{}; Expected = 'post-deploy,fabric' },
+      @{ Resources = $true; Config = $true; Explicit = @{ EnableStageFabric = $false }; Expected = 'post-deploy' },
+      @{ Resources = $true; Config = $false; Explicit = @{ EnableStageFabric = $true }; Expected = 'post-deploy,fabric' }
+    )) {
+      @{ stageToggles = @{ enableStageFabric = $selection.Config } } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'lab.config.json')
+      $fixture.FabricResources = $selection.Resources
+      $fixture.Events.Clear()
+      $selectionArguments = $selection.Explicit
+      if ($name -eq 'post-cloud-shell-deploy.ps1') { $selectionArguments.TenantId = $fixture.Tenant }
+      & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) @selectionArguments | Out-Null
+      $expectedEvents = if ($name -eq 'post-cloud-shell-deploy.ps1') { "login,$($selection.Expected)" } else { $selection.Expected }
+      if (($fixture.Events -join ',') -ne $expectedEvents) { throw "$name must follow explicit Fabric selection or deployed resources, not stale config." }
+    }
+    $failureArguments = if ($name -eq 'post-cloud-shell-deploy.ps1') { @{ TenantId = $fixture.Tenant } } else { @{} }
+    foreach ($failure in @('setup', 'missing-capacity')) {
+      $fixture.FabricSetupFails = $failure -eq 'setup'
+      $fixture.FabricResources = $failure -eq 'setup'
+      $rejected = $false
+      try {
+        & (Join-Path $directory $name) -SubscriptionId $fixture.Subscription -ResourceGroup test-rg -ConsoleOperatorObjectIds @($fixture.Operator) -EnableStageFabric $true @failureArguments | Out-Null
+      } catch {
+        $expectedError = if ($failure -eq 'setup') { 'Fabric setup failed.' } else { 'Fabric capacity missing.' }
+        $rejected = $_.Exception.Message -eq $expectedError
+      }
+      if (-not $rejected) { throw "$name hid Fabric completion failure: $failure." }
+    }
+    $fixture.FabricSetupFails = $false
+    $fixture.FabricResources = $false
+  }
   $fixture.SliUnsupportedAudience = $true
   $fixture.SreResources = $true
   $fixture.Events.Clear()
@@ -338,7 +398,7 @@ try {
     @{ Config = $true; Explicit = @{ EnableStageE = $false }; Expected = 0 },
     @{ Config = $false; Explicit = @{ EnableStageE = $true }; Expected = 1 }
   )) {
-    @{ stageToggles = @{ enableStageE = $selection.Config } } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'lab.config.json')
+    @{ advancedConfiguration = @{ stageToggles = @{ enableStageE = $selection.Config } } } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $root 'lab.config.json')
     $fixture.StageEResources = $true
     $fixture.Events.Clear()
     $fixture.ServiceGroupCalls = 0
@@ -354,9 +414,15 @@ try {
       $terraformConsole -notmatch '-EnableStageE \(\[bool\]::Parse\(\$env:LAB_ENABLE_STAGE_E\)\)' -or
       $terraformConsole -notmatch 'LAB_ENABLE_STAGE_SRE_AGENT\s*=\s*tostring\(var\.enable_stage_sre_agent\)' -or
       $terraformConsole -notmatch '-EnableStageSreAgent \(\[bool\]::Parse\(\$env:LAB_ENABLE_STAGE_SRE_AGENT\)\)' -or
+      $terraformConsole -notmatch 'LAB_ENABLE_STAGE_FABRIC\s*=\s*tostring\(var\.enable_stage_fabric\)' -or
+      $terraformConsole -notmatch '-EnableStageFabric \(\[bool\]::Parse\(\$env:LAB_ENABLE_STAGE_FABRIC\)\)' -or
       $terraformConsole -notmatch 'scripts/setup-activity-log\.ps1' -or
       $terraformConsole -notmatch 'scripts/wait-webapp-publication\.ps1') {
-    throw 'Terraform must explicitly pass its Stage E/SRE selections and track publication-verifier changes.'
+    throw 'Terraform must explicitly pass its Stage E/SRE/Fabric selections and track publication-verifier changes.'
+  }
+  $consoleHook = [regex]::Match($terraformConsole, '(?s)resource "terraform_data" "console_ready" \{(.*?)(?=\r?\nresource |\z)').Value
+  if ($consoleHook -notmatch 'depends_on\s*=\s*\[[^\]]*azapi_resource\.stage_fabric') {
+    throw 'Console completion must wait directly for Fabric even when Stage E is disabled.'
   }
   @{ expectedSubscriptionId = $fixture.Subscription; expectedTenantId = $fixture.Tenant } | ConvertTo-Json | Set-Content (Join-Path $root '.azure-target.json')
   @'
@@ -367,10 +433,12 @@ if ($SubscriptionId -ne $fixture.Subscription) { throw 'One-shot SLI setup lost 
     $active = $inheritedAccount
     $fixture.Events.Clear()
     $fixture.DeploymentWrites = 0
-    & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) -ApproveCustomerDependencies | Out-Null
+    & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) | Out-Null
     if (($fixture.Events -join ',') -ne 'post-deploy' -or $fixture.DeploymentWrites -ne 3) { throw 'One-shot deployment did not complete its verified account handoff.' }
     if (-not $fixture.CustomerApproval -or $fixture.CustomerDeploymentName -notlike 'amlab-*') { throw 'One-shot deployment must forward approval and its exact successful deployment name.' }
   }
+  & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) -ApproveCustomerDependencies:$false | Out-Null
+  if ($fixture.CustomerApproval) { throw 'One-shot deployment must preserve explicit false for interactive customer approval.' }
   $fixture.BadTenant = $true
   $fixture.Events.Clear()
   $fixture.DeploymentWrites = 0
@@ -422,9 +490,9 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
   }
   $fixture.ObservabilityEnabled = $true
   @{
-    subscriptionId = $fixture.Subscription
-    stageToggles = @{ enableStageObservabilityAgent = $true }
-  } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'lab.config.json')
+    basicConfiguration = @{ subscriptionId = $fixture.Subscription }
+    advancedConfiguration = @{ stageToggles = @{ enableStageObservabilityAgent = $true } }
+  } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $root 'lab.config.json')
   $migrationsBefore = $fixture.RbacMigrations
   $fixture.Events.Clear()
   & (Join-Path $directory 'deploy.ps1') -ResourceGroup test-rg -SkipPreflight -ConsoleOperatorObjectIds @($fixture.Operator) | Out-Null
@@ -557,12 +625,19 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
     try {
       & (Join-Path $directory 'post-deploy.ps1') @parameters -AksName aks-amlab -WebAppHost app-amlab-test.azurewebsites.net `
         -CentralLawName law-amlab-central-test -CustomerWebAppName app-amlab-test-customer `
-        -CustomerDependencyDeploymentName test-customer-deployment -ApproveCustomerDependencies | Out-Null
+        -CustomerDependencyDeploymentName test-customer-deployment | Out-Null
     } catch { $caught = $_ }
     if (($null -ne $caught) -ne $failCompletion -or ($caught -and $caught.Exception.Message -ne 'Customer backend readiness failed.')) { throw 'Customer completion failure did not propagate through shared post-deployment.' }
     if (($fixture.Events -join ',') -ne 'publish,package,initialize,customer-completion') { throw 'Customer backend completion must follow storefront/slot publication.' }
+    if (-not $fixture.CustomerCompletionApproval) { throw 'Shared post-deployment must approve enabled completion by default.' }
     if (($fixture.AksCredentialRequests - $aksBefore) -ne [int](-not $failCompletion)) { throw 'Failed customer readiness must stop before subsequent post-deploy work.' }
   }
+  $fixture.CustomerCompletionFails = $false
+  $fixture.Events.Clear()
+  & (Join-Path $directory 'post-deploy.ps1') @parameters -AksName aks-amlab -WebAppHost app-amlab-test.azurewebsites.net `
+    -CentralLawName law-amlab-central-test -CustomerWebAppName app-amlab-test-customer `
+    -CustomerDependencyDeploymentName test-customer-deployment -ApproveCustomerDependencies:$false | Out-Null
+  if ($fixture.CustomerCompletionApproval) { throw 'Shared post-deployment must preserve explicit false for interactive customer approval.' }
   Write-Output 'PASS: one-shot/staged/Cloud Shell approval forwarding and shared customer completion after publication, with readiness failures stopping deployment.'
   Write-Output 'PASS: one-shot, app, staged, and Cloud Shell handoffs preserve account/operator inputs, bootstrap before publication, and stop on setup failures. No Azure calls.'
 } finally {

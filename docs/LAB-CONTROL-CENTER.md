@@ -110,6 +110,8 @@ After requesting a fault, use **Copy troubleshooting prompt**, **Open SRE Agent*
 
 Normal deployment provisions the registry, environment, image, job, sign-in, roles, and persistent journal automatically. No GitHub credentials or manual enablement are needed. The Web App starts one approved job rather than executing shell commands locally. Deployment prerequisites, delegated runner permissions, costs, and recovery are in the [Lab Operations reference](../workloads/webapp/LAB-OPERATIONS.md).
 
+**Start Lab with Fabric:** the runner needs `Microsoft.Fabric/capacities/read` and `Microsoft.Fabric/capacities/resume/action`, assigned only on the lab's F2 capacity. Deployment and console bootstrap configure this separate role when Fabric is present. If an older runner fails after starting the VMs/AKS while F2 stays paused, inspect its execution logs and capacity-scoped access before retrying; resource-group Reader access cannot resume Fabric. Refresh console bootstrap after adding Fabric to an existing lab. Resuming F2 restarts active-capacity billing.
+
 ## Connection Status
 
 The environment strip remains visible across tabs. Statuses reflect the most recent requested check, not continuous monitoring:

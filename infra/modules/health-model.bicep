@@ -90,6 +90,12 @@ param foundryAccountId string = ''
 @description('Resource ID of the App Insights backing Log Analytics workspace (per-agent AI signals). Required when enableAi = true.')
 param appInsightsLawId string = ''
 
+@description('Fold Microsoft Fabric Real-Time Intelligence into this model as an optional workload tier.')
+param enableFabric bool = false
+
+@description('Resource ID of the Microsoft Fabric F2 capacity. Required when enableFabric = true.')
+param fabricCapacityId string = ''
+
 // -----------------------------------------------------------------------------
 // Parent resource: Health Model + authentication setting
 // -----------------------------------------------------------------------------
@@ -779,6 +785,56 @@ resource entStorage 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
 }
 
 // -----------------------------------------------------------------------------
+// Tier-1 Real-Time Intelligence entity + tier-2 Fabric capacity (enableFabric)
+// -----------------------------------------------------------------------------
+// The capacity uses the resourceHealth signal, which the 2026-11-01 entity schema includes.
+resource entRealTimeIntelligence 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (enableFabric) {
+  parent: healthModel
+  name: 'realtimeintelligence'
+  properties: {
+    displayName: 'Real-Time Intelligence'
+    impact: 'Standard'
+    canvasPosition: { x: 750, y: 200 }
+    icon: { iconName: 'Analytics' }
+    signalGroups: {
+      dependencies: {
+        aggregationType: 'WorstOf'
+        ignoreUnknown: true
+      }
+    }
+    alerts: empty(actionGroupId) ? null : {
+      unhealthy: {
+        severity: 'Sev2'
+        description: 'AMLAB Real-Time Intelligence workload unhealthy (Fabric capacity rollup).'
+        actionGroupIds: actionGroupIds
+      }
+    }
+  }
+}
+
+resource entFabricCapacity 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (enableFabric) {
+  parent: healthModel
+  name: 'fabriccapacity'
+  properties: {
+    displayName: 'Microsoft Fabric F2 capacity'
+    impact: 'Standard'
+    canvasPosition: { x: 750, y: 450 }
+    icon: { iconName: 'Analytics' }
+    signalGroups: {
+      azureResource: {
+        authenticationSetting: authName
+        azureResourceId: fabricCapacityId
+        azureResourceKind: 'capacity'
+        resourceHealth: {
+          enabled: 'Enabled'
+        }
+      }
+    }
+  }
+  dependsOn: [ authSetting ]
+}
+
+// -----------------------------------------------------------------------------
 // Tier-1 AI entity + tier-2 Foundry account and per-agent entities (enableAi)
 // -----------------------------------------------------------------------------
 resource entAi 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (enableAi) {
@@ -1040,6 +1096,27 @@ resource relStoragePlatform 'Microsoft.CloudHealth/healthmodels/relationships@20
     childEntityName: 'storage'
   }
   dependsOn: [ entStorage, entPlatform ]
+}
+
+resource relRealTimeIntelligenceRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableFabric) {
+  parent: healthModel
+  name: 'realtimeintelligence-to-root'
+  properties: {
+    parentEntityName: rootName
+    childEntityName: 'realtimeintelligence'
+    displayName: 'Real-Time Intelligence'
+  }
+  dependsOn: [ entRealTimeIntelligence ]
+}
+
+resource relFabricCapacityRealTimeIntelligence 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableFabric) {
+  parent: healthModel
+  name: 'fabriccapacity-to-realtimeintelligence'
+  properties: {
+    parentEntityName: 'realtimeintelligence'
+    childEntityName: 'fabriccapacity'
+  }
+  dependsOn: [ entFabricCapacity, entRealTimeIntelligence ]
 }
 
 // AI tier relationships (enableAi): ai -> root, foundry + agents -> ai.

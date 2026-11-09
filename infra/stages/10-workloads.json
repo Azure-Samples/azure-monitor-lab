@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "4855590815331829974"
+      "templateHash": "5101448514582990527"
     }
   },
   "parameters": {
@@ -68,21 +68,21 @@
     },
     "vmSize": {
       "type": "string",
-      "defaultValue": "Standard_B2s",
+      "defaultValue": "Standard_EC2as_v5",
       "metadata": {
         "description": "VM size."
       }
     },
     "aksNodeVmSize": {
       "type": "string",
-      "defaultValue": "Standard_B2s",
+      "defaultValue": "Standard_EC4as_v5",
       "metadata": {
         "description": "AKS node VM size."
       }
     },
     "aksNodeCount": {
       "type": "int",
-      "defaultValue": 1,
+      "defaultValue": 2,
       "metadata": {
         "description": "AKS node count."
       }
@@ -337,7 +337,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "3721574997013875600"
+              "templateHash": "14744096280615074103"
             }
           },
           "parameters": {
@@ -355,7 +355,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU."
               }
@@ -604,7 +604,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "4986736003627378185"
+              "templateHash": "14683978266823128703"
             }
           },
           "parameters": {
@@ -623,7 +623,7 @@
             },
             "vmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC2as_v5",
               "metadata": {
                 "description": "VM SKU."
               }
@@ -896,7 +896,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "6254438485899744861"
+              "templateHash": "12959589568754574968"
             }
           },
           "parameters": {
@@ -920,14 +920,14 @@
             },
             "nodeVmSize": {
               "type": "string",
-              "defaultValue": "Standard_B2s",
+              "defaultValue": "Standard_EC4as_v5",
               "metadata": {
                 "description": "System node pool VM size. Workload nodes come from node auto provisioning (workloads/k8s/00-nodepools.yaml)."
               }
             },
             "nodeCount": {
               "type": "int",
-              "defaultValue": 1,
+              "defaultValue": 2,
               "metadata": {
                 "description": "System node pool node count."
               }
@@ -49914,7 +49914,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "8160018899608542539"
+              "templateHash": "15909413640873189571"
             }
           },
           "parameters": {
@@ -49974,6 +49974,13 @@
               "defaultValue": "",
               "metadata": {
                 "description": "Exact customer orders worker name. Empty disables dependency fault permissions."
+              }
+            },
+            "fabricCapacityName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Existing lab F2 capacity name. Empty disables capacity resume permissions."
               }
             }
           },
@@ -57008,6 +57015,95 @@
                         "principalId": "[parameters('principalId')]",
                         "principalType": "ServicePrincipal"
                       }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('fabricCapacityName')))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "console-runner-fabric-access",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "capacityName": {
+                    "value": "[parameters('fabricCapacityName')]"
+                  },
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "2914668496453868903"
+                    }
+                  },
+                  "parameters": {
+                    "capacityName": {
+                      "type": "string",
+                      "minLength": 3,
+                      "metadata": {
+                        "description": "Existing lab F2 capacity name."
+                      }
+                    },
+                    "principalId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Lab Operations runner managed identity principal ID."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "name": "[guid(resourceGroup().id, 'lab-console-fabric-resume-role')]",
+                      "properties": {
+                        "roleName": "[format('Lab Console Fabric Resume {0}', take(uniqueString(resourceGroup().id), 8))]",
+                        "description": "Read and resume the lab Fabric capacity; assigned only on that capacity.",
+                        "type": "CustomRole",
+                        "assignableScopes": [
+                          "[resourceGroup().id]"
+                        ],
+                        "permissions": [
+                          {
+                            "actions": [
+                              "Microsoft.Fabric/capacities/read",
+                              "Microsoft.Fabric/capacities/resume/action"
+                            ],
+                            "notActions": [],
+                            "dataActions": [],
+                            "notDataActions": []
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[format('Microsoft.Fabric/capacities/{0}', parameters('capacityName'))]",
+                      "name": "[guid(resourceId('Microsoft.Fabric/capacities', parameters('capacityName')), parameters('principalId'), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role')))]",
+                      "properties": {
+                        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]",
+                        "principalId": "[parameters('principalId')]",
+                        "principalType": "ServicePrincipal"
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]"
+                      ]
                     }
                   ]
                 }

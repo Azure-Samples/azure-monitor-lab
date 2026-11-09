@@ -40,7 +40,7 @@ The templates grant **Grafana Admin** at the Managed Grafana instance scope to t
 
 | Deployment path | Default and opt-out setting |
 |---|---|
-| Central configuration | `enableVmOtelMetrics` defaults to `true` when omitted from `lab.config.json`. Set it to the JSON Boolean `false` to opt out, then run `scripts/sync-config.ps1` and regenerate deployment inputs. |
+| Central configuration | `advancedConfiguration.monitoring.enableVmOtelMetrics` (`enableVmOtelMetrics` in legacy flat configs) defaults to `true` when omitted. Set it to the JSON Boolean `false` to opt out, then run `scripts/sync-config.ps1` and regenerate deployment inputs. |
 | One-shot Bicep / ARM | The main template parameter `enableVmOtelMetrics` defaults to `true`; explicitly pass `false` to opt out. |
 | Staged Bicep | `enableVmOtelMetrics` defaults to `true` in `10-workloads.bicep` (Stage B). Regenerate filtered stage parameter files after syncing configuration. Stage A is unchanged. |
 | Terraform | `enable_vm_otel_metrics` defaults to `true` and is passed only to Stage B. Set it to `false` to opt out; it does not enable Stage B itself. |

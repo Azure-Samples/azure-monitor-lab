@@ -8,10 +8,10 @@ param dnsPrefix string
 param location string
 
 @description('System node pool VM size. Workload nodes come from node auto provisioning (workloads/k8s/00-nodepools.yaml).')
-param nodeVmSize string = 'Standard_B2s'
+param nodeVmSize string = 'Standard_EC4as_v5'
 
 @description('System node pool node count.')
-param nodeCount int = 1
+param nodeCount int = 2
 
 @description('Central LAW for Container Insights logs.')
 param centralLawId string
