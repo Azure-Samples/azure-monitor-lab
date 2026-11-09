@@ -47,13 +47,13 @@ try {
 
   $example = Read-LabConfig -Path (Join-Path $repoRoot 'lab.config.json.example')
   $exampleSizes = @{
-    vmSize = 'Standard_B2als_v2'
-    aksNodeVmSize = 'Standard_D4as_v5'
-    vmssSize = 'Standard_B2als_v2'
+    vmSize = 'Standard_EC2as_v5'
+    aksNodeVmSize = 'Standard_EC4as_v5'
+    vmssSize = 'Standard_EC2as_v5'
   }
   foreach ($name in $exampleSizes.Keys) {
     if ($example.$name -ne $exampleSizes[$name]) {
-      throw "Example '$name' must use the recommended economical SKU '$($exampleSizes[$name])'."
+      throw "Example '$name' must use the documented SKU '$($exampleSizes[$name])'."
     }
   }
   if ($example.aksNodeCount -ne 2) { throw 'The example must configure two AKS system nodes.' }

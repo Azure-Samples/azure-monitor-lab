@@ -24,7 +24,8 @@
 
 .PARAMETER ApproveCustomerDependencies
   Approve SQL schema/users/seed initialization and orders worker publication for
-  the enabled customer backend. Otherwise post-deployment requests confirmation.
+  the enabled customer backend. Defaults to true. Pass
+  -ApproveCustomerDependencies:$false to request confirmation instead.
 
 .EXAMPLE
   ./scripts/deploy.ps1
@@ -41,7 +42,7 @@ param(
   [switch] $SkipPreflight,
   [int]    $MaxDeployRetries = 0,
   [guid[]] $ConsoleOperatorObjectIds,
-  [switch] $ApproveCustomerDependencies
+  [switch] $ApproveCustomerDependencies = $true
 )
 
 $ErrorActionPreference = 'Stop'

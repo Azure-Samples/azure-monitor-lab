@@ -8,7 +8,7 @@
   It attempts to create the Event Hubs connection and publish the source-to-Eventhouse
   topology using workspace identity and Extended Event Hubs. By default it also
   provisions both Log Analytics mirrors/dashboards and daily capacity suspension.
-  Configures workspace monitoring and a stopped recommendation-only Operations Agent.
+  Checks existing workspace monitoring and Operations Agent state and reports manual setup steps.
   Tenant settings require a separate administrator opt-in; licensing remains a prerequisite.
 
 .EXAMPLE
@@ -618,19 +618,19 @@ foreach ($feature in @('Workspace monitoring', 'Operations Agent')) {
   }
   try {
     if ($feature -eq 'Workspace monitoring') {
-      $setupResults.Add((Initialize-FabricWorkspaceMonitoring -WorkspaceId $workspace.id))
+      $setupResults.Add((Get-FabricWorkspaceMonitoringReadiness -WorkspaceId $workspace.id))
       $setupResults.Add([pscustomobject]@{
         Feature = 'Eventstream activity logging'; Status = 'ActionRequired'
-        Detail = "Workspace monitoring alone does not enable per-stream logging. Check Eventstream '$EventstreamName' > Settings > Monitoring > Log Eventstream activity. No documented public logging-toggle API is used."
+        Detail = "After enabling workspace monitoring manually, check Eventstream '$EventstreamName' > Settings > Monitoring > Log Eventstream activity. Workspace collection alone does not enable per-stream logging. No documented public logging-toggle API is used."
       })
     } else {
-      $setupResults.Add((Initialize-FabricOperationsAgent -WorkspaceId $workspace.id -DatabaseId $kqlDatabase.id `
+      $setupResults.Add((Get-FabricOperationsAgentReadiness -WorkspaceId $workspace.id -DatabaseId $kqlDatabase.id `
         -TableName $DestinationTableName -Recipient $active.userName))
     }
   } catch {
     $setupResults.Add([pscustomobject]@{
       Feature = $feature; Status = 'Failed'
-      Detail = "$($_.Exception.Message) Verify workspace-admin access and the feature's Fabric tenant settings. A tenant admin can review settings with scripts/setup-fabric-tenant.ps1 -TenantId $($active.tenantId). Rerun setup after resolving the reported error."
+      Detail = "$(Get-FabricErrorDetail -ErrorRecord $_) Check the service error before changing permissions or tenant settings. A tenant admin can review settings with scripts/setup-fabric-tenant.ps1 -TenantId $($active.tenantId). Rerun setup after resolving the reported error."
     })
   }
 }
@@ -654,7 +654,7 @@ if (-not $SkipEventstreamConnection -and -not [string]::IsNullOrWhiteSpace($even
     $connectionAction = 'Verify workspace-admin and event-hub-scoped RBAC assignment permissions, then rerun. Keep shared keys disabled; WorkspaceIdentity requires the Extended Event Hubs source.'
     $setupResults.Add([pscustomobject]@{
       Feature = 'Eventstream topology'; Status = 'ActionRequired'
-      Detail = "$($_.Exception.Message) $connectionAction"
+      Detail = "$(Get-FabricErrorDetail -ErrorRecord $_) $connectionAction"
     })
   }
 } else {
@@ -673,7 +673,7 @@ try {
     Detail = $(if ($EnableAutoSuspend) { "Daily $($AutoSuspendHourUtc.ToString('00')):$($AutoSuspendMinuteUtc.ToString('00')) UTC. Interrupts queries and ingestion." } else { 'Disabled; no automatic capacity state changes.' })
   })
 } catch {
-  $setupResults.Add([pscustomobject]@{ Feature = 'Daily auto-suspension'; Status = 'Failed'; Detail = $_.Exception.Message })
+  $setupResults.Add([pscustomobject]@{ Feature = 'Daily auto-suspension'; Status = 'Failed'; Detail = (Get-FabricErrorDetail -ErrorRecord $_) })
 }
 
 Write-Step 'Creating and verifying the observability experience'
@@ -689,7 +689,7 @@ try {
       $samplesReady = $true
       $setupResults.Add([pscustomobject]@{ Feature = 'Business correlation'; Status = 'Verified'; Detail = 'Four deduplicated SYNTHETIC sample events in LabSampleEvents. No real orders or customer data were created.' })
     } catch {
-      $setupResults.Add([pscustomobject]@{ Feature = 'Business correlation'; Status = 'Failed'; Detail = $_.Exception.Message })
+      $setupResults.Add([pscustomobject]@{ Feature = 'Business correlation'; Status = 'Failed'; Detail = (Get-FabricErrorDetail -ErrorRecord $_) })
     }
   } else {
     $setupResults.Add([pscustomobject]@{ Feature = 'Business correlation'; Status = 'Skipped'; Detail = 'Synthetic sample seeding is disabled.' })
@@ -709,7 +709,7 @@ try {
       }
     $setupResults.Add([pscustomobject]@{ Feature = 'Real-Time Dashboard'; Status = 'Configured'; Detail = "Dashboard $($dashboard.id) created/reused. Existing dashboard edits are preserved; live tiles are empty until telemetry arrives." })
   } catch {
-    $setupResults.Add([pscustomobject]@{ Feature = 'Real-Time Dashboard'; Status = 'Failed'; Detail = $_.Exception.Message })
+    $setupResults.Add([pscustomobject]@{ Feature = 'Real-Time Dashboard'; Status = 'Failed'; Detail = (Get-FabricErrorDetail -ErrorRecord $_) })
   }
   if ($eventstreamAutomated) {
     $setupResults.Add((Wait-FabricTelemetry -WorkspaceId $workspace.id -EventstreamId $eventstream.id `
@@ -718,7 +718,7 @@ try {
     $setupResults.Add([pscustomobject]@{ Feature = 'Live ingestion'; Status = 'Pending'; Detail = 'Stream connection is incomplete. Synthetic samples do not count as live ingestion verification.' })
   }
 } catch {
-  $setupResults.Add([pscustomobject]@{ Feature = 'Observability experience'; Status = 'Failed'; Detail = $_.Exception.Message })
+  $setupResults.Add([pscustomobject]@{ Feature = 'Observability experience'; Status = 'Failed'; Detail = (Get-FabricErrorDetail -ErrorRecord $_) })
 }
 
 if ($EnableMirroring) {
@@ -744,7 +744,7 @@ if ($EnableMirroring) {
         $mirroredSources.Add(@{ Mirror = $mirror; ApplicationInsights = ($source.Kind -eq 'appinsights') })
       }
     } catch {
-      $setupResults.Add([pscustomobject]@{ Feature = "Azure Monitor mirroring ($($source.Kind))"; Status = 'Failed'; Detail = $_.Exception.Message })
+      $setupResults.Add([pscustomobject]@{ Feature = "Azure Monitor mirroring ($($source.Kind))"; Status = 'Failed'; Detail = (Get-FabricErrorDetail -ErrorRecord $_) })
     }
   }
   foreach ($mirroredSource in $mirroredSources) {
@@ -757,7 +757,7 @@ if ($EnableMirroring) {
         $mirroredSource.Mirror.Detail = "Mirrored item $($mirroredSource.Mirror.MirrorId): external tables and visible data verified through its dashboard queries."
       }
     } catch {
-      $setupResults.Add([pscustomobject]@{ Feature = "Mirrored dashboard ($($mirroredSource.Mirror.DisplayName))"; Status = 'Failed'; Detail = $_.Exception.Message })
+      $setupResults.Add([pscustomobject]@{ Feature = "Mirrored dashboard ($($mirroredSource.Mirror.DisplayName))"; Status = 'Failed'; Detail = (Get-FabricErrorDetail -ErrorRecord $_) })
     }
   }
 } else {

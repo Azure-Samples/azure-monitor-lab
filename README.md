@@ -104,7 +104,7 @@ Fill in `basicConfiguration` in your local `lab.config.json` for a default deplo
 <details>
 <summary><b>VM and AKS node SKU choices</b></summary>
 
-The [config example](lab.config.json.example) uses `Standard_B2als_v2` (2 vCPUs, 4 GiB RAM) for VMs and VMSS, and two `Standard_D4as_v5` AKS system nodes (4 vCPUs, 16 GiB RAM each). Burstable VMs reduce cost but can throttle under sustained load. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` under `advancedConfiguration.compute` for regional availability and quota; keep AKS system nodes on supported non-burstable sizes. Pre-flight checks availability, quota, and system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
+The [config example](lab.config.json.example) uses `Standard_EC2as_v5` for VMs and VMSS, and two `Standard_EC4as_v5` AKS system nodes. These starting points are not guaranteed for every subscription or region. Adjust `vmSize`, `vmssSize`, and `aksNodeVmSize` under `advancedConfiguration.compute` for regional availability and quota; keep AKS system nodes on supported non-burstable sizes. Pre-flight checks availability, quota, and system-pool minimums, not all service-specific compatibility requirements, and does not select replacements automatically.
 
 </details>
 
@@ -116,7 +116,7 @@ Before creating anything, `deploy.ps1` runs [`scripts/preflight-check.ps1`](scri
 If compute checks fail, pre-flight names the config keys to edit and lists candidates from a curated shortlist using the subscription's live SKU inventory and quota. Candidates are not automatically selected, price-ranked, or guaranteed to pass service-specific deployment validation. Their headroom is checked per setting; rerun deployment after editing to validate combined demand. The VMSS quota check covers its initial instance, not its autoscale maximum. A standalone pre-flight invocation uses its command-line defaults, not your local config; to check the example sizes explicitly:
 
 ```powershell
-.\scripts\preflight-check.ps1 -Location northeurope -VmSize Standard_B2als_v2 -AksNodeVmSize Standard_D4as_v5 -AksNodeCount 2 -VmssSize Standard_B2als_v2
+.\scripts\preflight-check.ps1 -Location northeurope -VmSize Standard_EC2as_v5 -AksNodeVmSize Standard_EC4as_v5 -AksNodeCount 2 -VmssSize Standard_EC2as_v5
 ```
 
 For **insufficient quota**, open Azure Portal > Quotas > Compute, select the checked subscription and region, and request a new total family/regional vCPU limit covering existing usage plus lab demand. For **NotAvailableForSubscription**, more quota may not remove SKU restrictions: use an eligible size or region, or request SKU access through Help + support if needed. Do not copy an EC2as_v5 workaround into AKS: system pools require non-B-series nodes with at least 4 vCPUs and 4 GiB RAM, and at least two nodes ([AKS requirements](https://learn.microsoft.com/azure/aks/use-system-pools)). Keep pre-flight enabled rather than bypassing known blockers.

@@ -16,8 +16,8 @@
   latest successful deployment for the customer app.
 
 .PARAMETER ApproveCustomerDependencies
-  Explicit approval for enabled customer SQL initialization and worker publication.
-  Otherwise completion prompts before changing the backend.
+  Enabled customer SQL initialization and worker publication are approved by
+  default. Pass -ApproveCustomerDependencies:$false to request confirmation.
 
 .PARAMETER EnableStageObservabilityAgent
   Validate Azure Copilot Observability Agent when true. When omitted, detect the
@@ -34,7 +34,7 @@ param(
   [string] $NamePrefix = 'amlab',
   [guid[]] $ConsoleOperatorObjectIds,
   [string] $CustomerDependencyDeploymentName,
-  [switch] $ApproveCustomerDependencies,
+  [switch] $ApproveCustomerDependencies = $true,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false
 )

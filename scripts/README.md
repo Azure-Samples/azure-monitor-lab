@@ -14,6 +14,12 @@ One-shot and staged Bicep deployments suppress Azure CLI/Bicep warnings and
 upgrade notices by default with `--only-show-errors`. Progress messages,
 what-if previews and deployment errors remain visible. Standalone Bicep builds
 and CI validation still show diagnostics; no global Azure CLI setting is changed.
+During script-based ARM deployment, an animated progress display shows the
+deployment name and elapsed time, followed by a green `[OK]` or red `[FAIL]`
+summary. This indicates activity, not a completion percentage or time estimate.
+Azure CLI diagnostics and exit codes are preserved, including during recovery
+retries. Stopping the local runner does not cancel an ARM deployment already
+submitted; verify its Azure status before retrying.
 
 The [central config example](../lab.config.json.example) separates `basicConfiguration` (subscription, tenant, resource group, regions, emails, VM credentials) from grouped `advancedConfiguration` settings (compute, monitoring, access, optional stages, and automation). Existing flat configs still work. See [config layout and compatibility](../docs/REFERENCE.md#config-layout-and-compatibility) for paths and optional migration.
 
@@ -146,9 +152,11 @@ whose selected `enableCustomerDependencies` parameter is not `true`.
 After infrastructure and customer storefront publication, `deploy.ps1`,
 `post-staged-deploy.ps1`, and `post-cloud-shell-deploy.ps1` automatically invoke
 [customer backend completion](complete-customer-dependencies.ps1) when the feature
-is enabled. It shows the exact database and worker targets and asks for approval
-before acquiring a SQL administrator token, changing database objects, or publishing
-the worker. Declining approval or failing bootstrap/publication/readiness stops
+is enabled. Completion is approved by default: it shows the exact database and
+worker targets, acquires a SQL administrator token, initializes schema/seed products
+and object-scoped managed-identity users, then publishes the worker. Pass
+`-ApproveCustomerDependencies:$false` to any deployment/completion wrapper to
+restore the interactive `yes` prompt. Declining that prompt or failing bootstrap/publication/readiness stops
 deployment; infrastructure success alone is not reported as backend readiness.
 Disabled backends do not prompt or run completion.
 
@@ -156,20 +164,22 @@ Run as the configured SQL Entra administrator, with the .NET 8 SDK, Python and
 `paramiko` available. Completion opens an authenticated customer App Service SSH
 tunnel on an allocated loopback port, verifies an SSH response, and closes its
 owned tunnel after SQL initialization or on failure. It does not change public
-network access or firewall rules. Unattended callers must explicitly approve this
-scope with `-ApproveCustomerDependencies`; the switch does not grant administrator
-access or bypass target checks. Staged/Cloud Shell completion discovers the latest
+network access or firewall rules. Default approval does not grant administrator
+access or bypass target checks. Standalone `bootstrap-customer-sql.ps1` and
+`deploy-customer-dependencies.ps1` repair commands retain their existing
+`ShouldProcess` confirmation and `-WhatIf` behavior. Staged/Cloud Shell completion discovers the latest
 successful deployment whose output matches the exact customer app, then validates
 its enabled feature/context. Use `-CustomerDependencyDeploymentName <name>` to
 select the intended deployment explicitly. The one-shot driver passes its exact
 successful deployment name automatically.
 
 ```powershell
-.\scripts\deploy.ps1 -ApproveCustomerDependencies
+.\scripts\deploy.ps1
 # After a staged Bicep deployment:
 .\scripts\post-staged-deploy.ps1 -SubscriptionId '<subscription-guid>' `
-  -ResourceGroup '<lab-resource-group>' -CustomerDependencyDeploymentName stage-10-workloads `
-  -ApproveCustomerDependencies
+  -ResourceGroup '<lab-resource-group>' -CustomerDependencyDeploymentName stage-10-workloads
+# To request interactive customer backend approval:
+.\scripts\deploy.ps1 -ApproveCustomerDependencies:$false
 ```
 
 For targeted repair without reapplying infrastructure or publishing the storefront,
@@ -493,7 +503,7 @@ It supports `-WhatIf`, confirmation and `-VerificationTimeoutSeconds`. A `curren
 
 | Script | Purpose | Typical command |
 |---|---|---|
-| `setup-fabric.ps1` | Creates or reuses the workspace, Eventhouse, KQL database, keyless Extended Eventstream pipeline, dashboards and Azure Monitor mirrors. Enables workspace monitoring and creates a configured but stopped Operations Agent by default; reports playbook/start and per-stream logging actions. Existing definitions are preserved. Use `-EnableWorkspaceMonitoring:$false` / `-EnableOperationsAgent:$false` to skip those features, `-SkipEventstreamConnection` for manual topology, `-MaxOperationMinutes` for the LRO ceiling, or `-Teardown` to remove the workspace. See [Fabric setup and prerequisites](../docs/STAGE-FABRIC.md). | `./scripts/setup-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `setup-fabric.ps1` | Creates or reuses the workspace, Eventhouse, KQL database, keyless Extended Eventstream pipeline, dashboards and Azure Monitor mirrors. Workspace monitoring and Operations Agent use read-only readiness checks with [guided manual setup](../docs/STAGE-FABRIC.md#manual-monitoring-and-operations-agent-setup); existing settings/run states are preserved. Use `-EnableWorkspaceMonitoring:$false` / `-EnableOperationsAgent:$false` to skip those checks, `-SkipEventstreamConnection` for manual topology, `-MaxOperationMinutes` for the LRO ceiling, or `-Teardown` to remove the workspace. See [Fabric setup and prerequisites](../docs/STAGE-FABRIC.md). | `./scripts/setup-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | `setup-fabric-cloud-shell.ps1` | Cloud Shell wrapper for the Fabric setup workflow. | `./scripts/setup-fabric-cloud-shell.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | `setup-fabric-tenant.ps1` | Separate Fabric administrator helper: read-only discovery by default; `-Apply` and confirmation explicitly enable reviewed API setting names for an existing security group. Preserves existing scopes/exclusions and refuses unscoped tenant-wide enablement. Supports `-WhatIf`; never called by deployment. | `./scripts/setup-fabric-tenant.ps1 -TenantId <tenant>` |
 | `suspend-fabric.ps1` | Suspends the F2 capacity to stop active compute billing. | `./scripts/suspend-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |

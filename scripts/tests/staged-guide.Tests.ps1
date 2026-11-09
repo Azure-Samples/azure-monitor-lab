@@ -130,6 +130,10 @@ try {
   }
   $originalInputs = @($sub, $tenant, $rg, $sourceParameters) | ConvertTo-Json -Depth 30 -Compress
   . ([scriptblock]::Create($helperImport))
+  function Invoke-LabDeploymentCommand {
+    param($Arguments, $DeploymentName)
+    az @Arguments
+  }
   $recoveryImplementation = ${function:Invoke-LabDeployment}
   function Invoke-LabDeployment {
     param($Arguments, $SubscriptionId, $ResourceGroup, $DeploymentName)

@@ -50,8 +50,6 @@ The Bicep or Terraform deployment creates:
 After deployment, `setup-fabric.ps1` creates or reuses:
 
 - Fabric workspace
-- Workspace Monitoring item with an automatically provisioned monitoring Eventhouse and data collection enabled for supported workspace diagnostics
-- A recommendation-only Operations Agent, bound to the lab KQL database with instructions and the deploying user's Teams UPN; created **stopped**, with no remediation actions
 - Eventhouse
 - Read-write KQL database
 - Workspace identity, with **Azure Event Hubs Data Receiver** assigned only at the lab's `diagnostics` event hub
@@ -70,7 +68,7 @@ Setup polls Eventstream failures and checks for rows ingested into `AzureDiagnos
 
 Reruns reuse existing items and preserve user-edited dashboards and mirror definitions. Sample rows are deduplicated by their stable synthetic IDs. A conflicting mirror source/table selection is reported, not overwritten. Custom Eventstream nodes are not replaced: use a distinct `EventstreamName` or `-SkipEventstreamConnection`. A workspace on another capacity is rejected rather than moved or coupled to the wrong suspension schedule.
 
-Workspace monitoring and the stopped Operations Agent default on within Stage Fabric. Monitoring adds storage/compute consumption on F2. Setup reuses an existing Monitoring item without changing its destination; ambiguous ownership or an unconfigured existing destination requires action. It enables collection and reads back the saved collection state, but does not equate that state with fresh telemetry. Existing agent instructions, actions, recipient and run state are never overwritten.
+Workspace monitoring and Operations Agent are [manual post-deployment steps](#manual-monitoring-and-operations-agent-setup). Setup checks existing collection/run state and reports **ActionRequired** when manual setup is needed; it never creates these items, enables collection, generates a playbook or starts/stops an agent. Existing destinations, instructions, actions, recipient and run state are preserved. Enabled/running state is not proof of fresh telemetry or correct agent behavior. Monitoring adds storage/compute consumption on F2.
 
 Mirroring and daily suspension default on **within the optional Fabric stage**. Existing explicit `false` values in local config remain opt-outs; update them to adopt these defaults. Both Log Analytics workspaces default to **3 GB/day each**, not a shared 3 GB budget. The cap can still interrupt ingestion; it is not a total-cost limit. No live Azure caps or tenant settings are changed merely by updating these scripts.
 
@@ -88,8 +86,8 @@ The Azure Monitor workbook reports the ARM capacity state and provisioning state
 - Azure role-assignment write permission at the source event hub and both source Log Analytics workspaces; custom-role administration to create the source mirroring roles
 - Tenant admin enables **Mirrored catalog item** under **OneLake catalog > Govern > Configurations > Tenant settings**. Capacity admin/Azure Owner alone does not grant this tenant role.
 - Review Fabric workspace membership before enabling mirrors: Azure Monitor table/row/column protections do not carry into Fabric
-- For workspace monitoring, a tenant administrator enables **Workspace admins can turn on monitoring for their workspaces** and **Users can create Fabric items**
-- For Operations Agent, a Microsoft Teams account and tenant enablement for Operations Agent, Copilot and Azure OpenAI. Creating the agent provisions a Fabric-managed Entra Agent ID and uses the creator's delegated authorization; it does not grant administrator permissions
+- For optional manual workspace monitoring, a tenant administrator enables **Allow monitoring data collection**, **Workspace admins can turn on monitoring for their workspaces** and **Users can create Fabric items**
+- For optional manual Operations Agent setup, a Microsoft Teams account and tenant enablement for Operations Agent, Copilot and Azure OpenAI. Creating the agent provisions a Fabric-managed Entra Agent ID and uses the creator's delegated authorization; it does not grant administrator permissions
 
 ## One-shot deployment
 
@@ -202,6 +200,25 @@ Select **Done**, then **Save**. The generated dashboard refreshes every five min
 
 In Azure Monitor, open the lab Health Dashboard workbook and confirm the Fabric F2 capacity row. Open `hm-amlab-workload` and confirm the optional **Real-Time Intelligence** tier.
 
+### Manual monitoring and Operations Agent setup
+
+These features are not configured by deployment. Their readiness checks and guided actions appear in the setup summary unless explicitly disabled.
+
+**Workspace monitoring**
+
+1. Ask a Fabric tenant admin to enable **Allow monitoring data collection** and the workspace-monitoring prerequisites for your user/group. Deployment never changes tenant settings.
+2. As a workspace admin, open the lab workspace and [configure workspace monitoring](https://learn.microsoft.com/fabric/fundamentals/enable-workspace-monitoring). Reuse an existing monitoring item/destination where appropriate and enable collection. Review the additional storage/capacity cost.
+3. If needed, separately enable **Log Eventstream activity** under `AzureMonitorEvents` > **Settings > Monitoring**.
+4. Confirm fresh monitoring telemetry. Rerunning setup only reads the saved collection state; it does not enable collection or change routes.
+
+**Operations Agent**
+
+1. Confirm the tenant AI prerequisites, then [create an Operations Agent in Fabric](https://learn.microsoft.com/fabric/real-time-intelligence/operations-agent) named `Azure Monitor Lab Operations Agent`.
+2. Select the lab's `MonitoringTelemetry` KQL database and `AzureDiagnosticsRaw` table, and configure the intended Teams recipient.
+3. Instruct it to recommend investigations for missing recent telemetry, distinguish capacity suspension from application failure, and cite timestamps/counts and uncertainty. Synthetic `LabSampleEvents` must not be presented as real customer impact. Do not configure resource changes, remediation jobs/flows or permission grants.
+4. Generate the playbook in Fabric, review its rules and notification behavior, and start only after review. The live service rejects the empty playbook allowed by the published definition examples; setup does not invent rule definitions or submit that rejected payload.
+5. Rerunning setup checks an existing named agent's source and run state without editing its instructions, actions, recipient, playbook or run state. The check is not a behavioral evaluation.
+
 ### 8. Review remaining actions and suspend F2 when finished
 
 Install the Capacity Metrics app once if needed (capacity administrator plus Power BI Pro/PPU/trial). There is no documented public API to install this app, so setup reports **ActionRequired** rather than pretending it is installed. See [Microsoft's installation guide](https://learn.microsoft.com/fabric/enterprise/metrics-app-install).
@@ -238,7 +255,7 @@ For multiple lab resource groups in the same tenant, set a distinct `workspaceNa
 
 `appInsightsMirrorConnectionId` is optional and omitted from the default config. Setup reuses a unique connection matching the App Insights workspace, or creates one when none exists. If multiple connections match, add this setting under `advancedConfiguration.fabric.fabricAutomation` to select one explicitly; setup will not guess.
 
-`enableWorkspaceMonitoring=false` and `enableOperationsAgent=false` skip those setup steps; they do not stop collection, stop/delete an existing agent, or remove permissions. Explicit `-EnableWorkspaceMonitoring` / `-EnableOperationsAgent` script parameters override config, including through the Cloud Shell wrapper.
+`enableWorkspaceMonitoring` and `enableOperationsAgent` control the read-only readiness checks and manual guidance, not automatic provisioning. Setting either to `false` skips that check; it does not stop collection, stop/delete an existing agent, or remove permissions. Existing `true` settings need no migration and no longer create or activate these features. Explicit `-EnableWorkspaceMonitoring` / `-EnableOperationsAgent` script parameters override config, including through the Cloud Shell wrapper.
 
 ### Administrator-only tenant bootstrap
 
@@ -263,14 +280,16 @@ This helper neither creates groups nor changes their membership, grants administ
 
 | Feature | Automated | Remaining verification/action |
 | --- | --- | --- |
-| Workspace monitoring | Create/reuse the [Monitoring definition](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/monitoring-definition), [enable collection](https://learn.microsoft.com/rest/api/fabric/monitoring/data-collection/enable), read back collection state | Confirm fresh workload telemetry; no historical backfill |
-| Eventstream activity logging | Workspace collection is enabled | In Eventstream **Settings > Monitoring**, enable **Log Eventstream activity**. The documented public Eventstream properties do not expose this per-stream toggle |
-| Operations Agent | [Create](https://learn.microsoft.com/rest/api/fabric/operationsagent/items/create-operations-agent) with current [Configurations.json definition](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/operations-agent-definition), lab data source, instructions and Teams recipient; verify saved definition with `shouldRun=false` | Review instructions, generate/review the playbook, then start in Fabric. The documented public API surface does not expose playbook generation; setup does not invent an endpoint or auto-start an unreviewed agent |
+| Workspace monitoring | Read existing collection state; report manual steps | Tenant admin enables collection prerequisites; workspace admin configures monitoring and enables collection. Confirm fresh telemetry |
+| Eventstream activity logging | Report manual steps | After configuring workspace monitoring, enable **Log Eventstream activity** in Eventstream **Settings > Monitoring** |
+| Operations Agent | Read an existing named agent's source/run state; report manual steps | Create/configure in Fabric, generate/review the playbook, then start. The published empty-playbook definition is rejected by the live service; setup does not generate rules or submit it |
 | Tenant prerequisites | Separate explicit admin helper for supported, reviewed group-scoped settings | Administrator authorization, security-group membership, governance/consent decisions and propagation |
 | Capacity Metrics app | Exact installation/licensing/OAuth instructions in setup results | Install/connect using a licensed capacity administrator. The [template-app installation-ticket API](https://learn.microsoft.com/rest/api/power-bi/template-apps/create-install-ticket) requires the caller's tenant to own the app; the lab does not own Microsoft's app |
 | Capacity resume | Already included in **Start Lab** / `start-the-lab.ps1 -Wait` | No automatic daily resume or new billable schedule is introduced |
 
 Setup retains its explicit feature statuses: **Configured** means saved configuration/state was checked, **Verified** means the feature-specific data check succeeded, **Pending** means provisioning/data is not confirmed, **ActionRequired** identifies a human/admin step, **Skipped** identifies an opt-out, and **Failed** reports an error and makes setup fail after the summary. Resource creation alone is not a readiness claim. These APIs include preview features and remain subject to tenant availability and permissions.
+
+Failed steps retain the service error body and, when available, the HTTP method and endpoint. Check that error before changing permissions or tenant settings; HTTP 400 alone does not identify a missing prerequisite. Mirror-role creation uses a temporary JSON file to avoid Windows CLI quoting issues, deletes it after the attempt, and reports the original Azure CLI failure rather than assuming a permission problem.
 
 ### Azure Monitor mirroring (preview)
 

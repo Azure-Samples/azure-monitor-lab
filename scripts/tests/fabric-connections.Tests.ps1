@@ -21,6 +21,10 @@ function Reset-Fixture {
   $fixture.Roles = @()
   $fixture.Assignments = @()
   $fixture.CreatedRole = $null
+  $fixture.CreatedRolePath = $null
+  $fixture.CreatedErrorPath = $null
+  $fixture.RoleCreateFailure = $false
+  $fixture.RoleResponse = '{"name":"33333333-3333-3333-3333-333333333333"}'
   $fixture.Grants = 0
   $fixture.AzureFailure = $false
   $fixture.RemainingAssignments = @()
@@ -65,8 +69,19 @@ function az {
   switch ($args[0..2] -join ' ') {
     'role definition list' { return ConvertTo-Json -InputObject @($fixture.Roles) -Depth 10 }
     'role definition create' {
-      $fixture.CreatedRole = $args[([Array]::IndexOf($args, '--role-definition') + 1)] | ConvertFrom-Json
-      return '{"name":"33333333-3333-3333-3333-333333333333"}'
+      $fixture.CreatedRolePath = $args[([Array]::IndexOf($args, '--role-definition') + 1)]
+      $fixture.CreatedErrorPath = $errorPath
+      if (-not [IO.Path]::IsPathFullyQualified($fixture.CreatedRolePath) -or
+          -not (Test-Path -LiteralPath $fixture.CreatedRolePath -PathType Leaf)) {
+        throw 'Role creation must receive an existing JSON file, not inline JSON.'
+      }
+      $fixture.CreatedRole = Get-Content -LiteralPath $fixture.CreatedRolePath -Raw | ConvertFrom-Json
+      if ($fixture.RoleCreateFailure) {
+        Write-Error 'ERROR: (InvalidRoleDefinition) Synthetic role-definition rejection.' -ErrorAction Continue
+        $global:LASTEXITCODE = 1
+        return
+      }
+      return $fixture.RoleResponse
     }
     'role assignment list' {
       if ($args -contains '--role') { return ConvertTo-Json -InputObject @($fixture.RemainingAssignments) -Depth 10 }
@@ -110,10 +125,31 @@ if ($connection.id -ne 'new-connection' -or $fixture.Grants -ne 1 -or $fixture.P
   throw 'Mirror creation must use customer GUID, tested keyless credentials and source-scoped authorization.'
 }
 $actions = @($fixture.CreatedRole.Actions | Sort-Object)
+if ((Test-Path -LiteralPath $fixture.CreatedRolePath) -or (Test-Path -LiteralPath $fixture.CreatedErrorPath)) {
+  throw 'Temporary role definition and diagnostics must be deleted after successful creation.'
+}
 if (($actions -join ',') -cne 'Microsoft.Authorization/roleAssignments/write,Microsoft.OperationalInsights/workspaces/query/read,Microsoft.OperationalInsights/workspaces/read' -or
     ($fixture.CreatedRole.AssignableScopes -join ',') -ne $resourceGroupScope) {
   throw 'Custom-role availability must be resource-group-scoped and its permissions must be exactly the documented connection requirements.'
 }
+Reset-Fixture
+$fixture.RoleCreateFailure = $true
+Assert-Failure { Test-MonitorConnection } '*Azure CLI exit code 1:*InvalidRoleDefinition*Synthetic role-definition rejection*'
+if ($fixture.Grants -or $fixture.Posts -or (Test-Path -LiteralPath $fixture.CreatedRolePath) -or
+    (Test-Path -LiteralPath $fixture.CreatedErrorPath)) {
+  throw 'Failed role creation must clean up its file and must not grant access or create a connection.'
+}
+foreach ($response in @('not-json', '{}')) {
+  Reset-Fixture
+  $fixture.RoleResponse = $response
+  $expected = if ($response -eq 'not-json') { '*invalid JSON*' } else { '*no role definition ID*' }
+  Assert-Failure { Test-MonitorConnection } $expected
+  if ($fixture.Grants -or $fixture.Posts -or (Test-Path -LiteralPath $fixture.CreatedRolePath) -or
+      (Test-Path -LiteralPath $fixture.CreatedErrorPath)) {
+    throw 'Invalid role responses must fail closed and clean up their temporary definition.'
+  }
+}
+Write-Output 'PASS: file-based role JSON, Azure CLI failure diagnostics, invalid responses and cleanup. No live calls.'
 Reset-Fixture
 $fixture.Roles = @(@{
   name = '33333333-3333-3333-3333-333333333333'; roleType = 'CustomRole'

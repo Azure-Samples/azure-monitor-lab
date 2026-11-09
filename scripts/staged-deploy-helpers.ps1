@@ -82,7 +82,8 @@ function Invoke-LabStage {
       Invoke-LabDeployment -Arguments $deploymentArguments -SubscriptionId $sub.ToString() `
         -ResourceGroup $rg -DeploymentName "stage-$Stage"
     } else {
-      az deployment group create @deploymentArguments --output none --only-show-errors
+      Invoke-LabDeploymentCommand -Arguments (@('deployment', 'group', 'create') + $deploymentArguments +
+        @('--output', 'none', '--only-show-errors')) -DeploymentName "stage-$Stage"
     }
     if ($LASTEXITCODE -ne 0) { throw "Deployment failed for $Stage." }
   } finally {

@@ -1,3 +1,18 @@
+function Get-FabricErrorDetail {
+  param([Parameter(Mandatory)] [Management.Automation.ErrorRecord] $ErrorRecord)
+  $detail = $ErrorRecord.Exception.Message
+  $request = if ($ErrorRecord.Exception -is [Microsoft.PowerShell.Commands.HttpResponseException]) {
+    $ErrorRecord.Exception.Response.RequestMessage
+  } else { $null }
+  if ($request -and $request.RequestUri) {
+    $detail += " [$($request.Method) $($request.RequestUri.GetLeftPart([UriPartial]::Path))]"
+  }
+  if ($ErrorRecord.ErrorDetails -and -not [string]::IsNullOrWhiteSpace($ErrorRecord.ErrorDetails.Message)) {
+    $detail += " Service response: $($ErrorRecord.ErrorDetails.Message)"
+  }
+  return $detail
+}
+
 function Invoke-FabricKql {
   param(
     [Parameter(Mandatory)] [string] $QueryServiceUri,

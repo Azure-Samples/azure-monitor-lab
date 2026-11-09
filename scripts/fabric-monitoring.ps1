@@ -12,7 +12,7 @@ function Get-FabricDefinitionContent {
   return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($parts[0].payload)) | ConvertFrom-Json
 }
 
-function Initialize-FabricWorkspaceMonitoring {
+function Get-FabricWorkspaceMonitoringReadiness {
   param([Parameter(Mandatory)] [string] $WorkspaceId)
 
   $collection = "workspaces/$WorkspaceId/monitoringItems"
@@ -23,55 +23,31 @@ function Initialize-FabricWorkspaceMonitoring {
       Detail = 'Multiple Monitoring items exist. Select the collection owner in Fabric; setup will not transfer collection or change existing routes.'
     }
   }
-  if ($items.Count -eq 1) {
-    $item = $items[0]
-  } else {
-    $properties = @{
-      '$schema' = 'https://developer.microsoft.com/json-schemas/fabric/item/monitoring/definition/monitoringProperties/1.0.0/schema.json'
-      dataCollectionSettings = @(@{
-        sources = @{ workspaceDiagnostics = @{ mode = 'All' } }
-        destinations = @{ eventhouse = @{ mode = 'Auto' } }
-      })
-    }
-    $item = Ensure-FabricItem -CollectionPath $collection -DisplayName 'AzureMonitorLabMonitoring' -CreateBody @{
-      displayName = 'AzureMonitorLabMonitoring'
-      description = 'Workspace diagnostics for supported Fabric items. Additional storage and capacity usage apply.'
-      definition = @{
-        format = 'MonitoringV1'
-        parts = @(@{
-          path = 'MonitoringProperties.json'
-          payload = ConvertTo-InlineBase64 ($properties | ConvertTo-Json -Depth 10 -Compress)
-          payloadType = 'InlineBase64'
-        })
-      }
-    }
-  }
-
-  $path = "$collection/$($item.id)"
-  $saved = Get-FabricDefinitionContent -ItemPath $path -PartPath 'MonitoringProperties.json'
-  if (-not $saved.dataCollectionSettings -or @($saved.dataCollectionSettings).Count -ne 1 -or
-      -not $saved.dataCollectionSettings[0].destinations.eventhouse) {
+  $manualSteps = "Manual post-deployment: a Fabric tenant admin enables 'Allow monitoring data collection' and the workspace-monitoring prerequisites. A workspace admin then creates/configures monitoring and enables collection in Fabric. Setup does not create items, enable collection or change tenant settings. See docs/STAGE-FABRIC.md#manual-monitoring-and-operations-agent-setup and https://app.fabric.microsoft.com/groups/$WorkspaceId"
+  if (-not $items.Count) {
     return [pscustomobject]@{
       Feature = 'Workspace monitoring'; Status = 'ActionRequired'
-      Detail = "Monitoring item $($item.id) has no collection route. Configure its destination in Fabric; setup preserves existing definitions."
+      Detail = $manualSteps
     }
   }
+  $item = $items[0]
+  $path = "$collection/$($item.id)"
   $state = Invoke-RestMethod -Method Get -Uri "$fabricApi/$path" -Headers $script:fabricHeaders
-  if ($state.properties.dataCollectionState -eq 'Disabled') {
-    Invoke-RestMethod -Method Post -Uri "$fabricApi/$path/enableDataCollection" -Headers $script:fabricHeaders | Out-Null
-    $state = Invoke-RestMethod -Method Get -Uri "$fabricApi/$path" -Headers $script:fabricHeaders
-  }
   if ($state.properties.dataCollectionState -notin @('Enabled', 'Disabled')) {
     throw "Monitoring item $($item.id) returned unknown dataCollectionState '$($state.properties.dataCollectionState)'."
   }
   $enabled = $state.properties.dataCollectionState -eq 'Enabled'
   return [pscustomobject]@{
-    Feature = 'Workspace monitoring'; Status = $(if ($enabled) { 'Configured' } else { 'Pending' })
-    Detail = "Monitoring item $($item.id): collection state $($state.properties.dataCollectionState). Existing routes preserved. First telemetry arrival is not verified; collection/storage consume capacity."
+    Feature = 'Workspace monitoring'; Status = $(if ($enabled) { 'Configured' } else { 'ActionRequired' })
+    Detail = $(if ($enabled) {
+      "Monitoring item $($item.id): existing collection is Enabled. Read-only check; routes unchanged. Fresh telemetry is not verified; collection/storage consume capacity."
+    } else {
+      "Monitoring item $($item.id): collection is Disabled. $manualSteps"
+    })
   }
 }
 
-function Initialize-FabricOperationsAgent {
+function Get-FabricOperationsAgentReadiness {
   param(
     [Parameter(Mandatory)] [string] $WorkspaceId,
     [Parameter(Mandatory)] [guid] $DatabaseId,
@@ -83,35 +59,13 @@ function Initialize-FabricOperationsAgent {
   $collection = "workspaces/$WorkspaceId/operationsAgents"
   $name = 'Azure Monitor Lab Operations Agent'
   $existing = Get-CollectionItem -Path $collection -DisplayName $name
-  $instructions = @"
-Monitor the Azure Monitor lab's live operational telemetry in table $TableName.
-Recommend an investigation when no rows have ingestion_time() in the last 15 minutes.
-Distinguish ingestion silence from application failure, and capacity suspension from an outage.
-Report supporting timestamps and counts, and uncertainty. Never treat LabSampleEvents or other synthetic examples as customer impact.
-Send recommendations to the configured Teams recipient. Do not execute remediation, invoke jobs or flows, change resources, or grant permissions.
-"@
-  $configuration = @{
-    configuration = @{
-      instructions = $instructions
-      dataSources = @{ labTelemetry = @{ id = $DatabaseId.ToString(); type = 'KustoDatabase'; workspaceId = $WorkspaceId } }
-      actions = @{}
-      messageDestination = @{ kind = 'Recipient'; recipient = $Recipient }
-    }
-    playbook = @{}
-    shouldRun = $false
-  }
-  $item = Ensure-FabricItem -CollectionPath $collection -DisplayName $name -CreateBody @{
-    displayName = $name
-    description = 'Recommendation-only lab agent. Created stopped; review the generated playbook before starting.'
-    definition = @{
-      format = 'OperationsAgentV1'
-      parts = @(@{
-        path = 'Configurations.json'
-        payload = ConvertTo-InlineBase64 ($configuration | ConvertTo-Json -Depth 10 -Compress)
-        payloadType = 'InlineBase64'
-      })
+  if (-not $existing) {
+    return [pscustomobject]@{
+      Feature = 'Operations Agent'; Status = 'ActionRequired'
+      Detail = "Manual post-deployment: create '$name' in Fabric, select the lab KQL database $DatabaseId and table $TableName, and configure Teams recipient $Recipient. Generate/review the playbook and start only after review. Setup does not submit an empty playbook, create or start an agent. See docs/STAGE-FABRIC.md#manual-monitoring-and-operations-agent-setup and https://app.fabric.microsoft.com/groups/$WorkspaceId"
     }
   }
+  $item = $existing
   $saved = Get-FabricDefinitionContent -ItemPath "$collection/$($item.id)" -PartPath 'Configurations.json'
   $sources = @($saved.configuration.dataSources.PSObject.Properties | ForEach-Object Value)
   if ($sources.Count -ne 1 -or $sources[0].id -ne $DatabaseId.ToString() -or
@@ -122,14 +76,8 @@ Send recommendations to the configured Teams recipient. Do not execute remediati
     }
   }
   if ($saved.shouldRun -isnot [bool]) { throw "Operations Agent $($item.id) returned no Boolean shouldRun state." }
-  if (-not $existing -and ($saved.shouldRun -or $saved.configuration.instructions -ne $instructions -or
-      @($saved.configuration.actions.PSObject.Properties).Count -ne 0 -or
-      $saved.configuration.messageDestination.kind -ne 'Recipient' -or
-      $saved.configuration.messageDestination.recipient -ne $Recipient)) {
-    throw "Operations Agent $($item.id) saved configuration differs from the requested stopped, recommendation-only definition."
-  }
   return [pscustomobject]@{
-    Feature = 'Operations Agent'; Status = 'ActionRequired'
-    Detail = "Agent $($item.id): saved shouldRun=$($saved.shouldRun). Review instructions, generate/review the playbook and start in Fabric when ready. Existing agents are never overwritten, stopped or started. https://app.fabric.microsoft.com/groups/$WorkspaceId"
+    Feature = 'Operations Agent'; Status = $(if ($saved.shouldRun) { 'Configured' } else { 'ActionRequired' })
+    Detail = "Agent $($item.id): saved shouldRun=$($saved.shouldRun). Read-only check; instructions, actions, recipient and run state are unchanged. If stopped, review instructions and generate/review the playbook before starting in Fabric. Agent behavior is not verified. See docs/STAGE-FABRIC.md#manual-monitoring-and-operations-agent-setup and https://app.fabric.microsoft.com/groups/$WorkspaceId"
   }
 }

@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $setup = Join-Path $source 'scripts/setup-fabric-tenant.ps1'
-$tenantId = '11111111-1111-1111-1111-111111111111'
+$tenantId = '00000000-0000-0000-0000-000000000000'
 $groupId = '22222222-2222-2222-2222-222222222222'
 $fixture = @{}
 function Reset-Fixture {

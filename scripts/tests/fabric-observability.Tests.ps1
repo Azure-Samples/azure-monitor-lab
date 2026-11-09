@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 . (Join-Path $source 'scripts/fabric-observability.ps1')
 . (Join-Path $source 'scripts/fabric-connections.ps1')
+. (Join-Path $source 'scripts/fabric-monitoring.ps1')
 . (Join-Path $source 'scripts/fabric-mirrored-dashboard.ps1')
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $source 'scripts/setup-fabric.ps1'), [ref]$null, [ref]$errors)
@@ -47,6 +48,7 @@ function Reset-Fixture {
   $fixture.Delays = 0
   $fixture.TokenFailure = $false
   $fixture.HttpFailure = $false
+  $fixture.FeatureFailures = $false
   $fixture.FullSetup = $false
   $fixture.CapacityState = 'Active'
   $fixture.DeletedWorkspace = $false
@@ -97,6 +99,16 @@ function Invoke-RestMethod {
   param($Method, $Uri, $Headers, $ContentType, $Body, $ResponseHeadersVariable, $StatusCodeVariable)
   $fixture.Requests.Add(@{ Method = $Method; Uri = $Uri; Body = $Body })
   if ($fixture.HttpFailure) { throw 'HTTP 403 access denied.' }
+  if ($fixture.FeatureFailures -and $Method -eq 'Get' -and
+      ($Uri -like '*/monitoringItems' -or $Uri -like '*/operationsAgents')) {
+    $response = [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::Forbidden)
+    $response.RequestMessage = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Get, $Uri)
+    $exception = [Microsoft.PowerShell.Commands.HttpResponseException]::new('HTTP 403 Forbidden.', $response)
+    $record = [Management.Automation.ErrorRecord]::new($exception, 'FabricFeatureFailure', [Management.Automation.ErrorCategory]::InvalidOperation, $null)
+    $code = if ($Uri -like '*/monitoringItems') { 'MonitoringReadDenied' } else { 'AgentReadDenied' }
+    $record.ErrorDetails = [Management.Automation.ErrorDetails]::new("{`"errorCode`":`"$code`",`"message`":`"Synthetic feature failure`"}")
+    throw $record
+  }
   if ($Uri -like 'https://test.kusto.fabric.microsoft.com/v1/rest/*') {
     if ($Headers.Authorization -ne 'Bearer offline-kusto-test') { throw 'Wrong Kusto audience/token.' }
     if ($fixture.KqlError) { return @{ error = @{ message = $fixture.KqlError } } }
@@ -207,6 +219,24 @@ function Test-Telemetry {
 function Test-Mirror {
   Initialize-FabricMirror -WorkspaceId workspace -SourceCustomerId $customerId -Tables AzureActivity, Perf
 }
+
+try { throw 'Non-HTTP failure.' } catch {
+  if ((Get-FabricErrorDetail -ErrorRecord $_) -ne 'Non-HTTP failure.') {
+    throw 'Non-HTTP exceptions must retain their original message without invented service details.'
+  }
+}
+$response = [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::BadRequest)
+$response.RequestMessage = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, "$fabricApi/test?token=not-for-output")
+$exception = [Microsoft.PowerShell.Commands.HttpResponseException]::new('HTTP 400 Bad Request.', $response)
+$record = [Management.Automation.ErrorRecord]::new($exception, 'TestHttpError', [Management.Automation.ErrorCategory]::InvalidOperation, $null)
+if ((Get-FabricErrorDetail -ErrorRecord $record) -ne "HTTP 400 Bad Request. [POST $fabricApi/test]") {
+  throw 'HTTP diagnostics must retain method/path, omit query strings and handle missing service error bodies.'
+}
+$record.ErrorDetails = [Management.Automation.ErrorDetails]::new('{"errorCode":"FeatureDisabled","message":"Review tenant setting"}')
+if ((Get-FabricErrorDetail -ErrorRecord $record) -notlike '*HTTP 400*POST*Service response:*FeatureDisabled*Review tenant setting*') {
+  throw 'Structured service error bodies must be retained alongside the HTTP context.'
+}
+Write-Output 'PASS: HTTP method/path and service errors retained; missing bodies and non-HTTP errors handled without exposing query strings.'
 
 Reset-Fixture
 if ((Test-Telemetry).Status -ne 'Verified') { throw 'Recent live rows must verify ingestion.' }
@@ -384,8 +414,10 @@ $fixture.FullSetup = $true
 if ($fixture.Dashboards.Count -ne 3 -or $fixture.Mirrors.Count -ne 2 -or $fixture.Samples.Count -ne 4) {
   throw 'Full setup must wire dashboard, synthetic correlation and configured mirroring without manual helper calls.'
 }
-if ($fixture.MonitoringItems.Count -ne 1 -or $fixture.MonitoringState -ne 'Enabled' -or $fixture.Agents.Count -ne 1) {
-  throw 'Full setup must enable workspace collection and configure the stopped Operations Agent by default.'
+if ($fixture.MonitoringItems.Count -or $fixture.MonitoringState -ne 'Disabled' -or $fixture.Agents.Count -or
+    @($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and
+      ($_.Uri -like '*/monitoringItems' -or $_.Uri -like '*/operationsAgents' -or $_.Uri -like '*/enableDataCollection') }).Count) {
+  throw 'Full setup must not create monitoring/agents or enable collection; those are manual post-deployment steps.'
 }
 Write-Output 'PASS: full setup orchestrates supported experiences and explicitly reports incomplete live ingestion and manual Capacity Metrics installation.'
 
@@ -398,6 +430,38 @@ if ($fixture.MonitoringItems.Count -or $fixture.Agents.Count -or $fixture.Monito
   throw 'Explicit feature opt-outs must skip monitoring/agent API calls without changing existing state.'
 }
 Write-Output 'PASS: full setup honors monitoring and Operations Agent opt-outs.'
+
+Reset-Fixture
+$fixture.FullSetup = $true
+$featureBlock = @($ast.EndBlock.Statements | Where-Object {
+  $_ -is [Management.Automation.Language.ForEachStatementAst] -and $_.Extent.Text.StartsWith('foreach ($feature in')
+})[0]
+function Test-FeatureSummary {
+  param([switch] $ExpectFailures)
+  $workspace = @{ id = 'workspace' }
+  $kqlDatabase = @{ id = '11111111-1111-1111-1111-111111111111' }
+  $active = @{ userName = 'operator@example.com'; tenantId = '00000000-0000-0000-0000-000000000000' }
+  $DestinationTableName = 'AzureDiagnosticsRaw'
+  $EnableWorkspaceMonitoring = $true
+  $EnableOperationsAgent = $true
+  $setupResults = [Collections.Generic.List[object]]::new()
+  . ([scriptblock]::Create($featureBlock.Extent.Text))
+  if ($ExpectFailures) {
+    if ($setupResults.Count -ne 2 -or @($setupResults | Where-Object Status -eq Failed).Count -ne 2 -or
+        $setupResults[0].Detail -notlike '*GET*monitoringItems*MonitoringReadDenied*Synthetic feature failure*' -or
+        $setupResults[1].Detail -notlike '*GET*operationsAgents*AgentReadDenied*Synthetic feature failure*') {
+      throw "Monitoring and agent setup results must retain actual read failures, rather than hiding them as manual steps: $($setupResults | ConvertTo-Json -Depth 5 -Compress)"
+    }
+  } elseif ($setupResults.Count -ne 3 -or @($setupResults | Where-Object Status -eq ActionRequired).Count -ne 3 -or
+      $setupResults[0].Detail -notlike '*Allow monitoring data collection*' -or
+      $setupResults[2].Detail -notlike '*Generate/review the playbook*') {
+    throw 'Full orchestration must provide actionable manual monitoring, per-stream logging and agent setup results.'
+  }
+}
+Test-FeatureSummary
+$fixture.FeatureFailures = $true
+Test-FeatureSummary -ExpectFailures
+Write-Output 'PASS: monitoring/agent orchestration reports guided manual steps and retains genuine HTTP read failures.'
 
 Reset-Fixture
 $fixture.FullSetup = $true
@@ -419,7 +483,7 @@ function Test-WorkspaceConfig {
   $EnableAutoSuspend = $false
   function Test-Path { return $true }
   function Get-Content { return '{"fabricAutomation":{"workspaceName":"Isolated lab workspace","enableAutoSuspend":true}}' }
-  . ([scriptblock]::Create($configBlock.Extent.Text))
+  . ([scriptblock]::Create('$PSScriptRoot = Join-Path $source ''scripts''; ' + $configBlock.Extent.Text))
   if ($WorkspaceName -ne 'Isolated lab workspace' -or $EnableAutoSuspend) {
     throw 'Teardown must honor the configured workspace without applying setup-only options.'
   }

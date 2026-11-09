@@ -86,9 +86,33 @@ function Ensure-FabricMonitorConnection {
       Actions = $actions; NotActions = @(); DataActions = @(); NotDataActions = @()
       AssignableScopes = @($roleScope)
     }
-    $role = az role definition create --subscription $SubscriptionId `
-      --role-definition ($definition | ConvertTo-Json -Depth 6 -Compress) --output json | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0 -or -not $role.name) { throw 'Cannot create the source-scoped mirror role. Custom-role administration permission is required.' }
+    $definitionPath = $null
+    $errorPath = $null
+    try {
+      $definitionPath = [IO.Path]::GetTempFileName()
+      $errorPath = [IO.Path]::GetTempFileName()
+      [IO.File]::WriteAllText($definitionPath, ($definition | ConvertTo-Json -Depth 6 -Compress), [Text.UTF8Encoding]::new($false))
+      # az.cmd does not preserve embedded JSON quotes on Windows.
+      $PSNativeCommandUseErrorActionPreference = $false
+      $roleOutput = @(az role definition create --subscription $SubscriptionId `
+        --role-definition $definitionPath --output json --only-show-errors 2> $errorPath)
+      $roleExitCode = $LASTEXITCODE
+      $diagnostics = [IO.File]::ReadAllText($errorPath).Trim()
+      if ($roleExitCode -ne 0) {
+        throw "Cannot create the source-scoped mirror role '$roleName'. Azure CLI exit code ${roleExitCode}: $diagnostics $($roleOutput -join ' ')"
+      }
+      if ($diagnostics) { Write-Warning $diagnostics }
+      try {
+        $role = ($roleOutput -join "`n") | ConvertFrom-Json
+      } catch {
+        throw [InvalidOperationException]::new("Azure CLI returned invalid JSON when creating mirror role '$roleName'.", $_.Exception)
+      }
+      if (-not $role.name) { throw "Azure CLI returned no role definition ID when creating mirror role '$roleName'." }
+    } finally {
+      foreach ($path in @($definitionPath, $errorPath)) {
+        if ($path) { Remove-Item -LiteralPath $path -Force -ErrorAction Stop }
+      }
+    }
   }
   Write-Warning "Mirroring grants workspace identity query/read and roleAssignments/write at '$SourceResourceId'. Fabric access does not inherit Azure Monitor table/row restrictions."
   Grant-FabricSourceRole -PrincipalId $identity.servicePrincipalId -Scope $SourceResourceId -RoleId $role.name

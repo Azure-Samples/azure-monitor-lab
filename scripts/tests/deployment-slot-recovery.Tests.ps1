@@ -1,6 +1,10 @@
 $ErrorActionPreference = 'Stop'
 $previousExitCode = $global:LASTEXITCODE
 . (Join-Path $PSScriptRoot '..\deployment-slot-recovery.ps1')
+function Invoke-LabDeploymentCommand {
+  param([Alias('Arguments')]$CommandArguments, $DeploymentName)
+  az @CommandArguments
+}
 $subscription = '00000000-0000-0000-0000-000000000001'
 $prefix = "/subscriptions/$subscription/resourceGroups/test-rg/providers/"
 $slotId = "${prefix}Microsoft.Web/sites/customer/slots/broken"

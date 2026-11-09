@@ -21,8 +21,8 @@
   completion discovers the latest successful deployment for the customer app.
 
 .PARAMETER ApproveCustomerDependencies
-  Explicit approval for enabled customer SQL initialization and worker publication.
-  Otherwise completion prompts before changing the backend.
+  Enabled customer SQL initialization and worker publication are approved by
+  default. Pass -ApproveCustomerDependencies:$false to request confirmation.
 
 .PARAMETER EnableStageSreAgent
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
@@ -45,7 +45,7 @@ param(
   [string] $SubscriptionId,
   [guid[]] $ConsoleOperatorObjectIds,
   [string] $CustomerDependencyDeploymentName,
-  [switch] $ApproveCustomerDependencies,
+  [switch] $ApproveCustomerDependencies = $true,
   [bool] $EnableStageE = $false,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false
