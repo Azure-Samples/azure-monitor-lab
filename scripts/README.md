@@ -218,7 +218,13 @@ $context = Get-CustomerDependencyContext @common # Read-only account/output chec
 The lifecycle bootstraps SQL first using the configured Entra administrator's
 in-memory token, publishes `workloads/customer-processor/CustomerProcessor.csproj`
 to a prebuilt ZIP, waits at most 120 seconds for Functions discovery, and runs
-read-only readiness. To bootstrap independently, use
+read-only readiness. Worker packaging uses the .NET ZIP API to include hidden
+files such as `.azurefunctions` on Linux. Before upload, the script verifies
+that `host.json`, `functions.metadata` and `.azurefunctions` files are at the
+archive root, not nested under the publish directory. An incomplete package
+stops completion before upload. If publication fails after SQL initialization,
+rerun completion after fixing the error; SQL bootstrap is idempotent and no
+infrastructure redeployment is required. To bootstrap independently, use
 `bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId`
 from a private-network-connected operator environment. Schema creation/seeding is idempotent;
 existing SQL principal SID/type mismatches fail rather than replacing users.
