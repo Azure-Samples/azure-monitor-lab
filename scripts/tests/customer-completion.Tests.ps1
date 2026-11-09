@@ -24,6 +24,9 @@ function Reset-Fixture {
   $fixture.Calls = [Collections.Generic.List[string]]::new()
   $fixture.Prompts = 0
   $fixture.Polls = 0
+  $fixture.PythonEnvironment = $null
+  $fixture.IsolatedPython = $null
+  $fixture.MissingParamiko = $false
 }
 function Assert-True([bool] $Condition, [string] $Message) {
   if (-not $Condition) { throw $Message }
@@ -36,8 +39,27 @@ function Assert-Throws([scriptblock] $Action, [string] $Message) {
 function Read-Host { $fixture.Prompts++; return $fixture.Reply }
 function Start-Sleep { }
 function python {
+  if ($args[0] -eq '-m' -and $args[1] -eq 'venv') {
+    $fixture.Events.Add('python-venv')
+    $fixture.PythonEnvironment = $args[2]
+    New-Item -ItemType Directory -Path $args[2] -Force | Out-Null
+    $fixture.IsolatedPython = Join-Path $args[2] $(if ($IsWindows) { 'Scripts\python.exe' } else { 'bin/python' })
+    Set-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)" -Value {
+      if ($args[0] -eq '-m') {
+        Assert-True (($args -join ' ') -eq '-m pip install --disable-pip-version-check --no-input paramiko') 'Install only the SSH dependency, noninteractively, in the isolated environment.'
+        $fixture.Events.Add('python-install')
+        $global:LASTEXITCODE = if ($fixture.Failure -eq 'python-install') { 1 } else { 0 }
+      } else {
+        Assert-True (($args -join ' ') -eq '-c import paramiko') 'Verify the isolated dependency before opening a tunnel.'
+        $fixture.Events.Add('python-verify')
+        $global:LASTEXITCODE = if ($fixture.Failure -eq 'python-verify') { 1 } else { 0 }
+      }
+    }
+    $global:LASTEXITCODE = if ($fixture.Failure -eq 'python-venv') { 1 } else { 0 }
+    return
+  }
   Assert-True (($args -join ' ') -eq '-c import paramiko') 'Prerequisite check must not request or print tokens.'
-  $global:LASTEXITCODE = if ($fixture.Failure -eq 'python') { 1 } else { 0 }
+  $global:LASTEXITCODE = if ($fixture.MissingParamiko -or $fixture.Failure -like 'python*') { 1 } else { 0 }
 }
 function Start-Job {
   param($ScriptBlock, $ArgumentList)
@@ -125,11 +147,12 @@ function Test-CustomerSqlTunnel {
 }
 '@ | Add-Content (Join-Path $scripts 'customer-dependency-helpers.ps1')
   @'
-param($SubscriptionId,$TenantId,$ResourceGroup,$DeploymentName,$ConfirmTarget,$ApproveTemporaryFirewall,$OperatorIpv4,
+param($SubscriptionId,$TenantId,$ResourceGroup,$DeploymentName,$ConfirmTarget,$ApproveTemporaryFirewall,$OperatorIpv4,$PythonExecutable,
   [switch]$UseCustomerPrivateTunnel,$SshPort,[switch]$Confirm)
 if ($ConfirmTarget -ne $context.sqlDatabaseId -or -not $UseCustomerPrivateTunnel -or $SshPort -le 0 -or
     $ApproveTemporaryFirewall -or $OperatorIpv4 -or $Confirm) { throw 'Bootstrap must use the exact SQL target and private tunnel without public firewall approval.' }
 $fixture.Events.Add('bootstrap')
+if ($PythonExecutable -cne $(if ($fixture.IsolatedPython) { $fixture.IsolatedPython } else { 'python' })) { throw 'Bootstrap must use the verified Python interpreter.' }
 if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
 '@ | Set-Content (Join-Path $scripts 'bootstrap-customer-sql.ps1')
   $complete = Join-Path $scripts 'complete-customer-dependencies.ps1'
@@ -189,7 +212,9 @@ if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
   Assert-True (@($fixture.Calls | Where-Object { $_ -like 'deployment group list*' }).Count -eq 0) 'An explicit deployment must not be replaced by discovery.'
 
   foreach ($case in @(
-    @{ Failure = 'python'; Message = 'requires Python paramiko'; Started = $false },
+    @{ Failure = 'python-venv'; Message = 'Install Python venv support'; Started = $false },
+    @{ Failure = 'python-install'; Message = 'Could not install paramiko'; Started = $false },
+    @{ Failure = 'python-verify'; Message = 'verification failed after installation'; Started = $false },
     @{ Failure = 'tunnel-exit'; Message = 'tunnel stopped'; Started = $true },
     @{ Failure = 'tunnel-timeout'; Message = 'SSH banner'; Started = $true },
     @{ Failure = 'sql'; Message = 'simulated SQL failure'; Started = $true },
@@ -203,9 +228,36 @@ if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
     Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer -ApproveCustomerDependencies } $case.Message
     Assert-True (@($fixture.Events | Where-Object { $_ -eq 'tunnel-stop' }).Count -eq [int]$case.Started -and
       @($fixture.Events | Where-Object { $_ -eq 'tunnel-remove' }).Count -eq [int]$case.Started) 'Every owned tunnel must be stopped and removed exactly once, including failures.'
-    if ($case.Failure -in @('python','tunnel-exit','tunnel-timeout','sql')) {
+    if ($case.Failure -like 'python*' -or $case.Failure -in @('tunnel-exit','tunnel-timeout','sql')) {
       Assert-True ($fixture.Events -notcontains 'publish') 'Failed prerequisites or SQL must block worker publication.'
     }
+    if ($fixture.PythonEnvironment) {
+      Assert-True (-not (Test-Path -LiteralPath $fixture.PythonEnvironment)) 'Failed dependency setup must remove its temporary environment.'
+      Remove-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)"
+    }
+    Reset-Fixture
+    $fixture.Failure = 'python-missing'
+    & $complete @common -CustomerWebAppName app-test-customer -ApproveCustomerDependencies
+    Assert-True (($fixture.Events -join ',') -eq 'python-venv,python-install,python-verify,tunnel-start,bootstrap,tunnel-stop,tunnel-remove,publish,upload,functions,products,functions') 'Missing paramiko must be installed and verified before the normal lifecycle.'
+    Assert-True (-not (Test-Path -LiteralPath $fixture.PythonEnvironment)) 'Successful completion must remove its temporary Python environment.'
+    Remove-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)"
+    foreach ($failure in @('sql', 'upload')) {
+      Reset-Fixture
+      $fixture.MissingParamiko = $true
+      $fixture.Failure = $failure
+      $message = if ($failure -eq 'sql') { 'simulated SQL failure' } else { 'ZIP deployment failed' }
+      Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer -ApproveCustomerDependencies } $message
+      Assert-True (-not (Test-Path -LiteralPath $fixture.PythonEnvironment)) 'Downstream failures must remove the isolated Python environment.'
+      Assert-True ($fixture.Events.Contains('tunnel-stop') -and $fixture.Events.Contains('tunnel-remove')) 'Downstream failure must still close the managed tunnel.'
+      Remove-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)"
+    }
+    Reset-Fixture
+    $fixture.MissingParamiko = $true
+    & $lifecycle @common -DeploymentName explicit -ConfirmTarget $context.workerId -UseCustomerPrivateTunnel -Confirm:$false
+    Assert-True ($fixture.Events.Contains('python-install') -and $fixture.Events.Contains('bootstrap') -and
+      -not $fixture.Events.Contains('tunnel-start')) 'Existing operator tunnels must also support isolated dependency installation without managing the tunnel.'
+    Assert-True (-not (Test-Path -LiteralPath $fixture.PythonEnvironment)) 'Existing-tunnel completion must clean its Python environment.'
+    Remove-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)"
     Assert-True (@(Get-ChildItem (Join-Path $root '.artifacts') -Filter 'customer-processor-*' -ErrorAction SilentlyContinue).Count -eq 0) 'Failure must clean its exact publication artifact directory.'
   }
   Reset-Fixture

@@ -165,8 +165,12 @@ restore the interactive `yes` prompt. Declining that prompt or failing bootstrap
 deployment; infrastructure success alone is not reported as backend readiness.
 Disabled backends do not prompt or run completion.
 
-Run as the configured SQL Entra administrator, with the .NET 8 SDK, Python and
-`paramiko` available. Completion opens an authenticated customer App Service SSH
+Run as the configured SQL Entra administrator, with the .NET 8 SDK and Python
+available. Completion reuses `paramiko` if already installed; otherwise it creates
+a temporary virtual environment and installs it automatically before opening any
+tunnel. This requires Python venv/pip support and package-index access. The
+environment is removed on success or failure; system Python packages and PATH
+are unchanged. Completion opens an authenticated customer App Service SSH
 tunnel on an allocated loopback port, verifies an SSH response, and closes its
 owned tunnel after SQL initialization or on failure. It does not change public
 network access or firewall rules. Default approval does not grant administrator
@@ -239,11 +243,47 @@ For an operator-managed existing tunnel, use `-UseCustomerPrivateTunnel -SshPort
 - The existing **customer Linux App Service** is running, supports App Service
   SSH, and has its customer VNet integration/private SQL DNS attached.
 - Local .NET 8 SDK and Python available as `dotnet` and `python` on PATH.
-  Install `paramiko` in the Python environment resolved by that `python` command.
+  Lifecycle/completion installs missing `paramiko` automatically in an isolated
+  environment; Python venv support and package-index access are then required.
   The SDK publishes `scripts\customer-sql-bootstrap\CustomerSqlBootstrap.csproj`
   (.NET 8, Microsoft.Data.SqlClient 6.1.3); initial restore needs NuGet access.
 - Only for `-UseCustomerPrivateTunnel`: a separate terminal for the official authenticated Azure CLI TCP tunnel. Port
   `22446` must be free; another port is allowed if both commands use the same one.
+
+No manual Python setup is needed for normal post-deployment completion or
+`deploy-customer-dependencies.ps1` in either private tunnel mode. Dependency
+installation failures stop before tunnel startup, SQL initialization or worker
+publication. If venv support is missing on Debian/Ubuntu, install the
+distribution's `python3-venv` package and rerun completion; infrastructure does
+not need to be redeployed. `-WhatIf` does not create an environment or install
+packages.
+
+For **standalone** `bootstrap-customer-sql.ps1` with an operator-owned tunnel,
+install and verify the SSH dependency in the same shell:
+
+```powershell
+python -m pip install paramiko
+python -c "import paramiko"
+```
+
+Using `python -m pip` ensures installation targets the interpreter used by the
+scripts, rather than a different `pip` on PATH. If Linux reports an
+`externally-managed-environment` error, use a
+virtual environment instead of overriding the system Python protections:
+
+```powershell
+python -m venv "$HOME/.venvs/azure-monitor-lab"
+& "$HOME/.venvs/azure-monitor-lab/bin/Activate.ps1"
+python -m pip install paramiko
+python -c "import paramiko"
+```
+
+On Windows, activate with `Scripts/Activate.ps1` instead of `bin/Activate.ps1`.
+If creating the environment fails because `venv`/`ensurepip` is unavailable,
+install your distribution's Python venv package first.
+After verification succeeds, run standalone bootstrap in that shell. An explicit
+`-PythonExecutable <path>` can select an existing Python environment for
+`bootstrap-customer-sql.ps1 -UseCustomerPrivateTunnel` without activating it.
 
 In **terminal 1**, substitute the exact selected subscription/resource group and
 the dedicated customer site name resolved as `$context.CustomerWebAppName` above:

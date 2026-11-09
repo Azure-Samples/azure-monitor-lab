@@ -37,13 +37,27 @@ if (-not $PSCmdlet.ShouldProcess("$($context.sqlDatabaseId); $($context.workerId
 }
 $tunnel = $null
 $artifact = $null
+$pythonEnvironment = $null
+$pythonExecutable = 'python'
 try {
-  if ($StartCustomerPrivateTunnel) {
+  if ($StartCustomerPrivateTunnel -or $UseCustomerPrivateTunnel) {
     foreach ($tool in @('dotnet', 'python')) {
       if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Customer backend completion requires $tool." }
     }
-    python -c "import paramiko"
-    if ($LASTEXITCODE -ne 0) { throw 'Customer backend completion requires Python paramiko. Install it in the chosen Python environment and retry.' }
+    python -c "import paramiko" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      $pythonEnvironment = Join-Path $PSScriptRoot ('..\.artifacts\customer-python-' + [guid]::NewGuid().ToString('N'))
+      Write-Host 'Preparing an isolated Python environment for the customer SQL tunnel; system Python packages remain unchanged.'
+      python -m venv $pythonEnvironment
+      if ($LASTEXITCODE -ne 0) { throw 'Could not create the customer tunnel Python environment. Install Python venv support (python3-venv on Debian/Ubuntu) and retry completion. No tunnel or SQL changes were started.' }
+      $pythonExecutable = Join-Path $pythonEnvironment $(if ($IsWindows) { 'Scripts\python.exe' } else { 'bin/python' })
+      & $pythonExecutable -m pip install --disable-pip-version-check --no-input paramiko | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw 'Could not install paramiko in the isolated customer tunnel environment. Check pip output and package-index connectivity, then retry completion. No tunnel or SQL changes were started.' }
+      & $pythonExecutable -c "import paramiko"
+      if ($LASTEXITCODE -ne 0) { throw 'Customer tunnel paramiko verification failed after installation. No tunnel or SQL changes were started.' }
+    }
+  }
+  if ($StartCustomerPrivateTunnel) {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $(if ($PSBoundParameters.ContainsKey('SshPort')) { $SshPort } else { 0 }))
     try {
       $listener.Start()
@@ -70,7 +84,11 @@ try {
     ConfirmTarget = $context.sqlDatabaseId; ApproveTemporaryFirewall = $ApproveTemporaryFirewall; OperatorIpv4 = $OperatorIpv4
     Confirm = $false
   }
-  if ($UseCustomerPrivateTunnel -or $StartCustomerPrivateTunnel) { $bootstrap.UseCustomerPrivateTunnel = $true; $bootstrap.SshPort = $SshPort }
+  if ($UseCustomerPrivateTunnel -or $StartCustomerPrivateTunnel) {
+    $bootstrap.UseCustomerPrivateTunnel = $true
+    $bootstrap.SshPort = $SshPort
+    $bootstrap.PythonExecutable = $pythonExecutable
+  }
   & (Join-Path $PSScriptRoot 'bootstrap-customer-sql.ps1') @bootstrap
   if ($tunnel) {
     Stop-Job -Job $tunnel
@@ -104,4 +122,5 @@ try {
     Remove-Job -Job $tunnel
   }
   if ($artifact -and (Test-Path $artifact)) { Remove-Item -LiteralPath $artifact -Recurse -Force }
+  if ($pythonEnvironment -and (Test-Path -LiteralPath $pythonEnvironment)) { Remove-Item -LiteralPath $pythonEnvironment -Recurse -Force }
 }
