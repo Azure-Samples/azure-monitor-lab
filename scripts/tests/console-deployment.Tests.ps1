@@ -19,7 +19,7 @@ $fixture = @{
   PublicationMode = ''; AksCredentialRequests = 0
   Packages = [Collections.Generic.List[string]]::new()
 }
-foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1', 'deployment-slot-recovery.ps1', 'lab-config.ps1')) {
+foreach ($name in @('deploy.ps1', 'deploy-webapp.ps1', 'post-staged-deploy.ps1', 'post-cloud-shell-deploy.ps1', 'setup-activity-log.ps1', 'wait-webapp-publication.ps1', 'deployment-slot-recovery.ps1', 'lab-config.ps1', 'network-watcher.ps1')) {
   Copy-Item -LiteralPath (Join-Path $source "scripts/$name") -Destination $directory
 }
 $null = New-Item -ItemType Directory -Path (Join-Path $root 'infra') -Force
@@ -106,6 +106,13 @@ function dotnet {
 function az {
   $global:LASTEXITCODE = 0
   switch ($args[0..1] -join ' ') {
+    'network watcher' {
+      if ($args[2] -ne 'list') { throw 'Deployment must reuse the existing shared watcher without writes.' }
+      return ConvertTo-Json -InputObject @(@{
+        id = "/subscriptions/$($fixture.Subscription)/resourceGroups/NetworkWatcherRG/providers/Microsoft.Network/networkWatchers/NetworkWatcher_northeurope"
+        location = 'northeurope'; provisioningState = 'Succeeded'
+      })
+    }
     'login --tenant' {
       if ($args[2] -ne $fixture.Tenant.ToString() -or $args -notcontains '--use-device-code' -or $args -notcontains '--scope' -or $args -notcontains 'https://prometheus.monitor.azure.com/.default') {
         throw 'Cloud Shell login did not target the tenant and Managed Prometheus scope.'

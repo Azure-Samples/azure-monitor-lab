@@ -10,7 +10,12 @@
 .PARAMETER ResourceGroup
   Lab resource group to remove. Also includes name-matched auxiliary groups and
   verifies automatic cleanup of managed groups owned by Azure Monitor workspaces
-  in this exact resource group.
+  in this exact resource group. Specify it with -ResourceGroup.
+
+.PARAMETER DeleteNetworkWatcherRG
+  Explicit yes/no opt-in to delete the entire shared NetworkWatcherRG in the
+  verified subscription, including watchers and monitoring for unrelated workloads.
+  Defaults to no. Also accepts --delete-networkwatcherrg yes.
 
 .PARAMETER KeepServiceGroup
   Preserve tenant-scoped Service Group and SLI resources even when the selected
@@ -25,17 +30,32 @@
   Approve the displayed cleanup plan without interactive confirmation. Nested
   deletions never prompt again after this approval or the initial DELETE prompt.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
   [string] $ResourceGroup = 'rg-azure-monitor-lab',
+  [Alias('delete-networkwatcherrg')]
+  [ValidateSet('yes', 'no')]
+  [string] $DeleteNetworkWatcherRG = 'no',
   [switch] $KeepServiceGroup,
   [switch] $KeepEntraApplications,
-  [switch] $Yes
+  [switch] $Yes,
+  [Parameter(ValueFromRemainingArguments)]
+  [string[]] $RemainingArguments
 )
 $ErrorActionPreference = 'Stop'
 
+if ($RemainingArguments.Count) {
+  if ($RemainingArguments.Count -ne 2 -or $RemainingArguments[0] -cne '--delete-networkwatcherrg' -or
+      $RemainingArguments[1] -notin @('yes', 'no') -or $PSBoundParameters.ContainsKey('DeleteNetworkWatcherRG')) {
+    throw 'Use named parameters and at most one --delete-networkwatcherrg yes|no option (default: no).'
+  }
+  $DeleteNetworkWatcherRG = $RemainingArguments[1]
+}
 if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
   throw 'ResourceGroup cannot be empty.'
+}
+if ($ResourceGroup -ieq 'NetworkWatcherRG' -and $DeleteNetworkWatcherRG -ne 'yes') {
+  throw 'Deleting NetworkWatcherRG requires explicit --delete-networkwatcherrg yes (or -DeleteNetworkWatcherRG yes).'
 }
 
 $teardownAzureCli = Get-Command az -ErrorAction Stop
@@ -139,14 +159,17 @@ if ($LASTEXITCODE -ne 0) {
 $allResourceGroupNames = @($allResourceGroups | Select-Object -ExpandProperty name)
 $monitorOwnerPattern = '^' + [regex]::Escape("/subscriptions/$($active.id)/resourceGroups/$ResourceGroup/providers/Microsoft.Monitor/accounts/") + '[^/]+$'
 $monitorManagedResourceGroupNames = @(
-  $allResourceGroups | Where-Object { $_.managedBy -match $monitorOwnerPattern } | Select-Object -ExpandProperty name
+  $allResourceGroups | Where-Object { $_.name -ine 'NetworkWatcherRG' -and $_.managedBy -match $monitorOwnerPattern } | Select-Object -ExpandProperty name
 )
 $resourceGroupsToDelete = @(
   @(
     $allResourceGroupNames |
-      Where-Object { $_.IndexOf($ResourceGroup, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and ($_ -ieq $ResourceGroup -or $_ -notlike 'MA_*') }
+      Where-Object { $_ -ine 'NetworkWatcherRG' -and $_.IndexOf($ResourceGroup, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and ($_ -ieq $ResourceGroup -or $_ -notlike 'MA_*') }
     $monitorManagedResourceGroupNames
-  ) | Sort-Object -Unique { if ($_ -ieq $ResourceGroup) { 0 } elseif ($_ -in $monitorManagedResourceGroupNames) { 2 } else { 1 } }, { $_ }
+    if ($DeleteNetworkWatcherRG -eq 'yes') {
+      $allResourceGroupNames | Where-Object { $_ -ieq 'NetworkWatcherRG' }
+    }
+  ) | Sort-Object -Unique { if ($_ -ieq $ResourceGroup) { 0 } elseif ($_ -in $monitorManagedResourceGroupNames) { 3 } elseif ($_ -ieq 'NetworkWatcherRG') { 2 } else { 1 } }, { $_ }
 )
 $primaryResourceGroupExists = @($allResourceGroupNames | Where-Object { $_ -ieq $ResourceGroup }).Count -gt 0
 $resourceGroupId = "/subscriptions/$($active.id)/resourceGroups/$ResourceGroup"
@@ -174,6 +197,14 @@ if (-not $KeepEntraApplications) {
 if ($resourceGroupsToDelete.Count -eq 0 -and $entraIdentities.Count -eq 0 -and -not $ownsActivityDiagnostic) {
   Write-Host "No matching resource groups or verified lab-owned Entra identities found for '$ResourceGroup'. Nothing to delete." -ForegroundColor Yellow
   return
+}
+
+if ($DeleteNetworkWatcherRG -eq 'yes') {
+  if ($resourceGroupsToDelete -icontains 'NetworkWatcherRG') {
+    Write-Warning "Explicit opt-in: the ENTIRE shared NetworkWatcherRG in subscription '$($active.id)' will be deleted, including all regional watchers, connection monitors, flow logs, and unrelated resources. This can disrupt monitoring for other workloads."
+  } else {
+    Write-Host 'NetworkWatcherRG is not present in the verified subscription; no Network Watcher group deletion is needed.' -ForegroundColor Yellow
+  }
 }
 
 if (-not $Yes) {

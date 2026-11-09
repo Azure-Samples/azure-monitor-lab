@@ -25,7 +25,10 @@ on:
       - 'scripts/test-customer-dependencies.ps1'
       - 'scripts/tests/customer-completion.Tests.ps1'
       - 'scripts/tests/customer-dependencies.Tests.ps1'
+      - 'scripts/tests/test_customer_sql_tunnel.py'
       - 'scripts/staged-deploy-helpers.ps1'
+      - 'scripts/network-watcher.ps1'
+      - 'scripts/tests/network-watcher.Tests.ps1'
       - 'scripts/deployment-slot-recovery.ps1'
       - 'scripts/teardown.ps1'
       - 'scripts/remove-sre-agent.ps1'
@@ -137,6 +140,7 @@ jobs:
           ./scripts/tests/webapp-publication.Tests.ps1
           ./scripts/tests/ai-traffic.Tests.ps1
           ./scripts/tests/staged-guide.Tests.ps1
+          ./scripts/tests/network-watcher.Tests.ps1
           ./scripts/tests/deployment-slot-recovery.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
           ./scripts/tests/fabric-setup.Tests.ps1
@@ -153,6 +157,10 @@ jobs:
           ./workloads/webapp/tests/webapp-access.Tests.ps1
       - name: Agent provisioning and background traffic without Azure
         run: python -B -m unittest discover -s workloads/ai/tests -p 'test_*.py' -v
+      - name: Private SQL SSH transport regressions
+        run: |
+          python -m pip install paramiko
+          python -B -m unittest discover -s scripts/tests -p 'test_customer_sql_tunnel.py' -v
       - name: Browser regressions without live integrations
         working-directory: workloads/webapp
         run: |

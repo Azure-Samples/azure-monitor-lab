@@ -170,7 +170,7 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
     queueName = 'orders'; customerIdentityClientId = '11111111-2222-3333-4444-555555555555'
     workerIdentityClientId = '66666666-7777-8888-9999-aaaaaaaaaaaa'
   }
-  $fixture = @{ Calls = [Collections.Generic.List[string]]::new(); Enabled = $true; SqlFails = $false; SqlCalls = 0; PublishCalls = 0; BadProducts = $false }
+  $fixture = @{ Calls = [Collections.Generic.List[string]]::new(); Enabled = $true; SqlFails = $false; SqlCalls = 0; PublishCalls = 0; BadProducts = $false; CheckOnly = $false; PrivateFails = $false }
   function az {
     $global:LASTEXITCODE = 0
     $command = $args -join ' '
@@ -193,7 +193,8 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
   function Invoke-Sqlcmd {
     param($ConnectionString,$AccessToken,$Query,$QueryTimeout,[switch]$AbortOnError)
     $fixture.SqlCalls++
-    Assert-True ($AccessToken -eq 'in-memory-test-token' -and $Query -match 'TYPE=E' -and $QueryTimeout -eq 60) 'SQL bootstrap lost token/grant/time bound.'
+    Assert-True ($AccessToken -eq 'in-memory-test-token' -and $QueryTimeout -eq 60 -and
+      $(if ($fixture.CheckOnly) { $Query -ceq 'SELECT 1;' } else { $Query -match 'TYPE=E' })) 'SQL operation lost token/query/time bound.'
     if ($fixture.SqlFails) { throw 'Simulated SQL failure' }
   }
   function Invoke-RestMethod {
@@ -203,6 +204,13 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
     return @('monitoring-starter','agent-operations','sre-command') | ForEach-Object { @{id=$_} }
   }
   function dotnet {
+    if ([IO.Path]::GetFileName($args[1]) -eq 'CustomerSqlBootstrap.csproj') {
+      $output = $args[[array]::IndexOf($args, '--output') + 1]
+      New-Item -ItemType Directory -Path $output -Force | Out-Null
+      'test assembly' | Set-Content (Join-Path $output 'CustomerSqlBootstrap.dll')
+      $global:LASTEXITCODE = 0
+      return
+    }
     $fixture.PublishCalls++
     Assert-True ($args[0] -eq 'publish' -and [IO.Path]::GetFileName($args[1]) -eq 'CustomerProcessor.csproj' -and
       [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($args[1])) -eq 'customer-processor') 'Lifecycle must publish the approved isolated processor project.'
@@ -211,7 +219,31 @@ Assert-Throws { Get-CustomerSqlBootstrap -CustomerClientId ([guid]::Empty) -Work
     '[]' | Set-Content (Join-Path $output 'functions.metadata')
     $global:LASTEXITCODE = 0
   }
+  function python {
+    $global:LASTEXITCODE = 0
+    if ($args[0] -eq '-c') {
+      Assert-True ($args[1] -ceq 'import paramiko') 'Private bootstrap must check the existing Python dependency.'
+      return
+    }
+    $payload = ($input | Out-String) | ConvertFrom-Json
+    Assert-True ($args[0] -like '*bootstrap-over-ssh.py' -and $args -contains '--check-only' -and
+      $payload.AccessToken -ceq 'in-memory-test-token' -and $payload.Query -ceq 'SELECT 1;' -and
+      $payload.SqlServerName -ceq 'sql-test') 'Private CheckOnly must send only the verified target/token and read-only query.'
+    $fixture.PrivateArtifact = Split-Path $args[[array]::IndexOf($args, '--publish') + 1] -Parent
+    $global:LASTEXITCODE = if ($fixture.PrivateFails) { 1 } else { 0 }
+  }
   $common = @{ SubscriptionId=$sub;TenantId=$tenant;ResourceGroup='test-rg';DeploymentName='test-deployment';Confirm=$false }
+  $fixture.CheckOnly = $true
+  & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -CheckOnly
+  Assert-True ($fixture.SqlCalls -eq 1 -and @($fixture.Calls | Where-Object { $_ -match 'firewall-rule|deployment source config-zip' }).Count -eq 0) 'Direct CheckOnly must not initialize SQL or change Azure resources.'
+  & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -CheckOnly -UseCustomerPrivateTunnel
+  Assert-True (-not (Test-Path $fixture.PrivateArtifact) -and $fixture.PublishCalls -eq 0) 'Private CheckOnly must clean temporary binaries without publishing the worker.'
+  $fixture.PrivateFails = $true
+  Assert-Throws { & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -CheckOnly -UseCustomerPrivateTunnel } 'Private CheckOnly failure must propagate.'
+  Assert-True (-not (Test-Path $fixture.PrivateArtifact)) 'Failed private CheckOnly must still clean temporary binaries.'
+  $fixture.CheckOnly = $false
+  $fixture.PrivateFails = $false
+  $fixture.SqlCalls = 0
   & (Join-Path $root 'scripts\bootstrap-customer-sql.ps1') @common -ConfirmTarget $context.sqlDatabaseId -ApproveTemporaryFirewall -OperatorIpv4 '203.0.113.7'
   Assert-True ($fixture.SqlCalls -eq 1 -and @($fixture.Calls | Where-Object {$_ -like 'sql server firewall-rule delete*'}).Count -eq 1) 'Bootstrap must clean its exact temporary firewall rule.'
   $fixture.SqlFails = $true

@@ -86,6 +86,8 @@ The Control Center requires Stage B. Its Foundry Playground additionally require
 
 Run these examples from the repository root in the same PowerShell 7 session. Each call previews one dedicated stage and asks for confirmation before deployment. Raw Bicep is infrastructure-only until the documented completion step succeeds.
 
+Deployment examples use `--only-show-errors` to hide CLI/Bicep warnings and upgrade notices while preserving what-if previews and errors. Standalone Bicep builds and CI validation still show diagnostics.
+
 ### Step 0 - Bootstrap inputs (recommended)
 
 Create a private config from [the example](../lab.config.json.example), fill in the subscription, tenant, resource group, prefix, region, notification address, and VM credentials, then generate the local inputs. Do not overwrite an existing config:
@@ -163,12 +165,21 @@ az deployment group create `
    --parameters "@$($stageParameterFiles['00-foundation'])" `
    --mode Incremental `
    --confirm-with-what-if `
-   --output none
+   --output none --only-show-errors
 ```
 
 This deploys [foundation only](../infra/stages/00-foundation.bicep). `--confirm-with-what-if` previews the changes and asks for confirmation before deployment. There is no AKS node pool or Web App in Stage A.
 
 ### Stage B deploy
+
+Connection Monitor and flow logs require the shared regional Network Watcher.
+Before the raw Stage B command below, restore missing prerequisites with explicit
+confirmation; an existing watcher is reused without changes:
+
+```powershell
+. ./scripts/network-watcher.ps1
+Ensure-LabNetworkWatcher -SubscriptionId $sub -TenantId $tenant -Location $config.location -Confirm
+```
 
 Classic VM Insights and additive OpenTelemetry metrics are **both enabled by default**. `enableVmOtelMetrics` defaults to `true` in central configuration (including when omitted), Stage B, and the one-shot template; the portal Workloads page defaults to **Yes**. To opt out, set `"enableVmOtelMetrics": false` **before** the input-bootstrap/sync and stage-parameter generation above, or explicitly pass `enableVmOtelMetrics=false`. Stage A and VMSS are unchanged. See [both monitoring views and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics). Setting the flag to `false` on an incremental redeployment does not remove existing OTel associations.
 
@@ -177,7 +188,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-10-workloads `
    --template-file ./infra/stages/10-workloads.bicep `
    --parameters "@$($stageParameterFiles['10-workloads'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $false
 ```
 
@@ -203,7 +214,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-20-alerting `
    --template-file ./infra/stages/20-alerting.bicep `
    --parameters "@$($stageParameterFiles['20-alerting'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ```
 
 This stage requires the VMSS administrator password and notification email from the private inputs, even when the optional standalone VMs are disabled.
@@ -222,7 +233,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-30-security-posture `
    --template-file ./infra/stages/30-security-posture.bicep `
    --parameters "@$($stageParameterFiles['30-security-posture'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ```
 
 The security template reuses the Stage A LAW and Stage C action group. It does not deploy workloads or enable a SIEM.
@@ -234,12 +245,12 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-40-optional-advanced `
    --template-file ./infra/stages/40-optional-advanced.bicep `
    --parameters "@$($stageParameterFiles['40-optional-advanced'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 az deployment group create `
    --subscription $sub --resource-group $rg --name stage-41-sentinel-content `
    --template-file ./infra/stages/41-sentinel-content.bicep `
    --parameters "@$($stageParameterFiles['41-sentinel-content'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $true
 ```
 
@@ -258,7 +269,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-50-ai `
    --template-file ./infra/stages/50-ai.bicep `
    --parameters "@$($stageParameterFiles['50-ai'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1
 if ($webApp) {
@@ -284,7 +295,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-60-fabric `
    --template-file ./infra/stages/60-fabric.bicep `
    --parameters "@$($stageParameterFiles['60-fabric'])" `
-   --confirm-with-what-if
+   --confirm-with-what-if --only-show-errors
 ./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
 ```
 
@@ -303,7 +314,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-60-sre-agent `
    --template-file ./infra/stages/60-sre-agent.bicep `
    --parameters "@$($stageParameterFiles['60-sre-agent'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/setup-sre-agent.ps1 -SubscriptionId $sub -ResourceGroup $rg
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1
@@ -325,7 +336,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-70-observability-agent `
    --template-file ./infra/stages/70-observability-agent.bicep `
    --parameters "@$($stageParameterFiles['70-observability-agent'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/setup-observability-agent.ps1 -SubscriptionId $sub -ResourceGroup $rg
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1

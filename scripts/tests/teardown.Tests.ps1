@@ -12,6 +12,7 @@ $fixture = @{
   Deletes = [Collections.Generic.List[string]]::new()
   TenantCleanup = [Collections.Generic.List[string]]::new()
   PrimaryGroupExists = $true; AuxiliaryGroupExists = $true; MonitorGroupExists = $true
+  NetworkWatcherGroupExists = $true; NetworkWatcherDeleteError = ''
   GroupInventoryFails = $false; GroupDeleteError = ''
   MonitorOwnerChanged = $false; MonitorOwnerChangeAfterChecks = 0; MonitorWrongId = $false
   MonitorChecks = 0; MonitorSleeps = 0; MonitorCleanupAfterChecks = 2; MonitorLookupError = ''
@@ -47,6 +48,8 @@ $tenantDeleteApis["$resourceGroupId/providers/Microsoft.Relationships/serviceGro
 $tenantDeleteApis[$serviceGroupId] = '2024-02-01-preview'
 $otherSubscription = [guid]::NewGuid()
 $groupInventory = @(
+  @{ name = 'NetworkWatcherRG'; managedBy = $null },
+  @{ name = 'NetworkWatcherRG-other'; managedBy = $null },
   @{ name = 'rg-other-lab'; managedBy = $null },
   @{ name = $auxiliaryGroup; managedBy = $null },
   @{ name = $fixture.ResourceGroup; managedBy = $null },
@@ -135,7 +138,8 @@ function az {
       if ($fixture.GroupInventoryFails) { $global:LASTEXITCODE = 1; return '[]' }
       $groups = @($groupInventory | Where-Object {
         ($fixture.PrimaryGroupExists -or $_.name -ne $fixture.ResourceGroup) -and
-        ($fixture.AuxiliaryGroupExists -or $_.name -ne $auxiliaryGroup)
+        ($fixture.AuxiliaryGroupExists -or $_.name -ne $auxiliaryGroup) -and
+        ($fixture.NetworkWatcherGroupExists -or $_.name -ne 'NetworkWatcherRG')
       })
       return ConvertTo-Json -InputObject $groups -Depth 4
     }
@@ -176,9 +180,13 @@ function az {
     'group delete' {
       $name = $args[[Array]::IndexOf($args, '-n') + 1]
       if ($name -eq $monitorGroup) { throw 'DenyAssignmentAuthorizationFailed: Monitor-managed groups must never be deleted directly.' }
-      if ($name -notin @($fixture.ResourceGroup, $auxiliaryGroup) -or $args -notcontains '--no-wait' -or $args -notcontains '--yes') { throw 'Unexpected resource group deletion.' }
+      if ($name -notin @($fixture.ResourceGroup, $auxiliaryGroup, 'NetworkWatcherRG') -or $args -notcontains '--no-wait' -or $args -notcontains '--yes') { throw 'Unexpected resource group deletion.' }
       if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription.ToString()) { throw 'Group deletion lost the verified subscription.' }
       $fixture.Deletes.Add("group:$name")
+      if ($name -eq 'NetworkWatcherRG' -and $fixture.NetworkWatcherDeleteError) {
+        $global:LASTEXITCODE = 1
+        return $fixture.NetworkWatcherDeleteError
+      }
       if ($fixture.GroupDeleteError) {
         & (Join-Path $PSHOME 'pwsh') -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('$($fixture.GroupDeleteError)'); exit 1"
         $global:LASTEXITCODE = $LASTEXITCODE
@@ -317,6 +325,85 @@ function az {
 
 try {
   $fixture.DiscoveryError = 'ERROR: (UnsupportedResourceType) Associations unsupported for this resource.'
+  foreach ($invalidCase in @(
+    @{ Arguments = @('--delete-networkwatcherrg'); Named = @{} },
+    @{ Arguments = @('--delete-networkwatcherrg', 'true'); Named = @{} },
+    @{ Arguments = @('--delete-networkwatcherrg', 'yes', '--delete-networkwatcherrg', 'yes'); Named = @{} },
+    @{ Arguments = @('--delete-networkwatcherrg', 'yes'); Named = @{ DeleteNetworkWatcherRG = 'no' } },
+    @{ Arguments = @(); Named = @{ DeleteNetworkWatcherRG = 'true' } },
+    @{ Arguments = @(); Named = @{ ResourceGroup = 'NetworkWatcherRG' } }
+  )) {
+    $arguments = $invalidCase.Arguments
+    $namedArguments = $invalidCase.Named
+    $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear(); $fixture.EntraCalls.Clear()
+    $fixture.GroupLists = 0
+    $rejected = $false
+    try { & (Join-Path $directory 'teardown.ps1') -Yes @namedArguments @arguments | Out-Null } catch {
+      if ($_.Exception.Message -notmatch 'delete-networkwatcherrg|DeleteNetworkWatcherRG') { throw }
+      $rejected = $true
+    }
+    if (-not $rejected -or $fixture.GroupLists -or $fixture.Deletes.Count -or $fixture.EntraCalls.Count) {
+      throw 'Invalid or conflicting Network Watcher options must fail before Azure discovery or cleanup.'
+    }
+  }
+  foreach ($optionCase in @(
+    @{ Arguments = @(); Named = @{}; Delete = $false },
+    @{ Arguments = @('--delete-networkwatcherrg', 'no'); Named = @{}; Delete = $false },
+    @{ Arguments = @(); Named = @{ DeleteNetworkWatcherRG = 'no' }; Delete = $false },
+    @{ Arguments = @('--delete-networkwatcherrg', 'yes'); Named = @{}; Delete = $true },
+    @{ Arguments = @(); Named = @{ DeleteNetworkWatcherRG = 'yes' }; Delete = $true },
+    @{ Arguments = @(); Named = @{ 'delete-networkwatcherrg' = 'yes' }; Delete = $true }
+  )) {
+    $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+    $arguments = $optionCase.Arguments
+    $namedArguments = $optionCase.Named
+    $messages = & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup -Yes @namedArguments @arguments 3>&1 6>&1 | Out-String
+    if (($fixture.Deletes -contains 'group:NetworkWatcherRG') -ne $optionCase.Delete -or $fixture.ConfirmationReads) {
+      throw 'NetworkWatcherRG must be deleted only after explicit yes; -Yes alone must preserve it.'
+    }
+    if ($optionCase.Delete -and ($messages -notmatch 'ENTIRE shared NetworkWatcherRG' -or $messages -notmatch 'unrelated resources')) {
+      throw 'Whole shared NetworkWatcherRG deletion must have a visible warning.'
+    }
+  }
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  $fixture.Confirm = 'cancel'
+  $messages = & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup --delete-networkwatcherrg yes 3>&1 6>&1 | Out-String
+  if ($fixture.Deletes.Count -or $fixture.ConfirmationReads -ne 1 -or $messages -notmatch 'ENTIRE shared NetworkWatcherRG') {
+    throw 'Cancelling an opted-in teardown must preserve all groups and display the shared-resource warning.'
+  }
+  $fixture.Confirm = 'DELETE'
+  $fixture.NetworkWatcherGroupExists = $false
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup --delete-networkwatcherrg yes -Yes | Out-Null
+  if ($fixture.Deletes -contains 'group:NetworkWatcherRG') { throw 'An absent NetworkWatcherRG must not receive a delete request.' }
+  $fixture.NetworkWatcherGroupExists = $true
+  $fixture.PrimaryGroupExists = $false; $fixture.AuxiliaryGroupExists = $false
+  $fixture.ActivityWorkspaceId = ''
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup --delete-networkwatcherrg yes -Yes | Out-Null
+  if (($fixture.Deletes -join ',') -ne 'group:NetworkWatcherRG') {
+    throw 'Explicit NetworkWatcherRG cleanup must work after the original lab group has been deleted.'
+  }
+  $fixture.PrimaryGroupExists = $true; $fixture.AuxiliaryGroupExists = $true
+  $fixture.ActivityWorkspaceId = $workspaceId
+  $fixture.BadTenant = $true
+  $fixture.Deletes.Clear(); $fixture.GroupLists = 0
+  $rejected = $false
+  try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup --delete-networkwatcherrg yes -Yes | Out-Null }
+  catch { $rejected = $_.Exception.Message -like 'BLOCKED:*' }
+  if (-not $rejected -or $fixture.GroupLists -or $fixture.Deletes.Count) {
+    throw 'NetworkWatcherRG opt-in must not bypass the subscription/tenant guard.'
+  }
+  $fixture.BadTenant = $false
+  $fixture.NetworkWatcherDeleteError = 'ERROR: (AuthorizationFailed) Shared group deletion denied.'
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  $rejected = $false
+  try { & (Join-Path $directory 'teardown.ps1') -ResourceGroup $fixture.ResourceGroup --delete-networkwatcherrg yes -Yes | Out-Null }
+  catch { $rejected = $_.Exception.Message.Contains($fixture.NetworkWatcherDeleteError) }
+  if (-not $rejected) { throw 'NetworkWatcherRG deletion failures must retain Azure details and stop teardown.' }
+  $fixture.NetworkWatcherDeleteError = ''
+  $fixture.Deletes.Clear(); $fixture.TenantCleanup.Clear()
+  Write-Output 'PASS: NetworkWatcherRG is preserved by default; explicit yes deletes only the exact shared group, warns, respects cancellation and account guards, and supports reruns. No Azure calls.'
   $warningExample = '  az monitor data-collection rule create --resource-group "myResourceGroup" --location "eastus" --name "myCollectionRule" --rule-file "C:\samples\dcrEx1.json"'
   foreach ($noiseCase in @(
     @{ Text = 'WARNING: Unrelated CLI diagnostic.'; Expected = 'WARNING: Unrelated CLI diagnostic.' },

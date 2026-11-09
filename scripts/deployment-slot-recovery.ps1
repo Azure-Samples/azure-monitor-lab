@@ -24,7 +24,7 @@ function Invoke-LabDeployment {
       $inputHashes[$path] = (Get-FileHash -LiteralPath $path).Hash
     }
   }
-  az deployment group create @Arguments --output none
+  az deployment group create @Arguments --output none --only-show-errors
   if ($LASTEXITCODE -eq 0) { return }
 
   $scope = @('--subscription', $SubscriptionId, '--resource-group', $ResourceGroup)
@@ -222,7 +222,7 @@ function Invoke-LabDeployment {
       $state = Wait-SlotState
       if ($state -eq 'Expected') { break }
       $null = az deployment group create @scope --name customer-broken-slot --mode Incremental `
-        --template-file $templateFile --parameters ($leaf | ConvertTo-Json -Depth 30 -Compress) --output none --only-show-errors 2>$null
+        --template-file $templateFile --parameters ($leaf | ConvertTo-Json -Depth 30 -Compress) --output none --only-show-errors
       $exitCode = $LASTEXITCODE
       $terminal = Read-TerminalDeployment 'customer-broken-slot'
       if ($terminal.state -eq 'Succeeded') {
@@ -252,7 +252,7 @@ function Invoke-LabDeployment {
     $templateIndex = [Array]::IndexOf($resumeArguments, '--template-file')
     if ($templateIndex -lt 0 -or $Arguments -contains 'Complete') { throw 'Parent reconciliation requires an incremental template-file deployment.' }
     $resumeArguments[$templateIndex + 1] = $parentTemplateFile
-    az deployment group create @resumeArguments --output none
+    az deployment group create @resumeArguments --output none --only-show-errors
     $exitCode = $LASTEXITCODE
     if ((Read-TerminalDeployment $DeploymentName).state -ne 'Succeeded' -or $exitCode -ne 0) {
       throw 'Parent reconciliation did not succeed; stopped. Slot presence alone is not deployment success.'

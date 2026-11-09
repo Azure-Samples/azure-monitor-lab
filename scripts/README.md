@@ -10,6 +10,11 @@ Most scripts use the Azure CLI and require `az login`. Scripts that work with AK
 
 ## Deployment and configuration
 
+One-shot and staged Bicep deployments suppress Azure CLI/Bicep warnings and
+upgrade notices by default with `--only-show-errors`. Progress messages,
+what-if previews and deployment errors remain visible. Standalone Bicep builds
+and CI validation still show diagnostics; no global Azure CLI setting is changed.
+
 The [central config example](../lab.config.json.example) separates `basicConfiguration` (subscription, tenant, resource group, regions, emails, VM credentials) from grouped `advancedConfiguration` settings (compute, monitoring, access, optional stages, and automation). Existing flat configs still work. See [config layout and compatibility](../docs/REFERENCE.md#config-layout-and-compatibility) for paths and optional migration.
 
 Scripts and custom runbooks should use the shared [lab-config.ps1](lab-config.ps1) helper:
@@ -20,6 +25,32 @@ $config = Read-LabConfig -Path ./lab.config.json
 ```
 
 The returned object exposes the existing flat property names regardless of the input format. Documentation that names a setting without its grouping prefix refers to this normalized name; edit that setting in its group in the new template.
+
+### Network Watcher prerequisites
+
+The Bicep network-monitoring modules require `NetworkWatcher_<region>` in the
+shared `NetworkWatcherRG`. Azure automatic enablement is not a deployment
+dependency guarantee, especially after explicitly deleting this group.
+`deploy.ps1` prepares it before ARM deployment, including with `-SkipPreflight`.
+`Invoke-LabStage 10-workloads` prepares it before preview and requests confirmation
+if shared resources must be created. Other stages do not enable Network Watcher.
+
+[network-watcher.ps1](network-watcher.ps1) verifies the selected subscription/tenant,
+creates only a missing group/watcher, and waits for readiness. Existing group
+location/tags and watchers are preserved. A regional watcher in a different group
+or with a different name fails explicitly rather than being moved or replaced.
+For raw Bicep/portal deployments, prepare the prerequisite first:
+
+```powershell
+. ./scripts/lab-config.ps1
+. ./scripts/network-watcher.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+Ensure-LabNetworkWatcher -SubscriptionId $config.subscriptionId -TenantId $config.tenantId `
+  -Location $config.location -Confirm
+```
+
+This restores the selected regional watcher, not deleted monitoring children or
+unrelated regional watchers. Rerun the lab deployment to restore its monitors.
 
 ### Customer-slot provider failure recovery
 
@@ -181,6 +212,10 @@ SELECT/UPDATE Orders. No SQL control-plane role substitutes for these grants.
 
 Automatic completion uses `-StartCustomerPrivateTunnel` and manages its own
 tunnel; no separate terminal or `SqlServer` PowerShell module is needed.
+Transient SQL login resets/timeouts are retried up to three times, with 5s/10s
+delays, before executing any bootstrap SQL. Schema and verification errors are
+not replayed; permanent login/permission errors fail immediately. Failures report
+the SQL error number and whether login, initialization or verification failed.
 For an operator-managed existing tunnel, use `-UseCustomerPrivateTunnel -SshPort
 22446` instead. Prerequisites for both private tunnel modes:
 
@@ -209,6 +244,10 @@ In **terminal 2**, using `$common` and `$context` initialized above, choose the
 SQL-only command or the complete SQL-first worker-publication lifecycle:
 
 ```powershell
+# Optional read-only login check; no schema, data or SQL users are changed:
+.\scripts\bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId `
+  -UseCustomerPrivateTunnel -SshPort 22446 -CheckOnly
+# Initialize SQL after the connection check passes:
 .\scripts\bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId `
   -UseCustomerPrivateTunnel -SshPort 22446
 # Alternatively, bootstrap then publish the worker and check readiness:
@@ -408,6 +447,21 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 | `teardown.ps1` | Removes tenant-scoped demo artifacts and monitoring dependencies, then deletes every resource group whose name contains the complete requested resource group name, including AKS-managed `MC_` groups. | `./scripts/teardown.ps1 -ResourceGroup <rg> -Yes` |
 
 [teardown.ps1](teardown.ps1) is destructive. It lists matching resource groups and verified lab-owned Entra identity IDs before deletion. The `-Yes` switch skips the confirmation prompt and approves both lists. If omitted, the script requires you to type `DELETE`. Once that plan is approved, nested diagnostic-setting and identity deletions do not ask again. On Windows MSI Azure CLI installations, teardown applies a process-local Python filter for only the known `monitor-control-service` extension's `_create.py` invalid `\s` escape warning and its sample command. Installed files are unchanged; other CLI diagnostics, streams, and exit codes are preserved. Legacy Entra ownership warnings remain visible.
+
+### Optional shared Network Watcher resource-group deletion
+
+By default, teardown preserves `NetworkWatcherRG`, even with `-Yes`. To include the **entire group** in the confirmed cleanup plan:
+
+```powershell
+./scripts/teardown.ps1 -ResourceGroup '<rg>' --delete-networkwatcherrg yes
+# Equivalent native PowerShell parameter:
+./scripts/teardown.ps1 -ResourceGroup '<rg>' -DeleteNetworkWatcherRG yes
+```
+
+The option defaults to `no` and only accepts `yes` or `no`. Specify other arguments by name, including `-ResourceGroup`; the double-dash form is explicitly supported. `-Yes` may additionally skip the existing `DELETE` confirmation, but does not opt into this cleanup on its own.
+
+> [!WARNING]
+> This deletes all resources in the exact `NetworkWatcherRG` in the verified subscription, not only the lab's regional watcher or monitoring children. Network Watcher is shared across workloads and regions; connection monitors, flow logs, and unrelated resources in that group are also removed. The script warns before confirmation and submits the group deletion asynchronously. A missing group is safe to rerun; similarly named groups are not selected by this option.
 
 SRE Agent cleanup uses [remove-sre-agent.ps1](remove-sre-agent.ps1): explicitly scope the subscription/tenant, stop the agent, verify `Stopped`, submit one asynchronous deletion, then verify `ResourceNotFound` before continuing. State checks are bounded to 600 seconds per phase. Already-stopped/absent agents are safe to rerun; an accepted delete alone is not success. Unknown states, authorization errors, service conflicts and timeouts block resource-group cleanup and retain Azure diagnostics.
 

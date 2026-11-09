@@ -27,6 +27,7 @@ function az {
   $name = if ($nameIndex -ge 0) { $args[$nameIndex + 1] } else { '' }
   if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne $subscription) { throw 'Lost subscription pin.' }
   if ($command -match '^deployment group create') {
+    if ($args -notcontains '--only-show-errors') { throw 'Initial deployment and recovery retries must suppress warnings without hiding errors.' }
     $fixture.Writes.Add($name)
     if ($name -eq 'original') {
       $fixture.ParentWrites++

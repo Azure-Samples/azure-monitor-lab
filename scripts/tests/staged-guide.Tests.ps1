@@ -67,9 +67,25 @@ function az {
       $activeTenant = if ($fixture.Failure -eq 'account' -and $fixture.AccountChecks -gt 1) { [guid]::NewGuid() } else { $tenant }
       return @{ id = $sub; tenantId = $activeTenant } | ConvertTo-Json
     }
+    'network watcher' {
+      if ($fixture.Stage -ne '10-workloads' -or $args[2] -ne 'list') { throw 'Only Stage B may inspect its Network Watcher prerequisite.' }
+      $location = if ($fixture.Overrides.ContainsKey('location')) { $fixture.Overrides.location } elseif ($sourceParameters.ContainsKey('location')) { $sourceParameters.location.value } else { 'northeurope' }
+      return ConvertTo-Json -InputObject @(@{
+        id = "/subscriptions/$sub/resourceGroups/NetworkWatcherRG/providers/Microsoft.Network/networkWatchers/NetworkWatcher_$location"
+        location = $location; provisioningState = 'Succeeded'
+      })
+    }
+    'group show' {
+      if ($args[[array]::IndexOf($args, '--subscription') + 1] -ne $sub.ToString() -or
+          $args[[array]::IndexOf($args, '--name') + 1] -ne $rg -or $args -notcontains 'location') {
+        throw 'Default Stage B location must come from the exact selected resource group.'
+      }
+      return 'northeurope'
+    }
     'deployment group' {
       $operation = $args[2]
       if ($operation -notin @('what-if', 'create')) { throw 'Unexpected deployment operation.' }
+      if ($args -notcontains '--only-show-errors') { throw 'Stage previews and deployments must suppress CLI warnings by default.' }
       foreach ($expected in @{
         '--subscription' = $sub.ToString(); '--resource-group' = $rg; '--mode' = 'Incremental'
         '--name' = "stage-$($fixture.Stage)"; '--template-file' = "infra/stages/$($fixture.Stage).bicep"
@@ -141,16 +157,28 @@ try {
   if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 10) {
     throw 'Every staged deployment command must include a what-if confirmation.'
   }
+  if ([regex]::Matches($guide, '--confirm-with-what-if[^\r\n]*(?:\r?\n[^\r\n]*)?--only-show-errors').Count -ne 10) {
+    throw 'All ten raw staged deployment examples must suppress CLI warnings without hiding errors.'
+  }
   foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
     $fixture.Stage = $stage
     $fixture.Events.Clear()
     $fixture.AccountChecks = 0
     $fixture.RecoveryCalls = 0
     Invoke-LabStage -Stage $stage
-    if (($fixture.Events -join ',') -ne 'what-if,create' -or $fixture.AccountChecks -ne 2) { throw 'Every stage must preview, confirm, and reverify account before deployment.' }
+    $expectedAccountChecks = if ($stage -eq '10-workloads') { 3 } else { 2 }
+    if (($fixture.Events -join ',') -ne 'what-if,create' -or $fixture.AccountChecks -ne $expectedAccountChecks) { throw 'Every stage must preview, confirm, and reverify account before deployment.' }
     $expectedRecoveryCalls = if ($stage -eq '10-workloads') { 1 } else { 0 }
     if ($fixture.RecoveryCalls -ne $expectedRecoveryCalls) { throw 'Only Stage B must use customer-slot deployment recovery.' }
   }
+  $fixture.Stage = '10-workloads'
+  $fixture.Overrides = @{ location = 'westeurope' }
+  Invoke-LabStage -Stage $fixture.Stage -Overrides $fixture.Overrides
+  $fixture.Overrides = @{}
+  $originalLocation = $sourceParameters.location
+  $sourceParameters.Remove('location')
+  try { Invoke-LabStage -Stage $fixture.Stage }
+  finally { $sourceParameters.location = $originalLocation }
   $fixture.Stage = '50-ai'
   $fixture.Overrides = @{ enableHealthModel = $true; routerModelVersion = 'offline-version' }
   Invoke-LabStage -Stage $fixture.Stage -Overrides $fixture.Overrides

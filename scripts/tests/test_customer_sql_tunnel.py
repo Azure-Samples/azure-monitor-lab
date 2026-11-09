@@ -43,6 +43,7 @@ class CustomerSqlTunnelTests(unittest.TestCase):
         self.stdin.channel.sendall.assert_called_once_with(self.payload)
         self.stdin.channel.shutdown_write.assert_called_once()
         self.assertNotIn("test-token", self.client.exec_command.call_args.args[0])
+        self.assertEqual(self.client.exec_command.call_args.kwargs["timeout"], 210)
         sftp = self.client.open_sftp.return_value.__enter__.return_value
         sftp.remove.assert_called_once()
         self.assertRegex(sftp.rmdir.call_args.args[0], r"^/tmp/amlab-sql-bootstrap-[a-f0-9]{32}$")
@@ -66,6 +67,21 @@ class CustomerSqlTunnelTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.bootstrap(self.publish, 0, self.payload)
             factory.assert_not_called()
+
+    def test_recovered_login_warnings_are_not_suppressed(self) -> None:
+        self.stderr.read.return_value = b"SQL login attempt 1/3 failed; retrying.\n"
+        errors = io.StringIO()
+        with patch.object(module.paramiko, "SSHClient", return_value=self.client), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
+            module.bootstrap(self.publish, 22446, self.payload)
+        self.assertIn("retrying", errors.getvalue())
+
+    def test_check_only_is_explicit_and_does_not_require_a_bootstrap_query(self) -> None:
+        payload = json.dumps({"AccessToken": "test-token", "SqlServerName": "sql-demo"}).encode()
+        with patch.object(module.paramiko, "SSHClient", return_value=self.client), contextlib.redirect_stdout(io.StringIO()):
+            module.bootstrap(self.publish, 22446, payload, check_only=True)
+        self.assertTrue(self.client.exec_command.call_args.args[0].endswith(" --check-only"))
+        self.stdin.channel.sendall.assert_called_once_with(payload)
 
     def test_cleanup_failure_still_closes_transport(self) -> None:
         self.client.open_sftp.return_value.__enter__.return_value.remove.side_effect = OSError("cleanup failed")
