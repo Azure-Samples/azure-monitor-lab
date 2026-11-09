@@ -46,7 +46,10 @@ The lab combines application, infrastructure, and AI workloads with Azure Monito
 
 ### Option 1: Deploy to Azure (portal, no local setup)
 
-First, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and prepare the shared Network Watcher. Use the same subscription and region in the portal wizard:
+<details>
+<summary><b>Check for Network Watcher in your subscription and region - if missing, prepare it here</b></summary>
+
+In the Azure portal, check that `NetworkWatcher_<region>` exists in `NetworkWatcherRG` for your target subscription and is ready. If it is, skip preparation. If missing, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and run the commands below. Use the same subscription and region in the portal wizard:
 
 ```powershell
 git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
@@ -65,7 +68,11 @@ az account set --subscription $subscriptionId
 Ensure-LabNetworkWatcher -SubscriptionId $subscriptionId -TenantId $tenantId -Location $location -Confirm
 ```
 
-Existing shared resources are preserved; only a missing group/watcher is created. Then open the wizard:
+Existing shared resources are preserved; only a missing group/watcher is created.
+
+</details>
+
+Once Network Watcher is ready, open the wizard:
 
 <div align="center">
 
@@ -87,7 +94,7 @@ This button deploys the `integration` templates and portal UI, which may contain
 
 Core stages A-E deploy together. Their individual workload and monitoring features remain configurable; the **Optional stages** tab adds any combination of the four integrations.
 
-After the portal deployment succeeds, return to the same Cloud Shell session and complete the post-deployment configuration:
+After the portal deployment succeeds, open PowerShell Cloud Shell to complete the post-deployment configuration. If you skipped preparation, first run the expandable section's commands through `az account set` to clone the repository and set your deployment variables; the final Network Watcher commands are not needed.
 
 ```powershell
 ./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
