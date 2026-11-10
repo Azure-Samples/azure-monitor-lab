@@ -2,6 +2,8 @@
 
 This stage brings the original [Café tutorial](HEALTH-MODEL-TUTORIAL.md) and the lab user-flow model into the lab's own resource group. The core lab and its existing workload Health Model remain unchanged. The stage defaults **off**.
 
+For a presenter-ready walkthrough of the deployed stage, follow [scenario 81: user-flow Health Models, failure and recovery](DEMO-SCENARIOS.md#s81). It includes a read-only tour and an optional, scoped Café order-failure exercise with recovery verification.
+
 ## What it adds
 
 - A Node.js Café on a dedicated Linux B1 App Service plan, with private Storage access, Blob menu/orders and Queue notifications.

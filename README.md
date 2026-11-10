@@ -7,7 +7,7 @@ A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability
 - One primary resource group: Azure resources land in `rg-azure-monitor-lab`; AKS has a managed resource group, and Fabric workspace items and Entra registrations are tenant-scoped.
 - Two ways to deploy it: Bicep or Terraform.
 - Three ways to deploy it: a [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) portal wizard, a scripted one-shot deployment using PowerShell, or a five-stage core workshop with optional AI, SRE Agent, Observability Agent, and Fabric extensions.
-- **80 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
+- **81 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, user-flow Health Models, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
 
 It's built for demos, microhacks, and hackathons. Deploy it, poke around, break it, restore it, and tear it down.
 
@@ -17,7 +17,7 @@ It's built for demos, microhacks, and hackathons. Deploy it, poke around, break 
 |---|---|
 | **Guided Scenarios** | Follow the existing [scenario walkthroughs](docs/DEMO-SCENARIOS.md) for the story, Azure portal steps, queries, and expected results. |
 | **Lab Control Center** | Check infrastructure health, generate traffic, try Foundry agents, and perform approved SRE MCP operations. Open the [Control Center guide](docs/LAB-CONTROL-CENTER.md) for screenshots, access requirements, and linked scenarios. |
-| **Health Model Demo** | Add Café and lab user-flow models through the [optional stage](docs/STAGE-HEALTH-MODEL-DEMO.md), or take the independent 45-minute [Café tutorial](docs/HEALTH-MODEL-TUTORIAL.md) without deploying the lab. |
+| **Health Model Demo** | Add Café and lab user-flow models through the [optional stage](docs/STAGE-HEALTH-MODEL-DEMO.md), then follow [scenario 81](docs/DEMO-SCENARIOS.md#s81) for a focused failure-and-recovery demo. Alternatively, take the independent 45-minute [Café tutorial](docs/HEALTH-MODEL-TUTORIAL.md) without deploying the lab. |
 
 The guided scenarios and the Control Center are complementary entry points into the same lab. The Control Center links to the guided scenarios; it does not replace their setup or walkthroughs. The health model tutorial is a standalone course with its own small workload.
 

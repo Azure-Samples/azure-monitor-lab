@@ -147,7 +147,11 @@ function Write-FabricSetupSummary {
   } else {
     Write-Host 'All requested automatable Fabric setup steps completed.' -ForegroundColor Green
   }
-  if (@($Results | Where-Object Status -eq 'Failed').Count) { throw 'One or more Fabric automation steps failed. See the setup results above.' }
+  $failed = @($Results | Where-Object Status -eq 'Failed')
+  if ($failed.Count) {
+    $failureDetails = @($failed | ForEach-Object { "$($_.Feature): $($_.Detail)" }) -join "`n"
+    throw "One or more Fabric automation steps failed.`n$failureDetails"
+  }
 }
 
 function New-FabricDashboardDefinition {
