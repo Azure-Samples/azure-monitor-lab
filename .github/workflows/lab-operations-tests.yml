@@ -18,6 +18,7 @@ on:
       - 'scripts/invoke-lab-operation.ps1'
       - 'scripts/app-insights-target.ps1'
       - 'scripts/initialize-webapp-console.ps1'
+      - 'scripts/write-webapp-console-config.ps1'
       - 'scripts/deploy.ps1'
       - 'scripts/preflight-check.ps1'
       - 'scripts/tests/preflight-guidance.Tests.ps1'
@@ -149,6 +150,7 @@ jobs:
           ./scripts/tests/lab-operations.Tests.ps1
           ./scripts/tests/lab-operations-execution.Tests.ps1
           ./scripts/tests/console-bootstrap.Tests.ps1
+          ./workloads/webapp/tests/console-config.Tests.ps1
           ./scripts/tests/console-deployment.Tests.ps1
           ./scripts/tests/preflight-guidance.Tests.ps1
           ./scripts/tests/vm-sku-config.Tests.ps1

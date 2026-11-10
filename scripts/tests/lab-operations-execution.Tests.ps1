@@ -315,6 +315,21 @@ try {
   }
   $env:LAB_WEB_APP_NAME = ''
   . (Join-Path $scriptDirectory 'app-insights-target.ps1')
+  $before = $fixture.Calls.Count
+  $suppliedComponents = @(
+    @{ name = 'appi-cafe-demo' },
+    @{ name = 'appi-cafe-abcdefghijklm' },
+    @{ name = 'appi-cafe-demo-customer'; tags = @{ 'amlab-component' = 'customer-web-app' } }
+  )
+  if ((Resolve-LabAppInsightsName -ResourceGroup 'test-rg' -WebAppName 'app-cafe-demo' -Components $suppliedComponents) -cne 'appi-cafe-demo') {
+    throw 'Caller-supplied inventory must preserve a valid cafe-prefixed lab target.'
+  }
+  $rejected = $false
+  try { Resolve-LabAppInsightsName -ResourceGroup 'test-rg' -WebAppName 'app-cafe-demo' -Components @() | Out-Null }
+  catch { $rejected = $_.Exception.Message -match 'not uniquely resolved' }
+  if (-not $rejected -or $fixture.Calls.Count -ne $before) {
+    throw 'Supplied inventory, including an explicit empty array, must not trigger unscoped CLI discovery.'
+  }
   foreach ($mode in @('dual', 'reversed', 'single', 'cafe')) {
     $fixture.AppInsightsMode = $mode
     if ((Resolve-LabAppInsightsName -ResourceGroup 'test-rg') -cne 'appi-amlab-test') { throw 'Standalone core discovery changed with inventory order.' }

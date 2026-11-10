@@ -3,7 +3,8 @@ function Resolve-LabAppInsightsName {
   param(
     [Parameter(Mandatory)] [string] $ResourceGroup,
     [string] $WebAppName = $env:LAB_WEB_APP_NAME,
-    [string] $AppInsightsName
+    [string] $AppInsightsName,
+    [AllowEmptyCollection()] [object[]] $Components
   )
 
   if ($WebAppName) {
@@ -12,10 +13,13 @@ function Resolve-LabAppInsightsName {
     if ($AppInsightsName -and $AppInsightsName -cne $expectedName) { throw 'Application Insights does not match the configured Control Center Web App.' }
     $AppInsightsName = $expectedName
   }
-  $json = az resource list --resource-group $ResourceGroup --resource-type Microsoft.Insights/components `
-    --query '[].{name:name,tags:tags}' --output json
-  if ($LASTEXITCODE -ne 0) { throw 'Could not discover the lab Application Insights target.' }
-  $components = @($json | ConvertFrom-Json | Where-Object {
+  if (-not $PSBoundParameters.ContainsKey('Components')) {
+    $json = az resource list --resource-group $ResourceGroup --resource-type Microsoft.Insights/components `
+      --query '[].{name:name,tags:tags}' --output json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not discover the lab Application Insights target.' }
+    $Components = @($json | ConvertFrom-Json)
+  }
+  $components = @($Components | Where-Object {
     $_.tags.'amlab-component' -cne 'customer-web-app' -and $_.name -notlike '*-customer' -and
     $_.name -notmatch '^appi-cafe-[a-z0-9]{13}$'
   })
