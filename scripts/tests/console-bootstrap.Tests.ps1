@@ -140,7 +140,7 @@ if ($fixture.FailAuth) { throw 'Tenant policy blocks registration.' }
 '@ | Set-Content (Join-Path $scriptDirectory 'setup-webapp-agent-access.ps1')
 @'
 param($ResourceGroup, $NamePrefix, $SubscriptionId, $TenantId, $ProjectEndpoint, $AppInsightsConnectionString, $ChatDeployment, [switch]$SkipTraffic)
-if (-not $SkipTraffic -or $ProjectEndpoint -ne "https://testfoundry.services.ai.azure.com/api/projects/amlab-ai-proj" -or $ChatDeployment -ne 'chat-lab' -or $TenantId.ToString() -ne $fixture.Tenant) { throw 'Unexpected automatic AI inputs.' }
+if (-not $SkipTraffic -or $ProjectEndpoint -ne "https://testfoundry.services.ai.azure.com/api/projects/amlab-ai-proj" -or $ChatDeployment -ne 'chat-lab' -or $TenantId.ToString() -ne $fixture.Tenant -or $AppInsightsConnectionString -ne 'test-connection') { throw 'Unexpected automatic AI inputs.' }
 if ($fixture.Settings['LabConsole__Operations__Enabled'] -ne 'false') { throw 'Console was enabled before agent setup.' }
 $fixture.AiCalls++
 if ($fixture.FailAi) { throw 'Agent creation failed.' }
@@ -150,6 +150,7 @@ $fixture = @{
   AppIdentity = [guid]::NewGuid().ToString(); RunnerIdentity = [guid]::NewGuid().ToString(); Client = [guid]::NewGuid().ToString()
   Settings = @{ Existing = 'preserve-me'; LabConsole__SlotScenarioEnabled = 'true' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailGraphAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
   WithAi = $false; FailAi = $false; AiCalls = 0
+  ExtraAppInsights = $false; ReverseInventory = $false; MissingAppInsights = $false; DuplicateAppInsights = $false
   DeletePreview = $false; LastPreview = ''; Deployments = 0
   ExistingTags = $true; FailTagRead = $false
   NoCpuPair = $false; FailCpuInventory = $false; CpuScopeEscape = $false
@@ -198,7 +199,7 @@ function az {
           $expectedCpuNames = if ($fixture.NoCpuPair) { @() } else { @('vm-test-lin', 'vmwintest') }
           if (@($tagParameters.cpuVmNames.value).Count -ne $expectedCpuNames.Count -or @($tagParameters.cpuVmNames.value | Where-Object { $_ -notin $expectedCpuNames }).Count) { throw 'CPU role target selection is incorrect.' }
           if ($tagParameters.enableSlotFailureScenario.value -ne $true) { throw 'The enabled slot scenario was not propagated to the runner role.' }
-          if ($tagParameters.customerWebAppName.value -ne 'test-app-customer') { throw 'The exact customer Web App target was not propagated to the runner platform.' }
+          if ($tagParameters.customerWebAppName.value -ne 'app-test-customer') { throw 'The exact customer Web App target was not propagated to the runner platform.' }
           $expectedCapacity = if ($fixture.WithFabric) { 'fabtest' } else { '' }
           if ($tagParameters.fabricCapacityName.value -cne $expectedCapacity) { throw 'The exact optional Fabric capacity was not propagated to the runner platform.' }
         } elseif ($tagParameters.ContainsKey('cpuVmNames')) { throw 'VM role parameters must not leak into the job deployment schema.' }
@@ -246,9 +247,17 @@ function az {
       if (-not $fixture.MissingLogs) { $resources += @{ type = 'Microsoft.Insights/dataCollectionRules'; name = 'dcr-customlogs'; id = "$scope/providers/Microsoft.Insights/dataCollectionRules/dcr-customlogs" } }
       if ($fixture.WithAi) {
         $resources += @{ type = 'Microsoft.CognitiveServices/accounts/projects'; id = "$scope/providers/Microsoft.CognitiveServices/accounts/testfoundry/projects/amlab-ai-proj" }
-        $resources += @{ type = 'Microsoft.Insights/components'; id = "$scope/providers/Microsoft.Insights/components/appi-test" }
-        $resources += @{ type = 'Microsoft.Insights/components'; id = "$scope/providers/Microsoft.Insights/components/appi-test-customer"; tags = @{ 'amlab-component' = 'customer-web-app' } }
+        $core = @{ type = 'Microsoft.Insights/components'; name = 'appi-test'; id = "$scope/providers/Microsoft.Insights/components/appi-test" }
+        if (-not $fixture.MissingAppInsights) { $resources += $core }
+        if ($fixture.DuplicateAppInsights) { $resources += $core }
+        $resources += @{ type = 'Microsoft.Insights/components'; name = 'appi-test-customer'; id = "$scope/providers/Microsoft.Insights/components/appi-test-customer"; tags = @{ 'amlab-component' = 'customer-web-app' } }
+        if ($fixture.ExtraAppInsights) {
+          foreach ($name in @('appi-cafe-abcdefghijklm', 'appi-legacy-customer', 'appi-other')) {
+            $resources += @{ type = 'Microsoft.Insights/components'; name = $name; id = "$scope/providers/Microsoft.Insights/components/$name" }
+          }
+        }
       }
+      if ($fixture.ReverseInventory) { [array]::Reverse($resources) }
       return ConvertTo-Json -InputObject $resources
     }
     'cognitiveservices account' { return '[{"name":"chat-lab","properties":{"model":{"name":"gpt-5-mini"}}}]' }
@@ -316,8 +325,11 @@ function Invoke-RestMethod {
     return @{ id = $fixture.Operator }
   }
   if ($Uri -like "https://management.azure.com$workspace*") { return @{ name = 'law-amlab-central-test'; location = 'northeurope' } }
-  if ($Uri -like "https://management.azure.com$scope/providers/Microsoft.Insights/components/*") { return @{ properties = @{ ConnectionString = 'test-connection' } } }
-  if ($Uri -notlike "https://management.azure.com$scope/providers/Microsoft.Web/sites/test-app*") { throw 'Unexpected setup target.' }
+  if ($Uri -like "https://management.azure.com$scope/providers/Microsoft.Insights/components/*") {
+    if ($Uri -cne "https://management.azure.com$scope/providers/Microsoft.Insights/components/appi-test?api-version=2020-02-02") { throw 'Optional agents read the wrong telemetry component.' }
+    return @{ properties = @{ ConnectionString = 'test-connection' } }
+  }
+  if ($Uri -notlike "https://management.azure.com$scope/providers/Microsoft.Web/sites/app-test*") { throw 'Unexpected setup target.' }
   if ($Uri -match '/config/appsettings/list') { return (@{ properties = $fixture.Settings } | ConvertTo-Json -Depth 10 | ConvertFrom-Json) }
   if ($Uri -match '/config/appsettings\?') {
     $fixture.Settings = ($Body | ConvertFrom-Json -AsHashtable).properties
@@ -328,7 +340,7 @@ function Invoke-RestMethod {
 }
 try {
   Reset-Configuration
-  $parameters = @{ SubscriptionId = $fixture.Subscription; TenantId = $fixture.Tenant; ResourceGroup = 'test-rg'; WebAppName = 'test-app'; CustomerWebAppName = 'test-app-customer'; ConsoleConfigPath = $path }
+  $parameters = @{ SubscriptionId = $fixture.Subscription; TenantId = $fixture.Tenant; ResourceGroup = 'test-rg'; WebAppName = 'app-test'; CustomerWebAppName = 'app-test-customer'; ConsoleConfigPath = $path }
   $output = & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters 6>&1 | Out-String
   if ($output.Contains('test-setup-token')) { throw 'Setup token leaked.' }
   $config = (Get-Content $path -Raw | ConvertFrom-Json).LabConsole
@@ -368,11 +380,24 @@ try {
   $fixture.WithAi = $true
   & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
   if ($fixture.AiCalls -ne 1 -or $fixture.Settings['LabConsole__Foundry__Enabled'] -ne 'True') { throw 'Optional Foundry setup was not automatic.' }
-  foreach ($failure in @('FailAuth', 'FailGraphAuth', 'FailBuild', 'FailAcrRole', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
+  $fixture.ExtraAppInsights = $true
+  foreach ($reverse in @($false, $true)) {
+    Reset-Configuration
+    $fixture.ReverseInventory = $reverse
+    $beforeAi = $fixture.AiCalls
+    & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
+    if ($fixture.AiCalls -ne $beforeAi + 1 -or $fixture.Settings['LabConsole__Foundry__Enabled'] -ne 'True') {
+      throw 'Cafe, customer and unrelated telemetry must not block provisioning or change its core connection string.'
+    }
+  }
+  $fixture.ReverseInventory = $false
+  $fixture.ExtraAppInsights = $false
+  foreach ($failure in @('MissingAppInsights', 'DuplicateAppInsights', 'FailAuth', 'FailGraphAuth', 'FailBuild', 'FailAcrRole', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
     Reset-Configuration
     $fixture[$failure] = $true
     $before = $fixture.Writes.Count
     $beforeDeployments = $fixture.Deployments
+    $beforeAi = $fixture.AiCalls
     $caught = $false
     try { & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null } catch {
       $caught = $true
@@ -381,6 +406,9 @@ try {
       }
     }
     if (-not $caught) { throw "Deployment failure was hidden: $failure" }
+    if ($failure -in @('MissingAppInsights', 'DuplicateAppInsights') -and $fixture.AiCalls -ne $beforeAi) {
+      throw 'Unresolved core telemetry must stop before any demo agent is provisioned.'
+    }
     if ($failure -in @('BadTenant', 'FailGraphAuth')) { if ($fixture.Writes.Count -ne $before) { throw "$failure caused writes." } }
     elseif ($fixture.Settings['LabConsole__Operations__Enabled'] -ne 'false') { throw 'Setup failure left operations enabled.' }
     if ($failure -eq 'DeletePreview' -and $fixture.Deployments -ne $beforeDeployments) { throw 'A destructive preview did not block deployment.' }

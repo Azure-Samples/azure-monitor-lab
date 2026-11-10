@@ -11,6 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
 $root = Split-Path $PSScriptRoot -Parent
 $tokens = @{}
 $temporary = Join-Path $root ('.artifacts\amlab-console-bootstrap-' + [guid]::NewGuid().ToString('N'))
@@ -247,11 +248,9 @@ try {
     if ($LASTEXITCODE -ne 0 -or $preferred.Count -ne 1) { throw 'The console model deployment was not uniquely resolved.' }
     $projectName = $projects[0].id.Split('/')[-1]
     $config.LabConsole.Foundry.ProjectEndpoint = "https://$($accountId.Split('/')[-1]).services.ai.azure.com/api/projects/$projectName"
-    $components = @($inventory | Where-Object {
-      $_.type -ieq 'Microsoft.Insights/components' -and $_.tags.'amlab-component' -cne 'customer-web-app'
-    })
-    if ($components.Count -ne 1) { throw 'The lab Application Insights component was not uniquely resolved.' }
-    $component = Invoke-ConsoleApi GET "https://management.azure.com$($components[0].id)?api-version=2020-02-02"
+    $components = @($inventory | Where-Object type -ieq 'Microsoft.Insights/components')
+    $componentName = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $WebAppName -Components $components
+    $component = Invoke-ConsoleApi GET "https://management.azure.com$resourceBase/providers/Microsoft.Insights/components/${componentName}?api-version=2020-02-02"
     & (Join-Path $PSScriptRoot 'setup-ai.ps1') -ResourceGroup $ResourceGroup -NamePrefix ($projectName -replace '-ai-proj$', '') `
       -SubscriptionId $SubscriptionId -TenantId $TenantId -ProjectEndpoint $config.LabConsole.Foundry.ProjectEndpoint `
       -AppInsightsConnectionString $component.properties.ConnectionString -ChatDeployment $preferred[0].name -SkipTraffic

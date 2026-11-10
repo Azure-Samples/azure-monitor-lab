@@ -125,6 +125,11 @@ Local regression checks (mocked Azure CLI, no Azure access):
 
 For a fresh deployment, use `deploy.ps1` rather than calling `post-deploy.ps1` directly.
 
+Console setup and generated configuration select the Control Center's matching
+`appi-<suffix>` component for `app-<suffix>`, independently of Cafe, customer, or
+other Application Insights components. Missing or ambiguous targets stop setup
+rather than selecting another application's telemetry.
+
 ### Opt-in customer dependencies (Bicep only)
 
 `stageToggles.enableCustomerDependencies` defaults to `false`. Enabling it requires

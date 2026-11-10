@@ -16,6 +16,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
 if ($EnableInfrastructureHealth -and -not $TenantId) { throw 'Infrastructure health requires the intended tenant ID.' }
 if ($EnableSreAssistant -and (-not $TenantId -or -not $SreMcpExecutable -or -not $SreModelEndpoint -or -not $SreModelDeployment)) {
   throw 'SRE MCP assistant requires a tenant ID, MCP executable, model endpoint, and model deployment.'
@@ -29,11 +30,25 @@ if ($SreModelEndpoint) {
   }
 }
 $inventoryJson = az resource list --subscription $SubscriptionId --resource-group $ResourceGroup `
-  --query '[].{id:id,name:name,type:type}' --output json
+  --query '[].{id:id,name:name,type:type,tags:tags}' --output json
 if ($LASTEXITCODE -ne 0) { throw 'Unable to discover monitoring resources for the web console.' }
 $resources = @($inventoryJson | ConvertFrom-Json)
-$appInsights = $resources | Where-Object { $_.type -ieq 'Microsoft.Insights/components' } |
-  Sort-Object { $_.name.Length }, name | Select-Object -First 1
+$apps = @($resources | Where-Object { $_.type -ieq 'Microsoft.Web/sites' })
+$appName = if ($WebAppName) {
+  $match = @($apps | Where-Object name -ceq $WebAppName)
+  if ($match.Count -ne 1) { throw 'The configured Control Center Web App was not uniquely found in this resource group.' }
+  $WebAppName
+} elseif ($apps.Count -eq 1) {
+  $apps[0].name
+} else {
+  $null
+}
+$components = @($resources | Where-Object type -ieq 'Microsoft.Insights/components')
+$appInsights = $null
+if ($components.Count -gt 0 -or $appName) {
+  $componentName = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $appName -Components $components
+  $appInsights = $components | Where-Object name -ceq $componentName
+}
 $workspaces = @($resources | Where-Object { $_.type -ieq 'Microsoft.OperationalInsights/workspaces' })
 $workspace = if ($CentralLawName) {
   $workspaces | Where-Object { $_.name -eq $CentralLawName } | Select-Object -First 1
@@ -75,16 +90,6 @@ if ($grafana) {
 $sreAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.App/agents' })
 $observabilityAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' })
 $projects = @($resources | Where-Object { $_.type -ieq 'Microsoft.CognitiveServices/accounts/projects' })
-$apps = @($resources | Where-Object { $_.type -ieq 'Microsoft.Web/sites' })
-$appName = if ($WebAppName) {
-  $match = @($apps | Where-Object name -ceq $WebAppName)
-  if ($match.Count -ne 1) { throw 'The configured Control Center Web App was not uniquely found in this resource group.' }
-  $WebAppName
-} elseif ($apps.Count -eq 1) {
-  $apps[0].name
-} else {
-  $null
-}
 $customerAppName = if ($CustomerWebAppName) { $CustomerWebAppName } elseif ($WebAppName) { "$WebAppName-customer" } else { $null }
 if ($customerAppName) {
   $customerHost = az webapp show --subscription $SubscriptionId --resource-group $ResourceGroup --name $customerAppName `
