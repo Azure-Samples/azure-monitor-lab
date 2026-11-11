@@ -20,7 +20,7 @@ test('deployment uses ZipDeploy and an Oryx build for the locked SDK dependencie
   assert.match(template, /name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: 'disabled'/);
 });
 
-function fixture({ telemetry = false, failQueue = false } = {}) {
+function fixture({ telemetry = false, failQueue = false, failHost = null } = {}) {
   const calls = [];
   const blobs = new Map([
     ['/menu/menu.json', JSON.stringify([{ id: 'flat-white', name: 'Flat white', price: 3.9 }])]
@@ -32,6 +32,10 @@ function fixture({ telemetry = false, failQueue = false } = {}) {
     req.setTimeout = () => req;
     req.write = (chunk) => { body += chunk; };
     req.end = () => process.nextTick(() => {
+      if (options.hostname === failHost) {
+        req.emit('error', new Error(`Request failed with ${options.headers['X-IDENTITY-HEADER'] || options.headers.Authorization}`));
+        return;
+      }
       const res = new EventEmitter();
       res.complete = true;
       let payload = '';
@@ -126,5 +130,26 @@ test('a failed optional barista notification does not fail the stored order', as
   const order = await app.send('POST', '/api/orders', { item: 'flat-white' });
   assert.equal(order.status, 201);
   assert.ok(app.calls.some((call) => Array.isArray(call) && call[0] === 'error' &&
-    call[1].includes('Barista notification failed: 503')));
+    call[1] === 'Barista notification failed; the order was saved. Check dependency telemetry.'));
+});
+
+test('identity transport errors do not expose credentials in logs or HTTP responses', async () => {
+  const app = fixture({ failHost: 'identity.local' });
+  const response = await app.send('GET', '/api/menu');
+  assert.deepEqual(response, { status: 500, body: { error: 'Request failed. Check application telemetry.' } });
+  assert.ok(app.calls.some((call) => Array.isArray(call) && call[0] === 'error' &&
+    call[1] === 'Cafe request failed. Check request and dependency telemetry.'));
+  assert.doesNotMatch(JSON.stringify({ calls: app.calls, response }), /fixture-header|fixture-token/);
+});
+
+test('optional notification transport errors retain the saved order without logging its bearer token', async () => {
+  const app = fixture({ failHost: 'fixture.queue.core.windows.net' });
+  const order = await app.send('POST', '/api/orders', { item: 'flat-white' });
+  assert.equal(order.status, 201);
+  assert.deepEqual(await app.send('GET', `/api/orders/${order.body.id}`), {
+    status: 200, body: order.body
+  });
+  assert.ok(app.calls.some((call) => Array.isArray(call) && call[0] === 'error' &&
+    call[1] === 'Barista notification failed; the order was saved. Check dependency telemetry.'));
+  assert.doesNotMatch(JSON.stringify(app.calls), /fixture-header|fixture-token/);
 });

@@ -107,6 +107,8 @@ Application Insights records every request and every storage call. Two availabil
 
 > ✅ **Done when:** the printed URL opens the café, **Monitor → Health models → hm-lab-cafe** shows the graph, and the café workspace contains recent `AppRequests` and `AppDependencies` records after browsing and ordering. A zero-failure signal alone does not prove telemetry is arriving. Startup failures leave the signal windows after five minutes, plus telemetry and evaluation delay. Log signals can also say *insufficient access* for about 10 minutes while the model's role arrives. Wait; don't rerun the build or recreate entities, that deletes their history. Start §3 in the meantime.
 
+Café application logs and HTTP 500 responses use generic failure messages so raw identity or transport errors cannot expose credentials. Use request and dependency telemetry to identify the failed operation and its status.
+
 ## 3. Look around
 
 Open **Monitor → Health models → hm-lab-cafe → Graph** (the picture under [What you'll build](#what-youll-build)). Read it top down:

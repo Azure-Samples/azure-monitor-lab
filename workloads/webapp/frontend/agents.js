@@ -29,7 +29,7 @@ export function initializeAgentViews({ resizeChart, toast, refreshIcons, checkWe
     }
     const consoleActive = tab.id === 'tab-console';
     document.querySelector('.mobile-feedback').hidden = !consoleActive;
-    document.querySelector('.skip-link').href = consoleActive ? '#controls' : `#${tab.getAttribute('aria-controls')}`;
+    document.querySelector('.skip-link').hash = consoleActive ? 'controls' : tab.getAttribute('aria-controls');
     document.querySelector('.skip-link').textContent = consoleActive ? 'Skip to lab controls' : 'Skip to active view';
     if (consoleActive) requestAnimationFrame(resizeChart);
     operations.activate(tab.id === 'tab-operations');

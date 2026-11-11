@@ -20,7 +20,8 @@ def bootstrap(publish: Path, port: int, payload: bytes, check_only: bool = False
         raise FileNotFoundError("The private bootstrap tool must be published first.")
 
     client = paramiko.SSHClient()
-    # This loopback endpoint must be the authenticated Azure CLI App Service TLS tunnel.
+    # Trust is provided by the operator-owned, Azure-authenticated App Service TLS tunnel.
+    # Auto-accept is limited to loopback below; never reuse this policy for direct SSH.
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     remote_root = "/tmp/amlab-sql-bootstrap-" + uuid.uuid4().hex
     uploaded: list[str] = []

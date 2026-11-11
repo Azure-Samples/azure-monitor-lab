@@ -154,8 +154,8 @@ async function placeOrder(req, res) {
   await writeBlob(`/orders/${order.id}.json`, JSON.stringify(order));
   try {
     await notifyBarista(order);
-  } catch (err) {
-    console.error(err.message);
+  } catch {
+    console.error('Barista notification failed; the order was saved. Check dependency telemetry.');
   }
   send(res, 201, order);
 }
@@ -176,9 +176,9 @@ async function route(req, res) {
 
 http
   .createServer((req, res) => {
-    route(req, res).catch((err) => {
-      console.error(err.message);
-      send(res, 500, { error: err.message });
+    route(req, res).catch(() => {
+      console.error('Cafe request failed. Check request and dependency telemetry.');
+      send(res, 500, { error: 'Request failed. Check application telemetry.' });
     });
   })
   .listen(port, () => console.log(`Lab Café listening on ${port}`));
