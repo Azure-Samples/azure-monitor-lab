@@ -13,7 +13,7 @@
 | Tracing connection | Project → `appi-amlab-<suffix>` Application Insights connection | Lights up the Foundry portal Observability/Tracing tab and lands `gen_ai.*` spans in the lab App Insights. |
 | Token alerts | `alert-amlab-token-anomaly` (dynamic threshold) + `alert-amlab-token-spike` (static ceiling) on the account's `TotalTokens` metric, split per deployment | Anomaly detection + a hard guardrail for runaway token spend. Optional `ag-amlab-ai` action group when `alertEmail` is set. |
 | AI FinOps observability | `qp-ai-finops` query pack (14 GenAI KQL queries) + a shared **AI FinOps workbook** | Token usage, cached-token ratio, model-router distribution, tokens per successful request, an illustrative PTU comparison populated with clearly labeled example assumptions, and latency/error percentiles. |
-| AI health tier | An **"AI" tier folded into the workload health model** (`hm-amlab-workload`): an `aiworkload` node → the Foundry account entity (Latency / TotalErrors / TotalTokens metric signals) + 4 agent entities carrying error-rate + token-volume Log Analytics signals | One health model for the whole estate — the AI workload rolls up next to frontend/compute/platform; high token volume or error rate turns an agent unhealthy. A separate `ai-healthmodel.bicep` exists as an opt-in fallback for standalone A+AI deployments (no Stage E). |
+| AI health tier | An **"AI" tier folded into the workload health model** (`hm-amlab-workload`): an `aiworkload` node → the Foundry account entity (Latency / TotalErrors metric signals) + 4 agent entities carrying an error-rate Log Analytics signal | One health model for the whole estate — the AI workload rolls up next to frontend/compute/platform; a high error rate turns an agent unhealthy. Token volume is cost, not health, so the token alerts above watch it instead. A separate `ai-healthmodel.bicep` exists as an opt-in fallback for standalone A+AI deployments (no Stage E). |
 | Agents + traffic | 4 agents (`Support Triage`, `FinOps Q&A`, `Doc Summarizer`, `Context-Rich Assistant`) + a traffic simulator, provisioned by `scripts/setup-ai.ps1` | Generates the live token/trace/cost telemetry the queries, workbook, health model, and alerts consume. Python packages listed in [`workloads/ai/requirements.txt`](../workloads/ai/requirements.txt) are pip-installed first. |
 
 > Cross-stage references: `appi-amlab-<suffix>` and its backing App Insights LAW (Stage A). No dependency on Stages B–E; the AI stage creates its own action group.
@@ -36,7 +36,7 @@
    Two alerts on `TotalTokens`: a dynamic-threshold anomaly detector that learns each deployment's baseline, and a static ceiling as a hard stop. Trigger it live by running the simulator hot (`--conversations 100 --interval 5`).
 
 6. **"One health model, AI included."**
-   The AI workload is folded into `hm-amlab-workload` as a fourth **AI** tier (alongside frontend/compute/platform). The 4 agent entities carry error-rate and token-volume signals. Frame the CloudHealth blade as executive dashboarding.
+   The AI workload is folded into `hm-amlab-workload` as a fourth **AI** tier (alongside frontend/compute/platform). The 4 agent entities carry an error-rate signal; token volume stays with the token alerts. Frame the CloudHealth blade as executive dashboarding.
 
 ## 3) Portal walkthrough (UI)
 

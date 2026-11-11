@@ -275,8 +275,9 @@ function Get-Alerts($Entity) {
 }
 
 # Where the portal graph draws each entity: one row per layer, leaves side by side,
-# each parent centred over its children, the root at x 0.
-function Get-CanvasLayout([string] $Root, $Relationships, [double] $ColumnWidth = 250, [double] $RowHeight = 193) {
+# each parent centred over its children, the leftmost column at x 0. Same layout as
+# infra/modules/health-model-layout.bicep, which the Bicep path uses for the same model.
+function Get-CanvasLayout([string] $Root, $Relationships, [int] $ColumnWidth = 250, [int] $RowHeight = 193) {
   $children = @{}
   foreach ($edge in $Relationships) { $children[$edge.parent] += @($edge.child) }
   $layout = @{}
@@ -285,7 +286,7 @@ function Get-CanvasLayout([string] $Root, $Relationships, [double] $ColumnWidth 
     param([string] $Name, [int] $Depth)
     $childXs = @(foreach ($child in $children[$Name]) { & $place $child ($Depth + 1) })
     if ($childXs.Count) {
-      $x = ($childXs[0] + $childXs[-1]) / 2
+      $x = [int][Math]::Truncate(($childXs[0] + $childXs[-1]) / 2)
     } else {
       $x = $nextLeaf.Value * $ColumnWidth
       $nextLeaf.Value++
@@ -293,8 +294,7 @@ function Get-CanvasLayout([string] $Root, $Relationships, [double] $ColumnWidth 
     $layout[$Name] = @{ x = $x; y = $Depth * $RowHeight }
     $x
   }
-  $rootX = & $place $Root 0
-  foreach ($position in $layout.Values) { $position.x -= $rootX }
+  $null = & $place $Root 0
   $layout
 }
 

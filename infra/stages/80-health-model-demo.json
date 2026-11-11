@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "18111455804260716321"
+      "templateHash": "3794618085460971200"
     }
   },
   "parameters": {
@@ -648,7 +648,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "16052135121585649016"
+              "templateHash": "10073627406810141785"
             }
           },
           "functions": [
@@ -865,6 +865,335 @@
                       }
                     }
                   }
+                },
+                "layoutHealthModel": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "entities"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[_1.placements(_1.withX(_1.withStart(_1.withWidth(_1.withTree(_1.withDepth(_1.withLayers(_1.prepare(parameters('root'), _1.entityNames(parameters('root'), parameters('entities'), parameters('edges')), filter(parameters('edges'), lambda('e', and(not(equals(lambdaVariables('e').child, parameters('root'))), not(equals(lambdaVariables('e').child, lambdaVariables('e').parent)))))))))))))]"
+                  },
+                  "metadata": {
+                    "description": "Canvas positions { x, y } by entity name for the root, every entity in `entities` and every entity named in `edges` ({ parent, child } objects).",
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "namespace": "_1",
+              "members": {
+                "centreOver": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "children"
+                    },
+                    {
+                      "type": "object",
+                      "name": "placed"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[div(add(parameters('placed')[first(parameters('children')).child], parameters('placed')[last(parameters('children')).child]), 2)]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "childrenOf": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "tree"
+                    },
+                    {
+                      "type": "string",
+                      "name": "name"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(parameters('tree'), lambda('e', equals(lambdaVariables('e').parent, parameters('name'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "columnWidth": {
+                  "parameters": [],
+                  "output": {
+                    "type": "int",
+                    "value": 250
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "entityNames": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "entities"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(union(parameters('entities'), map(parameters('edges'), lambda('e', lambdaVariables('e').child)), map(parameters('edges'), lambda('e', lambdaVariables('e').parent))), lambda('name', not(equals(lambdaVariables('name'), parameters('root')))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "firstPerChild": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(parameters('edges'), lambda('e', 'i', equals(indexOf(map(parameters('edges'), lambda('c', lambdaVariables('c').child)), lambdaVariables('e').child), lambdaVariables('i'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "placements": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[toObject(items(parameters('s').layers), lambda('layer', lambdaVariables('layer').key), lambda('layer', createObject('x', parameters('s').x[lambdaVariables('layer').key], 'y', mul(lambdaVariables('layer').value, _1.rowHeight()))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "prepare": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "nodes"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": {
+                      "root": "[parameters('root')]",
+                      "nodes": "[parameters('nodes')]",
+                      "edges": "[concat(parameters('edges'), map(filter(parameters('nodes'), lambda('n', not(contains(map(parameters('edges'), lambda('e', lambdaVariables('e').child)), lambdaVariables('n'))))), lambda('n', createObject('parent', parameters('root'), 'child', lambdaVariables('n')))))]"
+                    }
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "rowHeight": {
+                  "parameters": [],
+                  "output": {
+                    "type": "int",
+                    "value": 193
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "sumOf": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "values"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[reduce(parameters('values'), 0, lambda('total', 'value', add(lambdaVariables('total'), lambdaVariables('value'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withDepth": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('depth', reduce(items(parameters('s').layers), 0, lambda('deepest', 'layer', max(lambdaVariables('deepest'), lambdaVariables('layer').value)))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withLayers": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('layers', reduce(range(0, length(parameters('s').nodes)), createObject(format('{0}', parameters('s').root), 0), lambda('layers', 'pass', reduce(parameters('s').edges, lambdaVariables('layers'), lambda('current', 'e', union(lambdaVariables('current'), createObject(format('{0}', lambdaVariables('e').child), max(coalesce(tryGet(lambdaVariables('current'), lambdaVariables('e').child), 0), add(coalesce(tryGet(lambdaVariables('current'), lambdaVariables('e').parent), 0), 1))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withStart": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('start', reduce(range(1, parameters('s').depth), createObject(format('{0}', parameters('s').root), 0), lambda('placed', 'layerIndex', union(lambdaVariables('placed'), toObject(filter(parameters('s').tree, lambda('e', equals(parameters('s').layers[lambdaVariables('e').child], lambdaVariables('layerIndex')))), lambda('e', lambdaVariables('e').child), lambda('e', add(lambdaVariables('placed')[lambdaVariables('e').parent], _1.sumOf(map(filter(parameters('s').tree, lambda('t', and(equals(lambdaVariables('t').parent, lambdaVariables('e').parent), less(lambdaVariables('t').order, lambdaVariables('e').order)))), lambda('t', parameters('s').width[lambdaVariables('t').child])))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withTree": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('tree', map(_1.firstPerChild(filter(parameters('s').edges, lambda('e', equals(parameters('s').layers[lambdaVariables('e').parent], sub(parameters('s').layers[lambdaVariables('e').child], 1))))), lambda('e', 'i', createObject('parent', lambdaVariables('e').parent, 'child', lambdaVariables('e').child, 'order', lambdaVariables('i'))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withWidth": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('width', reduce(range(0, add(parameters('s').depth, 1)), createObject(), lambda('done', 'step', union(lambdaVariables('done'), toObject(filter(items(parameters('s').layers), lambda('layer', equals(lambdaVariables('layer').value, sub(parameters('s').depth, lambdaVariables('step'))))), lambda('layer', lambdaVariables('layer').key), lambda('layer', max(1, _1.sumOf(map(_1.childrenOf(parameters('s').tree, lambdaVariables('layer').key), lambda('e', lambdaVariables('done')[lambdaVariables('e').child])))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withX": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('x', reduce(range(0, add(parameters('s').depth, 1)), createObject(), lambda('placed', 'step', union(lambdaVariables('placed'), toObject(filter(items(parameters('s').layers), lambda('layer', equals(lambdaVariables('layer').value, sub(parameters('s').depth, lambdaVariables('step'))))), lambda('layer', lambdaVariables('layer').key), lambda('layer', _1.xOf(parameters('s'), lambdaVariables('placed'), lambdaVariables('layer').key))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "xOf": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    },
+                    {
+                      "type": "object",
+                      "name": "placed"
+                    },
+                    {
+                      "type": "string",
+                      "name": "name"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[if(empty(_1.childrenOf(parameters('s').tree, parameters('name'))), mul(parameters('s').start[parameters('name')], _1.columnWidth()), _1.centreOver(_1.childrenOf(parameters('s').tree, parameters('name')), parameters('placed')))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
                 }
               }
             }
@@ -932,11 +1261,7 @@
                 "input": {
                   "name": "[format('vm-{0}', copyIndex('vmEntities'))]",
                   "displayName": "[format('VM: {0}', last(split(parameters('vmIds')[copyIndex('vmEntities')], '/')))]",
-                  "signalGroups": "[__bicep.resourceGroupOf(parameters('vmIds')[copyIndex('vmEntities')], __bicep.definitionSignals(createArray('sd-vm-cpu')))]",
-                  "canvasPosition": {
-                    "x": "[sub(add(1750, mul(250, copyIndex('vmEntities'))), variables('rootX'))]",
-                    "y": 579
-                  }
+                  "signalGroups": "[__bicep.resourceGroupOf(parameters('vmIds')[copyIndex('vmEntities')], __bicep.definitionSignals(createArray('sd-vm-cpu')))]"
                 }
               }
             ],
@@ -1009,12 +1334,12 @@
                 "alerts": {
                   "degraded": {
                     "severity": "Sev3",
-                    "description": "The shop demo is losing checkouts or traffic",
+                    "description": "The shop demo has failing or slow checkouts, or a test shopper app is down",
                     "actionGroupIds": "[variables('actionGroupIds')]"
                   },
                   "unhealthy": {
                     "severity": "Sev2",
-                    "description": "The shop demo shows no live checkouts",
+                    "description": "The shop demo is failing: checkouts error out or the test shoppers are down",
                     "actionGroupIds": "[variables('actionGroupIds')]"
                   }
                 }
@@ -1049,7 +1374,7 @@
                 "name": "shop-api",
                 "displayName": "Shop API",
                 "icon": "SystemComponent",
-                "signalGroups": "[__bicep.lawGroup(parameters('appInsightsWorkspaceId'), createArray(__bicep.logSignal('failed-checkouts', 'Checkouts failing with server errors', 'AppRequests\n| where tostring(parse_url(Url).Path) == \"/api/checkout\"\n| summarize value = countif(ResultCode startswith \"5\")\n', 'PT5M', 'Count', __bicep.rules('GreaterThan', 0, 2)), __bicep.logSignal('completed-checkouts', 'Completed checkouts', 'AppEvents\n| where Name == \"CheckoutCompleted\"\n| summarize value = count()\n', 'PT15M', 'Count', __bicep.rules('LessThan', 5, 1))))]"
+                "signalGroups": "[__bicep.lawGroup(parameters('appInsightsWorkspaceId'), createArray(__bicep.logSignal('failed-checkouts', 'Checkouts failing with server errors', 'AppRequests\n| where tostring(parse_url(Url).Path) == \"/api/checkout\"\n| summarize value = countif(ResultCode startswith \"5\")\n', 'PT5M', 'Count', __bicep.rules('GreaterThan', 0, 2)), __bicep.logSignal('checkout-latency', 'Slow checkouts (95th percentile)', 'AppRequests\n| where tostring(parse_url(Url).Path) == \"/api/checkout\"\n| summarize value = percentile(DurationMs, 95)\n', 'PT15M', 'MilliSeconds', __bicep.rules('GreaterThan', 1000, 3000))))]"
               },
               {
                 "name": "synthetic-shoppers",
@@ -1060,7 +1385,7 @@
                     "authenticationSetting": "[variables('auth')]",
                     "azureMonitorWorkspaceResourceId": "[parameters('monitorWorkspaceId')]",
                     "signals": [
-                      "[__bicep.promSignal('shopper-replicas-available', 'Test shopper apps running', 'sum(kube_deployment_status_replicas_available{namespace=\"demo\", deployment=~\"otel-caller|nodeapp-otel\"}) or vector(0)', 'Count', __bicep.rules('LessThan', 2, 1))]"
+                      "[__bicep.promSignal('shopper-replicas-missing', 'Test shopper replicas not available', 'sum(kube_deployment_spec_replicas{namespace=\"demo\", deployment=~\"otel-caller|nodeapp-otel\"}) - sum(min_over_time(kube_deployment_status_replicas_available{namespace=\"demo\", deployment=~\"otel-caller|nodeapp-otel\"}[5m]))', 'Count', __bicep.rules('GreaterThan', 0, 1))]"
                     ]
                   }
                 }
@@ -1089,14 +1414,14 @@
                 "name": "kubernetes-workloads",
                 "displayName": "Kubernetes workloads",
                 "icon": "SystemComponent",
-                "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('crashlooping-containers', 'Containers crash-looping in the demo namespace', 'KubePodInventory\n| where Namespace == \"demo\" and ContainerStatusReason == \"CrashLoopBackOff\"\n| summarize value = dcount(ContainerName)\n', 'PT5M', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
+                "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('crashlooping-containers', 'Containers crash-looping in the demo namespace', 'KubePodInventory\n| where Namespace == \"demo\" and ContainerStatusReason == \"CrashLoopBackOff\"\n| summarize value = dcount(ContainerName)\n', 'PT15M', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
               },
               {
                 "name": "virtual-machines",
                 "displayName": "Virtual machines (optional)",
                 "icon": "SystemComponent",
                 "impact": "Limited",
-                "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('vms-without-heartbeat', 'VMs silent for 10 minutes', format('print value = {0} - toscalar(Heartbeat | where TimeGenerated > ago(10m) and _ResourceId has \"/microsoft.compute/virtualmachines/\" | summarize dcount(_ResourceId))\n', length(parameters('vmIds'))), 'PT15M', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
+                "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('vms-lost-heartbeat', 'VMs that stopped sending heartbeats', 'Heartbeat\n| where _ResourceId has \"/microsoft.compute/virtualmachines/\"\n| summarize newest = max(TimeGenerated) by _ResourceId\n| summarize value = countif(newest < ago(10m))\n', 'PT2H', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
               },
               {
                 "name": "console-app",
@@ -1134,83 +1459,7 @@
                 "signalGroups": "[__bicep.resourceGroupOf(parameters('vmssId'), createArray(__bicep.metricSignal('vmss-cpu', 'Scale set CPU', 'Microsoft.Compute/virtualMachineScaleSets', 'Percentage CPU', 'Average', 'Percent', __bicep.rules('GreaterThan', 80, 95))))]"
               }
             ],
-            "vmssX": "[add(1750, mul(250, length(parameters('vmIds'))))]",
-            "rootX": "[div(add(125, div(add(1000, variables('vmssX')), 2)), 2)]",
-            "canvasLayout": {
-              "operate-lab": {
-                "x": 125,
-                "y": 193
-              },
-              "shop-demo": {
-                "x": 625,
-                "y": 193
-              },
-              "live-telemetry": {
-                "x": "[div(add(1000, variables('vmssX')), 2)]",
-                "y": 193
-              },
-              "control-center": {
-                "x": 0,
-                "y": 386
-              },
-              "lab-operations": {
-                "x": 250,
-                "y": 386
-              },
-              "shop-api": {
-                "x": 500,
-                "y": 386
-              },
-              "synthetic-shoppers": {
-                "x": 750,
-                "y": 386
-              },
-              "log-pipeline": {
-                "x": 1000,
-                "y": 386
-              },
-              "metrics-pipeline": {
-                "x": 1250,
-                "y": 386
-              },
-              "kubernetes-workloads": {
-                "x": 1500,
-                "y": 386
-              },
-              "virtual-machines": {
-                "x": "[div(add(1750, variables('vmssX')), 2)]",
-                "y": 386
-              },
-              "console-app": {
-                "x": 0,
-                "y": 579
-              },
-              "shop-app": {
-                "x": 500,
-                "y": 579
-              },
-              "shoppers-aks": {
-                "x": 750,
-                "y": 579
-              },
-              "central-law": {
-                "x": 1000,
-                "y": 579
-              },
-              "monitor-workspace": {
-                "x": 1250,
-                "y": 579
-              },
-              "cluster-aks": {
-                "x": 1500,
-                "y": 579
-              },
-              "vmss": {
-                "x": "[variables('vmssX')]",
-                "y": 579
-              }
-            },
-            "canvas": "[toObject(items(variables('canvasLayout')), lambda('item', lambdaVariables('item').key), lambda('item', createObject('x', sub(lambdaVariables('item').value.x, variables('rootX')), 'y', lambdaVariables('item').value.y)))]",
+            "canvas": "[__bicep.layoutHealthModel(parameters('healthModelName'), map(concat(variables('entities'), variables('vmEntities')), lambda('e', lambdaVariables('e').name)), variables('edges'))]",
             "edges": "[concat(createArray(createObject('parent', parameters('healthModelName'), 'child', 'operate-lab'), createObject('parent', parameters('healthModelName'), 'child', 'shop-demo'), createObject('parent', parameters('healthModelName'), 'child', 'live-telemetry'), createObject('parent', 'operate-lab', 'child', 'control-center'), createObject('parent', 'operate-lab', 'child', 'lab-operations'), createObject('parent', 'shop-demo', 'child', 'shop-api'), createObject('parent', 'shop-demo', 'child', 'synthetic-shoppers'), createObject('parent', 'live-telemetry', 'child', 'log-pipeline'), createObject('parent', 'live-telemetry', 'child', 'metrics-pipeline'), createObject('parent', 'live-telemetry', 'child', 'kubernetes-workloads'), createObject('parent', 'live-telemetry', 'child', 'virtual-machines'), createObject('parent', 'control-center', 'child', 'console-app'), createObject('parent', 'shop-api', 'child', 'shop-app'), createObject('parent', 'synthetic-shoppers', 'child', 'shoppers-aks'), createObject('parent', 'log-pipeline', 'child', 'central-law'), createObject('parent', 'metrics-pipeline', 'child', 'monitor-workspace'), createObject('parent', 'kubernetes-workloads', 'child', 'cluster-aks'), createObject('parent', 'virtual-machines', 'child', 'vmss')), map(range(0, length(parameters('vmIds'))), lambda('i', createObject('parent', 'virtual-machines', 'child', format('vm-{0}', lambdaVariables('i'))))))]"
           },
           "resources": {
@@ -1303,10 +1552,7 @@
               "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), parameters('healthModelName'))]",
               "properties": {
-                "canvasPosition": {
-                  "x": 0,
-                  "y": 0
-                }
+                "canvasPosition": "[variables('canvas')[parameters('healthModelName')]]"
               },
               "dependsOn": [
                 "healthModel"
@@ -1327,7 +1573,7 @@
                 "healthObjective": "[tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'healthObjective')]",
                 "alerts": "[tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'alerts')]",
                 "signalGroups": "[tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'signalGroups')]",
-                "canvasPosition": "[coalesce(tryGet(concat(variables('entities'), variables('vmEntities'))[copyIndex()], 'canvasPosition'), variables('canvas')[concat(variables('entities'), variables('vmEntities'))[copyIndex()].name])]"
+                "canvasPosition": "[variables('canvas')[concat(variables('entities'), variables('vmEntities'))[copyIndex()].name]]"
               },
               "dependsOn": [
                 "authSetting",
@@ -1595,7 +1841,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "3523047170107716515"
+              "templateHash": "9002074081658173157"
             }
           },
           "functions": [
@@ -1716,6 +1962,335 @@
                           }
                         ]
                       }
+                    }
+                  }
+                },
+                "layoutHealthModel": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "entities"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[_1.placements(_1.withX(_1.withStart(_1.withWidth(_1.withTree(_1.withDepth(_1.withLayers(_1.prepare(parameters('root'), _1.entityNames(parameters('root'), parameters('entities'), parameters('edges')), filter(parameters('edges'), lambda('e', and(not(equals(lambdaVariables('e').child, parameters('root'))), not(equals(lambdaVariables('e').child, lambdaVariables('e').parent)))))))))))))]"
+                  },
+                  "metadata": {
+                    "description": "Canvas positions { x, y } by entity name for the root, every entity in `entities` and every entity named in `edges` ({ parent, child } objects).",
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "namespace": "_1",
+              "members": {
+                "centreOver": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "children"
+                    },
+                    {
+                      "type": "object",
+                      "name": "placed"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[div(add(parameters('placed')[first(parameters('children')).child], parameters('placed')[last(parameters('children')).child]), 2)]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "childrenOf": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "tree"
+                    },
+                    {
+                      "type": "string",
+                      "name": "name"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(parameters('tree'), lambda('e', equals(lambdaVariables('e').parent, parameters('name'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "columnWidth": {
+                  "parameters": [],
+                  "output": {
+                    "type": "int",
+                    "value": 250
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "entityNames": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "entities"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(union(parameters('entities'), map(parameters('edges'), lambda('e', lambdaVariables('e').child)), map(parameters('edges'), lambda('e', lambdaVariables('e').parent))), lambda('name', not(equals(lambdaVariables('name'), parameters('root')))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "firstPerChild": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(parameters('edges'), lambda('e', 'i', equals(indexOf(map(parameters('edges'), lambda('c', lambdaVariables('c').child)), lambdaVariables('e').child), lambdaVariables('i'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "placements": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[toObject(items(parameters('s').layers), lambda('layer', lambdaVariables('layer').key), lambda('layer', createObject('x', parameters('s').x[lambdaVariables('layer').key], 'y', mul(lambdaVariables('layer').value, _1.rowHeight()))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "prepare": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "nodes"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": {
+                      "root": "[parameters('root')]",
+                      "nodes": "[parameters('nodes')]",
+                      "edges": "[concat(parameters('edges'), map(filter(parameters('nodes'), lambda('n', not(contains(map(parameters('edges'), lambda('e', lambdaVariables('e').child)), lambdaVariables('n'))))), lambda('n', createObject('parent', parameters('root'), 'child', lambdaVariables('n')))))]"
+                    }
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "rowHeight": {
+                  "parameters": [],
+                  "output": {
+                    "type": "int",
+                    "value": 193
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "sumOf": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "values"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[reduce(parameters('values'), 0, lambda('total', 'value', add(lambdaVariables('total'), lambdaVariables('value'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withDepth": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('depth', reduce(items(parameters('s').layers), 0, lambda('deepest', 'layer', max(lambdaVariables('deepest'), lambdaVariables('layer').value)))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withLayers": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('layers', reduce(range(0, length(parameters('s').nodes)), createObject(format('{0}', parameters('s').root), 0), lambda('layers', 'pass', reduce(parameters('s').edges, lambdaVariables('layers'), lambda('current', 'e', union(lambdaVariables('current'), createObject(format('{0}', lambdaVariables('e').child), max(coalesce(tryGet(lambdaVariables('current'), lambdaVariables('e').child), 0), add(coalesce(tryGet(lambdaVariables('current'), lambdaVariables('e').parent), 0), 1))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withStart": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('start', reduce(range(1, parameters('s').depth), createObject(format('{0}', parameters('s').root), 0), lambda('placed', 'layerIndex', union(lambdaVariables('placed'), toObject(filter(parameters('s').tree, lambda('e', equals(parameters('s').layers[lambdaVariables('e').child], lambdaVariables('layerIndex')))), lambda('e', lambdaVariables('e').child), lambda('e', add(lambdaVariables('placed')[lambdaVariables('e').parent], _1.sumOf(map(filter(parameters('s').tree, lambda('t', and(equals(lambdaVariables('t').parent, lambdaVariables('e').parent), less(lambdaVariables('t').order, lambdaVariables('e').order)))), lambda('t', parameters('s').width[lambdaVariables('t').child])))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withTree": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('tree', map(_1.firstPerChild(filter(parameters('s').edges, lambda('e', equals(parameters('s').layers[lambdaVariables('e').parent], sub(parameters('s').layers[lambdaVariables('e').child], 1))))), lambda('e', 'i', createObject('parent', lambdaVariables('e').parent, 'child', lambdaVariables('e').child, 'order', lambdaVariables('i'))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withWidth": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('width', reduce(range(0, add(parameters('s').depth, 1)), createObject(), lambda('done', 'step', union(lambdaVariables('done'), toObject(filter(items(parameters('s').layers), lambda('layer', equals(lambdaVariables('layer').value, sub(parameters('s').depth, lambdaVariables('step'))))), lambda('layer', lambdaVariables('layer').key), lambda('layer', max(1, _1.sumOf(map(_1.childrenOf(parameters('s').tree, lambdaVariables('layer').key), lambda('e', lambdaVariables('done')[lambdaVariables('e').child])))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withX": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('x', reduce(range(0, add(parameters('s').depth, 1)), createObject(), lambda('placed', 'step', union(lambdaVariables('placed'), toObject(filter(items(parameters('s').layers), lambda('layer', equals(lambdaVariables('layer').value, sub(parameters('s').depth, lambdaVariables('step'))))), lambda('layer', lambdaVariables('layer').key), lambda('layer', _1.xOf(parameters('s'), lambdaVariables('placed'), lambdaVariables('layer').key))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
+                    }
+                  }
+                },
+                "xOf": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    },
+                    {
+                      "type": "object",
+                      "name": "placed"
+                    },
+                    {
+                      "type": "string",
+                      "name": "name"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[if(empty(_1.childrenOf(parameters('s').tree, parameters('name'))), mul(parameters('s').start[parameters('name')], _1.columnWidth()), _1.centreOver(_1.childrenOf(parameters('s').tree, parameters('name')), parameters('placed')))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "../modules/health-model-layout.bicep"
                     }
                   }
                 }
@@ -1879,7 +2454,7 @@
                 "signalGroups": "[__bicep.resourceSignals(parameters('storageId'), 'sd-storage-availability')]"
               }
             ],
-            "canvas": "[json('{\n  \"order-coffee\": { \"x\": -312.5, \"y\": 193 },\n  \"browse-menu\": { \"x\": 312.5, \"y\": 193 },\n  \"order-store\": { \"x\": -562.5, \"y\": 386 },\n  \"order-api\": { \"x\": -312.5, \"y\": 386 },\n  \"barista-display\": { \"x\": -62.5, \"y\": 386 },\n  \"menu-catalog\": { \"x\": 187.5, \"y\": 386 },\n  \"cafe-website\": { \"x\": 437.5, \"y\": 386 },\n  \"order-storage\": { \"x\": -562.5, \"y\": 579 },\n  \"order-app\": { \"x\": -312.5, \"y\": 579 },\n  \"queue-storage\": { \"x\": -62.5, \"y\": 579 },\n  \"menu-storage\": { \"x\": 187.5, \"y\": 579 },\n  \"menu-app\": { \"x\": 437.5, \"y\": 579 }\n}\n')]",
+            "canvas": "[__bicep.layoutHealthModel(parameters('healthModelName'), map(variables('entities'), lambda('e', lambdaVariables('e').name)), variables('edges'))]",
             "edges": [
               {
                 "parent": "[parameters('healthModelName')]",
@@ -1993,10 +2568,7 @@
               "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), parameters('healthModelName'))]",
               "properties": {
-                "canvasPosition": {
-                  "x": 0,
-                  "y": 0
-                }
+                "canvasPosition": "[variables('canvas')[parameters('healthModelName')]]"
               },
               "dependsOn": [
                 "healthModel"

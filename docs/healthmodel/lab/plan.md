@@ -5,7 +5,7 @@ This model, `hm-amlab-flows`, shows whether the lab can do what presenters use i
 ## What does health mean for my workload?
 
 - A presenter can open the Lab Control Center and run lab operations from it.
-- The demo shop app answers, has a steady stream of test shoppers, and completes checkouts, so the app monitoring demos show live data.
+- The demo shop app answers checkouts without errors or long waits, and its test shoppers keep running, so the app monitoring demos show live data.
 - Fresh data from Kubernetes, the VMs and the app keeps arriving, so dashboards, queries and alerts show the present, not an hour ago.
 
 ## User flows
@@ -13,8 +13,8 @@ This model, `hm-amlab-flows`, shows whether the lab can do what presenters use i
 | User flow | What users do | Depends on | Signals | Health target | Alert |
 |---|---|---|---|---|---|
 | Operate the lab | Open the Control Center, check the lab's health, start, break or restore the lab | Control Center, optional Lab operations | Failed console requests, the test visitor can't load the console, failed operations, web app health check | 99.5% (assumed) | When unhealthy |
-| Show the shop app live | Show test shoppers browsing and checking out, with errors and timings in Application Insights | Shop API, Test shoppers | Checkouts failing with server errors, too few completed checkouts, test shopper apps not running, web app health check, cluster too busy | 99.5% (assumed) | When degraded or unhealthy |
-| Show live infrastructure data | Show fresh logs, metrics and dashboards from Kubernetes and the VMs | Log pipeline, Metrics pipeline, Kubernetes workloads, optional Virtual machines | Newest log record too old, metric sources not answering, containers crashing, VMs silent, workspaces' own health, cluster and VM load | 99% (assumed) | When unhealthy |
+| Show the shop app live | Show test shoppers browsing and checking out, with errors and timings in Application Insights | Shop API, Test shoppers | Checkouts failing with server errors, slow checkouts, test shopper replicas missing, web app health check, cluster too busy | 99.5% (assumed) | When degraded or unhealthy |
+| Show live infrastructure data | Show fresh logs, metrics and dashboards from Kubernetes and the VMs | Log pipeline, Metrics pipeline, Kubernetes workloads, optional Virtual machines | Newest log record too old, metric sources not answering, containers crashing, VMs that stopped sending heartbeats, workspaces' own health, cluster and VM load | 99% (assumed) | When unhealthy |
 
 The lab also has endpoints that fail or slow down on purpose (`/api/explode`, `/api/slow`, `/api/inefficient`). No user flow counts them: they're demo props, and their errors are expected.
 
@@ -53,12 +53,12 @@ flowchart TB
 
         SIG_CONSOLE["Failed console requests<br/>Test visitor can't load the console"]:::signal
         SIG_OPS["Failed lab operations"]:::signal
-        SIG_SHOP["Checkouts failing with server errors<br/>Too few completed checkouts"]:::signal
-        SIG_SHOPPERS["Test shopper apps not running"]:::signal
+        SIG_SHOP["Checkouts failing with server errors<br/>Slow checkouts"]:::signal
+        SIG_SHOPPERS["Test shopper replicas missing"]:::signal
         SIG_LOGS["Newest log record too old"]:::signal
         SIG_METRICS["Metric sources not answering"]:::signal
         SIG_K8S["Containers crashing"]:::signal
-        SIG_VMS["VMs silent for 10 minutes"]:::signal
+        SIG_VMS["VMs that stopped sending heartbeats"]:::signal
         SIG_APP["Web app health check"]:::signal
         SIG_AKS["Cluster CPU and memory"]:::signal
         SIG_VMCPU["VM CPU"]:::signal
@@ -106,16 +106,18 @@ Read top to bottom: what presenters do, the parts of the lab that make it work, 
 | If this happens | The model shows | Alert |
 |---|---|---|
 | `break-the-lab.ps1`: VMs stopped, a demo container crash-loops, `/api/explode` flooded | Kubernetes workloads and Show live infrastructure data turn **Unhealthy**, Virtual machines **Unhealthy** (limited impact), Azure Monitor Lab **Unhealthy**. Show the shop app live stays **Healthy**: the flood only hits the endpoint that fails on purpose | Infrastructure data alert fires |
-| `stop-the-lab.ps1`: web app, cluster and VMs stopped | Control Center, Shop API, Log pipeline, Virtual machines turn **Unhealthy**; all three flows and Azure Monitor Lab turn **Unhealthy** | All three flow alerts fire |
+| `stop-the-lab.ps1`: web app, cluster and VMs stopped | Control Center turns **Unhealthy** (the test visitor can't load it), then Log pipeline and Metrics pipeline once their data stops. Show the shop app live has nothing to measure while the shop is off and stays **Healthy** or **Unknown**: no traffic is not a fault | Operate the lab and Show live infrastructure data alerts fire |
 | Lab operations job fails | Lab operations turns **Unhealthy**; Operate the lab and Azure Monitor Lab only **Degraded** | None |
-| Test shopper apps stop | Test shoppers turns **Unhealthy**, then Shop API as completed checkouts dry up; Show the shop app live and Azure Monitor Lab turn **Unhealthy** | Shop alert fires |
+| Test shopper apps stop | Test shoppers turns **Unhealthy**; Show the shop app live and Azure Monitor Lab turn **Unhealthy** | Shop alert fires |
+| Nobody shops, or the VMs stay off after the nightly shutdown | Nothing turns red: Shop API reads **Unknown** or **Healthy**, and Virtual machines is **Healthy** again 2 hours after its VMs went silent | None |
 
 ## Assumptions
 
 - Operating the lab and the shop demo are held to 99.5%, live data to 99% of the time healthy.
 - One failing console or checkout request is worth a look (degraded); a handful means presenters are hurting (unhealthy).
 - Logs older than 10 minutes are getting stale, older than 20 minutes are broken.
-- The VMs only supply data and shut down every night, so they can't turn a flow red on their own.
+- The VMs only supply data and shut down every night, so they can't turn a flow red on their own. A VM that went silent more than 2 hours ago counts as stopped on purpose.
+- The model flags faults (errors, slow responses, crashes, stale data), never idleness: no shoppers or no traffic is not a failure.
 
 ## What to do next?
 
