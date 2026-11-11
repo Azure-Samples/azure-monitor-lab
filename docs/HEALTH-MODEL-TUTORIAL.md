@@ -1,6 +1,6 @@
 # Health Model Tutorial: Lab Café ☕🩺
 
-In this tutorial you've finally done it. You run your own coffee shop! In the cloud. 
+In this tutorial you've finally done it. You run your own coffee shop! In the cloud.
 
 But you will see that a lot can go wrong, luckily a health model can help you you.
 

@@ -54,4 +54,10 @@ $deploymentBranch = $deploymentBranches[0]
 $cloneBranches = @([regex]::Matches($readme, 'git clone --branch (?<branch>\S+) https://github\.com/Azure-Samples/azure-monitor-lab\.git') | ForEach-Object { $_.Groups['branch'].Value })
 $expectedDeploymentClones = if ($deploymentBranch -eq 'main') { 3 } else { 2 }
 if ($cloneBranches.Count -ne 3 -or @($cloneBranches | Where-Object { $_ -eq $deploymentBranch }).Count -ne $expectedDeploymentClones -or @($cloneBranches | Where-Object { $_ -notin @('main', $deploymentBranch) }).Count -ne 0) { throw "Documented clone paths must use $deploymentBranch for portal preparation/completion and main for the stable scripted option." }
+$switchBranches = @([regex]::Matches($readme, '(?m)^git switch (?<branch>\S+)\r?$') | ForEach-Object { $_.Groups['branch'].Value })
+$pullBranches = @([regex]::Matches($readme, '(?m)^git pull --ff-only origin (?<branch>\S+)\r?$') | ForEach-Object { $_.Groups['branch'].Value })
+if ($switchBranches.Count -ne 2 -or $switchBranches[0] -cne $deploymentBranch -or $switchBranches[1] -cne 'main' -or
+    $pullBranches.Count -ne 1 -or $pullBranches[0] -cne $deploymentBranch) {
+  throw "Documented branch switches and pulls must use $deploymentBranch for portal completion and main for the stable scripted option."
+}
 Write-Host "PASS: portal/terraform operator wiring and $deploymentBranch deployment links."

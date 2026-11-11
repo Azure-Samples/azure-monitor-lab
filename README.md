@@ -53,7 +53,7 @@ The lab combines application, infrastructure, and AI workloads with Azure Monito
 In the Azure portal, check that `NetworkWatcher_<region>` exists in `NetworkWatcherRG` for your target subscription and is ready. If it is, skip preparation. If missing, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and run the commands below. Use the same subscription and region in the portal wizard:
 
 ```powershell
-git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
@@ -77,13 +77,13 @@ Once Network Watcher is ready, open the wizard:
 
 <div align="center">
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2FcreateUiDefinition.json)
 
 </div>
 
 Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Shared settings match the config example, including App Service in `francecentral` and Observability Agent in `uksouth`. Select your subscription, resource group and main region in Basics, and supply your own alert email and VM admin password; sample identities and credentials are not pre-filled.
 
-This button deploys the `integration` templates and portal UI, which may contain changes not yet released to stable `main`. The Cloud Shell commands above use the same branch.
+This button deploys the stable `main` templates and portal UI. The Cloud Shell preparation and completion commands use the same branch so deployment and setup stay on the same release.
 
 | Tab | You provide |
 |---|---|
@@ -104,12 +104,12 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 if (-not (Test-Path -LiteralPath ./scripts/post-cloud-shell-deploy.ps1)) {
     if (-not (Test-Path -LiteralPath ./azure-monitor-lab)) {
-        git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
+        git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
     }
     Set-Location ./azure-monitor-lab
 }
-git switch integration
-git pull --ff-only origin integration
+git switch main
+git pull --ff-only origin main
 
 $tenantId = Read-Host 'Tenant ID'
 $subscriptionId = Read-Host 'Subscription ID'
@@ -136,7 +136,7 @@ After the wrapper succeeds, deployment is complete. Continue with the [manual sc
 # 1. Clone the repo and enter it
 git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
-git switch integration
+git switch main
 
 # 2. Copy the template and fill in basicConfiguration for your subscription
 Copy-Item lab.config.json.example lab.config.json
