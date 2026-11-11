@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "2105523431801404556"
+      "templateHash": "1449932342281197772"
     }
   },
   "parameters": {
@@ -784,14 +784,351 @@
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
           "contentVersion": "1.0.0.0",
           "metadata": {
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "17740123070479608642"
+              "templateHash": "4835891901111066692"
             }
           },
+          "functions": [
+            {
+              "namespace": "_1",
+              "members": {
+                "centreOver": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "children"
+                    },
+                    {
+                      "type": "object",
+                      "name": "placed"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[div(add(parameters('placed')[first(parameters('children')).child], parameters('placed')[last(parameters('children')).child]), 2)]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "childrenOf": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "tree"
+                    },
+                    {
+                      "type": "string",
+                      "name": "name"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(parameters('tree'), lambda('e', equals(lambdaVariables('e').parent, parameters('name'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "columnWidth": {
+                  "parameters": [],
+                  "output": {
+                    "type": "int",
+                    "value": 250
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "entityNames": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "entities"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(union(parameters('entities'), map(parameters('edges'), lambda('e', lambdaVariables('e').child)), map(parameters('edges'), lambda('e', lambdaVariables('e').parent))), lambda('name', not(equals(lambdaVariables('name'), parameters('root')))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "firstPerChild": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "array",
+                    "value": "[filter(parameters('edges'), lambda('e', 'i', equals(indexOf(map(parameters('edges'), lambda('c', lambdaVariables('c').child)), lambdaVariables('e').child), lambdaVariables('i'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "placements": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[toObject(items(parameters('s').layers), lambda('layer', lambdaVariables('layer').key), lambda('layer', createObject('x', parameters('s').x[lambdaVariables('layer').key], 'y', mul(lambdaVariables('layer').value, _1.rowHeight()))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "prepare": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "nodes"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": {
+                      "root": "[parameters('root')]",
+                      "nodes": "[parameters('nodes')]",
+                      "edges": "[concat(parameters('edges'), map(filter(parameters('nodes'), lambda('n', not(contains(map(parameters('edges'), lambda('e', lambdaVariables('e').child)), lambdaVariables('n'))))), lambda('n', createObject('parent', parameters('root'), 'child', lambdaVariables('n')))))]"
+                    }
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "rowHeight": {
+                  "parameters": [],
+                  "output": {
+                    "type": "int",
+                    "value": 193
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "sumOf": {
+                  "parameters": [
+                    {
+                      "type": "array",
+                      "name": "values"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[reduce(parameters('values'), 0, lambda('total', 'value', add(lambdaVariables('total'), lambdaVariables('value'))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withDepth": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('depth', reduce(items(parameters('s').layers), 0, lambda('deepest', 'layer', max(lambdaVariables('deepest'), lambdaVariables('layer').value)))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withLayers": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('layers', reduce(range(0, length(parameters('s').nodes)), createObject(format('{0}', parameters('s').root), 0), lambda('layers', 'pass', reduce(parameters('s').edges, lambdaVariables('layers'), lambda('current', 'e', union(lambdaVariables('current'), createObject(format('{0}', lambdaVariables('e').child), max(coalesce(tryGet(lambdaVariables('current'), lambdaVariables('e').child), 0), add(coalesce(tryGet(lambdaVariables('current'), lambdaVariables('e').parent), 0), 1))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withStart": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('start', reduce(range(1, parameters('s').depth), createObject(format('{0}', parameters('s').root), 0), lambda('placed', 'layerIndex', union(lambdaVariables('placed'), toObject(filter(parameters('s').tree, lambda('e', equals(parameters('s').layers[lambdaVariables('e').child], lambdaVariables('layerIndex')))), lambda('e', lambdaVariables('e').child), lambda('e', add(lambdaVariables('placed')[lambdaVariables('e').parent], _1.sumOf(map(filter(parameters('s').tree, lambda('t', and(equals(lambdaVariables('t').parent, lambdaVariables('e').parent), less(lambdaVariables('t').order, lambdaVariables('e').order)))), lambda('t', parameters('s').width[lambdaVariables('t').child])))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withTree": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('tree', map(_1.firstPerChild(filter(parameters('s').edges, lambda('e', equals(parameters('s').layers[lambdaVariables('e').parent], sub(parameters('s').layers[lambdaVariables('e').child], 1))))), lambda('e', 'i', createObject('parent', lambdaVariables('e').parent, 'child', lambdaVariables('e').child, 'order', lambdaVariables('i'))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withWidth": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('width', reduce(range(0, add(parameters('s').depth, 1)), createObject(), lambda('done', 'step', union(lambdaVariables('done'), toObject(filter(items(parameters('s').layers), lambda('layer', equals(lambdaVariables('layer').value, sub(parameters('s').depth, lambdaVariables('step'))))), lambda('layer', lambdaVariables('layer').key), lambda('layer', max(1, _1.sumOf(map(_1.childrenOf(parameters('s').tree, lambdaVariables('layer').key), lambda('e', lambdaVariables('done')[lambdaVariables('e').child])))))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "withX": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[union(parameters('s'), createObject('x', reduce(range(0, add(parameters('s').depth, 1)), createObject(), lambda('placed', 'step', union(lambdaVariables('placed'), toObject(filter(items(parameters('s').layers), lambda('layer', equals(lambdaVariables('layer').value, sub(parameters('s').depth, lambdaVariables('step'))))), lambda('layer', lambdaVariables('layer').key), lambda('layer', _1.xOf(parameters('s'), lambdaVariables('placed'), lambdaVariables('layer').key))))))))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                },
+                "xOf": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "s"
+                    },
+                    {
+                      "type": "object",
+                      "name": "placed"
+                    },
+                    {
+                      "type": "string",
+                      "name": "name"
+                    }
+                  ],
+                  "output": {
+                    "type": "int",
+                    "value": "[if(empty(_1.childrenOf(parameters('s').tree, parameters('name'))), mul(parameters('s').start[parameters('name')], _1.columnWidth()), _1.centreOver(_1.childrenOf(parameters('s').tree, parameters('name')), parameters('placed')))]"
+                  },
+                  "metadata": {
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "namespace": "__bicep",
+              "members": {
+                "layoutHealthModel": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "root"
+                    },
+                    {
+                      "type": "array",
+                      "name": "entities"
+                    },
+                    {
+                      "type": "array",
+                      "name": "edges"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": "[_1.placements(_1.withX(_1.withStart(_1.withWidth(_1.withTree(_1.withDepth(_1.withLayers(_1.prepare(parameters('root'), _1.entityNames(parameters('root'), parameters('entities'), parameters('edges')), filter(parameters('edges'), lambda('e', and(not(equals(lambdaVariables('e').child, parameters('root'))), not(equals(lambdaVariables('e').child, lambdaVariables('e').parent)))))))))))))]"
+                  },
+                  "metadata": {
+                    "description": "Canvas positions { x, y } by entity name for the root, every entity in `entities` and every entity named in `edges` ({ parent, child } objects).",
+                    "__bicep_imported_from!": {
+                      "sourceTemplate": "health-model-layout.bicep"
+                    }
+                  }
+                }
+              }
+            }
+          ],
           "parameters": {
             "location": {
               "type": "string",
@@ -834,32 +1171,25 @@
             "agents": [
               {
                 "key": "support-triage",
-                "display": "Support Triage",
-                "x": 100,
-                "y": 100
+                "display": "Support Triage"
               },
               {
                 "key": "finops-qa",
-                "display": "FinOps Q&A",
-                "x": 420,
-                "y": 100
+                "display": "FinOps Q&A"
               },
               {
                 "key": "doc-summarizer",
-                "display": "Doc Summarizer",
-                "x": 100,
-                "y": 320
+                "display": "Doc Summarizer"
               },
               {
                 "key": "context-rich-assistant",
-                "display": "Context-Rich Assistant",
-                "x": 420,
-                "y": 320
+                "display": "Context-Rich Assistant"
               }
-            ]
+            ],
+            "layout": "[__bicep.layoutHealthModel(parameters('healthModelName'), map(variables('agents'), lambda('a', format('agent-{0}', lambdaVariables('a').key))), createArray())]"
           },
-          "resources": [
-            {
+          "resources": {
+            "healthModel": {
               "type": "Microsoft.CloudHealth/healthmodels",
               "apiVersion": "2026-11-01",
               "name": "[parameters('healthModelName')]",
@@ -870,7 +1200,7 @@
               },
               "properties": {}
             },
-            {
+            "authSetting": {
               "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
               "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), variables('authSettingName'))]",
@@ -880,10 +1210,10 @@
                 "managedIdentityName": "SystemAssigned"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "healthModel"
               ]
             },
-            {
+            "discoverAgents": {
               "type": "Microsoft.CloudHealth/healthmodels/discoveryrules",
               "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'agents-topology')]",
@@ -899,11 +1229,11 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), variables('authSettingName'))]",
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "authSetting",
+                "healthModel"
               ]
             },
-            {
+            "discoverAccount": {
               "type": "Microsoft.CloudHealth/healthmodels/discoveryrules",
               "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'foundry-account')]",
@@ -919,11 +1249,11 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), variables('authSettingName'))]",
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "authSetting",
+                "healthModel"
               ]
             },
-            {
+            "discoverProjects": {
               "type": "Microsoft.CloudHealth/healthmodels/discoveryrules",
               "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'foundry-projects')]",
@@ -939,11 +1269,11 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), variables('authSettingName'))]",
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "authSetting",
+                "healthModel"
               ]
             },
-            {
+            "discoverObservability": {
               "type": "Microsoft.CloudHealth/healthmodels/discoveryrules",
               "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'observability-services')]",
@@ -959,50 +1289,50 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), variables('authSettingName'))]",
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "authSetting",
+                "healthModel"
               ]
             },
-            {
+            "readerAssignment": {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), variables('readerRoleId'))]",
               "properties": {
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalId": "[reference('healthModel', '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal",
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('readerRoleId'))]"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "healthModel"
               ]
             },
-            {
+            "monitoringReaderAssignment": {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), variables('monitoringReaderRoleId'))]",
               "properties": {
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalId": "[reference('healthModel', '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal",
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReaderRoleId'))]"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "healthModel"
               ]
             },
-            {
+            "logAnalyticsReaderAssignment": {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), variables('logAnalyticsReaderRoleId'))]",
               "properties": {
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalId": "[reference('healthModel', '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal",
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('logAnalyticsReaderRoleId'))]"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "healthModel"
               ]
             },
-            {
+            "agentEntities": {
               "copy": {
                 "name": "agentEntities",
                 "count": "[length(variables('agents'))]"
@@ -1014,10 +1344,7 @@
                 "displayName": "[variables('agents')[copyIndex()].display]",
                 "impact": "Standard",
                 "healthObjective": 99,
-                "canvasPosition": {
-                  "x": "[variables('agents')[copyIndex()].x]",
-                  "y": "[variables('agents')[copyIndex()].y]"
-                },
+                "canvasPosition": "[variables('layout')[format('agent-{0}', variables('agents')[copyIndex()].key)]]",
                 "signalGroups": {
                   "azureLogAnalytics": {
                     "authenticationSetting": "[variables('authSettingName')]",
@@ -1041,36 +1368,17 @@
                             "threshold": 20
                           }
                         }
-                      },
-                      {
-                        "name": "token-volume",
-                        "signalKind": "LogAnalyticsQuery",
-                        "displayName": "Total tokens/hour",
-                        "dataUnit": "Count",
-                        "refreshInterval": "PT5M",
-                        "valueColumnName": "TotalTokens",
-                        "queryText": "[format('AppDependencies | where TimeGenerated > ago(1h) | where tostring(Properties[''gen_ai.agent.name'']) == ''{0}'' | extend inTok=toint(Properties[''gen_ai.usage.input_tokens'']), outTok=toint(Properties[''gen_ai.usage.output_tokens'']) | summarize TotalTokens=coalesce(sum(inTok), 0)+coalesce(sum(outTok), 0)', variables('agents')[copyIndex()].display)]",
-                        "evaluationRules": {
-                          "degradedRule": {
-                            "operator": "GreaterThan",
-                            "threshold": 100000
-                          },
-                          "unhealthyRule": {
-                            "operator": "GreaterThan",
-                            "threshold": 200000
-                          }
-                        }
                       }
                     ]
                   }
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), variables('authSettingName'))]",
-                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+                "authSetting",
+                "healthModel"
               ]
             }
-          ],
+          },
           "outputs": {
             "healthModelName": {
               "type": "string",

@@ -55,7 +55,7 @@ foreach ($entry in @{ ApplicationInsightsAgent_EXTENSION_VERSION = 'disabled'; S
 $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\build-healthmodel-tutorial.ps1'), [ref] $tokens, [ref] $errors)
-foreach ($name in 'New-Rules', 'New-LogSignal', 'Get-CanvasLayout') {
+foreach ($name in 'New-Rules', 'New-LogSignal') {
   $function = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
   Invoke-Expression $function.Extent.Text
 }
@@ -93,11 +93,6 @@ foreach ($entity in $entities) {
 Assert-Demo ($cafe.variables.failureRules -eq "[__bicep.rules('GreaterThan', '0', '2')]") 'Failure rules must remain >0 degraded, >2 unhealthy.'
 Assert-Demo ($cafe.variables.definitions[0].evaluationRules -eq "[__bicep.rules('LessThan', '100', '50')]" -and $cafe.variables.definitions[1].evaluationRules -eq "[__bicep.rules('LessThan', '99.9', '99')]") 'Reusable metric thresholds changed.'
 Assert-Demo (($cafe.variables.entities | Where-Object name -eq 'order-api').signalGroups -match "rules\('GreaterThan', '1000', '3000'\)") 'Slow order thresholds must remain 1000/3000 ms.'
-$expectedCanvas = Get-CanvasLayout $HealthModelName $relationships
-$actualCanvas = $cafe.variables.canvas.Substring(7, $cafe.variables.canvas.Length - 10) | ConvertFrom-Json -AsHashtable
-foreach ($entity in $entities) {
-  Assert-Demo ($actualCanvas[$entity.name].x -eq $expectedCanvas[$entity.name].x -and $actualCanvas[$entity.name].y -eq $expectedCanvas[$entity.name].y) "Canvas differs from standalone builder: $($entity.name)"
-}
 for ($i = 0; $i -lt $relationships.Count; $i++) {
   Assert-Demo ($cafe.variables.edges[$i].child -eq $relationships[$i].child -and ($i -lt 2 -or $cafe.variables.edges[$i].parent -eq $relationships[$i].parent)) 'Cafe relationship order/topology differs from standalone builder.'
 }

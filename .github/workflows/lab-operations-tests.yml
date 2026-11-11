@@ -106,6 +106,7 @@ on:
       - 'infra/modules/appservice*'
       - 'infra/modules/observability-agent*'
       - 'infra/modules/vm-*.bicep'
+      - 'infra/modules/*health-model*.bicep'
       - 'infra/createUiDefinition.json'
       - 'infra/main.*'
       - 'infra/stages/*'

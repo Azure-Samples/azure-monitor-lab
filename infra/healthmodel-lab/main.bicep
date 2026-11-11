@@ -16,6 +16,8 @@
 // so no signal counts them.
 // =============================================================================
 
+import { layoutHealthModel } from '../modules/health-model-layout.bicep'
+
 @minLength(3)
 @maxLength(44)
 param healthModelName string = 'hm-amlab-flows'
@@ -285,8 +287,8 @@ var entities = [
     icon: 'UserFlow'
     healthObjective: json('99.5')
     alerts: {
-      degraded: { severity: 'Sev3', description: 'The shop demo is losing checkouts or traffic', actionGroupIds: actionGroupIds }
-      unhealthy: { severity: 'Sev2', description: 'The shop demo shows no live checkouts', actionGroupIds: actionGroupIds }
+      degraded: { severity: 'Sev3', description: 'The shop demo has failing or slow checkouts, or a test shopper app is down', actionGroupIds: actionGroupIds }
+      unhealthy: { severity: 'Sev2', description: 'The shop demo is failing: checkouts error out or the test shoppers are down', actionGroupIds: actionGroupIds }
     }
   }
   {
@@ -342,11 +344,12 @@ AppRequests
 | where tostring(parse_url(Url).Path) == "/api/checkout"
 | summarize value = countif(ResultCode startswith "5")
 ''', 'PT5M', 'Count', rules('GreaterThan', 0, 2))
-      logSignal('completed-checkouts', 'Completed checkouts', '''
-AppEvents
-| where Name == "CheckoutCompleted"
-| summarize value = count()
-''', 'PT15M', 'Count', rules('LessThan', 5, 1))
+      // No checkouts means no value, so a quiet shop reads Unknown, never Unhealthy.
+      logSignal('checkout-latency', 'Slow checkouts (95th percentile)', '''
+AppRequests
+| where tostring(parse_url(Url).Path) == "/api/checkout"
+| summarize value = percentile(DurationMs, 95)
+''', 'PT15M', 'MilliSeconds', rules('GreaterThan', 1000, 3000))
     ])
   }
   {
@@ -358,7 +361,8 @@ AppEvents
         authenticationSetting: auth
         azureMonitorWorkspaceResourceId: monitorWorkspaceId
         signals: [
-          promSignal('shopper-replicas-available', 'Test shopper apps running', 'sum(kube_deployment_status_replicas_available{namespace="demo", deployment=~"otel-caller|nodeapp-otel"}) or vector(0)', 'Count', rules('LessThan', 2, 1))
+          // Desired minus the fewest available in 5 minutes: a crash-looping pod is briefly ready between restarts, and scaling a shopper down on purpose is not a fault. A stopped cluster reads Unknown.
+          promSignal('shopper-replicas-missing', 'Test shopper replicas not available', 'sum(kube_deployment_spec_replicas{namespace="demo", deployment=~"otel-caller|nodeapp-otel"}) - sum(min_over_time(kube_deployment_status_replicas_available{namespace="demo", deployment=~"otel-caller|nodeapp-otel"}[5m]))', 'Count', rules('GreaterThan', 0, 1))
         ]
       }
     }
@@ -394,11 +398,12 @@ union isfuzzy=true KubeNodeInventory, AppServiceHTTPLogs
     displayName: 'Kubernetes workloads'
     icon: 'SystemComponent'
     signalGroups: lawGroup(centralWorkspaceId, [
+      // A crashing container shows CrashLoopBackOff only part of each restart cycle, so look back 15 minutes.
       logSignal('crashlooping-containers', 'Containers crash-looping in the demo namespace', '''
 KubePodInventory
 | where Namespace == "demo" and ContainerStatusReason == "CrashLoopBackOff"
 | summarize value = dcount(ContainerName)
-''', 'PT5M', 'Count', rules('GreaterThan', 0, 1))
+''', 'PT15M', 'Count', rules('GreaterThan', 0, 1))
     ])
   }
   {
@@ -407,9 +412,14 @@ KubePodInventory
     icon: 'SystemComponent'
     impact: 'Limited'
     signalGroups: lawGroup(centralWorkspaceId, [
-      logSignal('vms-without-heartbeat', 'VMs silent for 10 minutes', format('''
-print value = {0} - toscalar(Heartbeat | where TimeGenerated > ago(10m) and _ResourceId has "/microsoft.compute/virtualmachines/" | summarize dcount(_ResourceId))
-''', length(vmIds)), 'PT15M', 'Count', rules('GreaterThan', 0, 1))
+      // A VM that was reporting and went silent is an outage. One silent for over 2 hours was stopped on purpose
+      // (nightly auto-shutdown, stop-the-lab) and reads Healthy. VMs that never report are not counted.
+      logSignal('vms-lost-heartbeat', 'VMs that stopped sending heartbeats', '''
+Heartbeat
+| where _ResourceId has "/microsoft.compute/virtualmachines/"
+| summarize newest = max(TimeGenerated) by _ResourceId
+| summarize value = countif(newest < ago(10m))
+''', 'PT2H', 'Count', rules('GreaterThan', 0, 1))
     ])
   }
 
@@ -463,42 +473,19 @@ var vmEntities = [
     name: 'vm-${i}'
     displayName: 'VM: ${last(split(vmId, '/'))}'
     signalGroups: resourceGroupOf(vmId, definitionSignals(['sd-vm-cpu']))
-    canvasPosition: { x: 1750 + 250 * i - rootX, y: 579 }
   }
 ]
 
-// Where the portal designer and graph draw each entity: one row per layer, each
-// component above its resources, centred under the root entity (drawn at x 0).
-var vmssX = 1750 + 250 * length(vmIds)
-var rootX = (125 + (1000 + vmssX) / 2) / 2
-var canvasLayout = {
-  'operate-lab': { x: 125, y: 193 }
-  'shop-demo': { x: 625, y: 193 }
-  'live-telemetry': { x: (1000 + vmssX) / 2, y: 193 }
-  'control-center': { x: 0, y: 386 }
-  'lab-operations': { x: 250, y: 386 }
-  'shop-api': { x: 500, y: 386 }
-  'synthetic-shoppers': { x: 750, y: 386 }
-  'log-pipeline': { x: 1000, y: 386 }
-  'metrics-pipeline': { x: 1250, y: 386 }
-  'kubernetes-workloads': { x: 1500, y: 386 }
-  'virtual-machines': { x: (1750 + vmssX) / 2, y: 386 }
-  'console-app': { x: 0, y: 579 }
-  'shop-app': { x: 500, y: 579 }
-  'shoppers-aks': { x: 750, y: 579 }
-  'central-law': { x: 1000, y: 579 }
-  'monitor-workspace': { x: 1250, y: 579 }
-  'cluster-aks': { x: 1500, y: 579 }
-  vmss: { x: vmssX, y: 579 }
-}
-var canvas = toObject(items(canvasLayout), item => item.key, item => { x: item.value.x - rootX, y: item.value.y })
+// Where the portal designer and graph draw each entity. The layout engine derives it
+// from the relationships below, so a new entity or relationship needs no coordinates.
+var canvas = layoutHealthModel(healthModelName, map(concat(entities, vmEntities), e => e.name), edges)
 
 // Update the service-created root at its existing ID, preserving the model itself.
 resource root 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: healthModelName
   properties: {
-    canvasPosition: { x: 0, y: 0 }
+    canvasPosition: canvas[healthModelName]
   }
 }
 
@@ -513,7 +500,7 @@ resource entityResources 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01
       healthObjective: e.?healthObjective
       alerts: e.?alerts
       signalGroups: e.?signalGroups
-      canvasPosition: e.?canvasPosition ?? canvas[e.name]
+      canvasPosition: canvas[e.name]
     }
     dependsOn: [
       authSetting

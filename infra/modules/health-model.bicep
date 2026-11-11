@@ -7,8 +7,8 @@
 //   Root  (auto-created entity, name == healthModelName)
 //   |
 //   +-- frontend  (generic entity)
-//   |     +-- webapp        -> Http5xx, HttpResponseTime, CpuTime
-//   |     '-- appinsights   -> failed requests count (Suppressed impact)
+//   |     +-- webapp        -> failed request rate, HttpResponseTime, CpuTime, memory
+//   |     '-- appinsights   -> request duration, unexpected exceptions (Suppressed impact)
 //   |
 //   +-- compute   (generic entity)
 //   |     +-- linuxvm       -> Percentage CPU
@@ -21,7 +21,8 @@
 //         '-- storage       -> Availability  (Limited impact)
 //
 // Trip-the-demo cheat sheet:
-//   * ./scripts/break-the-lab.ps1     -> /api/explode flood -> webapp Http5xx Unhealthy
+//   * ./scripts/break-the-lab.ps1     -> /api/explode flood -> webapp failed request rate Unhealthy
+//                                        (the lab's background load already fails about 7% on purpose)
 //                                        -> frontend Unhealthy -> Root Unhealthy
 //   * ./scripts/start-ramp.ps1        -> drives VMSS CPU      -> compute Unhealthy
 //                                        -> Root Unhealthy (worst-of rollup)
@@ -35,6 +36,8 @@
 // API version:    2026-11-01
 // Regions:        az provider show -n Microsoft.CloudHealth lists them.
 // =============================================================================
+
+import { layoutHealthModel } from './health-model-layout.bicep'
 
 @description('Name of the Health Model resource. Also becomes the root-entity name.')
 @minLength(3)
@@ -87,8 +90,8 @@ param enableAi bool = false
 @description('Resource ID of the Foundry (AI Services) account. Required when enableAi = true.')
 param foundryAccountId string = ''
 
-@description('Resource ID of the App Insights backing Log Analytics workspace (per-agent AI signals). Required when enableAi = true.')
-param appInsightsLawId string = ''
+@description('Resource ID of the App Insights backing Log Analytics workspace (failed request rate, unexpected exceptions and per-agent AI signals).')
+param appInsightsLawId string
 
 @description('Fold Microsoft Fabric Real-Time Intelligence into this model as an optional workload tier.')
 param enableFabric bool = false
@@ -138,9 +141,9 @@ resource monitoringReaderOnRg 'Microsoft.Authorization/roleAssignments@2022-04-0
   }
 }
 
-// Log Analytics Reader (73c42c96-874c-492b-b04d-ab87d138a893) — only when AI is folded in,
-// so the model's identity can run the per-agent Log Analytics query signals.
-resource logAnalyticsReaderOnRg 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableAi) {
+// Log Analytics Reader (73c42c96-874c-492b-b04d-ab87d138a893) so the model's identity
+// can run the Log Analytics query signals (web app failure rate, exceptions, AI agents).
+resource logAnalyticsReaderOnRg 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(resourceGroup().id, healthModel.id, '73c42c96-874c-492b-b04d-ab87d138a893')
   scope: resourceGroup()
   properties: {
@@ -159,10 +162,10 @@ var actionGroupIds = empty(actionGroupId) ? [] : [ actionGroupId ]
 
 // Demo agent personas (gen_ai.agent.name from workloads/ai) modelled as AI-tier entities.
 var aiAgents = [
-  { key: 'support-triage', display: 'Support Triage', x: 500, y: 700 }
-  { key: 'finops-qa', display: 'FinOps Q&A', x: 650, y: 700 }
-  { key: 'doc-summarizer', display: 'Doc Summarizer', x: 800, y: 700 }
-  { key: 'context-rich-assistant', display: 'Context-Rich Assistant', x: 950, y: 700 }
+  { key: 'support-triage', display: 'Support Triage' }
+  { key: 'finops-qa', display: 'FinOps Q&A' }
+  { key: 'doc-summarizer', display: 'Doc Summarizer' }
+  { key: 'context-rich-assistant', display: 'Context-Rich Assistant' }
 ]
 
 // -----------------------------------------------------------------------------
@@ -174,7 +177,7 @@ resource entFrontend 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = 
   properties: {
     displayName: 'Frontend'
     impact: 'Standard'
-    canvasPosition: { x: -300, y: 200 }
+    canvasPosition: layout.frontend
     icon: { iconName: 'EarthGlobe' }
     signalGroups: {
       dependencies: {
@@ -198,7 +201,7 @@ resource entCompute 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   properties: {
     displayName: 'Compute fleet'
     impact: 'Standard'
-    canvasPosition: { x: 0, y: 200 }
+    canvasPosition: layout.compute
     icon: { iconName: 'Server' }
     signalGroups: {
       dependencies: {
@@ -230,7 +233,7 @@ resource entPlatform 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = 
   properties: {
     displayName: 'Shared platform services'
     impact: 'Standard'
-    canvasPosition: { x: 300, y: 200 }
+    canvasPosition: layout.platform
     icon: { iconName: 'Storage' }
     signalGroups: {
       dependencies: {
@@ -250,7 +253,7 @@ resource entWebApp 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   properties: {
     displayName: 'App Service (webapp)'
     impact: 'Standard'
-    canvasPosition: { x: -400, y: 450 }
+    canvasPosition: layout.webapp
     icon: { iconName: 'AppService' }
     healthObjective: 99
     signalGroups: {
@@ -260,33 +263,19 @@ resource entWebApp 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
         azureResourceKind: 'app'
         signals: [
           {
-            name: 'http5xx'
-            signalKind: 'AzureResourceMetric'
-            displayName: 'HTTP 5xx errors (5 min)'
-            metricNamespace: 'Microsoft.Web/sites'
-            metricName: 'Http5xx'
-            aggregationType: 'Total'
-            dataUnit: 'Count'
-            timeGrain: 'PT5M'
-            refreshInterval: 'PT1M'
-            evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 10 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 30 }
-            }
-          }
-          {
+            // Seconds, not milliseconds: HttpResponseTime reports 0.03 for a 30 ms average.
             name: 'responseTime'
             signalKind: 'AzureResourceMetric'
-            displayName: 'Avg response time (ms)'
+            displayName: 'Avg response time (s)'
             metricNamespace: 'Microsoft.Web/sites'
             metricName: 'HttpResponseTime'
             aggregationType: 'Average'
-            dataUnit: 'MilliSeconds'
+            dataUnit: 'Seconds'
             timeGrain: 'PT5M'
             refreshInterval: 'PT1M'
             evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 1000 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 3000 }
+              degradedRule:  { operator: 'GreaterThan', threshold: 1 }
+              unhealthyRule: { operator: 'GreaterThan', threshold: 3 }
             }
           }
           {
@@ -322,11 +311,40 @@ resource entWebApp 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
           }
         ]
       }
+      azureLogAnalytics: {
+        authenticationSetting: authName
+        logAnalyticsWorkspaceResourceId: appInsightsLawId
+        signals: [
+          {
+            // The Http5xx platform metric counts the lab's own /api/explode background load (7% of requests,
+            // never above 10% in 24 hours), so a rate with thresholds above that baseline is what only a real
+            // surge trips, like break-the-lab (its load generator sends 80% /api/explode). Fewer than 10
+            // requests reads Unknown, not Unhealthy.
+            name: 'failed-request-rate'
+            signalKind: 'LogAnalyticsQuery'
+            displayName: 'Failed requests (% with 5xx, 5 min)'
+            dataUnit: 'Percent'
+            timeGrain: 'PT5M'
+            refreshInterval: 'PT1M'
+            valueColumnName: 'value'
+            queryText: '''
+AppRequests
+| summarize total = count(), failed = countif(ResultCode startswith "5")
+| where total >= 10
+| project value = round(100.0 * failed / total, 1)
+'''
+            evaluationRules: {
+              degradedRule:  { operator: 'GreaterThan', threshold: 25 }
+              unhealthyRule: { operator: 'GreaterThan', threshold: 50 }
+            }
+          }
+        ]
+      }
     }
     alerts: empty(actionGroupId) ? null : {
       unhealthy: {
         severity: 'Sev2'
-        description: 'AMLAB webapp unhealthy (5xx / latency / CPU / memory exceed thresholds).'
+        description: 'AMLAB webapp unhealthy (failed request rate / latency / CPU / memory exceed thresholds).'
         actionGroupIds: actionGroupIds
       }
     }
@@ -340,7 +358,7 @@ resource entAppInsights 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01'
   properties: {
     displayName: 'Application Insights (telemetry)'
     impact: 'Suppressed'   // telemetry outage shouldn't take the workload down
-    canvasPosition: { x: -200, y: 450 }
+    canvasPosition: layout.appinsights
     icon: { iconName: 'ApplicationInsights' }
     signalGroups: {
       azureResource: {
@@ -348,21 +366,6 @@ resource entAppInsights 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01'
         azureResourceId: appInsightsId
         azureResourceKind: 'web'
         signals: [
-          {
-            name: 'failedRequests'
-            signalKind: 'AzureResourceMetric'
-            displayName: 'Failed requests (5 min)'
-            metricNamespace: 'microsoft.insights/components'
-            metricName: 'requests/failed'
-            aggregationType: 'Count'
-            dataUnit: 'Count'
-            timeGrain: 'PT5M'
-            refreshInterval: 'PT1M'
-            evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 20 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 50 }
-            }
-          }
           {
             // server-side request latency (avg) – proxy for user-experienced slow-down
             name: 'requestDuration'
@@ -379,20 +382,30 @@ resource entAppInsights 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01'
               unhealthyRule: { operator: 'GreaterThan', threshold: 3000 }
             }
           }
+        ]
+      }
+      azureLogAnalytics: {
+        authenticationSetting: authName
+        logAnalyticsWorkspaceResourceId: appInsightsLawId
+        signals: [
           {
-            // unhandled exception rate
-            name: 'exceptions'
-            signalKind: 'AzureResourceMetric'
-            displayName: 'Exceptions (5 min)'
-            metricNamespace: 'microsoft.insights/components'
-            metricName: 'exceptions/count'
-            aggregationType: 'Count'
+            // The requests/failed and exceptions/count metrics count the 404s and /api/explode failures the lab
+            // generates on purpose (hundreds per 5 minutes), so only exceptions from other routes count here.
+            name: 'unexpected-exceptions'
+            signalKind: 'LogAnalyticsQuery'
+            displayName: 'Exceptions outside the demo failure route (15 min)'
             dataUnit: 'Count'
-            timeGrain: 'PT5M'
+            timeGrain: 'PT15M'
             refreshInterval: 'PT5M'
+            valueColumnName: 'value'
+            queryText: '''
+AppExceptions
+| where OperationName != "GET /api/explode"
+| summarize value = count()
+'''
             evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 5 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 20 }
+              degradedRule:  { operator: 'GreaterThan', threshold: 2 }
+              unhealthyRule: { operator: 'GreaterThan', threshold: 10 }
             }
           }
         ]
@@ -411,7 +424,7 @@ resource entLinuxVm 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = i
   properties: {
     displayName: 'Linux VM'
     impact: 'Standard'
-    canvasPosition: { x: -100, y: 450 }
+    canvasPosition: layout.linuxvm
     icon: { iconName: 'VirtualMachineLinux' }
     signalGroups: {
       azureResource: {
@@ -435,35 +448,19 @@ resource entLinuxVm 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = i
             }
           }
           {
-            // lower-is-worse: dipping below thresholds = memory pressure
+            // lower-is-worse: dipping below thresholds = memory pressure (percent, so it fits any VM size)
             name: 'availableMemory'
             signalKind: 'AzureResourceMetric'
-            displayName: 'Available memory'
+            displayName: 'Available memory %'
             metricNamespace: 'Microsoft.Compute/virtualMachines'
-            metricName: 'Available Memory Bytes'
+            metricName: 'Available Memory Percentage'
             aggregationType: 'Average'
-            dataUnit: 'Bytes'
+            dataUnit: 'Percent'
             timeGrain: 'PT5M'
             refreshInterval: 'PT5M'
             evaluationRules: {
-              degradedRule:  { operator: 'LessThan', threshold: 536870912 }   // < 512 MiB
-              unhealthyRule: { operator: 'LessThan', threshold: 268435456 }   // < 256 MiB
-            }
-          }
-          {
-            // sustained disk read pressure
-            name: 'diskRead'
-            signalKind: 'AzureResourceMetric'
-            displayName: 'Disk read bytes (5 min total)'
-            metricNamespace: 'Microsoft.Compute/virtualMachines'
-            metricName: 'Disk Read Bytes'
-            aggregationType: 'Total'
-            dataUnit: 'Bytes'
-            timeGrain: 'PT5M'
-            refreshInterval: 'PT5M'
-            evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 15000000000 }   // > 15 GB / 5 min
-              unhealthyRule: { operator: 'GreaterThan', threshold: 60000000000 }   // > 60 GB / 5 min
+              degradedRule:  { operator: 'LessThan', threshold: 20 }
+              unhealthyRule: { operator: 'LessThan', threshold: 10 }
             }
           }
         ]
@@ -479,7 +476,7 @@ resource entWindowsVm 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' =
   properties: {
     displayName: 'Windows VM'
     impact: 'Standard'
-    canvasPosition: { x: 0, y: 450 }
+    canvasPosition: layout.winserver
     icon: { iconName: 'VirtualMachineWindows' }
     signalGroups: {
       azureResource: {
@@ -505,31 +502,16 @@ resource entWindowsVm 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' =
           {
             name: 'availableMemory'
             signalKind: 'AzureResourceMetric'
-            displayName: 'Available memory'
+            displayName: 'Available memory %'
             metricNamespace: 'Microsoft.Compute/virtualMachines'
-            metricName: 'Available Memory Bytes'
+            metricName: 'Available Memory Percentage'
             aggregationType: 'Average'
-            dataUnit: 'Bytes'
+            dataUnit: 'Percent'
             timeGrain: 'PT5M'
             refreshInterval: 'PT5M'
             evaluationRules: {
-              degradedRule:  { operator: 'LessThan', threshold: 536870912 }   // < 512 MiB
-              unhealthyRule: { operator: 'LessThan', threshold: 268435456 }   // < 256 MiB
-            }
-          }
-          {
-            name: 'diskWrite'
-            signalKind: 'AzureResourceMetric'
-            displayName: 'Disk write bytes (5 min total)'
-            metricNamespace: 'Microsoft.Compute/virtualMachines'
-            metricName: 'Disk Write Bytes'
-            aggregationType: 'Total'
-            dataUnit: 'Bytes'
-            timeGrain: 'PT5M'
-            refreshInterval: 'PT5M'
-            evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 15000000000 }   // > 15 GB / 5 min
-              unhealthyRule: { operator: 'GreaterThan', threshold: 60000000000 }   // > 60 GB / 5 min
+              degradedRule:  { operator: 'LessThan', threshold: 20 }
+              unhealthyRule: { operator: 'LessThan', threshold: 10 }
             }
           }
         ]
@@ -545,7 +527,7 @@ resource entVmss 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   properties: {
     displayName: 'VMSS (predictive autoscale)'
     impact: 'Standard'
-    canvasPosition: { x: 100, y: 450 }
+    canvasPosition: layout.vmss
     icon: { iconName: 'VirtualMachineScaleSet' }
     signalGroups: {
       azureResource: {
@@ -571,32 +553,16 @@ resource entVmss 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
           {
             name: 'availableMemory'
             signalKind: 'AzureResourceMetric'
-            displayName: 'Available memory (avg per instance)'
+            displayName: 'Available memory % (avg per instance)'
             metricNamespace: 'Microsoft.Compute/virtualMachineScaleSets'
-            metricName: 'Available Memory Bytes'
+            metricName: 'Available Memory Percentage'
             aggregationType: 'Average'
-            dataUnit: 'Bytes'
+            dataUnit: 'Percent'
             timeGrain: 'PT5M'
             refreshInterval: 'PT5M'
             evaluationRules: {
-              degradedRule:  { operator: 'LessThan', threshold: 536870912 }
-              unhealthyRule: { operator: 'LessThan', threshold: 268435456 }
-            }
-          }
-          {
-            // bursty traffic that may drive predictive autoscale
-            name: 'networkIn'
-            signalKind: 'AzureResourceMetric'
-            displayName: 'Network in (5 min total)'
-            metricNamespace: 'Microsoft.Compute/virtualMachineScaleSets'
-            metricName: 'Network In Total'
-            aggregationType: 'Total'
-            dataUnit: 'Bytes'
-            timeGrain: 'PT5M'
-            refreshInterval: 'PT5M'
-            evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 524288000 }    // > 500 MB / 5 min
-              unhealthyRule: { operator: 'GreaterThan', threshold: 2147483648 }   // > 2 GiB / 5 min
+              degradedRule:  { operator: 'LessThan', threshold: 20 }
+              unhealthyRule: { operator: 'LessThan', threshold: 10 }
             }
           }
         ]
@@ -619,7 +585,7 @@ resource entAks 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   properties: {
     displayName: 'AKS cluster'
     impact: 'Standard'
-    canvasPosition: { x: 200, y: 450 }
+    canvasPosition: layout.aks
     icon: { iconName: 'Kubernetes' }
     signalGroups: {
       azureResource: {
@@ -688,7 +654,7 @@ resource entKeyVault 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = 
   properties: {
     displayName: 'Key Vault'
     impact: 'Limited'
-    canvasPosition: { x: 250, y: 450 }
+    canvasPosition: layout.keyvault
     icon: { iconName: 'KeyVault' }
     signalGroups: {
       azureResource: {
@@ -712,18 +678,20 @@ resource entKeyVault 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = 
             }
           }
           {
-            name: 'apiLatency'
+            // ServiceApiLatency only has a datapoint when something calls the vault (1 in 24 hours here),
+            // so the signal was Unknown nearly always. Saturation reports every hour.
+            name: 'saturation'
             signalKind: 'AzureResourceMetric'
-            displayName: 'API latency (avg)'
+            displayName: 'Vault saturation %'
             metricNamespace: 'Microsoft.KeyVault/vaults'
-            metricName: 'ServiceApiLatency'
+            metricName: 'SaturationShoebox'
             aggregationType: 'Average'
-            dataUnit: 'MilliSeconds'
+            dataUnit: 'Percent'
             timeGrain: 'PT5M'
             refreshInterval: 'PT5M'
             evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 200 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 1000 }
+              degradedRule:  { operator: 'GreaterThan', threshold: 75 }
+              unhealthyRule: { operator: 'GreaterThan', threshold: 90 }
             }
           }
         ]
@@ -739,7 +707,7 @@ resource entStorage 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   properties: {
     displayName: 'Storage Account'
     impact: 'Limited'
-    canvasPosition: { x: 400, y: 450 }
+    canvasPosition: layout.storage
     icon: { iconName: 'StorageAccount' }
     signalGroups: {
       azureResource: {
@@ -794,7 +762,7 @@ resource entRealTimeIntelligence 'Microsoft.CloudHealth/healthmodels/entities@20
   properties: {
     displayName: 'Real-Time Intelligence'
     impact: 'Standard'
-    canvasPosition: { x: 750, y: 200 }
+    canvasPosition: layout.realtimeintelligence
     icon: { iconName: 'Analytics' }
     signalGroups: {
       dependencies: {
@@ -818,7 +786,7 @@ resource entFabricCapacity 'Microsoft.CloudHealth/healthmodels/entities@2026-11-
   properties: {
     displayName: 'Microsoft Fabric F2 capacity'
     impact: 'Standard'
-    canvasPosition: { x: 750, y: 450 }
+    canvasPosition: layout.fabriccapacity
     icon: { iconName: 'Analytics' }
     signalGroups: {
       azureResource: {
@@ -843,7 +811,7 @@ resource entAi 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = if (en
   properties: {
     displayName: 'AI workload (Foundry)'
     impact: 'Standard'
-    canvasPosition: { x: 600, y: 200 }
+    canvasPosition: layout.aiworkload
     icon: { iconName: 'ApplicationInsights' }
     signalGroups: {
       dependencies: {
@@ -867,7 +835,7 @@ resource entFoundry 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = i
   properties: {
     displayName: 'Foundry account'
     impact: 'Standard'
-    canvasPosition: { x: 600, y: 450 }
+    canvasPosition: layout.foundry
     icon: { iconName: 'ApplicationInsights' }
     healthObjective: 99
     signalGroups: {
@@ -906,22 +874,6 @@ resource entFoundry 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = i
               unhealthyRule: { operator: 'GreaterThan', threshold: 50 }
             }
           }
-          {
-            // Token volume as a cost/load indicator (not an availability signal).
-            name: 'totalTokens'
-            signalKind: 'AzureResourceMetric'
-            displayName: 'Total tokens (5 min) — cost/load'
-            metricNamespace: 'Microsoft.CognitiveServices/accounts'
-            metricName: 'TotalTokens'
-            aggregationType: 'Total'
-            dataUnit: 'Count'
-            timeGrain: 'PT5M'
-            refreshInterval: 'PT5M'
-            evaluationRules: {
-              degradedRule:  { operator: 'GreaterThan', threshold: 500000 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 2000000 }
-            }
-          }
         ]
       }
     }
@@ -929,9 +881,9 @@ resource entFoundry 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = i
   dependsOn: [ authSetting ]
 }
 
-// One entity per agent persona, each carrying error-rate + estimated-cost signals
-// queried from the workspace-based App Insights AppDependencies table (high cost or
-// error rate turns the agent unhealthy).
+// One entity per agent persona, carrying an error-rate signal queried from the
+// workspace-based App Insights AppDependencies table. Token volume is cost, not health
+// (the token alerts in the AI stage watch it), so no signal counts it.
 resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [for a in aiAgents: if (enableAi) {
   parent: healthModel
   name: 'agent-${a.key}'
@@ -939,7 +891,7 @@ resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [f
     displayName: a.display
     impact: 'Standard'
     healthObjective: 99
-    canvasPosition: { x: a.x, y: a.y }
+    canvasPosition: layout['agent-${a.key}']
     icon: { iconName: 'ApplicationInsights' }
     signalGroups: {
       azureLogAnalytics: {
@@ -959,19 +911,6 @@ resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [f
               unhealthyRule: { operator: 'GreaterThan', threshold: 20 }
             }
           }
-          {
-            name: 'token-volume'
-            signalKind: 'LogAnalyticsQuery'
-            displayName: 'Total tokens/hour'
-            dataUnit: 'Count'
-            refreshInterval: 'PT5M'
-            valueColumnName: 'TotalTokens'
-            queryText: 'AppDependencies | where TimeGenerated > ago(1h) | where tostring(Properties[\'gen_ai.agent.name\']) == \'${a.display}\' | extend inTok=toint(Properties[\'gen_ai.usage.input_tokens\']), outTok=toint(Properties[\'gen_ai.usage.output_tokens\']) | summarize TotalTokens=coalesce(sum(inTok), 0)+coalesce(sum(outTok), 0)'
-            evaluationRules: {
-              degradedRule: { operator: 'GreaterThan', threshold: 100000 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 200000 }
-            }
-          }
         ]
       }
     }
@@ -984,171 +923,82 @@ resource entAgents 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [f
 //
 // Root (= healthModelName) is auto-created. Tier-1 entities roll up to it.
 // Tier-2 Azure resource entities roll up to their tier-1 parent.
+//
+// This list is the single source of the topology: it creates the relationships
+// and, through the layout engine, every canvas position. A new entity needs its
+// resource above, one edge here and a dependsOn entry on the relationships below.
+// Siblings are drawn left to right in the order listed.
 // -----------------------------------------------------------------------------
-resource relFrontendRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
+var edges = concat(
+  [
+    { name: 'frontend-to-root', parent: rootName, child: 'frontend', displayName: 'Frontend' }
+    { name: 'compute-to-root', parent: rootName, child: 'compute', displayName: 'Compute fleet' }
+    { name: 'platform-to-root', parent: rootName, child: 'platform', displayName: 'Shared platform' }
+    { name: 'webapp-to-frontend', parent: 'frontend', child: 'webapp' }
+    { name: 'appinsights-to-frontend', parent: 'frontend', child: 'appinsights' }
+  ],
+  empty(linuxVmId) ? [] : [{ name: 'linuxvm-to-compute', parent: 'compute', child: 'linuxvm' }],
+  empty(windowsVmId) ? [] : [{ name: 'winserver-to-compute', parent: 'compute', child: 'winserver' }],
+  [
+    { name: 'vmss-to-compute', parent: 'compute', child: 'vmss' }
+    { name: 'aks-to-compute', parent: 'compute', child: 'aks' }
+    { name: 'keyvault-to-platform', parent: 'platform', child: 'keyvault' }
+    { name: 'storage-to-platform', parent: 'platform', child: 'storage' }
+  ],
+  // Real-Time Intelligence tier (enableFabric): fabriccapacity -> realtimeintelligence -> root.
+  enableFabric ? [
+    { name: 'realtimeintelligence-to-root', parent: rootName, child: 'realtimeintelligence', displayName: 'Real-Time Intelligence' }
+    { name: 'fabriccapacity-to-realtimeintelligence', parent: 'realtimeintelligence', child: 'fabriccapacity' }
+  ] : [],
+  // AI tier (enableAi): foundry + agents -> aiworkload -> root.
+  enableAi ? concat(
+    [
+      { name: 'ai-to-root', parent: rootName, child: 'aiworkload', displayName: 'AI workload' }
+      { name: 'foundry-to-ai', parent: 'aiworkload', child: 'foundry' }
+    ],
+    map(aiAgents, a => { name: 'agent-${a.key}-to-ai', parent: 'aiworkload', child: 'agent-${a.key}' })
+  ) : []
+)
+
+// Canvas positions by entity name, including the root.
+var layout = layoutHealthModel(rootName, [], edges)
+
+// Update the service-created root at its existing ID to place it over its children.
+resource root 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
-  name: 'frontend-to-root'
+  name: rootName
   properties: {
-    parentEntityName: rootName
-    childEntityName: 'frontend'
-    displayName: 'Frontend'
+    canvasPosition: layout[rootName]
   }
-  dependsOn: [ entFrontend ]
 }
 
-resource relComputeRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
+resource relationships 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = [for edge in edges: {
   parent: healthModel
-  name: 'compute-to-root'
+  name: edge.name
   properties: {
-    parentEntityName: rootName
-    childEntityName: 'compute'
-    displayName: 'Compute fleet'
+    parentEntityName: edge.parent
+    childEntityName: edge.child
+    displayName: edge.?displayName
   }
-  dependsOn: [ entCompute ]
-}
-
-resource relPlatformRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
-  parent: healthModel
-  name: 'platform-to-root'
-  properties: {
-    parentEntityName: rootName
-    childEntityName: 'platform'
-    displayName: 'Shared platform'
-  }
-  dependsOn: [ entPlatform ]
-}
-
-resource relWebappFrontend 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
-  parent: healthModel
-  name: 'webapp-to-frontend'
-  properties: {
-    parentEntityName: 'frontend'
-    childEntityName: 'webapp'
-  }
-  dependsOn: [ entWebApp, entFrontend ]
-}
-
-resource relAppInsightsFrontend 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
-  parent: healthModel
-  name: 'appinsights-to-frontend'
-  properties: {
-    parentEntityName: 'frontend'
-    childEntityName: 'appinsights'
-  }
-  dependsOn: [ entAppInsights, entFrontend ]
-}
-
-resource relLinuxVmCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (!empty(linuxVmId)) {
-  parent: healthModel
-  name: 'linuxvm-to-compute'
-  properties: {
-    parentEntityName: 'compute'
-    childEntityName: 'linuxvm'
-  }
-  dependsOn: [ entLinuxVm, entCompute ]
-}
-
-resource relWinServerCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (!empty(windowsVmId)) {
-  parent: healthModel
-  name: 'winserver-to-compute'
-  properties: {
-    parentEntityName: 'compute'
-    childEntityName: 'winserver'
-  }
-  dependsOn: [ entWindowsVm, entCompute ]
-}
-
-resource relVmssCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
-  parent: healthModel
-  name: 'vmss-to-compute'
-  properties: {
-    parentEntityName: 'compute'
-    childEntityName: 'vmss'
-  }
-  dependsOn: [ entVmss, entCompute ]
-}
-
-resource relAksCompute 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
-  parent: healthModel
-  name: 'aks-to-compute'
-  properties: {
-    parentEntityName: 'compute'
-    childEntityName: 'aks'
-  }
-  dependsOn: [ entAks, entCompute ]
-}
-
-resource relKeyVaultPlatform 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
-  parent: healthModel
-  name: 'keyvault-to-platform'
-  properties: {
-    parentEntityName: 'platform'
-    childEntityName: 'keyvault'
-  }
-  dependsOn: [ entKeyVault, entPlatform ]
-}
-
-resource relStoragePlatform 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = {
-  parent: healthModel
-  name: 'storage-to-platform'
-  properties: {
-    parentEntityName: 'platform'
-    childEntityName: 'storage'
-  }
-  dependsOn: [ entStorage, entPlatform ]
-}
-
-resource relRealTimeIntelligenceRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableFabric) {
-  parent: healthModel
-  name: 'realtimeintelligence-to-root'
-  properties: {
-    parentEntityName: rootName
-    childEntityName: 'realtimeintelligence'
-    displayName: 'Real-Time Intelligence'
-  }
-  dependsOn: [ entRealTimeIntelligence ]
-}
-
-resource relFabricCapacityRealTimeIntelligence 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableFabric) {
-  parent: healthModel
-  name: 'fabriccapacity-to-realtimeintelligence'
-  properties: {
-    parentEntityName: 'realtimeintelligence'
-    childEntityName: 'fabriccapacity'
-  }
-  dependsOn: [ entFabricCapacity, entRealTimeIntelligence ]
-}
-
-// AI tier relationships (enableAi): ai -> root, foundry + agents -> ai.
-resource relAiRoot 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableAi) {
-  parent: healthModel
-  name: 'ai-to-root'
-  properties: {
-    parentEntityName: rootName
-    childEntityName: 'aiworkload'
-    displayName: 'AI workload'
-  }
-  dependsOn: [ entAi ]
-}
-
-resource relFoundryAi 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = if (enableAi) {
-  parent: healthModel
-  name: 'foundry-to-ai'
-  properties: {
-    parentEntityName: 'aiworkload'
-    childEntityName: 'foundry'
-  }
-  dependsOn: [ entFoundry, entAi ]
-}
-
-resource relAgentsAi 'Microsoft.CloudHealth/healthmodels/relationships@2026-11-01' = [for a in aiAgents: if (enableAi) {
-  parent: healthModel
-  name: 'agent-${a.key}-to-ai'
-  properties: {
-    parentEntityName: 'aiworkload'
-    childEntityName: 'agent-${a.key}'
-  }
-  dependsOn: [ entAgents, entAi ]
+  dependsOn: [
+    root
+    entFrontend
+    entCompute
+    entPlatform
+    entWebApp
+    entAppInsights
+    entLinuxVm
+    entWindowsVm
+    entVmss
+    entAks
+    entKeyVault
+    entStorage
+    entRealTimeIntelligence
+    entFabricCapacity
+    entAi
+    entFoundry
+    entAgents
+  ]
 }]
 
 // -----------------------------------------------------------------------------
