@@ -2,14 +2,14 @@
 
 > 👈 **New here? Start with the [README](../README.md).** This is the deep-dive reference: full capability matrix, every deployed resource, the demo walkthrough, cost breakdown, folder layout, operational helpers, and troubleshooting.
 
-A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel** stack. The lab primarily uses one resource group, plus the AKS-managed resource group and optional tenant-scoped artifacts. It provides two IaC paths (Bicep or Terraform), two delivery modes (**one-shot** for internal demos or a staged workshop for customer-facing progressive enablement), and 68 numbered demo scenarios (`0` through `67`), all driven from one central config file.
+A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel** stack. The lab primarily uses one resource group, plus the AKS-managed resource group and optional tenant-scoped artifacts. It provides two IaC paths (Bicep or Terraform), two delivery modes (**one-shot** for internal demos or a staged workshop for customer-facing progressive enablement), and 81 numbered demo scenarios (`0` through `80`), all driven from one central config file.
 
 ## Capabilities
 
 | Capability | What this lab shows | Pillar docs |
 |---|---|---|
 | **VM Insights** | Ubuntu + Windows VMs with **AMA** + DCR → Performance data into the central LAW; the Windows VM also has the Dependency Agent for Service Map. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/monitor-vm) |
-| **Application Insights** | Workspace-based App Insights, **codeless auto-instrumentation** of a .NET 8 sample on Linux App Service, **Live Metrics**, **Smart Detection**, **Code Optimizations**, **Profiler / Snapshot**, **Availability Tests**, **Release annotations**, custom `TrackMetric`. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview?tabs=webapps) |
+| **Application Insights** | Suffixed workspace-based App Insights; server auto-instrumentation and browser W3C correlation; **Application Dashboard**, **Live Metrics**, **Application Map**, **Failures**, **Performance**, **Transaction Search**, **Smart Detection**, **Code Optimizations**, **Profiler / Snapshot**, root + task **Availability Tests**, release annotations, custom metrics, and deterministic agent/model/handoff/tool traces. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview?tabs=webapps) |
 | **Kubernetes monitoring** | AKS cluster with **Container Insights** (logs → LAW), **Managed Prometheus** (metrics → AMW) with custom Prometheus rule group, **Azure Managed Grafana** (Standard SKU) with alert rule, **OpenTelemetry** node.js + .NET caller pods tracing back to App Insights. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-monitoring-overview) |
 | **VMSS + Predictive autoscale** | Linux VMSS with autoscale settings demonstrating predictive scaling on CPU. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/autoscale/autoscale-predictive) |
 | **Networking observability** | **Connection Monitor**, **NSG Flow Logs** + **Traffic Analytics**, **Network Insights**. | [docs](https://learn.microsoft.com/en-us/azure/network-watcher/network-watcher-monitoring-overview) |
@@ -20,15 +20,16 @@ A self-contained, reproducible demo of the **Azure Monitor + Microsoft Sentinel*
 | **Custom Logs (Logs Ingestion API)** | Custom-table DCR + sample sender script (`send-custom-logs.ps1`). | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/logs-ingestion-api-overview) |
 | **Cost & data routing** | Daily ingestion caps, **Basic vs Analytics** table-plan toggle (`toggle-table-plan.ps1`), **Summary Rules**, **Data Export** to Storage/Event Hub, optional **LAW cross-region replication**, dedicated **Cost workbook**. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/cost-logs) |
 | **Search Jobs + Restore from archive** | `run-search-job.ps1` + `restore-archived-logs.ps1` demonstrate long-term retention recovery. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/search-jobs?tabs=portal) |
-| **Workbooks** | *Traffic Lights* (Green/Orange/Red single pane), *Central LAW ingestion volume*, *Security posture*. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview) |
-| **Action Group + Alerts** | Email + optional SIEM webhook + 7+ alerts: VM CPU, App 5xx, AKS node CPU, AppI failed requests (KQL), AKS pod restart spike (KQL), Service Health (sub-scope), Resource Health (RG-scope), plus **AMBA**-generated best-practice alerts. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups) |
+| **Workbooks** | *Traffic Lights* (Green/Orange/Red single pane), *Central LAW ingestion volume*, *Security posture*, *Application Insights — End-to-End Agent Investigation*, and *Application Insights — Customer Usage Journey*. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview) |
+| **Action Group + Alerts** | Email + optional SIEM webhook + alerts for VM CPU, App 5xx, AKS node CPU, AppI failed requests, semantic agent task failures, agent efficiency regression, AKS pod restarts, task/root availability, Service Health, and Resource Health, plus **AMBA**-generated best-practice alerts. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups) |
 | **Auto-mitigation** | Logic App triggered by an alert that runs a remediation action. **Alert Processing Rules** provide scheduled and severity-based action suppression. | — |
 | **Dynamic Thresholds** | Metric alert that learns its own baseline (vs static threshold). | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-dynamic-thresholds) |
 | **Microsoft Sentinel** | Sentinel onboarded on the central LAW with security-posture alert rules + dedicated *Security* workbook. Demo queries for control-plane drift, privilege escalation, exfil early warning. | [docs](https://learn.microsoft.com/en-us/azure/sentinel/overview) |
 | **Granular RBAC** | 3 service principals scoped at workspace / table / row level (`setup-rbac-demo.ps1` + `demo-granular-rbac.ps1`). | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/manage-access) |
-| **Service Groups + Health Models (preview)** | `setup-health-model.ps1` provisions an Azure **Service Group** and links the RG. SLI/SLO scaffolding in `setup-slis.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/health-model) |
+| **Service Groups (preview) + Health Models** | `setup-health-model.ps1` provisions an Azure **Service Group** and links the RG. SLI/SLO scaffolding in `setup-slis.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/azure-monitor/health-model) |
 | **GenAI observability (optional AI stage)** | Off-by-default Microsoft **Foundry** workload (account + project pinned to swedencentral) with chat / embedding / optimization / **model-router** deployments; OpenTelemetry `gen_ai.*` tracing into App Insights; **token anomaly + spike** alerts; an **AI FinOps** query pack + workbook; an AI tier folded into the workload health model; demo agents + traffic via `setup-ai.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/trace) · [stage](STAGE-AI.md) |
 | **Azure SRE Agent (optional trial)** | Off-by-default guided SRE Agent evaluation pinned to `swedencentral`; connects Azure Monitor alerts to specialized Review-mode investigators and validates managed identity RBAC with `setup-sre-agent.ps1`. | [docs](https://learn.microsoft.com/en-us/azure/sre-agent/azure-monitor-alerts) · [stage](STAGE-SRE-AGENT.md) |
+| **Fabric Real-Time Intelligence (optional Fabric stage)** | Off-by-default F2 capacity in `swedencentral`; scripted workspace, Eventstream, Eventhouse, and KQL database, with a guided dashboard and mirroring scenario. Capacity health appears in the Azure workbook and Health Model; tenant-scoped items remain in Fabric. | [stage](STAGE-FABRIC.md) |
 | **Azure Copilot Observability Agent (optional preview)** | Off-by-default alert correlation and trace-based investigation over the lab Application Insights resource; includes deterministic broken/fixed agentic-failure telemetry and least-privilege validation. | [docs](https://learn.microsoft.com/azure/azure-monitor/aiops/observability-agent-autonomous-operations) · [stage](STAGE-OBSERVABILITY-AGENT.md) |
 | **"Break the lab" + "Start the lab"** | Scripted incident injection (`break-the-lab.ps1`, `start-the-lab.ps1`, `start-ramp.ps1`) + one-shot restore (`restore-the-lab.ps1`). | — |
 
@@ -41,11 +42,11 @@ rg-azure-monitor-lab/
 ├─ Observability backbone
 │   ├─ law-amlab-central-XXXXX    ← Log Analytics — infra + AKS + AzureActivity (name suffixed per deployment)
 │   ├─ law-amlab-appinsights-XXXXX ← Log Analytics — App Insights backend
-│   ├─ appi-amlab                 ← Application Insights (workspace-based)
+│   ├─ appi-amlab-<suffix>        ← Application Insights (workspace-based)
 │   ├─ amw-amlab                  ← Azure Monitor Workspace (Managed Prometheus)
 │   ├─ amw-amlab-obs              ← Optional dedicated Observability Agent issue workspace
 │   ├─ obs-amlab-XXXXX            ← Optional Observability Agent with a system-assigned identity
-│   │  └─ monitored resource      ← Enabled Application Insights target (`appi-amlab`)
+│   │  └─ monitored resource      ← Enabled Application Insights target (`appi-amlab-<suffix>`)
 │   ├─ dce-amlab                  ← Data Collection Endpoint (Linux)
 │   ├─ dcr-amlab-vminsights       ← DCR — VM perf + Map → central LAW
 │   ├─ dcr-amlab-prometheus       ← DCR — Prometheus → AMW
@@ -61,9 +62,9 @@ rg-azure-monitor-lab/
 │   ├─ vmwinXXXX                  ← Optional Windows VM + AMA + Dependency Agent + DCR
 │   │  └─ shutdown-computevm-*    ← Daily 23:00 CET/CEST auto-shutdown schedule
 │   ├─ vmss-amlab                 ← Linux VMSS + Predictive autoscale
-│   ├─ aks-amlab                  ← AKS (Free tier, 1 × B2s by default) + Container Insights + Managed Prom
+│   ├─ aks-amlab                  ← AKS (Free tier, 2 × EC4as_v5 by default) + Container Insights + Managed Prom
 │   ├─ amlab-aks-prom-rules        ← Managed Prometheus recording + alerting rule group
-│   ├─ plan-amlab + app-amlab-XX  ← Linux App Service B1 + .NET 8 sample (auto-instrumented), pinned to westeurope
+│   ├─ plan-amlab + app-amlab-XX  ← Linux App Service B1 + .NET 8 sample (auto-instrumented), in appServiceLocation
 │   └─ availability test + alert   ← Standard URL test from 5 global locations
 ├─ Networking
 │   ├─ vnet-amlab + nsg-amlab     ← /16 with workload, AKS, and VMSS subnets
@@ -71,8 +72,8 @@ rg-azure-monitor-lab/
 │   └─ NSG Flow Logs              ← into Storage + Traffic Analytics
 ├─ Platform telemetry sources
 │   ├─ st-amlabXXXX               ← Storage account (NSG flow logs + LAW data export target)
-│   ├─ stapp-amlabXXXX            ← Storage account — App Service archive diag (westeurope, co-located)
-│   ├─ evhns-amlab-XXXX           ← Event Hub namespace — App Service diag stream (westeurope, co-located)
+│   ├─ stapp-amlabXXXX            ← Storage account — App Service archive diag (appServiceLocation, co-located)
+│   ├─ evhns-amlab-XXXX           ← Event Hub namespace — App Service diag stream (appServiceLocation, co-located)
 │   └─ kv-amlab-XXXX              ← Key Vault (RBAC mode)
 ├─ Governance & policy
 │   ├─ amlab-diag-* (×N)          ← Built-in DINE policy assignments → central LAW
@@ -104,11 +105,12 @@ rg-azure-monitor-lab/
 
 > **Optional SRE Agent stage (default off, trial/billable):** an SRE Agent and user-assigned identity in `swedencentral`, Azure Monitor / Application Insights / Log Analytics connectors, resource-group and subscription RBAC, and deployment validation through `setup-sre-agent.ps1`. Enable via `enableStageSreAgent`. Investigators and response plans are configured in `sre.azure.com`. See [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md).
 
-> **Optional Observability Agent stage (default off, preview/billable):** an Observability Agent and dedicated Azure Monitor workspace in `observabilityAgentLocation`, one monitored Application Insights child, Issue Contributor on the dedicated workspace, and Monitoring Reader at subscription scope. The Monitor service can create managed resource groups for supporting resources. Enable via `enableStageObservabilityAgent`; automatic investigation remains off unless explicitly enabled. See [STAGE-OBSERVABILITY-AGENT.md](STAGE-OBSERVABILITY-AGENT.md).
+> **Optional Observability Agent stage (default off, preview/billable):** an Observability Agent and dedicated Azure Monitor workspace in `observabilityAgentLocation`, one monitored Application Insights child, Issue Contributor on the dedicated workspace, and Monitoring Reader directly on the monitored Application Insights resource. The Monitor service can create managed resource groups for supporting resources. Enable via `enableStageObservabilityAgent`; automatic investigation remains off unless explicitly enabled. See [STAGE-OBSERVABILITY-AGENT.md](STAGE-OBSERVABILITY-AGENT.md).
 
 > **Optional LAW replication (default off, billable):** cross-region replication on the central LAW. Enable during deployment with `enableLawReplication`, or enable it on an existing workspace with `scripts/enable-law-replication.ps1` without redeploying the complete Bicep template.
+> **Optional Fabric stage (default off, billable):** enable `enableStageFabric` / `enable_stage_fabric` and supply `fabricAdminEmail`. Setup creates tenant-scoped items and attempts the Event Hubs connection and topology; follow [Stage Fabric](STAGE-FABRIC.md) for any portal fallback and suspend the F2 capacity when idle.
 
-> **Region pinning:** the **App Service** (plan + site) and its diagnostic sinks (dedicated storage + Event Hub) are pinned to **`westeurope`**; the **Health Model** preview and the **AI stage** are pinned to **`swedencentral`**. Everything else follows the lab region (default `northeurope`).
+> **Region placement:** the **App Service** (plan + site) and its diagnostic sinks (dedicated storage + Event Hub) use configurable **`appServiceLocation`** (default `westeurope`); the **Health Model** and the **AI stage** are pinned to **`swedencentral`**. Everything else follows the lab region (default `northeurope`).
 
 The Control Center provisions four primary runner resources in the Web App's region: a Basic `acrlabops<suffix>` registry, a `cae-labops-<suffix>` Consumption environment, an `id-labops-<suffix>` managed identity, and a manual `job-labops-<suffix>` job. Supporting resources include the `console-runner-logs` diagnostic setting, three custom roles, scoped role assignments, and the Web App's system-assigned identity. Workload publication builds the image and deploys the digest-pinned job and launcher role. The Entra sign-in registration is tenant-level and is not removed by resource-group deletion. Counts vary with selected stages and whether child resources, deployments, RBAC, diagnostics, and tenant objects are included.
 
@@ -122,7 +124,7 @@ Inside the central LAW you also get **12+ saved KQL searches** and **KQL functio
 - `kubectl` (any recent version)
 - Bicep CLI (bundled with `az` ≥ 2.20) — **OR** Terraform ≥ 1.6 if you prefer the Terraform path
 - PowerShell 7+ (the deploy scripts and helpers are `.ps1`)
-- A subscription with quota for: 1 AKS cluster (1 × `Standard_B2s` node), 2 VMs (1 Linux and 1 Windows, both `Standard_B2s`), 1 Linux VMSS (1 × `Standard_B1s`), 1 App Service B1 (in `westeurope`), 1 Managed Grafana Standard instance, 2 Storage accounts, 1 Event Hubs Basic namespace, 1 Key Vault, and the other resources listed in the [cost guide](COST-GUIDE.md).
+- A subscription with quota and SKU eligibility for: 1 AKS cluster (1 configured `aksNodeVmSize` node), 2 VMs (1 Linux and 1 Windows using `vmSize`), 1 Linux VMSS (1 configured `vmssSize` instance), 1 App Service B1 (in `appServiceLocation`), 1 Managed Grafana Standard instance, 2 Storage accounts, 1 Event Hubs Basic namespace, 1 Key Vault, and the other resources listed in the [cost guide](COST-GUIDE.md).
 - *(Optional AI stage only)* Python 3.10+ for `scripts/setup-ai.ps1` (creates the demo agents + traffic simulator in `workloads/ai/`); the Foundry models it deploys are **billable**.
 - Console completion additionally requires the .NET 8 SDK, ACR Tasks availability, Container Apps Consumption capacity, and rights to manage the sign-in registration and scoped roles. See [Lab Operations prerequisites](../workloads/webapp/LAB-OPERATIONS.md#prerequisites).
 
@@ -158,6 +160,48 @@ notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdmi
 
 To change a value (e.g. region, alert email, password, stage toggles), edit `lab.config.json` and re-run `sync-config.ps1` (or just run `deploy.ps1` again).
 
+### Config layout and compatibility
+
+For a default deployment, fill in `basicConfiguration`: subscription and tenant, resource group, service regions, notification email, and VM credentials. `subscriptionName` is descriptive; `fabricAdminEmail` is only needed when that optional stage is enabled. Leave the advanced defaults unchanged unless you need to customize the lab.
+
+| Section | Settings |
+|---|---|
+| `basicConfiguration` | `subscriptionId`, `subscriptionName`, `tenantId`, `resourceGroup`, `location`, `appServiceLocation`, `observabilityAgentLocation`, `alertEmail`, `fabricAdminEmail`, `vmAdminUsername`, `vmAdminPassword` |
+| `advancedConfiguration.naming` | Resource `namePrefix` |
+| `advancedConfiguration.compute` | VM/VMSS/AKS sizes, AKS node count, Linux/Windows VM selection |
+| `advancedConfiguration.monitoring` | Daily ingestion cap, VM OTel metrics, workspace replication, SIEM webhook |
+| `advancedConfiguration.customerApplicationServices` | Customer application services: slot App Service SKU and SQL Entra administrator settings |
+| `advancedConfiguration.observabilityAgent` | Automatic investigation and agent instructions |
+| `advancedConfiguration.fabric` | Optional `fabricAutomation` settings and their notes |
+| `advancedConfiguration.stageToggles` | Core stages and optional capability/scenario toggles |
+
+Existing flat configs remain supported; migration is optional. The shared [config helper](../scripts/lab-config.ps1) normalizes both formats before scripts read settings. Deployment parameters, defaults, and explicit script-argument precedence are unchanged. Do not duplicate a setting across sections: ambiguous duplicates and malformed grouping containers fail before config generation.
+
+The former `advancedConfiguration.customerDependencies` group is also accepted; migration uses the clearer `customerApplicationServices` name.
+
+Rarely needed overrides are supported but omitted from the default template:
+
+- `advancedConfiguration.access.grafanaAdminObjectId`: grant Grafana Admin to a specified user/group when a pipeline deploys. Without it, access defaults to the deploying identity.
+- `advancedConfiguration.safety.forbiddenSubscriptionIds`: add an explicit subscription denylist. Without it, the denylist is empty; the expected subscription/tenant checks still apply.
+- `advancedConfiguration.fabric.fabricAutomation.appInsightsMirrorConnectionId`: select a specific authorized App Insights mirror connection when multiple connections match. Otherwise setup reuses a unique matching connection or creates one.
+
+To reorganize an existing private config while preserving all values:
+
+```powershell
+./scripts/migrate-lab-config.ps1 -WhatIf
+./scripts/migrate-lab-config.ps1
+```
+
+This creates `lab.config.json.bak` (also gitignored) before replacing the config, and refuses to overwrite an existing backup. Keep both files private. It does not deploy or regenerate inputs. Extra settings are preserved under `advancedConfiguration.other`.
+
+For custom PowerShell workflows, read a normalized config rather than assuming a flat JSON layout:
+
+```powershell
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+$rg = $config.resourceGroup
+```
+
 **Default-on VM OpenTelemetry metrics:** `enableVmOtelMetrics` defaults to the JSON Boolean `true`, including when omitted; explicitly set `false` to opt out. One-shot Bicep/ARM and the portal expose the same parameter; staged Bicep uses Stage B only, and Terraform uses `enable_vm_otel_metrics` (also default `true`). This adds 10 system metrics at 60 seconds to the existing `amw-<prefix>` for enabled standalone Linux/Windows VMs, not VMSS. Classic VM Insights, LAW/KQL queries, and workbooks remain unchanged; OTel uses AMW/PromQL. See [setup, limitations, cost scope, and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
 
 ### Granular RBAC demo (scenario 27)
@@ -177,7 +221,7 @@ Two delivery modes — pick whichever fits your audience.
 ./scripts/deploy.ps1
 ```
 
-Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`, parameters in `infra/main.parameters.json` (auto-generated from `lab.config.json` — see Bootstrap above). Some resources auto-pin to their own region regardless of the lab region: the **App Service** tier (plan + site + its diagnostic storage + Event Hub) to **`westeurope`** (no Basic App Service quota in `northeurope` on the sponsored subs), and the **Health Model** preview + optional **AI stage** to **`swedencentral`**.
+Defaults: resource group `rg-azure-monitor-lab`, region `northeurope`, parameters in `infra/main.parameters.json` (auto-generated from `lab.config.json` — see Bootstrap above). The **App Service** tier (plan + site + its diagnostic storage + Event Hub) uses configurable **`appServiceLocation`** (default `westeurope`), while the **Health Model** + optional **AI stage** remain pinned to **`swedencentral`**.
 
 End-to-end deployment can take tens of minutes, including AKS/Grafana provisioning, the runner image build, MCP packaging, ZIP upload, and app-version verification. The script prints the App Service URL, the AKS LB IP, the Grafana URL, and the Workbook resource ID. Optional AI traffic starts last as a finite background batch; setup completion does not wait for every conversation.
 
@@ -187,11 +231,11 @@ Same lab, broken into 5 progressive stages so you can pause for discussion after
 
 | Stage | Theme | Adds | Scenarios | Time | Incremental cost basis |
 |---|---|---|---|---|---|
-| **A — Foundation** | Telemetry backbone | LAWs · AppI · AMW · DCE · network · storage · Event Hub · Key Vault · diag policies · saved queries · KQL functions · cost + traffic-lights workbooks | 1, 5, 6, 9 | 8–15 min | Provisioned Event Hubs/ACR/storage plus telemetry and operations |
-| **B — Workloads & dashboards** | Compute + app telemetry | Optional Linux/Windows VMs · per-VM auto-shutdown schedules · AKS + Container Insights + Managed Prom · Grafana · App Service + auto-instrumented .NET · Control Center runner platform · custom logs · OTel pods · Connection Monitor · NSG Flow Logs | 2, 3, 4, 22, 28–32, 34–36, 42 | 20–35 min | Compute hours, disks/IPs, App Service, Grafana Standard/users, ACR, runner executions, Prometheus, network monitoring and telemetry |
+| **A — Foundation** | Telemetry backbone | LAWs · suffixed AppI · AMW · DCE · network · storage · Event Hub · Key Vault · diag policies · saved queries · KQL functions · Application Insights query pack · cost + traffic-lights + agent-investigation + customer-usage workbooks | 1, 5, 6, 9, 69, 70 | 8–15 min | Provisioned Event Hubs/ACR/storage plus telemetry and operations |
+| **B — Workloads & dashboards** | Compute + app telemetry | Optional Linux/Windows VMs · per-VM auto-shutdown schedules · AKS + Container Insights + Managed Prom · Grafana · App Service + server/browser telemetry · deterministic agent traces · Control Center runner platform · custom logs · OTel pods · Connection Monitor · NSG Flow Logs | 2, 3, 4, 22, 28–32, 34–36, 42, 69 | 20–35 min | Compute hours, disks/IPs, App Service, Grafana Standard/users, ACR, runner executions, Prometheus, network monitoring and telemetry |
 | **C — Alerts & response** | Detection + suppression | Action Group · 7+ metric/KQL/activity alerts · AMBA · dynamic thresholds · three suppression-oriented Alert Processing Rules when VMs are enabled · auto-mitigation Logic App · VMSS predictive autoscale | 7, 8, 12, 15, 17, 19, 23, 37 | 5–12 min | Rule/series evaluations, notifications, action executions and VMSS compute |
 | **D — Security posture** | Monitor-native detections | Granular RBAC roles · control-plane drift / privilege escalation / exfil scheduled-query alerts | 27, 47, 48, 49 | 5–12 min | Scheduled-query evaluations plus diagnostic ingestion/retention |
-| **E — Optional advanced** | SOC + reliability previews | Conditional Sentinel onboarding · data export · Prometheus rule group · availability test · Health Model (preview) · SLI identity · optional platform/metrics DCRs | 43, 44, 45, 46 | 10–20 min | Sentinel analysis, export, web tests, preview resources and extra telemetry |
+| **E — Optional advanced** | SOC + reliability previews | Conditional Sentinel onboarding · data export · Prometheus rule group · root and agent-task availability tests · Health Model · SLI identity · optional platform/metrics DCRs | 43, 44, 45, 46, 69 | 10–20 min | Sentinel analysis, export, web tests, preview resources and extra telemetry |
 | **AI — GenAI observability** *(optional, off)* | AI FinOps on Foundry | Microsoft Foundry account + project (swedencentral) · chat/embedding/optimization/model-router deployments · App Insights tracing · token anomaly + spike alerts · AI FinOps query pack + workbook · AI health tier · agents + traffic (`setup-ai.ps1`) | 53 | 10–15 min | Model-specific tokens or provisioned throughput plus telemetry |
 | **SRE Agent (optional, off)** | AI-assisted incident response | Bicep-deployed agent (swedencentral) · managed identity + RBAC · Azure Monitor, App Insights, and LAW connectors · two Review-mode investigators with automatic incident briefs · deployment validation (`setup-sre-agent.ps1`) | 54-59 | 20-25 min | Always-on AAUs plus active AAUs, subject to current trial terms |
 
@@ -210,7 +254,7 @@ Walk-through docs:
 
 ## Demo flow
 
-The lab supports **68 numbered demo scenarios** (`0` through `67`), each with a story, a click-path, and a "killer line". See [`DEMO-SCENARIOS.md`](DEMO-SCENARIOS.md) for the full catalogue, including audience-pivoted shortlists (App Service, AKS, Cost, Security, Workload health, and agentic applications).
+The lab supports **81 numbered demo scenarios** (`0` through `80`), each with a story, a click-path, and a "killer line". See [`DEMO-SCENARIOS.md`](DEMO-SCENARIOS.md) for the full catalogue, including audience-pivoted shortlists (App Service, AKS, Cost, Security, Workload health, and agentic applications).
 
 **Suggested 25-minute "first taste" walkthrough** (covers the cross-stack story):
 
@@ -342,7 +386,7 @@ azure-monitor-lab/
 
 ## Ideas to extend beyond current scope
 
-The lab covers 68 numbered scenarios (`0` through `67`) out of the box; here are well-scoped follow-ups for deeper sessions:
+The lab covers 81 numbered scenarios (`0` through `80`) out of the box; here are well-scoped follow-ups for deeper sessions:
 
 - **Multi-region DR drill** — pair the central LAW with a paired region (the `enableLawReplication` parameter wires this up) and walk alert + workbook continuity during a regional outage.
 - **Cross-subscription workbook rollup** — clone the Traffic Lights workbook into a management-group-scoped variant.
@@ -377,6 +421,38 @@ These scripts operate or extend an already deployed lab. Most are manual demo he
 
 ## Troubleshooting
 
+### Deployment blockers and recovery
+
+Start with the failed resource's inner error, not just the outer `DeploymentFailed`. In Azure Portal, open the resource group > **Deployments** > failed deployment > **Operation details**. Confirm the submitted subscription and region parameters; local config edits do not change an already-submitted deployment.
+
+| Error or symptom | Explanation | What to do |
+|---|---|---|
+| `RequestDisallowedByAzure`: "The selected region is currently not accepting new customers" | Azure restricts new allocations for this tenant/subscription in the requested region; this is not a VM-size or Entra-permission error. | Change the affected region setting in your local `lab.config.json`, then rerun `deploy.ps1` to regenerate parameters. Additional VM quota does not necessarily remove regional restrictions. See the region mapping below. |
+| `NotAvailableForSubscription` / `SkuNotAvailable` | The chosen compute size is restricted or unavailable in that region, even if vCPU quota remains. | Use preflight's candidate shortlist to edit `vmSize`, `aksNodeVmSize`, or `vmssSize`, or choose another eligible region. Candidates are not guaranteed capacity or full service compatibility. Request SKU access if the required size remains restricted; do not assume a quota increase alone enables it. |
+| Insufficient family or total regional vCPU quota | Existing usage plus the lab footprint exceeds a quota limit. | Azure Portal > **Quotas > Compute** > select subscription/region > **Request increase**. Request a new total limit, not just the additional cores. Check both family and regional limits, including VMSS autoscale and AKS upgrade headroom. |
+| `AKS system node size` preflight failure | Generic VM eligibility does not establish AKS system-pool compatibility. | Configure non-B-series system nodes with at least 4 vCPUs and 4 GiB RAM and at least two nodes. `Standard_EC2as_v5` has only two vCPUs; `Standard_EC4as_v5` meets the CPU/RAM minimum but still requires AKS acceptance, quota, and regional eligibility. See [AKS requirements](https://learn.microsoft.com/azure/aks/use-system-pools). |
+| AKS: "Operations are not allowed when the managed cluster is not in the Running power state" | An existing cluster is stopped or transitioning; deployment cannot update it in that state. | Check the cluster's power/provisioning state. If stopped, start it in Azure Portal and wait for **Running** and successful provisioning before redeploying. Starting resumes compute charges. Investigate failed or stuck transitions rather than repeatedly submitting updates. |
+| Fabric: "Service is not ready to be updated" | The capacity is not ready for the requested update; the message alone does not establish why. | Check the capacity's state and Activity Log. Wait for in-progress operations; if suspended, resume it and wait for readiness before retrying (billable). If failed or persistently stuck, investigate or contact Azure Support. Do not treat repeated deployment submissions as a fix. |
+
+#### Choosing another region
+
+Edit the copied **`lab.config.json`**, not `lab.config.json.example` or generated parameter files:
+
+| Setting | Resources affected |
+|---|---|
+| `location` | Main lab infrastructure; does not override the separate settings below. |
+| `appServiceLocation` | App Service and customer web apps, customer dependencies, App Service diagnostic storage, Event Hubs, and the console runner platform. Keep diagnostic destinations co-located as configured by the templates. |
+| `observabilityAgentLocation` | Optional Observability Agent and its dedicated Azure Monitor workspace; choose a supported preview region with subscription access. |
+
+For example, `francecentral` for `appServiceLocation` and `uksouth` for `observabilityAgentLocation` are regions to evaluate, **not guaranteed replacements for every subscription**. [Azure's location-ineligible guidance](https://learn.microsoft.com/azure/azure-resource-manager/troubleshooting/error-region-access-policy) explains the restriction. Preflight checks offerings and quota but cannot guarantee tenant-specific regional admission or live service capacity. An explicit deployment `-Location` argument overrides the main config region only.
+
+A config edit **does not migrate existing resources**. After a partial deployment, inventory successful resources before retrying. When changing the region of resources that cannot move in place, use a new `resourceGroup` for a clean deployment; review and deliberately tear down the old lab when no longer needed to avoid duplicate charges. Disabling an optional stage does not delete resources already created by incremental deployment.
+
+For SRE Agent teardown stuck on "currently being processed", follow the [SRE Agent guidance](STAGE-SRE-AGENT.md); for Monitor-managed resource-group deny assignments, use the lab's [teardown helper](../scripts/README.md#cleanup) rather than deleting protected managed groups directly.
+
+### Other known issues
+
+- **`customer-webapp` fails with `ResourceNotFound` on `/config/appsettings` during a first deployment**: older templates could read customer app settings before the AVM site deployment completed. The settings read now runs inside a nested deployment that depends on site creation, while preserving existing runtime settings. Use the updated Bicep sources and compiled ARM templates, then rerun the same deployment (or Stage B for staged deployments). No resource-group deletion is required.
 - **App Service Logs panes are empty** for the first ~10 min — the source-control deployment from GitHub is still building (Oryx).
 - **`AppRequests` / `AppDependencies` empty** in App Insights LAW → ensure the Web App restarted at least once after the App Settings landed: `az webapp restart -g rg-azure-monitor-lab -n <webApp>`.
 - **AKS LB IP stuck `<pending>`** → wait 1-2 min, or `kubectl describe svc hello-frontend -n demo`.

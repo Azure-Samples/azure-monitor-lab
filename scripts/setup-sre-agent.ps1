@@ -63,7 +63,8 @@ if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $labConfigPath = Join-Path $repoRoot 'lab.config.json'
 $targetPath = Join-Path $repoRoot '.azure-target.json'
-$labConfig = if (Test-Path $labConfigPath) { Get-Content -Raw $labConfigPath | ConvertFrom-Json } else { $null }
+. (Join-Path $PSScriptRoot 'lab-config.ps1')
+$labConfig = if (Test-Path $labConfigPath) { Read-LabConfig -Path $labConfigPath } else { $null }
 $target = if (Test-Path $targetPath) { Get-Content -Raw $targetPath | ConvertFrom-Json } else { $null }
 
 if ([string]::IsNullOrWhiteSpace($SubscriptionId)) {
@@ -184,12 +185,21 @@ if ([string]::IsNullOrWhiteSpace($AgentPrincipalId)) {
 Write-Step "Checking SRE Agent managed identity roles"
 $subscriptionScope = "/subscriptions/$SubscriptionId"
 $resourceGroupScope = "$subscriptionScope/resourceGroups/$ResourceGroup"
+$webApps = @($resources | Where-Object { $_.type.ToLowerInvariant() -eq 'microsoft.web/sites' -and $_.name -like 'app-*' })
+$slotRollbackRequirement = @()
+if ($webApps.Count -eq 1) {
+  $slots = @(az webapp deployment slot list --subscription $SubscriptionId --resource-group $ResourceGroup --name $webApps[0].name -o json | ConvertFrom-Json)
+  if ($LASTEXITCODE -ne 0) { throw 'Could not inspect App Service slots while validating SRE Agent access.' }
+  if (@($slots | Where-Object name -eq 'broken').Count -eq 1) {
+    $slotRollbackRequirement = @(@{ RolePrefix = 'Lab SRE Slot Rollback '; Scope = $webApps[0].id })
+  }
+}
 $principalRequirements = @(
   @{ Label = 'Action UAMI'; PrincipalId = $AgentPrincipalId; Roles = @(
     @{ Role = 'Reader'; Scope = $resourceGroupScope }
     @{ Role = 'Log Analytics Reader'; Scope = $resourceGroupScope }
     @{ Role = 'Monitoring Reader'; Scope = $resourceGroupScope }
-  ) }
+  ) + $slotRollbackRequirement }
   @{ Label = 'Connector system identity'; PrincipalId = $agent.identity.principalId; Roles = @(
     @{ Role = 'Reader'; Scope = $resourceGroupScope }
     @{ Role = 'Log Analytics Reader'; Scope = $resourceGroupScope }
@@ -203,19 +213,29 @@ foreach ($principalRequirement in $principalRequirements) {
   foreach ($requiredRole in $principalRequirement.Roles) {
     $assignments = @(az role assignment list --subscription $SubscriptionId --assignee-object-id $principalRequirement.PrincipalId `
       --scope $requiredRole.Scope --include-inherited -o json | ConvertFrom-Json)
-    $present = @($assignments | Where-Object { $_.roleDefinitionName -eq $requiredRole.Role }).Count -gt 0
-    Write-Check "$($principalRequirement.Label): $($requiredRole.Role)" $present $requiredRole.Scope
+    $roleLabel = if ($requiredRole.Role) { $requiredRole.Role } else { "$($requiredRole.RolePrefix)*" }
+    $present = @($assignments | Where-Object {
+      if ($requiredRole.Role) { $_.roleDefinitionName -eq $requiredRole.Role }
+      else { $_.roleDefinitionName.StartsWith($requiredRole.RolePrefix, [StringComparison]::Ordinal) }
+    }).Count -gt 0
+    Write-Check "$($principalRequirement.Label): $roleLabel" $present $requiredRole.Scope
     if (-not $present) {
       $missingRoles.Add(@{
         Role = $requiredRole.Role
+        RoleLabel = $roleLabel
         Scope = $requiredRole.Scope
         PrincipalId = $principalRequirement.PrincipalId
+        Grantable = [bool]$requiredRole.Role
       })
     }
   }
 }
 
 if ($GrantMissingRoles -and $missingRoles.Count -gt 0) {
+  $ungrantable = @($missingRoles | Where-Object { -not $_.Grantable })
+  if ($ungrantable.Count -gt 0) {
+    throw "The slot rollback role assignment is missing. Redeploy the SRE Agent stage with enableSlotFailureScenario=true before using -GrantMissingRoles."
+  }
   if (-not $Yes) {
     Write-Host "`nThe script will create $($missingRoles.Count) role assignment(s)." -ForegroundColor Yellow
     $confirmation = Read-Host "Type GRANT to continue"

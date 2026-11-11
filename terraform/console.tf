@@ -10,11 +10,22 @@ variable "console_operator_object_ids" {
 }
 
 locals {
+  fabric_sources = sort(concat(
+    tolist(fileset("${path.module}/..", "scripts/fabric-*.ps1")),
+    [
+      "scripts/setup-fabric.ps1",
+      "scripts/setup-fabric-auto-suspend.ps1",
+      "scripts/lab-config.ps1",
+      "infra/stages/60-fabric.json"
+    ]
+  ))
   console_sources = sort(distinct(concat(
+    local.fabric_sources,
     tolist(fileset("${path.module}/..", "workloads/webapp/*.cs")),
     tolist(fileset("${path.module}/..", "workloads/webapp/wwwroot/**")),
     tolist(fileset("${path.module}/..", "workloads/operations/*")),
     tolist(fileset("${path.module}/..", "workloads/ai/*.py")),
+    tolist(fileset("${path.module}/..", "workloads/cafe/*")),
     [
       "workloads/webapp/AmlabHello.csproj",
       "workloads/ai/requirements.txt",
@@ -23,11 +34,14 @@ locals {
       "scripts/post-staged-deploy.ps1",
       "scripts/setup-activity-log.ps1",
       "scripts/setup-health-model.ps1",
+      "scripts/setup-health-model-demo.ps1",
+      "scripts/publish-healthmodel-cafe.ps1",
       "scripts/setup-slis.ps1",
       "scripts/resolve-service-group-id.ps1",
       "scripts/post-deploy.ps1",
       "scripts/prepare-webapp-package.ps1",
       "scripts/wait-webapp-publication.ps1",
+      "scripts/prepare-broken-slot.ps1",
       "scripts/write-webapp-console-config.ps1",
       "scripts/initialize-webapp-console.ps1",
       "scripts/setup-webapp-agent-access.ps1",
@@ -42,12 +56,15 @@ locals {
       "scripts/simulate-high-cpu.ps1",
       "scripts/send-custom-logs.ps1",
       "scripts/send-release-annotation.ps1",
+      "scripts/trigger-broken-slot.ps1",
+      "scripts/rollback-broken-slot.ps1",
       "infra/modules/lab-console-platform.json",
       "infra/modules/lab-console-job.json",
       "infra/modules/custom-logs.json",
       "infra/stages/10-workloads.json",
       "infra/stages/50-ai.json",
-      "infra/stages/60-sre-agent.json"
+      "infra/stages/60-sre-agent.json",
+      "infra/stages/80-health-model-demo.json"
     ]
   )))
 }
@@ -59,11 +76,11 @@ resource "terraform_data" "console_ready" {
     resource_group = data.azurerm_resource_group.lab.id
     prefix         = var.name_prefix
     sources        = sha256(join("", [for name in local.console_sources : filesha256("${path.module}/../${name}")]))
-    integrations   = jsonencode({ ai = var.enable_stage_ai, sre = var.enable_stage_sre_agent, stage_e = var.enable_stage_e, ai_location = var.ai_location, router_model_version = var.router_model_version })
+    integrations   = jsonencode({ ai = var.enable_stage_ai, sre = var.enable_stage_sre_agent, fabric = var.enable_stage_fabric, health_model_demo = var.enable_stage_health_model_demo, slot_failure = var.enable_slot_failure_scenario, stage_e = var.enable_stage_e, ai_location = var.ai_location, router_model_version = var.router_model_version })
     operators      = jsonencode(var.console_operator_object_ids)
   }
 
-  depends_on = [azapi_resource.stage_b, azapi_resource.stage_c, azapi_resource.stage_d, azapi_resource.stage_e, azapi_resource.stage_sentinel_content, azapi_resource.stage_ai, azapi_resource.stage_sre_agent]
+  depends_on = [azapi_resource.stage_b, azapi_resource.stage_c, azapi_resource.stage_d, azapi_resource.stage_e, azapi_resource.stage_sentinel_content, azapi_resource.stage_ai, azapi_resource.stage_sre_agent, azapi_resource.stage_fabric, azapi_resource.stage_health_model_demo]
 
   lifecycle {
     replace_triggered_by = [azapi_resource.stage_b]
@@ -71,15 +88,44 @@ resource "terraform_data" "console_ready" {
 
   provisioner "local-exec" {
     interpreter = ["pwsh", "-NoProfile", "-NonInteractive", "-Command"]
-    command     = "& (Join-Path $env:LAB_REPOSITORY_ROOT 'scripts/post-staged-deploy.ps1') -SubscriptionId $env:LAB_SUBSCRIPTION_ID -ResourceGroup $env:LAB_RESOURCE_GROUP -NamePrefix $env:LAB_NAME_PREFIX -ConsoleOperatorObjectIds @($env:LAB_OPERATOR_IDS | ConvertFrom-Json) -EnableStageE ([bool]::Parse($env:LAB_ENABLE_STAGE_E)) -EnableStageSreAgent ([bool]::Parse($env:LAB_ENABLE_STAGE_SRE_AGENT))"
+    command     = "& (Join-Path $env:LAB_REPOSITORY_ROOT 'scripts/post-staged-deploy.ps1') -SubscriptionId $env:LAB_SUBSCRIPTION_ID -ResourceGroup $env:LAB_RESOURCE_GROUP -NamePrefix $env:LAB_NAME_PREFIX -ConsoleOperatorObjectIds @($env:LAB_OPERATOR_IDS | ConvertFrom-Json) -EnableStageE ([bool]::Parse($env:LAB_ENABLE_STAGE_E)) -EnableStageSreAgent ([bool]::Parse($env:LAB_ENABLE_STAGE_SRE_AGENT)) -EnableStageFabric ([bool]::Parse($env:LAB_ENABLE_STAGE_FABRIC)) -EnableStageHealthModelDemo ([bool]::Parse($env:LAB_ENABLE_STAGE_HEALTH_MODEL_DEMO))"
     environment = {
-      LAB_REPOSITORY_ROOT        = abspath("${path.module}/..")
-      LAB_SUBSCRIPTION_ID        = var.subscription_id
-      LAB_RESOURCE_GROUP         = var.resource_group_name
-      LAB_NAME_PREFIX            = var.name_prefix
-      LAB_OPERATOR_IDS           = jsonencode(var.console_operator_object_ids)
-      LAB_ENABLE_STAGE_E         = tostring(var.enable_stage_e)
-      LAB_ENABLE_STAGE_SRE_AGENT = tostring(var.enable_stage_sre_agent)
+      LAB_REPOSITORY_ROOT                = abspath("${path.module}/..")
+      LAB_SUBSCRIPTION_ID                = var.subscription_id
+      LAB_RESOURCE_GROUP                 = var.resource_group_name
+      LAB_NAME_PREFIX                    = var.name_prefix
+      LAB_OPERATOR_IDS                   = jsonencode(var.console_operator_object_ids)
+      LAB_ENABLE_STAGE_E                 = tostring(var.enable_stage_e)
+      LAB_ENABLE_STAGE_SRE_AGENT         = tostring(var.enable_stage_sre_agent)
+      LAB_ENABLE_STAGE_FABRIC            = tostring(var.enable_stage_fabric)
+      LAB_ENABLE_STAGE_HEALTH_MODEL_DEMO = tostring(var.enable_stage_health_model_demo)
+    }
+  }
+}
+
+resource "terraform_data" "fabric_ready" {
+  count = var.enable_stage_fabric && !var.enable_stage_b ? 1 : 0
+
+  triggers_replace = {
+    resource_group = data.azurerm_resource_group.lab.id
+    prefix         = var.name_prefix
+    sources        = sha256(join("", [for name in local.fabric_sources : filesha256("${path.module}/../${name}")]))
+  }
+
+  depends_on = [azapi_resource.stage_fabric]
+
+  lifecycle {
+    replace_triggered_by = [azapi_resource.stage_fabric]
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["pwsh", "-NoProfile", "-NonInteractive", "-Command"]
+    command     = "& (Join-Path $env:LAB_REPOSITORY_ROOT 'scripts/setup-fabric.ps1') -SubscriptionId $env:LAB_SUBSCRIPTION_ID -ResourceGroup $env:LAB_RESOURCE_GROUP -NamePrefix $env:LAB_NAME_PREFIX"
+    environment = {
+      LAB_REPOSITORY_ROOT = abspath("${path.module}/..")
+      LAB_SUBSCRIPTION_ID = var.subscription_id
+      LAB_RESOURCE_GROUP  = var.resource_group_name
+      LAB_NAME_PREFIX     = var.name_prefix
     }
   }
 }

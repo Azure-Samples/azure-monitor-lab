@@ -22,6 +22,11 @@
 .PARAMETER ParametersFile
   Bicep parameters file. Defaults to infra/main.parameters.json.
 
+.PARAMETER ApproveCustomerDependencies
+  Approve SQL schema/users/seed initialization and orders worker publication for
+  the enabled customer backend. Defaults to true. Pass
+  -ApproveCustomerDependencies:$false to request confirmation instead.
+
 .EXAMPLE
   ./scripts/deploy.ps1
 
@@ -36,7 +41,8 @@ param(
   [string] $ParametersFile = (Join-Path $PSScriptRoot '..' 'infra' 'main.parameters.json'),
   [switch] $SkipPreflight,
   [int]    $MaxDeployRetries = 0,
-  [guid[]] $ConsoleOperatorObjectIds
+  [guid[]] $ConsoleOperatorObjectIds,
+  [switch] $ApproveCustomerDependencies = $true
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,9 +53,13 @@ function Write-Step($msg) {
 
 # Deployment sizing used by the pre-flight availability/quota check. Defaults match the
 # Bicep defaults; overridden from lab.config.json below when present.
-$pfAksNodeCount    = 1
+$pfAksNodeCount    = 2
 $pfDeployWindowsVm = $true
 $pfDeployLinuxVm   = $true
+$pfVmSize          = 'Standard_EC2as_v5'
+$pfAksNodeVmSize   = 'Standard_EC4as_v5'
+$pfVmssSize        = 'Standard_EC2as_v5'
+$pfAppServiceLocation = 'westeurope'
 $pfDeployObservabilityAgent = $false
 $pfObservabilityAgentLocation = 'westeurope'
 
@@ -67,7 +77,8 @@ if (Test-Path $labConfigPath) {
   # Honor lab.config.json as the single source of truth for RG + region, but only
   # when the caller did not pass an explicit override. Precedence:
   #   explicit -ResourceGroup/-Location  >  lab.config.json  >  built-in defaults.
-  $labCfg = Get-Content -Raw $labConfigPath | ConvertFrom-Json
+  . (Join-Path $PSScriptRoot 'lab-config.ps1')
+  $labCfg = Read-LabConfig -Path $labConfigPath
   if (-not $PSBoundParameters.ContainsKey('ResourceGroup') -and -not [string]::IsNullOrWhiteSpace($labCfg.resourceGroup)) {
     $ResourceGroup = $labCfg.resourceGroup
   }
@@ -79,6 +90,10 @@ if (Test-Path $labConfigPath) {
   if ($null -ne $labCfg.aksNodeCount)    { $pfAksNodeCount    = [int]$labCfg.aksNodeCount }
   if ($null -ne $labCfg.deployWindowsVm) { $pfDeployWindowsVm = [bool]$labCfg.deployWindowsVm }
   if ($null -ne $labCfg.deployLinuxVm)   { $pfDeployLinuxVm   = [bool]$labCfg.deployLinuxVm }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmSize))        { $pfVmSize = [string]$labCfg.vmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.aksNodeVmSize)) { $pfAksNodeVmSize = [string]$labCfg.aksNodeVmSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.vmssSize))      { $pfVmssSize = [string]$labCfg.vmssSize }
+  if (-not [string]::IsNullOrWhiteSpace($labCfg.appServiceLocation)) { $pfAppServiceLocation = [string]$labCfg.appServiceLocation }
   if ($null -ne $labCfg.stageToggles.enableStageObservabilityAgent) {
     $pfDeployObservabilityAgent = [bool]$labCfg.stageToggles.enableStageObservabilityAgent
   }
@@ -93,7 +108,7 @@ if (Test-Path $labConfigPath) {
 function Assert-AllowedSubscription {
   $targetFile = Join-Path $PSScriptRoot '..' '.azure-target.json'
   if (-not (Test-Path $targetFile)) { throw ".azure-target.json not found at $targetFile. Bootstrap with: Copy-Item lab.config.json.example lab.config.json; edit it; re-run this script." }
-  $target = Get-Content -Raw $targetFile | ConvertFrom-Json
+  $script:target = Get-Content -Raw $targetFile | ConvertFrom-Json
 
   Write-Host "==> Pinning active az subscription to $($target.expectedSubscriptionName) ($($target.expectedSubscriptionId))" -ForegroundColor Cyan
   az account set --subscription $target.expectedSubscriptionId | Out-Null
@@ -116,17 +131,36 @@ Write-Step "Active subscription"
 az account show --query "{name:name, id:id, tenantId:tenantId, user:user.name}" -o table
 
 # 0b. Pre-flight availability + quota check — fail in ~15s instead of 20min in.
+$deploymentInputs = Get-Content -LiteralPath $ParametersFile -Raw | ConvertFrom-Json
+$pfCustomerDependencies = $deploymentInputs.parameters.enableCustomerDependencies.value -eq $true
+if ($pfCustomerDependencies) {
+  $sqlAdmin = [guid]::Empty
+  if ($deploymentInputs.parameters.enableSlotFailureScenario.value -isnot [bool] -or
+      $deploymentInputs.parameters.enableSlotFailureScenario.value -ne $true -or
+      -not [guid]::TryParseExact([string]$deploymentInputs.parameters.sqlEntraAdminObjectId.value, 'D', [ref]$sqlAdmin) -or
+      $sqlAdmin -eq [guid]::Empty -or [string]::IsNullOrWhiteSpace($deploymentInputs.parameters.sqlEntraAdminName.value) -or
+      ($deploymentInputs.parameters.sqlEntraAdminType -and $deploymentInputs.parameters.sqlEntraAdminType.value -notin @('User','Group','Application'))) {
+    throw 'Customer dependencies require enableSlotFailureScenario=true and explicit SQL Entra administrator GUID/name/type in the selected parameters file.'
+  }
+}
+$pfAppServicePlanTier = if ($deploymentInputs.parameters.enableSlotFailureScenario.value -eq $true) { 'Standard' } else { 'Basic' }
 if ($SkipPreflight) {
   Write-Step "Skipping pre-flight availability/quota check (-SkipPreflight)"
 } else {
   Write-Step "Pre-flight: validating SKUs + quota + resource availability in $Location"
   $preflight = Join-Path $PSScriptRoot 'preflight-check.ps1'
   & $preflight -Location $Location `
+               -VmSize $pfVmSize `
+               -AksNodeVmSize $pfAksNodeVmSize `
+               -VmssSize $pfVmssSize `
+               -AppServiceLocation $pfAppServiceLocation `
                -AksNodeCount $pfAksNodeCount `
                -DeployWindowsVm $pfDeployWindowsVm `
                -DeployLinuxVm $pfDeployLinuxVm `
                -DeployObservabilityAgent $pfDeployObservabilityAgent `
                -ObservabilityAgentLocation $pfObservabilityAgentLocation `
+               -DeployCustomerDependencies $pfCustomerDependencies `
+               -AppServicePlanTier $pfAppServicePlanTier `
                -ResourceGroup $ResourceGroup
   if ($LASTEXITCODE -ne 0) {
     throw "Pre-flight check failed for region '$Location'. Fix the FAIL rows above (or re-run with -SkipPreflight to bypass) before deploying."
@@ -137,7 +171,7 @@ if ($SkipPreflight) {
 Write-Step "Ensuring resource group $ResourceGroup in $Location"
 az group create -n $ResourceGroup -l $Location --tags purpose=azure-monitor-lab owner=demo-lab | Out-Null
 
-# 1b. Resource provider registration — Health Models (preview) is not auto-registered
+# 1b. Resource provider registration — Health Models is not auto-registered
 function Register-ResourceProvider {
   param([string] $Namespace)
   $state = az provider show -n $Namespace --query registrationState -o tsv 2>$null
@@ -159,11 +193,33 @@ Write-Step "Ensuring preview resource providers are registered"
 Register-ResourceProvider -Namespace 'Microsoft.CloudHealth'
 Register-ResourceProvider -Namespace 'Microsoft.App'
 Register-ResourceProvider -Namespace 'Microsoft.ContainerRegistry'
+if ($pfCustomerDependencies) {
+  Register-ResourceProvider -Namespace 'Microsoft.Sql'
+  Register-ResourceProvider -Namespace 'Microsoft.ServiceBus'
+  Register-ResourceProvider -Namespace 'Microsoft.App'
+}
+
+$fabricEnabled = $false
+if ($null -ne $labCfg -and $null -ne $labCfg.stageToggles -and $null -ne $labCfg.stageToggles.enableStageFabric) {
+  $fabricEnabled = [bool]$labCfg.stageToggles.enableStageFabric
+}
+if ($fabricEnabled) {
+  Write-Step "Fabric feature enabled - ensuring Microsoft.Fabric is registered"
+  Register-ResourceProvider -Namespace 'Microsoft.Fabric'
+}
 
 # 2. Deploy
-Write-Step "Deploying main.bicep (this takes about 5 minutes: AKS + VMs + Grafana)"
+Write-Step "Ensuring Network Watcher prerequisites in $Location"
+. (Join-Path $PSScriptRoot 'network-watcher.ps1')
+Ensure-LabNetworkWatcher -SubscriptionId $target.expectedSubscriptionId -TenantId $target.expectedTenantId `
+  -Location $Location -Confirm:$false
+
+Write-Step "Deploying lab infrastructure (main.bicep)"
 $deploymentName = "amlab-$(Get-Date -Format 'yyyyMMddHHmmss')"
 $mainBicep = Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'
+. (Join-Path $PSScriptRoot 'deployment-slot-recovery.ps1')
+$deploymentSubscription = az account show --query id -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $deploymentSubscription) { throw 'Cannot resolve the pinned deployment subscription.' }
 
 # Transient allocation/capacity error codes. These are region-wide, service-side, and
 # NOT knowable ahead of time via any quota/SKU/availability API (see preflight-check.ps1) —
@@ -190,6 +246,7 @@ $attempt = 0
 $sentinelRetryCount = 0
 $appServiceCapacityRetryCount = 0
 $ambaMetricRetryCount = 0
+$foundrySoftDeleteRetryCount = 0
 while ($true) {
   $attempt++
   if ($attempt -gt 1) {
@@ -197,13 +254,11 @@ while ($true) {
     Write-Host "   Retry $($attempt - 1)/$MaxDeployRetries — capacity is often reclaimed as others delete clusters..." -ForegroundColor Yellow
   }
 
-  az deployment group create `
-    --resource-group $ResourceGroup `
-    --name $deploymentName `
-    --template-file $mainBicep `
-    --parameters "@$ParametersFile" `
-    --parameters location=$Location `
-    --output none
+  $deploymentArguments = @('--subscription', $deploymentSubscription, '--resource-group', $ResourceGroup,
+    '--name', $deploymentName, '--template-file', $mainBicep,
+    '--parameters', "@$ParametersFile", '--parameters', "location=$Location", '--mode', 'Incremental')
+  Invoke-LabDeployment -Arguments $deploymentArguments -SubscriptionId $deploymentSubscription `
+    -ResourceGroup $ResourceGroup -DeploymentName $deploymentName
 
   if ($LASTEXITCODE -eq 0) { break }
 
@@ -214,6 +269,36 @@ while ($true) {
   $sentinelQueryNotReady = $failMessages -match 'Failed to run the analytics rule query.*workspace.*could not be found'
   $appServiceCapacityNotReady = $failMessages -match 'No available instances to satisfy this request|App Service is attempting to increase capacity'
   $ambaMetricNotReady = $failMessages -match "Couldn't find a metric named (Http4xx|Http5xx|HttpResponseTime)"
+  $foundrySoftDeleted = $failMessages -match 'FlagMustBeSetForRestore'
+
+  if ($foundrySoftDeleted -and $foundrySoftDeleteRetryCount -lt 1) {
+    $foundrySoftDeleteRetryCount++
+    $deletedAccountMatch = [regex]::Match($failMessages, 'Microsoft\.CognitiveServices/accounts/([a-zA-Z0-9-]+)')
+    if (-not $deletedAccountMatch.Success) {
+      throw "Foundry deployment is blocked by a soft-deleted account, but its name could not be extracted from the failed operation details:`n$failMessages"
+    }
+
+    $deletedAccountName = $deletedAccountMatch.Groups[1].Value
+    $deletedAccount = az cognitiveservices account list-deleted `
+      --subscription $target.expectedSubscriptionId `
+      --query "[?name=='$deletedAccountName' && location=='swedencentral'] | [0].{name:name,location:location}" `
+      -o json | ConvertFrom-Json
+    if (-not $deletedAccount) {
+      throw "Foundry account '$deletedAccountName' reported a soft-delete collision but was not found in the deleted accounts list. Failed operation details:`n$failMessages"
+    }
+
+    Write-Host "`n   Foundry account '$deletedAccountName' is soft-deleted. Purging that exact lab account before one retry..." -ForegroundColor Yellow
+    az cognitiveservices account purge `
+      --subscription $target.expectedSubscriptionId `
+      --name $deletedAccountName `
+      --resource-group $ResourceGroup `
+      --location swedencentral `
+      --only-show-errors
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to purge soft-deleted Foundry account '$deletedAccountName'. Purge it manually, then rerun deployment."
+    }
+    continue
+  }
 
   if ($sentinelQueryNotReady -and $sentinelRetryCount -lt 2) {
     $sentinelRetryCount++
@@ -280,12 +365,21 @@ $outputs = $outputsJson | ConvertFrom-Json
 
 $webAppName       = $outputs.webAppName.value
 $webAppHost       = $outputs.webAppDefaultHost.value
+$customerWebAppName = $outputs.customerWebAppName.value
 $aksName          = $outputs.aksName.value
 $grafanaEndpoint  = $outputs.grafanaEndpoint.value
 $workbookId       = $outputs.workbookId.value
 $centralLawName   = $outputs.centralLawName.value
 $linuxVm          = $outputs.linuxVmNameOut.value
 $winVm            = $outputs.windowsVmNameOut.value
+
+if ($outputs.observabilityAgentEnabled.value) {
+  Write-Step 'Removing the Observability Agent subscription grant after verifying its resource-scoped replacement'
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $active.id `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
+}
 
 # 2b. Subscription-level Activity Log -> central LAW.
 #     Subscription-scope diagnostic settings cannot be deployed from RG-scope Bicep,
@@ -315,7 +409,22 @@ Write-Host "  Windows VM     : $winVm"
 
 # 3. Post-deploy
 $postDeploy = Join-Path $PSScriptRoot 'post-deploy.ps1'
-& $postDeploy -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -WebAppName $webAppName -AksName $aksName -WebAppHost $webAppHost -CentralLawName $centralLawName -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
+$postDeployParameters = @{
+  SubscriptionId = $active.id
+  TenantId = $active.tenantId
+  ResourceGroup = $ResourceGroup
+  WebAppName = $webAppName
+  AksName = $aksName
+  WebAppHost = $webAppHost
+  CentralLawName = $centralLawName
+  ConsoleOperatorObjectIds = $ConsoleOperatorObjectIds
+  CustomerDependencyDeploymentName = $deploymentName
+  ApproveCustomerDependencies = $ApproveCustomerDependencies
+}
+if (-not [string]::IsNullOrWhiteSpace($customerWebAppName)) {
+  $postDeployParameters.CustomerWebAppName = $customerWebAppName
+}
+& $postDeploy @postDeployParameters
 
 # 4. Service Group (tenant-scoped, preview) + service group member relationship.
 #    Required before SLIs can be attached as extensions on the group.
@@ -370,6 +479,29 @@ if ($aiEnabled) {
     Write-Host "  Optional AI traffic could not start: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host '  Console agent provisioning completed earlier. This warning concerns optional demo traffic.' -ForegroundColor Yellow
   }
+}
+
+# 8. Optional Fabric feature - create the tenant-scoped workspace and Real-Time
+#    Intelligence items after the ARM capacity is ready.
+if ($fabricEnabled) {
+  Write-Step "Fabric feature enabled - creating workspace and Real-Time Intelligence items"
+  $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
+  try {
+    $fabricNamePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+    & $setupFabric -SubscriptionId $target.expectedSubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $fabricNamePrefix
+  } catch {
+    Write-Host "  Fabric SaaS setup failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  The F2 capacity may still be active and billable. Re-run setup manually or suspend it:" -ForegroundColor Yellow
+    Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+    Write-Host "  ./scripts/suspend-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+  }
+}
+
+if ($deploymentInputs.parameters.enableHealthModelDemo.value -eq $true) {
+  $healthModelDemoNamePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+  & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup `
+    -NamePrefix $healthModelDemoNamePrefix
 }
 
 $completionMessage = 'Lab setup complete.'

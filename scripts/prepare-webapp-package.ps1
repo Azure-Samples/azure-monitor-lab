@@ -4,6 +4,8 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [Parameter(Mandatory)] [string] $SubscriptionId,
   [Parameter(Mandatory)] [string] $TenantId,
+  [string] $WebAppName,
+  [string] $CustomerWebAppName,
   [string] $CentralLawName,
   [switch] $BundleSreMcp,
   [string] $SreModelEndpoint,
@@ -16,9 +18,18 @@ foreach ($requiredFile in @('AmlabHello.dll', 'wwwroot/index.html')) {
     throw "Published web console is incomplete: $requiredFile is missing."
   }
 }
+$manifestPath = Join-Path $PublishDirectory 'AmlabHello.deps.json'
+if (Test-Path -LiteralPath $manifestPath) {
+  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  if (@($manifest.libraries.PSObject.Properties.Name | Where-Object { $_ -like 'CustomerOrders/*' }).Count -and
+      -not (Test-Path -LiteralPath (Join-Path $PublishDirectory 'CustomerOrders.dll'))) {
+    throw 'Published customer dependency is incomplete: CustomerOrders.dll is missing. Publish from the repository project so its relative ProjectReference is preserved.'
+  }
+}
 $configPath = Join-Path $PublishDirectory 'lab-console.json'
 & (Join-Path $PSScriptRoot 'write-webapp-console-config.ps1') `
   -ResourceGroup $ResourceGroup -SubscriptionId $SubscriptionId -TenantId $TenantId `
+  -WebAppName $WebAppName -CustomerWebAppName $CustomerWebAppName `
   -CentralLawName $CentralLawName -OutputPath $configPath `
   -SreModelEndpoint $SreModelEndpoint -SreModelDeployment $SreModelDeployment
 $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -AsHashtable

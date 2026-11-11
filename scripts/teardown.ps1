@@ -2,9 +2,20 @@
 .SYNOPSIS
   Tear the lab down: remove subscription routing, monitoring dependencies, and the lab's related resource groups.
 
+.NOTES
+  Opt-in customer SQL/Service Bus/Functions/storage, private networking and UAMIs
+  all belong to this exact lab resource group and are removed by group deletion.
+  ARM incremental redeployment with the toggle false does NOT delete their data.
+
 .PARAMETER ResourceGroup
   Lab resource group to remove. Also includes name-matched auxiliary groups and
-  managed groups owned by Azure Monitor workspaces in this exact resource group.
+  verifies automatic cleanup of managed groups owned by Azure Monitor workspaces
+  in this exact resource group. Specify it with -ResourceGroup.
+
+.PARAMETER DeleteNetworkWatcherRG
+  Explicit yes/no opt-in to delete the entire shared NetworkWatcherRG in the
+  verified subscription, including watchers and monitoring for unrelated workloads.
+  Defaults to no. Also accepts --delete-networkwatcherrg yes.
 
 .PARAMETER KeepServiceGroup
   Preserve tenant-scoped Service Group and SLI resources even when the selected
@@ -14,57 +25,125 @@
 .PARAMETER KeepEntraApplications
   Preserve Entra app registrations and service principals. Otherwise, remove only
   identities explicitly tagged as owned by this lab after directory preflight.
+
+.PARAMETER PurgeSoftDeletedResources
+  Opt into permanent cleanup of Key Vaults, Foundry/Cognitive Services accounts,
+  and Log Analytics workspaces in the approved lab groups. This destroys their
+  secrets and data after confirmation. Default teardown preserves normal Azure
+  soft-delete recovery. Purge protection cannot be bypassed.
+
+.PARAMETER Yes
+  Approve the displayed cleanup plan without interactive confirmation. Nested
+  deletions never prompt again after this approval or the initial DELETE prompt.
+  This switch does not enable permanent cleanup; that requires
+  -PurgeSoftDeletedResources as well.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
   [string] $ResourceGroup = 'rg-azure-monitor-lab',
+  [Alias('delete-networkwatcherrg')]
+  [ValidateSet('yes', 'no')]
+  [string] $DeleteNetworkWatcherRG = 'no',
   [switch] $KeepServiceGroup,
   [switch] $KeepEntraApplications,
-  [switch] $Yes
+  [switch] $PurgeSoftDeletedResources,
+  [switch] $Yes,
+  [Parameter(ValueFromRemainingArguments)]
+  [string[]] $RemainingArguments
 )
 $ErrorActionPreference = 'Stop'
 
+if ($RemainingArguments.Count) {
+  if ($RemainingArguments.Count -ne 2 -or $RemainingArguments[0] -cne '--delete-networkwatcherrg' -or
+      $RemainingArguments[1] -notin @('yes', 'no') -or $PSBoundParameters.ContainsKey('DeleteNetworkWatcherRG')) {
+    throw 'Use named parameters and at most one --delete-networkwatcherrg yes|no option (default: no).'
+  }
+  $DeleteNetworkWatcherRG = $RemainingArguments[1]
+}
 if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
   throw 'ResourceGroup cannot be empty.'
+}
+if ($ResourceGroup -ieq 'NetworkWatcherRG' -and $DeleteNetworkWatcherRG -ne 'yes') {
+  throw 'Deleting NetworkWatcherRG requires explicit --delete-networkwatcherrg yes (or -DeleteNetworkWatcherRG yes).'
+}
+
+$teardownAzureCli = Get-Command az -ErrorAction Stop
+$teardownAzureCliPython = $null
+if ($IsWindows -and $teardownAzureCli.CommandType -eq 'Application' -and
+    [IO.Path]::GetFileName($teardownAzureCli.Source) -ieq 'az.cmd') {
+  $pythonPath = Join-Path (Split-Path $teardownAzureCli.Source -Parent) '..\python.exe'
+  if (Test-Path -LiteralPath $pythonPath -PathType Leaf) { $teardownAzureCliPython = $pythonPath }
+}
+$teardownAzureCliBootstrap = @'
+import runpy, sys, warnings
+warnings.filterwarnings(
+    'ignore',
+    message=r'^"\\s" is an invalid escape sequence\.',
+    category=SyntaxWarning,
+    module=r'^.*[\\/]azext_amcs[\\/]aaz[\\/]latest[\\/]monitor[\\/]data_collection[\\/]rule[\\/]_create$',
+)
+sys.argv[0] = 'az'
+runpy.run_module('azure.cli', run_name='__main__')
+'@
+if ($teardownAzureCliPython) {
+  function az {
+    # Match the MSI launcher's isolation and installer flag, adding only the warning filter.
+    $previousInstaller = $env:AZ_INSTALLER
+    try {
+      $env:AZ_INSTALLER = 'MSI'
+      & $teardownAzureCliPython -IB -c $teardownAzureCliBootstrap @args
+    } finally {
+      $env:AZ_INSTALLER = $previousInstaller
+    }
+  }
 }
 
 function Remove-MatchingResourceGroups {
   param([string[]] $Names)
 
+  $PSNativeCommandUseErrorActionPreference = $false
+  if ($purgeResources.Count) {
+    & $softDeleteCleanup -SubscriptionId $active.id -TenantId $active.tenantId `
+      -ResourceGroups $purgeResourceGroups -Resources $purgeResources -Confirm:$false
+  }
+  $submittedDeletes = 0
   foreach ($name in $Names) {
     if ($name -in $monitorManagedResourceGroupNames) {
-      $groupExists = az group exists --subscription $active.id -n $name -o tsv --only-show-errors
-      if ($LASTEXITCODE -ne 0 -or $groupExists -notin @('true', 'false')) { throw "Could not verify managed resource group '$name'." }
-      if ($groupExists -eq 'false') {
-        Write-Host "Azure already removed managed resource group '$name'." -ForegroundColor DarkGray
-        continue
+      $deadline = [DateTime]::UtcNow.AddSeconds(600)
+      for ($attempt = 0; $attempt -lt 60; $attempt++) {
+        $groupOutput = az group show --subscription $active.id -n $name --query '{id:id,managedBy:managedBy}' `
+          -o json --only-show-errors 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+          if ($groupOutput -match '(?m)^\s*ERROR:\s*\(ResourceGroupNotFound\)') {
+            Write-Host "Managed resource group absence verified (ResourceGroupNotFound): $name" -ForegroundColor Green
+            break
+          }
+          throw "Could not verify Azure-managed cleanup of resource group '$name'. No absence was assumed. Azure details:`n$groupOutput"
+        }
+        $group = $groupOutput | ConvertFrom-Json
+        if ($group.id -ine "/subscriptions/$($active.id)/resourceGroups/$name" -or $group.managedBy -notmatch $monitorOwnerPattern) {
+          throw "Managed resource group '$name' is no longer owned by an Azure Monitor workspace in '$ResourceGroup', or returned an unexpected ID. Refusing further cleanup."
+        }
+        if ($attempt -eq 0) {
+          Write-Host "Waiting for Azure to remove managed resource group '$name' through its owning workspace '$($group.managedBy)'. No direct group deletion will be attempted." -ForegroundColor Yellow
+        }
+        if ($attempt -eq 59 -or [DateTime]::UtcNow.AddSeconds(10) -ge $deadline) {
+          throw "Azure has not removed Monitor-managed resource group '$name' within 600s. Owner: '$($group.managedBy)'. Lab/auxiliary deletion requests may already be running. No direct managed-group deletion was attempted. Check the owning workspace's deletion; if Azure cleanup remains stuck, contact Azure Support."
+        }
+        Start-Sleep -Seconds 10
       }
-      $managedBy = az group show --subscription $active.id -n $name --query managedBy -o tsv --only-show-errors
-      if ($LASTEXITCODE -ne 0) { throw "Could not verify current ownership of managed resource group '$name'." }
-      if ($managedBy -notmatch $monitorOwnerPattern) { throw "Managed resource group '$name' is no longer owned by an Azure Monitor workspace in '$ResourceGroup'. Refusing deletion." }
+      continue
     }
     Write-Host "Deleting $name ..." -ForegroundColor Yellow
-    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
-    try {
-      $PSNativeCommandUseErrorActionPreference = $false
-      $deleteOutput = az group delete --subscription $active.id -n $name --yes --no-wait 2>&1 | Out-String
-      $deleteExitCode = $LASTEXITCODE
-    } finally {
-      $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
-    }
+    $deleteOutput = az group delete --subscription $active.id -n $name --yes --no-wait 2>&1 | Out-String
+    $deleteExitCode = $LASTEXITCODE
     if ($deleteExitCode -ne 0) {
-      if ($name -in $monitorManagedResourceGroupNames) {
-        $groupExists = az group exists --subscription $active.id -n $name -o tsv --only-show-errors
-        if ($LASTEXITCODE -eq 0 -and $groupExists -eq 'false') {
-          Write-Host "Azure already removed managed resource group '$name'." -ForegroundColor DarkGray
-          continue
-        }
-      }
       throw "Azure CLI failed to submit deletion for resource group '$name'. Details:`n$deleteOutput"
     }
+    $submittedDeletes++
   }
 
-  Write-Host "Delete requests accepted (running in background)." -ForegroundColor Green
+  if ($submittedDeletes) { Write-Host "Delete requests accepted (running in background)." -ForegroundColor Green }
   Write-Host "Verify completion with:" -ForegroundColor Green
   $Names | ForEach-Object { Write-Host "  az group exists --subscription '$($active.id)' -n '$_'" -ForegroundColor Green }
 }
@@ -93,17 +172,38 @@ if ($LASTEXITCODE -ne 0) {
 $allResourceGroupNames = @($allResourceGroups | Select-Object -ExpandProperty name)
 $monitorOwnerPattern = '^' + [regex]::Escape("/subscriptions/$($active.id)/resourceGroups/$ResourceGroup/providers/Microsoft.Monitor/accounts/") + '[^/]+$'
 $monitorManagedResourceGroupNames = @(
-  $allResourceGroups | Where-Object { $_.managedBy -match $monitorOwnerPattern } | Select-Object -ExpandProperty name
+  $allResourceGroups | Where-Object { $_.name -ine 'NetworkWatcherRG' -and $_.managedBy -match $monitorOwnerPattern } | Select-Object -ExpandProperty name
 )
 $resourceGroupsToDelete = @(
   @(
     $allResourceGroupNames |
-      Where-Object { $_.IndexOf($ResourceGroup, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and ($_ -ieq $ResourceGroup -or $_ -notlike 'MA_*') }
+      Where-Object { $_ -ine 'NetworkWatcherRG' -and $_.IndexOf($ResourceGroup, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and ($_ -ieq $ResourceGroup -or $_ -notlike 'MA_*') }
     $monitorManagedResourceGroupNames
-  ) | Sort-Object -Unique { if ($_ -ieq $ResourceGroup) { 0 } elseif ($_ -in $monitorManagedResourceGroupNames) { 2 } else { 1 } }, { $_ }
+    if ($DeleteNetworkWatcherRG -eq 'yes') {
+      $allResourceGroupNames | Where-Object { $_ -ieq 'NetworkWatcherRG' }
+    }
+  ) | Sort-Object -Unique { if ($_ -ieq $ResourceGroup) { 0 } elseif ($_ -in $monitorManagedResourceGroupNames) { 3 } elseif ($_ -ieq 'NetworkWatcherRG') { 2 } else { 1 } }, { $_ }
 )
 $primaryResourceGroupExists = @($allResourceGroupNames | Where-Object { $_ -ieq $ResourceGroup }).Count -gt 0
 $resourceGroupId = "/subscriptions/$($active.id)/resourceGroups/$ResourceGroup"
+$softDeleteCleanup = Join-Path $PSScriptRoot 'remove-lab-soft-deleted-resources.ps1'
+$purgeResources = @()
+$purgeResourceGroups = @()
+if ($PurgeSoftDeletedResources) {
+  $purgeResourceGroups = @(@($ResourceGroup) + @($resourceGroupsToDelete | Where-Object { $_ -notin $monitorManagedResourceGroupNames }) | Sort-Object -Unique)
+  $purgeResources = @(& $softDeleteCleanup -SubscriptionId $active.id -TenantId $active.tenantId `
+    -ResourceGroups $purgeResourceGroups -ExistingResourceGroups @($purgeResourceGroups | Where-Object { $_ -in $allResourceGroupNames }) -PlanOnly)
+  $protectedVaults = @($purgeResources | Where-Object PurgeProtected)
+  if ($protectedVaults.Count) {
+    throw "Purge protection prevents permanent cleanup of: $($protectedVaults.Id -join ', '). It cannot be bypassed. Wait for retention expiry or rerun teardown without -PurgeSoftDeletedResources."
+  }
+  $recoveryGroups = @($purgeResources | Where-Object {
+    $_.Deleted -and $_.Type -eq 'Microsoft.OperationalInsights/workspaces' -and $_.ResourceGroup -notin $allResourceGroupNames
+  } | Select-Object -ExpandProperty ResourceGroup -Unique)
+  $resourceGroupsToDelete = @(@($resourceGroupsToDelete) + $recoveryGroups | Sort-Object -Unique {
+    if ($_ -ieq $ResourceGroup) { 0 } elseif ($_ -in $monitorManagedResourceGroupNames) { 3 } elseif ($_ -ieq 'NetworkWatcherRG') { 2 } else { 1 }
+  }, { $_ })
+}
 $activityDiagnosticName = 'amlab-activity-to-law'
 $activityLogWorkspaceId = az monitor diagnostic-settings subscription list --subscription $active.id `
   --query "value[?name=='$activityDiagnosticName'].workspaceId | [0]" -o tsv --only-show-errors
@@ -125,21 +225,46 @@ if (-not $KeepEntraApplications) {
   $entraIdentities = @(& $entraCleanup -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -PlanOnly)
 }
 
-if ($resourceGroupsToDelete.Count -eq 0 -and $entraIdentities.Count -eq 0 -and -not $ownsActivityDiagnostic) {
+if ($resourceGroupsToDelete.Count -eq 0 -and $entraIdentities.Count -eq 0 -and -not $ownsActivityDiagnostic -and $purgeResources.Count -eq 0) {
   Write-Host "No matching resource groups or verified lab-owned Entra identities found for '$ResourceGroup'. Nothing to delete." -ForegroundColor Yellow
   return
 }
 
+if ($DeleteNetworkWatcherRG -eq 'yes') {
+  if ($resourceGroupsToDelete -icontains 'NetworkWatcherRG') {
+    Write-Warning "Explicit opt-in: the ENTIRE shared NetworkWatcherRG in subscription '$($active.id)' will be deleted, including all regional watchers, connection monitors, flow logs, and unrelated resources. This can disrupt monitoring for other workloads."
+  } else {
+    Write-Host 'NetworkWatcherRG is not present in the verified subscription; no Network Watcher group deletion is needed.' -ForegroundColor Yellow
+  }
+}
+
+if ($purgeResources.Count) {
+  Write-Warning 'Permanent cleanup destroys the listed secrets, AI account data and logs without recovery. Log Analytics recovery may temporarily recreate an original resource group; that group is included in deletion.'
+  $purgeResources | ForEach-Object {
+    Write-Host "  - PERMANENT: $($_.Id) [$($_.Location)]" -ForegroundColor Yellow
+  }
+} elseif (-not $PurgeSoftDeletedResources) {
+  Write-Host 'Preserving normal Azure soft-delete recovery. Reserved names may block same-name redeployment; permanent cleanup requires -PurgeSoftDeletedResources.' -ForegroundColor Yellow
+}
+
 if (-not $Yes) {
-  Write-Host "The following resource groups match or are managed by workspaces in '$ResourceGroup' and will be deleted:" -ForegroundColor Yellow
-  $resourceGroupsToDelete | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
+  Write-Host "The following resource groups match or are managed by workspaces in '$ResourceGroup' and will be cleaned up:" -ForegroundColor Yellow
+  $resourceGroupsToDelete | ForEach-Object {
+    $suffix = if ($_ -in $monitorManagedResourceGroupNames) { ' (Azure-managed cleanup; no direct deletion)' } else { '' }
+    Write-Host "  - $_$suffix" -ForegroundColor Yellow
+  }
   if ($ownsActivityDiagnostic) { Write-Host "  - Subscription diagnostic setting: $activityDiagnosticName" -ForegroundColor Yellow }
   $entraIdentities | ForEach-Object { Write-Host "  - Entra: $($_.DisplayName), app $($_.ApplicationObjectId), principal $($_.ServicePrincipalObjectId)" -ForegroundColor Yellow }
-  $confirm = Read-Host 'Type DELETE to confirm deletion of the listed resource groups and lab-owned Entra identities'
+  $confirmation = 'Type DELETE to confirm deletion of the listed resource groups and lab-owned Entra identities'
+  if ($purgeResources.Count) { $confirmation += ', including the listed permanent resource/data cleanup' }
+  $confirm = Read-Host $confirmation
   if ($confirm -ne 'DELETE') { Write-Host "Aborted." -ForegroundColor Yellow; return }
 } else {
-  Write-Host "Deleting resource groups matching or managed by workspaces in '$ResourceGroup':" -ForegroundColor Yellow
-  $resourceGroupsToDelete | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
+  Write-Host "Cleaning up resource groups matching or managed by workspaces in '$ResourceGroup':" -ForegroundColor Yellow
+  $resourceGroupsToDelete | ForEach-Object {
+    $suffix = if ($_ -in $monitorManagedResourceGroupNames) { ' (Azure-managed cleanup; no direct deletion)' } else { '' }
+    Write-Host "  - $_$suffix" -ForegroundColor Yellow
+  }
   if ($ownsActivityDiagnostic) { Write-Host "  - Subscription diagnostic setting: $activityDiagnosticName" -ForegroundColor Yellow }
   $entraIdentities | ForEach-Object { Write-Host "  - Entra: $($_.DisplayName), app $($_.ApplicationObjectId), principal $($_.ServicePrincipalObjectId)" -ForegroundColor Yellow }
 }
@@ -147,18 +272,18 @@ if (-not $Yes) {
 if ($KeepEntraApplications) {
   Write-Host 'Preserving Entra app registrations and service principals.' -ForegroundColor Yellow
 } elseif ($entraIdentities.Count) {
-  & $entraCleanup -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -Identities $entraIdentities
+  & $entraCleanup -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup -Identities $entraIdentities -Confirm:$false
 }
 
 if ($ownsActivityDiagnostic) {
   Write-Host "Deleting subscription diagnostic setting $activityDiagnosticName ..." -ForegroundColor Yellow
-  az monitor diagnostic-settings subscription delete --subscription $active.id --name $activityDiagnosticName --only-show-errors
+  az monitor diagnostic-settings subscription delete --subscription $active.id --name $activityDiagnosticName --yes --only-show-errors
   if ($LASTEXITCODE -ne 0) { throw "Failed to delete subscription diagnostic setting '$activityDiagnosticName'." }
 }
 
 if (-not $primaryResourceGroupExists) {
-  Write-Host "The original resource group no longer exists; deleting matched auxiliary resource groups directly." -ForegroundColor Yellow
-  if ($resourceGroupsToDelete.Count) { Remove-MatchingResourceGroups -Names $resourceGroupsToDelete }
+  Write-Host "The original resource group no longer exists; deleting matched auxiliary groups and verifying Azure-managed Monitor cleanup." -ForegroundColor Yellow
+  if ($resourceGroupsToDelete.Count -or $purgeResources.Count) { Remove-MatchingResourceGroups -Names $resourceGroupsToDelete }
   return
 }
 
@@ -181,6 +306,36 @@ foreach ($observabilityAgent in $observabilityAgents) {
     az role assignment delete --subscription $active.id --ids $assignmentId
     if ($LASTEXITCODE -ne 0) { throw "Failed to remove Observability Agent subscription RBAC '$assignmentId'." }
   }
+  $monitoredResourcesOutput = az rest --subscription $active.id --method get `
+    --url "https://management.azure.com$($observabilityAgent.id)/monitoredResources?api-version=2026-05-01-preview" `
+    --output json 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not inspect monitored resources for '$($observabilityAgent.name)':`n$($monitoredResourcesOutput -join "`n")"
+  }
+  $monitoredResponse = ($monitoredResourcesOutput -join "`n") | ConvertFrom-Json
+  $monitoredResources = @($monitoredResponse.value | Where-Object {
+    $_.properties.enabled -and $_.properties.resourceId -match '/providers/Microsoft\.Insights/components/'
+  })
+  if ($monitoredResources.Count -ne 1) {
+    throw "Expected one enabled Application Insights resource for '$($observabilityAgent.name)'; found $($monitoredResources.Count)."
+  }
+  $appInsightsId = [string]$monitoredResources[0].properties.resourceId
+  $componentAssignmentsOutput = az role assignment list --subscription $active.id --assignee-object-id $principalId `
+    --scope $appInsightsId -o json 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not inspect Application Insights RBAC for '$($observabilityAgent.name)':`n$($componentAssignmentsOutput -join "`n")"
+  }
+  $componentAssignments = @($componentAssignmentsOutput | ConvertFrom-Json | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_.scope) -and
+    -not [string]::IsNullOrWhiteSpace($_.roleDefinitionId) -and
+    $_.scope.TrimEnd('/') -ieq $appInsightsId.TrimEnd('/') -and
+    $_.roleDefinitionId.TrimEnd('/').Split('/')[-1] -ieq $monitoringReaderRoleId
+  })
+  foreach ($assignment in $componentAssignments) {
+    Write-Host "Removing Observability Agent Application Insights Monitoring Reader assignment $($assignment.id) ..." -ForegroundColor DarkGray
+    az role assignment delete --subscription $active.id --ids $assignment.id
+    if ($LASTEXITCODE -ne 0) { throw "Failed to remove Observability Agent Application Insights RBAC '$($assignment.id)'." }
+  }
   Write-Host "Deleting Observability Agent $($observabilityAgent.name) before resource-group cleanup ..." -ForegroundColor Yellow
   az resource delete --subscription $active.id --ids $observabilityAgent.id --api-version 2026-05-01-preview
   if ($LASTEXITCODE -ne 0) {
@@ -189,13 +344,17 @@ foreach ($observabilityAgent in $observabilityAgents) {
 }
 
 # Delete billable SRE Agent resources explicitly before the asynchronous RG delete.
-$sreAgents = @(az resource list -g $ResourceGroup --resource-type Microsoft.App/agents -o json | ConvertFrom-Json)
+$sreAgents = @(az resource list --subscription $active.id -g $ResourceGroup --resource-type Microsoft.App/agents -o json --only-show-errors | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0) { throw "Could not inspect SRE Agents in '$ResourceGroup'. Stop before resource-group cleanup." }
 foreach ($sreAgent in $sreAgents) {
-  Write-Host "Deleting SRE Agent $($sreAgent.name) before resource-group cleanup ..." -ForegroundColor Yellow
-  az resource delete --ids $sreAgent.id --api-version 2025-05-01-preview
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to delete SRE Agent '$($sreAgent.name)'. Stop before deleting the resource group and verify the agent manually to avoid continued billing."
+  $agentPrefix = "$resourceGroupId/providers/Microsoft.App/agents/"
+  if (-not $sreAgent.id -or -not $sreAgent.id.StartsWith($agentPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+      $sreAgent.id.Substring($agentPrefix.Length).Contains('/')) {
+    throw 'SRE Agent discovery returned an unexpected resource scope. No agent deletion was submitted.'
   }
+  Write-Host "Stopping and deleting SRE Agent $($sreAgent.name) before resource-group cleanup ..." -ForegroundColor Yellow
+  & (Join-Path $PSScriptRoot 'remove-sre-agent.ps1') -SubscriptionId $active.id -TenantId $active.tenantId `
+    -ResourceId $sreAgent.id -Confirm:$false | Out-Null
 }
 
 # Remove dependencies that can prevent Azure from deleting the monitoring estate.
@@ -289,6 +448,28 @@ if (-not $hasServiceGroupMembership) {
   if (Test-Path $setupHm) {
     & $setupHm -ResourceGroup $ResourceGroup -Teardown
   }
+}
+
+$fabricCapacity = @($allResources | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' }) | Select-Object -First 1
+if ($fabricCapacity) {
+  Write-Host "Removing tenant-scoped Fabric workspace and items ..." -ForegroundColor Yellow
+  $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
+  if (Test-Path $setupFabric) {
+    try {
+      & $setupFabric -SubscriptionId $active.id -ResourceGroup $ResourceGroup -Teardown
+    } catch {
+      Write-Host "  Fabric workspace cleanup failed: $($_.Exception.Message)" -ForegroundColor Yellow
+      Write-Host "  Resource-group deletion will still remove the F2 capacity. Delete the 'Azure Monitor Demo Lab' workspace manually if it remains." -ForegroundColor Yellow
+    }
+  }
+}
+
+if (@($allResources | Where-Object {
+  $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -in @('hm-amlab-flows', 'hm-lab-cafe')
+}).Count -gt 0) {
+  Write-Host 'Removing verified lab-scoped Health Model reporter roles and their assignments ...' -ForegroundColor Yellow
+  & (Join-Path $PSScriptRoot 'remove-health-model-demo-roles.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -Confirm:$false
 }
 
 Remove-MatchingResourceGroups -Names $resourceGroupsToDelete

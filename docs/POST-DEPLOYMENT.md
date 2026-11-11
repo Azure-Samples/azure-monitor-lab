@@ -28,10 +28,13 @@ The exact investigator instructions, filters, and response-plan values are in [S
 
 ## Other conditional features
 
+The optional [Health Model Demo stage](STAGE-HEALTH-MODEL-DEMO.md) is completed automatically: Café publication, both console model targets, one successful stored order and actual request/dependency telemetry are verified. No tutorial fault injection or separate model builder is required.
+
 These features are deployed only when selected in the portal or enabled in the deployment configuration. They do not require another general post-deployment script.
 
 | Feature | What remains after deployment |
 |---|---|
+| [Real customer dependencies](DEMO-SCENARIOS.md#s73) | When enabled, deployment completion is approved by default: it initializes schema/seed products/least-privilege users through a temporary private tunnel, publishes the orders worker and checks readiness. No separate bootstrap is needed after completion succeeds. Requires the configured SQL Entra administrator, .NET 8 SDK and Python. Missing `paramiko` is installed automatically in a temporary virtual environment (requires Python venv support and package-index access), cleaned up on success or failure without modifying system Python; failures stop completion. Pass `-ApproveCustomerDependencies:$false` to request interactive approval instead; only `yes` is accepted, ignoring case and surrounding whitespace. Standalone SQL/bootstrap repair commands retain confirmation and `-WhatIf` support. No order is submitted by readiness checks. |
 | [VM OpenTelemetry metrics](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics) | Enabled by default alongside classic VM Insights unless `enableVmOtelMetrics=false`. Allow AMA configuration and metrics to arrive in the existing AMW; verify both views. No extra setup script. Incremental redeployment with `false` does not remove existing OTel associations; use the linked targeted opt-out. |
 | [Platform Logs DCR](DEMO-SCENARIOS.md#s51) | Nothing when `enablePlatformLogsDcr` was enabled successfully. If it was disabled, enable the flag and redeploy before using the scenario. |
 | [Metrics Export DCR](DEMO-SCENARIOS.md#s52) | Nothing when `enableMetricsExportDcr` was enabled successfully. If it was disabled, enable the flag and redeploy before using the scenario. |

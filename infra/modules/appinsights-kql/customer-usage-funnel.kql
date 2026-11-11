@@ -1,0 +1,19 @@
+let steps = datatable(Step:int, EventName:string)
+[
+    1, "CustomerJourneyStarted",
+    2, "CatalogViewed",
+    3, "ProductSelected",
+    4, "CartUpdated",
+    5, "CheckoutStarted",
+    6, "PurchaseCompleted"
+];
+let observations =
+    customEvents
+    | where timestamp > ago(7d)
+    | where name in ("CustomerJourneyStarted", "CatalogViewed", "ProductSelected", "CartUpdated", "CheckoutStarted", "PurchaseCompleted")
+    | extend User = iff(isempty(user_AuthenticatedId), user_Id, user_AuthenticatedId)
+    | summarize Users = dcount(User), Sessions = dcount(session_Id), Events = count() by EventName = name;
+steps
+| join kind=leftouter observations on EventName
+| project Step, EventName, Users = coalesce(Users, 0), Sessions = coalesce(Sessions, 0), Events = coalesce(Events, 0)
+| order by Step asc

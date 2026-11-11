@@ -1,4 +1,9 @@
 mock_provider "azurerm" {
+  mock_data "azurerm_client_config" {
+    defaults = {
+      tenant_id = "00000000-0000-0000-0000-000000000000"
+    }
+  }
   mock_data "azurerm_resource_group" {
     defaults = {
       id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test-rg"
@@ -37,6 +42,16 @@ run "foundation_without_console" {
     condition     = length(terraform_data.sre_ready) == 0
     error_message = "Stage A alone must not run SRE validation."
   }
+
+  assert {
+    condition     = length(azapi_resource.stage_fabric) == 0
+    error_message = "Fabric must remain off by default."
+  }
+
+  assert {
+    condition     = length(terraform_data.network_watcher) == 0 && length(terraform_data.fabric_ready) == 0
+    error_message = "Foundation-only plans must not prepare workload prerequisites or Fabric SaaS items."
+  }
 }
 
 run "workloads_include_console" {
@@ -44,6 +59,11 @@ run "workloads_include_console" {
 
   variables {
     enable_stage_b = true
+  }
+
+  assert {
+    condition     = var.vm_size == "Standard_EC2as_v5" && var.vmss_size == "Standard_EC2as_v5" && var.aks_node_vm_size == "Standard_EC4as_v5" && var.aks_node_count == 2
+    error_message = "Terraform compute defaults must match the portal, Bicep, and central config example."
   }
 
   assert {
@@ -69,6 +89,16 @@ run "workloads_include_console" {
   assert {
     condition     = !jsondecode(terraform_data.console_ready[0].triggers_replace.integrations).stage_e
     error_message = "Stage A+B must keep optional Stage E completion disabled."
+  }
+
+  assert {
+    condition     = length(terraform_data.network_watcher) == 1 && terraform_data.network_watcher[0].triggers_replace.subscription == var.subscription_id && terraform_data.network_watcher[0].triggers_replace.tenant == data.azurerm_client_config.current[0].tenant_id && terraform_data.network_watcher[0].triggers_replace.location == var.location
+    error_message = "Stage B must prepare Network Watcher for the exact provider tenant, subscription, and selected region."
+  }
+
+  assert {
+    condition     = !jsondecode(terraform_data.console_ready[0].triggers_replace.integrations).fabric
+    error_message = "Disabled Fabric must be passed explicitly to console completion."
   }
 }
 
@@ -127,6 +157,83 @@ run "sre_without_workloads_is_validated" {
     condition     = terraform_data.sre_ready[0].triggers_replace.resource_group == data.azurerm_resource_group.lab.id
     error_message = "Standalone SRE validation must target the selected resource group."
   }
+}
+
+run "fabric_without_workloads" {
+  command = plan
+
+  variables {
+    enable_stage_fabric = true
+    fabric_admin_email  = "operator@example.com"
+  }
+
+  assert {
+    condition     = length(azapi_resource.stage_fabric) == 1 && length(azapi_resource.stage_sre_agent) == 0 && length(terraform_data.console_ready) == 0
+    error_message = "Fabric must deploy independently without enabling SRE or the Web App console."
+  }
+
+  assert {
+    condition     = azapi_resource.stage_fabric[0].parent_id == data.azurerm_resource_group.lab.id && azapi_resource.stage_fabric[0].body.properties.parameters.fabricAdminEmail.value == var.fabric_admin_email
+    error_message = "Fabric must retain the selected resource group and administrator input."
+  }
+
+  assert {
+    condition     = length(terraform_data.fabric_ready) == 1 && terraform_data.fabric_ready[0].triggers_replace.resource_group == data.azurerm_resource_group.lab.id && terraform_data.fabric_ready[0].triggers_replace.prefix == var.name_prefix
+    error_message = "Fabric without Stage B must run its own completion hook against the selected target."
+  }
+}
+
+run "fabric_refreshes_console_without_stage_e" {
+  command = plan
+
+  variables {
+    enable_stage_b      = true
+    enable_stage_fabric = true
+    fabric_admin_email  = "operator@example.com"
+  }
+
+  assert {
+    condition     = jsondecode(terraform_data.console_ready[0].triggers_replace.integrations).fabric && length(terraform_data.fabric_ready) == 0 && length(azapi_resource.stage_e) == 0
+    error_message = "Fabric must refresh console completion without Stage E and without running a duplicate standalone hook."
+  }
+
+  assert {
+    condition     = alltrue([for name in local.fabric_sources : contains(local.console_sources, name)]) && contains(local.fabric_sources, "scripts/setup-fabric.ps1") && contains(local.fabric_sources, "scripts/fabric-monitoring.ps1")
+    error_message = "Fabric setup and helper changes must refresh both completion routes."
+  }
+}
+
+run "fabric_and_sre_coexist" {
+  command = plan
+
+  variables {
+    enable_stage_b         = true
+    enable_stage_e         = true
+    enable_stage_sre_agent = true
+    enable_stage_fabric    = true
+    fabric_admin_email     = "operator@example.com"
+  }
+
+  assert {
+    condition     = length(azapi_resource.stage_fabric) == 1 && length(azapi_resource.stage_sre_agent) == 1 && length(terraform_data.console_ready) == 1
+    error_message = "Fabric and SRE stages must coexist with integration console completion."
+  }
+
+  assert {
+    condition     = azapi_resource.stage_e[0].body.properties.parameters.enableFabric.value
+    error_message = "Stage E must retain the optional Fabric health tier."
+  }
+}
+
+run "reject_missing_fabric_administrator" {
+  command = plan
+
+  variables {
+    enable_stage_fabric = true
+    fabric_admin_email  = ""
+  }
+
+  expect_failures = [var.fabric_admin_email]
 }
 
 run "reject_invalid_operator" {

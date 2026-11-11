@@ -1,12 +1,29 @@
 # Azure Monitor Lab Control Center
 
-The ASP.NET Core 8 app serves **Azure Monitor Lab Control Center** at `/`. Five keyboard-accessible tabs separate Infra Health (first/default), Traffic & Faults, Lab Operations, SRE MCP Assistant, and Foundry Playground. It runs in the existing App Service and uses the existing Application Insights integration. Normal deployment configures operator sign-in, health access, an independent Azure job runner, and available optional agents automatically. Basic traffic actions remain anonymous; protected operations require an approved operator.
+The ASP.NET Core 8 app serves **Azure Monitor Lab Control Center** at `/`. Six keyboard-accessible tabs separate Infra Health (first/default), Health Model, Traffic & Faults, Lab Operations, SRE MCP Assistant, and Foundry Playground. It runs in the existing App Service and uses the existing Application Insights integration. Normal deployment configures operator sign-in, health access, an independent Azure job runner, and available optional agents automatically. Basic traffic actions remain anonymous; protected operations require an approved operator.
 
 Start with the [Control Center guide](../../docs/LAB-CONTROL-CENTER.md) for the application overview, screenshot, and scenario mapping. This page is the technical reference for configuration, local development, deployment, and runtime limits. The shared environment strip reuses existing context/catalog calls; it does not perform background model requests. Guide and Related Scenarios links open repository documentation without executing actions.
 
+## Customer Usage Journey
+
+`/customer/` is a separate customer-facing experience hosted by the dedicated customer App Service and exported to `appi-<prefix>-<suffix>-customer`. That workspace-based Application Insights component shares the lab's existing App Insights Log Analytics workspace but gives customer Live Metrics, requests, dependencies, failures, Transaction Search, and usage views their own resource scope. It keeps operator activity out of the product funnel while preserving browser-to-server W3C correlation. The six-step journey emits page views and business events for home, catalog, product selection, cart, checkout, and purchase completion, with optional support-agent detours and deterministic payment decline.
+
+All users, sessions, products, orders, segments, and A/B variants are synthetic. The browser calls `setAuthenticatedUserContext` with a validated `demo-user-*` identifier so the native Users experience can correlate repeat browser contexts without recording a real identity. Prompt/completion content, request/response headers, and payment details are not collected.
+
+Generate a realistic mix of completed, abandoned, declined, support-assisted, and repeat journeys:
+
+```powershell
+./scripts/generate-usage-traffic.ps1 `
+  -BaseUrl https://app-amlab-<suffix>.azurewebsites.net `
+  -Users 24 `
+  -RepeatUsers 6
+```
+
+The generator uses isolated Chromium contexts and drives the actual customer UI; it does not post fabricated telemetry directly. In a deployed lab, **Lab Operations → Generate Customer Traffic** runs it through the approval-gated job with bounded user, concurrency, and repeat-session parameters. Install the existing browser-test dependencies first for local use if needed with `npm ci --prefix workloads\webapp` and `npx --prefix workloads\webapp playwright install chromium`. Application Insights ingestion and Usage aggregation can take several minutes.
+
 ## Lab Operations
 
-The [Lab Operations reference](LAB-OPERATIONS.md) covers eight scripts, including cost-aware Start/Stop controls and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
+The [Lab Operations reference](LAB-OPERATIONS.md) covers ten scripts, including cost-aware Start/Stop controls, bounded customer traffic, the isolated customer slot-failure scenario, and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, including Node.js and Chromium, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
 
 ## Infrastructure Health
 
@@ -19,6 +36,8 @@ The tab includes only `Microsoft.Compute/virtualMachines`, `Microsoft.Compute/vi
 The normal deployment bootstrap discovers the central workspace, configures single-tenant sign-in, grants the app **Reader** on the lab resource group and **Log Analytics Reader** on its workspaces, and enables health after setup succeeds. This works without AI or SRE stages. The deploying user becomes the default operator; automation supplies `ConsoleOperatorObjectIds` or Terraform's `console_operator_object_ids` as deployment inputs.
 
 The caller needs role-assignment and app-configuration permissions, plus permission to manage the sign-in registration under the tenant's policy. A setup failure stops deployment. Allow Azure RBAC and telemetry propagation before treating missing data as a workload fault. The existing [health access helper](../../scripts/setup-webapp-health-access.ps1) remains available for targeted administrative repair; it is not required after a successful normal deployment.
+
+Health Model requests explicitly use same-origin referrers so authenticated reports pass App Service's CSRF checks. The site's default `no-referrer` policy remains unchanged for external requests.
 
 The shared backend identity can read metadata across this lab and logs in the assigned workspaces. The API fixes the scope and returns only aggregates; this is not delegated browser-user access. Disabling `LabConsole__Health__Enabled` stops future queries but does not revoke existing roles.
 
@@ -37,7 +56,7 @@ For local access, use the existing config helper with `-EnableInfrastructureHeal
 
 The UI checks once on first opening and offers manual refresh. A per-instance semaphore coalesces concurrent checks; snapshots are cached for 60 seconds and top-level failures for 15 seconds. The endpoint allows 30 requests per minute per app instance. One check is bounded by 45 seconds, at most 10 pages / 500 resources per ARM list, and at most three concurrent fixed telemetry queries against the central workspace. Each Logs query has a 15-second server timeout, a one-hour upper time range, a 500-row cap, and at most one SDK retry. Pagination cannot change the ARM host or scoped path; redirects are disabled. No background queries or model calls are scheduled. Usual Azure Monitor data/query charges and workspace policies still apply.
 
-Snapshot age and failed refreshes remain visible. Platform reports older than 30 minutes are unknown. Missing tables are not created; missing or partial queries are discarded for that signal. VM scale sets use platform availability only; other supporting resource types and out-of-group resources such as AKS-managed infrastructure are excluded. This is not the preview Azure Monitor Health Model or an autonomous remediation engine.
+Snapshot age and failed refreshes remain visible. Platform reports older than 30 minutes are unknown. Missing tables are not created; missing or partial queries are discarded for that signal. VM scale sets use platform availability only; other supporting resource types and out-of-group resources such as AKS-managed infrastructure are excluded. This is not the Azure Monitor Health Model or an autonomous remediation engine.
 
 The shared **Web app health** header independently probes `/healthz` on initial page load and each accepted Infra Health refresh. The probe bypasses the browser cache, rejects redirects, and times out after 10 seconds. It never contributes to traffic counters, latency charts, or request history, but the server can still record the HTTP request in telemetry. Manual health actions continue to update both the header and traffic results. Clearing traffic preserves the last header result; request sequencing prevents an older response from overwriting a newer check. These probes do not poll in the background or depend on Azure operator access.
 
@@ -71,11 +90,20 @@ For local execution, log into the intended lab tenant with Azure CLI, then set `
 - Cost is unavailable by default. Optional `LabConsole:Foundry:Pricing:<reported-model>:InputUsdPerMillion` and `OutputUsdPerMillion` decimal settings enable an estimated USD cost. These are operator-supplied rates, not a live pricing feed, and ignore cached-input discounts. Reconcile estimates against Cost Management.
 - The existing Application Insights SDK records HTTP requests/dependencies. Known agent runs also emit a `GenAI` dependency named `invoke_agent`, with `gen_ai.agent.name`, `gen_ai.response.model`, `run.id`, and available token counts in custom dimensions. Successful tasks emit `AgentPlaygroundCompleted` with numerical usage metrics. No prompt or response body is included in these custom records. Sampling and ingestion delay still apply; existing workbook filters may need to include `source=web-console`.
 
+### Application Insights agent investigation
+
+The deterministic troubleshooting catalog has eleven broken/fixed scenarios: slow tool, wrong tool, partial state-changing workflow failure, retry amplification, safe dependency fallback, context explosion, multi-agent handoff, model regression, broken trace propagation, model throttling, and parallel fan-out. These calls do not invoke a billable model. They emit synthetic request, `GenAI`, `OpenAI`, `AgentHandoff`, and `AgentTool` telemetry with separate technical/task/performance/trace outcomes, latency budgets, retries, tokens, versions, cohort, and semantic routing evidence.
+
+The browser Application Insights SDK initializes only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is configured. It uses W3C correlation for same-origin API calls and records page views, browser exceptions, dependencies, and a random session-storage-only synthetic session ID. Cookies and request/response header capture are disabled. Prompt, completion, tool payload, and response body content is never added by this feature. If telemetry configuration is absent or invalid, the UI remains functional and does not report a false setup success.
+
+`GET /api/agent-task-availability` runs the fixed multi-agent handoff profile for the standard availability test. It is anonymous by design, deterministic, rate-limited, metadata-only, and never calls Foundry. Use the `qp-<prefix>-appinsights` query pack and **Application Insights — End-to-End Agent Investigation** workbook to compare broken/fixed outcomes and trace quality. See [Scenario 69](../../docs/DEMO-SCENARIOS.md#s69).
+
 ## Interactions
 
 | Control | Endpoint | Result |
 |---|---|---|
 | Check Health | `GET /healthz` | Web app health and browser round-trip latency, not whole-lab health |
+| Agent task availability | `GET /api/agent-task-availability` | Deterministic fixed customer-function trace used by the multi-region availability test |
 | Slow Request | `GET /api/slow` | A deliberately delayed response, approximately 1.5-3 seconds |
 | Trigger Error | `GET /api/explode` | Intentional HTTP 500 and exception telemetry |
 | Test Dependency | `GET /api/dep` | An outbound HTTPS dependency |

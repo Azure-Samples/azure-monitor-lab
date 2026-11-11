@@ -35,6 +35,7 @@ For workshop planning and customer expectation-setting, use:
 - [STAGE-E-OPTIONAL-ADVANCED.md](STAGE-E-OPTIONAL-ADVANCED.md)
 - [STAGE-AI.md](STAGE-AI.md)
 - [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md)
+- [STAGE-HEALTH-MODEL-DEMO.md](STAGE-HEALTH-MODEL-DEMO.md) - optional `enable_stage_health_model_demo`, requiring stages A, B, C and E.
 
 ## 3) Stage model (same as Bicep)
 
@@ -97,6 +98,7 @@ This repo ships a working staged Terraform scaffold at `terraform/` and pre-comp
 | `enable_stage_e` | `infra/stages/40-optional-advanced.json` and, when Sentinel is enabled, `infra/stages/41-sentinel-content.json` |
 | `enable_stage_ai` | `infra/stages/50-ai.json` |
 | `enable_stage_sre_agent` | `infra/stages/60-sre-agent.json` |
+| `enable_slot_failure_scenario` | Upgrades Stage B App Service to S1, provisions the `broken` slot, and grants Stage SRE Agent bounded rollback access |
 
 Each toggle gates its own `azapi_resource "Microsoft.Resources/deployments@2022-09-01"` block. Disabling a flag removes its deployment record, not the nested Azure resources. Console and SRE completion also follow explicit Terraform selections; they do not require matching flags in a local central config.
 
@@ -111,6 +113,12 @@ Folder layout:
 ### Regenerating stage templates from Bicep
 
 If you change anything under `infra/stages/*.bicep`, recompile the JSON templates that Terraform consumes:
+
+Use the pinned Bicep version `0.37.4` and preserve LF line endings in embedded
+KQL/workbook inputs, as specified by `.gitattributes`. `loadTextContent` embeds
+those bytes in ARM JSON, so stale CRLF working copies can produce template drift
+even when query behavior is unchanged. After regeneration, run
+`./scripts/tests/compiled-templates.Tests.ps1` before committing.
 
 ```powershell
 az bicep build --file infra/stages/00-foundation.bicep        --outfile infra/stages/00-foundation.json
@@ -141,6 +149,8 @@ The shipped files already contain the staged wiring described above. Open them a
 ### Step 2 - Set inputs in `terraform/stages.tfvars`
 
 **Recommended:** bootstrap from the central `lab.config.json` instead of hand-editing this file. From the repo root:
+
+Fill in `basicConfiguration` for your subscription and customize `advancedConfiguration.stageToggles` as needed. Legacy flat configs remain supported; see [config layout](REFERENCE.md#config-layout-and-compatibility).
 
 ```powershell
 Copy-Item lab.config.json.example lab.config.json
@@ -178,7 +188,8 @@ enable_stage_sre_agent = false
 Terraform looks the RG up via data source rather than creating it, so `terraform destroy` will not nuke it. Create it once (idempotent - safe to re-run):
 
 ```powershell
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = $config.subscriptionId.ToString()
 $tenant = $config.tenantId.ToString()
 $rg = $config.resourceGroup
@@ -217,11 +228,13 @@ If your shell reports "Too many command line arguments", retype the command manu
 
 ### Step 6 - Enable Stage B, then C, then D, then E
 
-Flip one stage flag at a time in `stages.tfvars` and rerun plan/apply. Stage B adds both its ARM deployment and `terraform_data.console_ready`. This completion hook publishes the app and AKS workloads and automatically provisions console sign-in, health permissions, the registry/image/job, and selected agent integrations. Do not run another post-deployment command after a successful apply.
+Flip one stage flag at a time in `stages.tfvars` and rerun plan/apply. Stage B adds its ARM deployment, `terraform_data.network_watcher`, and `terraform_data.console_ready`. Before workloads deploy, the prerequisite hook verifies the CLI subscription against the selected subscription and provider tenant and creates only a missing shared group/watcher. Existing shared resources remain unchanged and are not deleted by `terraform destroy`. The completion hook publishes the app and AKS workloads and automatically provisions console sign-in, health permissions, the registry/image/job, and selected agent integrations. Do not run another post-deployment command after a successful apply.
+
+The Terraform apply approval includes missing Network Watcher creation; the hook does not prompt again. If the shared watcher is deleted outside Terraform after that hook has succeeded, restore it with `terraform -chdir=terraform apply -var-file stages.tfvars '-replace=terraform_data.network_watcher[0]'` before retrying workloads.
 
 The machine running apply needs PowerShell 7, Azure CLI signed into the selected subscription, the .NET 8 SDK, and the lab workload tools. The deployer needs Azure role-definition/assignment and Entra registration permissions. Optional AI/SRE packaging also needs Python/npm/tar. For a service-principal deployment, set `console_operator_object_ids` to approved tenant user object IDs. See [console prerequisites](../workloads/webapp/LAB-OPERATIONS.md#prerequisites).
 
-Changes to relevant stages or source files rerun initialization. Terraform passes Stage E and SRE selections explicitly, including false, so stale central config cannot enable or skip that completion work. A failed completion hook fails apply, so incomplete setup is not reported as deployment success. The hook has no destroy-time provisioner: the registry/job and other nested resources follow the lab's existing resource-group cleanup model.
+Changes to relevant stages or source files rerun initialization. Terraform passes Stage E, SRE, and Fabric selections explicitly, including false, so stale central config cannot enable or skip that completion work. Completion waits for the selected Fabric capacity even when Stage E is disabled. A failed completion hook fails apply, so incomplete setup is not reported as deployment success. The hook has no destroy-time provisioner: the registry/job and other nested resources follow the lab's existing resource-group cleanup model.
 
 ### Step 7 - Enable Stage AI (optional)
 
@@ -277,7 +290,35 @@ SRE-only completion requires PowerShell 7 and Azure CLI signed into the selected
 
 Follow [Stage SRE Agent](STAGE-SRE-AGENT.md) for optional portal investigators and Review-mode response plans. Those are separate scenarios, not prerequisites for the Control Center's MCP questions and approved operations.
 
-### Step 9 - Security stage validation
+### Step 9 - Enable Stage Fabric (optional)
+
+Stage Fabric deploys an F2 capacity pinned to `swedencentral`. It is off by default because indicative PAYG retail pricing while active is about $0.36/hour, $8.64/day, or $262.80/month, plus possible OneLake storage and other usage charges.
+
+Set the Fabric flag and a tenant user UPN in `stages.tfvars`:
+
+```hcl
+enable_stage_fabric = true
+fabric_admin_email = "<FABRIC-ADMIN-UPN>"
+```
+
+Then apply from the repository root:
+
+```powershell
+terraform -chdir=terraform plan -var-file stages.tfvars
+terraform -chdir=terraform apply -var-file stages.tfvars
+```
+
+Apply automatically runs Fabric setup after the capacity is ready, through console completion when Stage B is enabled or a standalone hook otherwise. Fabric script changes rerun completion. Workspace monitoring, Operations Agent authoring, tenant settings, and licensing still require the guided manual steps; a configured capacity is not proof of working ingestion.
+
+The setup script attempts to create the Event Hubs connection and publish the complete topology. If the tenant rejects public API connection creation, create only the connection once in Fabric and rerun `./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg`. Follow the [Fabric post-deploy checklist](STAGE-FABRIC.md#after-deployps1-checklist), then suspend F2 when the demo is idle:
+
+```powershell
+./scripts/suspend-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
+
+See [STAGE-FABRIC.md](STAGE-FABRIC.md) for permissions, setup, and demo flow.
+
+### Step 10 - Security stage validation
 
 After Stage D, verify Activity Log ingestion:
 
@@ -296,7 +337,7 @@ Migrate in this order:
 2. Workload resources (VM, AKS, App Service, Grafana)
 3. Alerting resources (action groups, metric/log/activity alerts)
 4. Security posture query alerts and RBAC
-5. Optional preview resources (health model, SLI, Sentinel)
+5. Optional resources (health model, SLI preview, Sentinel)
 
 Use `azapi_resource` for preview/control-plane resources not fully covered in `azurerm`.
 
@@ -325,10 +366,11 @@ The resource group is BYO (Terraform does not own it via data source), so `terra
 
 ### Option A - run the teardown wrapper (recommended)
 
-The wrapper cleans up Azure dependencies before deleting the resource group. This is the same cleanup path used after one-shot or staged Bicep deployments.
+The wrapper cleans up Azure dependencies before deleting the resource group. This is the same cleanup path used after one-shot or staged Bicep deployments. Normal Azure soft-delete recovery is preserved, including with `-Yes`. Add `-PurgeSoftDeletedResources` only when you want **irreversible deletion** of the lab's Key Vault secrets, Foundry/Cognitive Services account data and Log Analytics logs to release reserved names. See [permanent cleanup safeguards and permissions](../scripts/README.md#permanent-cleanup-for-same-name-redeployment).
 
 ```powershell
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = $config.subscriptionId.ToString()
 $rg = $config.resourceGroup
 az account set --subscription $sub
@@ -357,32 +399,11 @@ az group delete --subscription $sub -n $rg --yes --no-wait
 
 A few resources are subscription-scoped or live in `NetworkWatcherRG` and survive RG deletion.
 
-1. Soft-deleted Log Analytics workspaces (14-day grace period; names stay reserved until purged or expired):
+1. Log Analytics workspaces, Key Vaults and Foundry/Cognitive Services accounts can retain soft-deleted data and reserved names after either option. Explicitly run `./scripts/teardown.ps1 -ResourceGroup $rg -PurgeSoftDeletedResources` to permanently clean up only the exact lab and approved auxiliary groups, including after an earlier group deletion. Workspace cleanup recovers the workspace first, temporarily recreating its original group if needed, then permanently deletes it and includes that group in final deletion.
 
-```powershell
-# Keep the filter in PowerShell. Windows Azure CLI can strip quoted JMESPath
-# expressions before az receives them, producing "] was unexpected at this time."
-$deletedLaw = az monitor log-analytics workspace list-deleted-workspaces --subscription $sub -o json | ConvertFrom-Json
-$deletedLaw | Where-Object { $_.name -like '*amlab*' } | Format-Table
-# Permanent purge if needed:
-# az rest --method delete --url "https://management.azure.com/subscriptions/$sub/providers/Microsoft.OperationalInsights/locations/northeurope/deletedWorkspaces/<name>?api-version=2023-09-01"
-```
+2. Application Insights components use ordinary group deletion; their workspace-backed data follows the Log Analytics cleanup above. No separate component purge command is required here.
 
-2. Soft-deleted Application Insights components (also 14-day grace):
-
-```powershell
-$deletedAppInsights = az monitor app-insights component list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedAppInsights | Where-Object { $_.name -like '*amlab*' } | Format-Table
-```
-
-3. Soft-deleted Key Vault (7-day retention, `enablePurgeProtection: null` so it can be purged). Key Vault names are deterministic (`kv-${namePrefix}-${take(suffix,5)}` from `resourceGroup().id`), so redeploying to the **same RG name** before the vault is purged fails with `VaultAlreadyExists`:
-
-```powershell
-$deletedVaults = az keyvault list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedVaults | Where-Object { $_.name -like 'kv-amlab-*' } | Format-Table name, @{n='location';e={$_.properties.location}}
-# Purge before redeploying to the same RG name:
-# az keyvault purge --name <vaultName> --subscription $sub
-```
+3. Key Vault purge protection cannot be bypassed. Wait for retention expiry or omit `-PurgeSoftDeletedResources` to retain normal recovery. Wait for asynchronous resource-group deletion and normal service/DNS propagation before attempting same-name redeployment.
 
 4. NSG/VNet flow logs in `NetworkWatcherRG` (Stage B creates them outside the lab RG):
 

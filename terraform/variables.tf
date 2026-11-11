@@ -7,6 +7,10 @@ variable "resource_group_name" {
 }
 
 variable "location" { type = string }
+variable "app_service_location" {
+  type    = string
+  default = "westeurope"
+}
 variable "alert_email" { type = string }
 variable "vm_admin_password" {
   type      = string
@@ -25,7 +29,7 @@ variable "owner_tag" {
 
 variable "daily_cap_gb" {
   type    = number
-  default = 1
+  default = 3
 }
 
 variable "enable_law_replication" {
@@ -62,17 +66,22 @@ variable "enable_vm_otel_metrics" {
 
 variable "vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_EC2as_v5"
 }
 
 variable "aks_node_vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_EC4as_v5"
+}
+
+variable "vmss_size" {
+  type    = string
+  default = "Standard_EC2as_v5"
 }
 
 variable "aks_node_count" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "grafana_admin_object_id" {
@@ -122,10 +131,33 @@ variable "enable_stage_ai" {
   default = false
 }
 
+variable "enable_stage_fabric" {
+  type        = bool
+  default     = false
+  description = "Deploy the optional Microsoft Fabric F2 capacity in swedencentral. Indicative PAYG retail cost while active: about $0.36/hour, $8.64/day, or $262.80/month."
+}
+
+variable "fabric_admin_email" {
+  type        = string
+  default     = ""
+  description = "Microsoft Entra user UPN that administers the Fabric capacity. Must be a user in the deployment tenant."
+
+  validation {
+    condition     = !var.enable_stage_fabric || can(regex("^[^@\\s]+@[^@\\s]+$", var.fabric_admin_email))
+    error_message = "fabric_admin_email must be a Microsoft Entra user UPN in the deployment tenant when enable_stage_fabric is true."
+  }
+}
+
 variable "enable_stage_sre_agent" {
   type        = bool
   default     = false
   description = "Deploy the optional preview Azure SRE Agent stage. The agent is hard pinned to swedencentral and can incur billable usage."
+}
+
+variable "enable_slot_failure_scenario" {
+  type        = bool
+  default     = false
+  description = "Provision an S1 App Service plan and a preloaded broken slot for the opt-in SRE rollback scenario."
 }
 
 variable "ai_location" {

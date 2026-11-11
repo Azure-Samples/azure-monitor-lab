@@ -1,17 +1,32 @@
 $ErrorActionPreference = 'Stop'
 $helper = Join-Path $PSScriptRoot '../../../scripts/write-webapp-console-config.ps1'
 $output = Join-Path ([IO.Path]::GetTempPath()) "console-config-$([guid]::NewGuid().ToString('N')).json"
-$testState = @{ EmptyInventory = $false; UnsafeGrafana = $false; FailInventory = $false; WorkbookName = 'Azure Monitor Lab - Health Dashboard' }
+$testState = @{ EmptyInventory = $false; UnsafeGrafana = $false; FailInventory = $false; WorkbookName = 'Azure Monitor Lab - Health Dashboard'; CustomerDependencies = $false; WrongWorker = $false; WrongModel = $false }
+$testState.ExtraAppInsights = $false
+$testState.ReverseInventory = $false
+$testState.MissingAppInsights = $false
+$testState.DuplicateAppInsights = $false
+$testState.AmbiguousApps = $false
 $resourceBase = '/subscriptions/test-sub/resourceGroups/test-rg/providers'
 
 function az {
   $global:LASTEXITCODE = 0
   if ($args -notcontains '--subscription' -or $args -notcontains 'test-sub') { throw 'Explicit subscription is missing.' }
+  if ($args[0] -eq 'webapp' -and $args[1] -eq 'show' -and -not $testState.CustomerDependencies) { return '' }
+  if ($testState.CustomerDependencies) {
+    if ($args[0] -eq 'deployment' -and $args[1] -eq 'group' -and $args[2] -eq 'show') {
+      return @{ enabled = $true; workerName = 'func-test-orders'; workerId = $(if($testState.WrongWorker) {'/subscriptions/other/providers/Microsoft.Web/sites/other-worker'} else {"$resourceBase/Microsoft.Web/sites/func-test-orders"}) } | ConvertTo-Json
+    }
+    if ($args[0] -eq 'webapp' -and $args[1] -eq 'show') { return 'app-lab-customer.azurewebsites.net' }
+    if ($args[0] -eq 'rest' -and $args -contains 'get') {
+      return $(if($testState.WrongModel) {"$resourceBase/Microsoft.Web/sites/unrelated-app"} else {"$resourceBase/Microsoft.Web/sites/app-lab-customer"})
+    }
+  }
   if ($args[0] -ne 'resource' -or $args[1] -notin @('list', 'show')) { throw 'Only read operations are allowed.' }
   if ($args[1] -eq 'list') {
     if ($testState.FailInventory) { $global:LASTEXITCODE = 1; return '' }
     if ($testState.EmptyInventory) { return '[]' }
-    return @(
+    $resources = @(
       @{ type = 'microsoft.insights/components'; name = 'appi-lab'; id = "$resourceBase/Microsoft.Insights/components/appi-lab" },
       @{ type = 'Microsoft.OperationalInsights/workspaces'; name = 'law-lab-central'; id = "$resourceBase/Microsoft.OperationalInsights/workspaces/law-lab-central" },
       @{ type = 'Microsoft.OperationalInsights/workspaces'; name = 'law-lab-appinsights'; id = "$resourceBase/Microsoft.OperationalInsights/workspaces/law-lab-appinsights" },
@@ -21,9 +36,30 @@ function az {
       @{ type = 'microsoft.app/agents'; name = 'sre-lab'; id = "$resourceBase/Microsoft.App/agents/sre-lab" },
       @{ type = 'Microsoft.CognitiveServices/accounts/projects'; name = 'foundry/project'; id = "$resourceBase/Microsoft.CognitiveServices/accounts/foundry/projects/project" },
       @{ type = 'Microsoft.Web/sites'; name = 'app-lab'; id = "$resourceBase/Microsoft.Web/sites/app-lab" }
-    ) | ConvertTo-Json
+      if ($testState.CustomerDependencies) {
+        @{ type = 'Microsoft.Web/sites'; name = 'app-lab-customer'; id = "$resourceBase/Microsoft.Web/sites/app-lab-customer" }
+        @{ type = 'Microsoft.Web/sites'; name = 'func-test-orders'; id = "$resourceBase/Microsoft.Web/sites/func-test-orders" }
+        @{ type = 'Microsoft.CloudHealth/healthmodels'; name = 'hm-amlab-customer'; id = "$resourceBase/Microsoft.CloudHealth/healthmodels/hm-amlab-customer" }
+      }
+    )
+    if ($testState.MissingAppInsights) { $resources = @($resources | Where-Object name -cne 'appi-lab') }
+    if ($testState.DuplicateAppInsights) {
+      $resources += @{ type = 'Microsoft.Insights/components'; name = 'appi-lab'; id = "$resourceBase/Microsoft.Insights/components/appi-lab" }
+    }
+    if ($testState.ExtraAppInsights) {
+      foreach ($name in @('appi-a', 'appi-cafe-abcdefghijklm', 'appi-legacy-customer')) {
+        $resources += @{ type = 'Microsoft.Insights/components'; name = $name; id = "$resourceBase/Microsoft.Insights/components/$name" }
+      }
+      $resources += @{ type = 'Microsoft.Insights/components'; name = 'custom-telemetry'; id = "$resourceBase/Microsoft.Insights/components/custom-telemetry"; tags = @{ 'amlab-component' = 'customer-web-app' } }
+    }
+    if ($testState.AmbiguousApps) {
+      $resources += @{ type = 'Microsoft.Web/sites'; name = 'app-other'; id = "$resourceBase/Microsoft.Web/sites/app-other" }
+    }
+    if ($testState.ReverseInventory) { [array]::Reverse($resources) }
+    return ConvertTo-Json -InputObject $resources -Depth 5
   }
   if ($args -contains 'properties.WorkspaceResourceId') {
+    if ($args -notcontains "$resourceBase/Microsoft.Insights/components/appi-lab") { throw 'Wrong Application Insights workspace lookup.' }
     if ($testState.UnsafeGrafana) { return '/subscriptions/other-sub/resourceGroups/other-rg/providers/Microsoft.OperationalInsights/workspaces/other-law' }
     return "$resourceBase/Microsoft.OperationalInsights/workspaces/law-lab-appinsights"
   }
@@ -54,6 +90,34 @@ try {
   if ($config.LabConsole.Operations.SubscriptionId -ne 'test-sub') { throw 'Operations subscription context missing.' }
   if ($config.LabConsole.Health.CentralWorkspaceResourceId -ne "$resourceBase/Microsoft.OperationalInsights/workspaces/law-lab-central") { throw 'Central health workspace missing.' }
   if ($config.LabConsole.Health.AppInsightsWorkspaceResourceId -ne "$resourceBase/Microsoft.OperationalInsights/workspaces/law-lab-appinsights") { throw 'Application health workspace association missing.' }
+  $testState.ExtraAppInsights = $true
+  foreach ($reverse in @($false, $true)) {
+    $testState.ReverseInventory = $reverse
+    foreach ($appArguments in @(@{ WebAppName = 'app-lab' }, @{})) {
+      & $helper -SubscriptionId test-sub -ResourceGroup test-rg -OutputPath $output @appArguments
+      $multi = (Get-Content -Raw $output | ConvertFrom-Json).LabConsole
+      if ($multi.Links.ApplicationInsights -cne "https://portal.azure.com/#resource$resourceBase/Microsoft.Insights/components/appi-lab/overview" -or
+          $multi.Health.AppInsightsWorkspaceResourceId -cne "$resourceBase/Microsoft.OperationalInsights/workspaces/law-lab-appinsights") {
+        throw 'Extra components or inventory order changed the explicit or automatically resolved core telemetry link/workspace.'
+      }
+    }
+  }
+  $testState.ReverseInventory = $false
+  foreach ($failure in @('MissingAppInsights', 'DuplicateAppInsights')) {
+    $testState[$failure] = $true
+    $rejected = $false
+    try { & $helper -SubscriptionId test-sub -ResourceGroup test-rg -WebAppName app-lab -OutputPath $output }
+    catch { $rejected = $_.Exception.Message -match 'not uniquely resolved' }
+    if (-not $rejected) { throw "Unresolved core telemetry was accepted: $failure" }
+    $testState[$failure] = $false
+  }
+  $rejected = $false
+  $testState.AmbiguousApps = $true
+  try { & $helper -SubscriptionId test-sub -ResourceGroup test-rg -OutputPath $output }
+  catch { $rejected = $_.Exception.Message -match 'not uniquely resolved' }
+  if (-not $rejected) { throw 'Ambiguous telemetry without an explicit Control Center was accepted.' }
+  $testState.AmbiguousApps = $false
+  $testState.ExtraAppInsights = $false
   & $helper -SubscriptionId test-sub -ResourceGroup test-rg -OutputPath $output -EnableInfrastructureHealth -TenantId test-tenant
   if (-not (Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Health.Enabled) { throw 'Explicit health opt-in ignored.' }
   if ($config.LabConsole.Sre.Enabled) { throw 'SRE execution enabled by default.' }
@@ -80,6 +144,26 @@ try {
   if ((Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Foundry.ProjectEndpoint) { throw 'Unsafe Foundry endpoint accepted.' }
   if ((Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Health.AppInsightsWorkspaceResourceId) { throw 'Out-of-scope health workspace accepted.' }
   $testState.EmptyInventory = $true
+  $testState.CustomerDependencies = $true
+  $testState.EmptyInventory = $false
+  & $helper -SubscriptionId test-sub -ResourceGroup test-rg -WebAppName app-lab -CustomerWebAppName app-lab-customer -OutputPath $output
+  $customerConfig = (Get-Content -Raw $output | ConvertFrom-Json).LabConsole
+  if ($customerConfig.Operations.CustomerWorkerName -cne 'func-test-orders' -or
+      $customerConfig.Operations.CustomerDependenciesEnabled -ne $false -or
+      $customerConfig.Links.CustomerHealthModel -notlike '*/hm-amlab-customer/overview') { throw 'Exact dependency worker/model discovery or disabled-until-bootstrap gate failed.' }
+  foreach ($failure in @('WrongWorker', 'WrongModel')) {
+    $testState[$failure] = $true
+    $rejected = $false
+    try { & $helper -SubscriptionId test-sub -ResourceGroup test-rg -WebAppName app-lab -CustomerWebAppName app-lab-customer -OutputPath $output } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Out-of-scope dependency/model target was accepted.' }
+    $testState[$failure] = $false
+  }
+  $testState.CustomerDependencies = $false
+  $testState.EmptyInventory = $true
+  $rejected = $false
+  try { & $helper -SubscriptionId test-sub -ResourceGroup test-rg -WebAppName app-lab -OutputPath $output }
+  catch { $rejected = $_.Exception.Message -match 'not uniquely (resolved|found)' }
+  if (-not $rejected) { throw 'Missing explicitly configured telemetry was accepted.' }
   & $helper -SubscriptionId test-sub -ResourceGroup test-rg -OutputPath $output
   $empty = (Get-Content -Raw $output | ConvertFrom-Json).LabConsole.Links
   if (@($empty.PSObject.Properties | Where-Object Value).Count -ne 0) { throw 'Empty resource group produced links.' }

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from azure.ai.agents import AgentsClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import AzureCliCredential
 
 # A deliberately large (>1024-token) static system prompt. Azure OpenAI prompt
 # caching only activates for prompts of 1024+ tokens with an identical leading
@@ -139,7 +139,7 @@ def main():
 
     client = AgentsClient(
         endpoint=endpoint,
-        credential=DefaultAzureCredential(exclude_managed_identity_credential=True),
+        credential=AzureCliCredential(process_timeout=60),
     )
     created = {}
     with client:

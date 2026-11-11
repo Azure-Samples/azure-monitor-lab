@@ -33,6 +33,10 @@
   service typically needs 1-24 h of traces before a recommendation appears,
   so feel free to leave it running longer (or rerun later).
 
+.PARAMETER WebAppName
+  Exact Control Center app when multiple apps exist. Defaults to the runner's
+  LAB_WEB_APP_NAME or unique discovery excluding customer and Cafe workloads.
+
 .PARAMETER Concurrency
   Number of parallel callers. Defaults to 8.
 
@@ -52,6 +56,7 @@
 [CmdletBinding()]
 param(
   [string] $ResourceGroup   = 'rg-azure-monitor-lab',
+  [string] $WebAppName = $env:LAB_WEB_APP_NAME,
   [int]    $DurationMinutes = 30,
   [int]    $Concurrency     = 8,
   [switch] $SkipPublish
@@ -75,10 +80,16 @@ if (Test-Path $targetFile) {
 
 # --- Resolve webapp ------------------------------------------------------------
 Write-Step "Resolving lab webapp in $ResourceGroup"
-$webAppName = az webapp list -g $ResourceGroup --query "[0].name" -o tsv
-if ([string]::IsNullOrWhiteSpace($webAppName)) {
-  throw "No App Service found in resource group '$ResourceGroup'."
+$apps = @(az webapp list -g $ResourceGroup -o json | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0) { throw 'Could not discover the Control Center Web App.' }
+$matches = @($apps | Where-Object {
+  $_.name -like 'app-*' -and $_.name -notmatch '-customer$|^app-cafe-[a-z0-9]{13}$' -and
+  (-not $WebAppName -or $_.name -ceq $WebAppName)
+})
+if ($matches.Count -ne 1) {
+  throw "Exactly one Control Center Web App is required in '$ResourceGroup'. Specify -WebAppName if needed."
 }
+$webAppName = $matches[0].name
 $webAppHost = az webapp show -g $ResourceGroup -n $webAppName --query defaultHostName -o tsv
 $baseUrl    = "https://$webAppHost"
 Write-Info "WebApp : $webAppName"

@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("lab-console.json", optional: true, reloadOnChange: false).AddEnvironmentVariables();
 builder.Services.AddApplicationInsightsTelemetry();
+builder.AddCustomerDependencies();
 builder.Services.AddSingleton<AgentPlayground>();
 builder.Services.AddSingleton<IAgentScenarioDelay, AgentScenarioDelay>();
 builder.Services.AddSingleton<AgentObservabilityScenarios>();
@@ -31,6 +32,7 @@ builder.Services.AddSingleton<ISreMcpClient, SreMcpClient>();
 builder.Services.AddSingleton<ISreModel, SreModel>();
 builder.Services.AddSingleton<SreAssistant>();
 builder.Services.AddSingleton<InfrastructureHealthService>();
+builder.Services.AddSingleton<HealthModelService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ILabOperationsRunner>(services => new ContainerJobOperations(
     services.GetRequiredService<IConfiguration>(), services.GetRequiredService<IHttpClientFactory>()));
@@ -80,6 +82,18 @@ builder.Services.AddRateLimiter(options =>
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("health-model-reads", limiter =>
+    {
+        limiter.PermitLimit = 30;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("health-model-reports", limiter =>
+    {
+        limiter.PermitLimit = 6;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
     options.AddFixedWindowLimiter("sre-messages", limiter =>
     {
         limiter.PermitLimit = 6;
@@ -95,6 +109,18 @@ builder.Services.AddRateLimiter(options =>
     options.AddFixedWindowLimiter("agent-tasks", limiter =>
     {
         limiter.PermitLimit = 6;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("agent-task-reads", limiter =>
+    {
+        limiter.PermitLimit = 30;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("customer-journey", limiter =>
+    {
+        limiter.PermitLimit = 60;
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
@@ -131,6 +157,32 @@ app.Use(async (context, next) =>
     });
     await next(context);
 });
+app.Use(async (context, next) =>
+{
+    if (app.Configuration.GetValue<bool>("LabConsole:ForceOutage")
+        && context.Request.Path != "/api/slot-warmup")
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.Headers.RetryAfter = "60";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Intentional deployment-slot outage.",
+            recovery = "Swap the broken slot back with production."
+        });
+        return;
+    }
+    await next(context);
+});
+app.Use(async (context, next) =>
+{
+    if (app.Configuration.GetValue<bool>("LabConsole:CustomerAppMode")
+        && context.Request.Path == "/")
+    {
+        context.Response.Redirect("/customer/");
+        return;
+    }
+    await next(context);
+});
 app.UseExceptionHandler(handler => handler.Run(async context =>
 {
     await Results.Problem("The lab request failed. Inspect its trace in Application Insights.",
@@ -141,7 +193,7 @@ app.UseStaticFiles();
 app.UseSession();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path == "/api/infra/health" || context.Request.Path.StartsWithSegments("/api/agents") || context.Request.Path.StartsWithSegments("/api/sre") || context.Request.Path.StartsWithSegments("/api/operations"))
+    if (context.Request.Path.StartsWithSegments("/api/infra/health") || context.Request.Path.StartsWithSegments("/api/healthmodels") || context.Request.Path.StartsWithSegments("/api/agents") || context.Request.Path.StartsWithSegments("/api/sre") || context.Request.Path.StartsWithSegments("/api/operations"))
     {
         var hosted = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"));
         var allowed = hosted
@@ -181,7 +233,7 @@ app.UseRateLimiter();
 
 app.MapGet("/api/console/config", (IConfiguration configuration) =>
 {
-    var links = new[] { "ApplicationInsights", "Logs", "Workbook", "Grafana" }
+    var links = new[] { "ApplicationInsights", "Logs", "Workbook", "Grafana", "CustomerApplication" }
         .ToDictionary(name => name, name =>
         {
             var value = configuration[$"LabConsole:Links:{name}"];
@@ -190,13 +242,47 @@ app.MapGet("/api/console/config", (IConfiguration configuration) =>
         });
     return Results.Json(new { links, performanceCooldownSeconds = 30 });
 });
+app.MapGet("/api/telemetry/config", (IConfiguration configuration) =>
+{
+    var connectionString = configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+    var valid = !string.IsNullOrWhiteSpace(connectionString)
+        && connectionString.Length <= 4096
+        && connectionString.Contains("InstrumentationKey=", StringComparison.OrdinalIgnoreCase);
+    return Results.Json(new
+    {
+        enabled = valid,
+        connectionString = valid ? connectionString : null,
+        serviceName = "azure-monitor-lab-console-browser",
+        serviceVersion = typeof(AgentAccess).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown",
+        contentRecordingEnabled = false
+    });
+});
 app.MapGet("/healthz", () => Results.Text("OK"));
+app.MapCustomerDependencies();
+app.MapGet("/api/slot-warmup", () => Results.Json(new
+{
+    ready = true,
+    deploymentId = typeof(AgentAccess).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown"
+}));
+app.MapGet("/api/agent-task-availability", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
+    scenarios.RunAvailabilityAsync(cancellationToken))
+    .RequireRateLimiting("agent-task-reads");
+app.MapPost("/api/customer/support", (AgentObservabilityScenarios scenarios, CancellationToken cancellationToken) =>
+    scenarios.RunAvailabilityAsync(cancellationToken))
+    .RequireRateLimiting("customer-journey");
 app.MapGet("/api/console/version", () => Results.Json(new
 {
     deploymentId = typeof(AgentAccess).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown"
 }));
 app.MapGet("/api/infra/health", (InfrastructureHealthService service, CancellationToken cancellationToken) => service.CheckAsync(cancellationToken))
     .RequireRateLimiting("infrastructure-health");
+app.MapGet("/api/healthmodels", (HealthModelService service) => Results.Json(new { models = service.Targets() }))
+    .RequireRateLimiting("health-model-reads");
+app.MapGet("/api/healthmodels/{model}", (string model, HealthModelService service, CancellationToken cancellationToken) => service.ReadAsync(model, cancellationToken))
+    .RequireRateLimiting("health-model-reads");
+app.MapPost("/api/healthmodels/{model}/reports", (string model, HealthReportRequest request, HealthModelService service, CancellationToken cancellationToken) =>
+    service.ReportAsync(model, request, cancellationToken)).RequireRateLimiting("health-model-reports");
 
 app.MapGet("/api/operations/catalog", (HttpContext context, LabOperationsService service, CancellationToken cancellationToken) =>
     service.CatalogAsync((string)context.Items["OperationsOwner"]!, cancellationToken)).RequireRateLimiting("lab-operation-reads");
@@ -311,6 +397,7 @@ app.MapGet("/api/checkout", (HttpRequest request, TelemetryClient tc) =>
 // Triggered by scripts/trigger-code-optimization.ps1.
 app.MapGet("/api/inefficient", RunInefficient);
 app.MapPost("/api/console/performance", RunInefficient).RequireRateLimiting("console-performance");
+app.MapFallbackToFile("/customer/{*path:nonfile}", "customer/index.html");
 
 app.Run();
 

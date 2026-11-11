@@ -1,0 +1,181 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "6219502812614479194"
+    }
+  },
+  "parameters": {
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "amlab",
+      "minLength": 3,
+      "maxLength": 8,
+      "metadata": {
+        "description": "Short prefix used to build resource names."
+      }
+    },
+    "fabricAdminEmail": {
+      "type": "string",
+      "metadata": {
+        "description": "Administrator UPN for the Fabric capacity."
+      }
+    },
+    "ownerTag": {
+      "type": "string",
+      "defaultValue": "demo-lab",
+      "metadata": {
+        "description": "Tag every resource with this owner."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[uniqueString(subscription().subscriptionId, resourceGroup().id)]",
+    "fabricCapacityName": "[toLower(format('fab{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8)))]",
+    "fabricLocation": "swedencentral",
+    "commonTags": {
+      "owner": "[parameters('ownerTag')]",
+      "purpose": "azure-monitor-demo-lab",
+      "costCenter": "demo",
+      "costWarning": "F2-about-USD-0.36-per-hour-while-active"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "fabric-capacity",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('fabricCapacityName')]"
+          },
+          "location": {
+            "value": "[variables('fabricLocation')]"
+          },
+          "administrators": {
+            "value": [
+              "[parameters('fabricAdminEmail')]"
+            ]
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "3083415661103607337"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 63,
+              "metadata": {
+                "description": "Globally unique Microsoft Fabric capacity name."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "swedencentral",
+              "metadata": {
+                "description": "Fabric capacity region. The lab pins this to swedencentral."
+              }
+            },
+            "skuName": {
+              "type": "string",
+              "defaultValue": "F2",
+              "allowedValues": [
+                "F2"
+              ],
+              "metadata": {
+                "description": "Fabric capacity SKU. F2 is the smallest paid Fabric capacity."
+              }
+            },
+            "administrators": {
+              "type": "array",
+              "minLength": 1,
+              "metadata": {
+                "description": "User principal names that administer the Fabric capacity."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Fabric/capacities",
+              "apiVersion": "2023-11-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('skuName')]",
+                "tier": "Fabric"
+              },
+              "properties": {
+                "administration": {
+                  "members": "[parameters('administrators')]"
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Fabric/capacities', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "location": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Fabric/capacities', parameters('name')), '2023-11-01', 'full').location]"
+            },
+            "sku": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Fabric/capacities', parameters('name')), '2023-11-01', 'full').sku.name]"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "fabricCapacityId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.id.value]"
+    },
+    "fabricCapacityName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.name.value]"
+    },
+    "fabricCapacityLocation": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.location.value]"
+    },
+    "fabricCapacitySku": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.sku.value]"
+    }
+  }
+}

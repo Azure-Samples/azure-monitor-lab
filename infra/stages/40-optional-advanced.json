@@ -5,10 +5,14 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "16636375011322369274"
+      "templateHash": "17366061401856744433"
     }
   },
   "parameters": {
+    "enableCustomerDependencies": {
+      "type": "bool",
+      "defaultValue": false
+    },
     "location": {
       "type": "string",
       "defaultValue": "[resourceGroup().location]",
@@ -73,6 +77,13 @@
       "metadata": {
         "description": "Fold the AI (Foundry) workload into the workload health model as a fourth \"AI\" tier. Requires the AI stage (50-ai) to have run."
       }
+    },
+    "enableFabric": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Fold the Microsoft Fabric F2 capacity into the workload health model. Requires Stage Fabric (60-fabric) to have run."
+      }
     }
   },
   "variables": {
@@ -84,7 +95,7 @@
     "actionGroupName": "[format('ag-{0}-email', parameters('namePrefix'))]",
     "storageAccountName": "[format('st{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8))]",
     "keyVaultName": "[format('kv-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
-    "appInsightsName": "[format('appi-{0}', parameters('namePrefix'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "webAppName": "[format('app-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 5))]",
     "vmssName": "[format('vmss-{0}', parameters('namePrefix'))]",
     "linuxVmName": "[format('vm-{0}-lin', parameters('namePrefix'))]",
@@ -633,6 +644,180 @@
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
+      "name": "agent-task-availability-test",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('test-{0}-agent-task', parameters('namePrefix'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "appInsightsId": {
+            "value": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+          },
+          "testUrl": {
+            "value": "[format('https://{0}/api/agent-task-availability', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName)]"
+          },
+          "actionGroupId": {
+            "value": "[resourceId('Microsoft.Insights/actionGroups', variables('actionGroupName'))]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "2744902256941642038"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the availability test."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region (must match App Insights region)."
+              }
+            },
+            "appInsightsId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Application Insights instance."
+              }
+            },
+            "testUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "URL to test (e.g. https://app-<namePrefix>-<suffix>.azurewebsites.net/)."
+              }
+            },
+            "actionGroupId": {
+              "type": "string",
+              "metadata": {
+                "description": "Action Group resource ID for failure alerts."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "variables": {
+            "testLocations": [
+              {
+                "Id": "us-tx-sn1-azr"
+              },
+              {
+                "Id": "us-il-ch1-azr"
+              },
+              {
+                "Id": "emea-gb-db3-azr"
+              },
+              {
+                "Id": "emea-nl-ams-azr"
+              },
+              {
+                "Id": "apac-sg-sin-azr"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/webtests",
+              "apiVersion": "2022-06-15",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(parameters('tags'), createObject(format('hidden-link:{0}', parameters('appInsightsId')), 'Resource'))]",
+              "kind": "standard",
+              "properties": {
+                "SyntheticMonitorId": "[parameters('name')]",
+                "Name": "[parameters('name')]",
+                "Description": "Standard URL ping test for the demo App Service — tests from 5 global locations every 5 min.",
+                "Enabled": true,
+                "Frequency": 300,
+                "Timeout": 120,
+                "Kind": "standard",
+                "RetryEnabled": true,
+                "Locations": "[variables('testLocations')]",
+                "Request": {
+                  "RequestUrl": "[parameters('testUrl')]",
+                  "HttpVerb": "GET",
+                  "ParseDependentRequests": false,
+                  "FollowRedirects": true
+                },
+                "ValidationRules": {
+                  "ExpectedHttpStatusCode": 200,
+                  "SSLCheck": true,
+                  "SSLCertRemainingLifetimeCheck": 7
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-{0}', parameters('name'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "description": "[format('Availability test \"{0}\" failing from 2+ global locations.', parameters('name'))]",
+                "severity": 1,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('appInsightsId')]",
+                  "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria",
+                  "webTestId": "[resourceId('Microsoft.Insights/webtests', parameters('name'))]",
+                  "componentId": "[parameters('appInsightsId')]",
+                  "failedLocationCount": 2
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[parameters('actionGroupId')]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "testId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/webtests', parameters('name'))]"
+            },
+            "testName": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
       "name": "health-model",
       "properties": {
         "expressionEvaluationOptions": {
@@ -676,6 +861,10 @@
           "appInsightsLawId": {
             "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').WorkspaceResourceId]"
           },
+          "enableFabric": {
+            "value": "[parameters('enableFabric')]"
+          },
+          "fabricCapacityId": "[if(parameters('enableFabric'), createObject('value', resourceId('Microsoft.Fabric/capacities', toLower(format('fab{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8))))), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -687,7 +876,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "16649691923988421872"
+              "templateHash": "3951996124099318291"
             }
           },
           "parameters": {
@@ -711,7 +900,7 @@
                 "southeastasia"
               ],
               "metadata": {
-                "description": "Region for the Health Model. Must be one of the supported preview regions."
+                "description": "Region for the Health Model. Must be a region where Microsoft.CloudHealth is available."
               }
             },
             "tags": {
@@ -798,6 +987,20 @@
               "metadata": {
                 "description": "Resource ID of the App Insights backing Log Analytics workspace (per-agent AI signals). Required when enableAi = true."
               }
+            },
+            "enableFabric": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Fold Microsoft Fabric Real-Time Intelligence into this model as an optional workload tier."
+              }
+            },
+            "fabricCapacityId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the Microsoft Fabric F2 capacity. Required when enableFabric = true."
+              }
             }
           },
           "variables": {
@@ -834,7 +1037,7 @@
           "resources": [
             {
               "type": "Microsoft.CloudHealth/healthmodels",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[parameters('healthModelName')]",
               "location": "[parameters('location')]",
               "identity": {
@@ -845,7 +1048,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'systemAssigned')]",
               "properties": {
                 "displayName": "System-assigned managed identity",
@@ -862,7 +1065,7 @@
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -876,7 +1079,7 @@
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '73c42c96-874c-492b-b04d-ab87d138a893')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893')]",
-                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-01-01-preview', 'full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -885,7 +1088,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'frontend')]",
               "properties": {
                 "displayName": "Frontend",
@@ -911,7 +1114,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'compute')]",
               "properties": {
                 "displayName": "Compute fleet",
@@ -940,7 +1143,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'platform')]",
               "properties": {
                 "displayName": "Shared platform services",
@@ -965,7 +1168,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'webapp')]",
               "properties": {
                 "displayName": "App Service (webapp)",
@@ -1080,7 +1283,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'appinsights')]",
               "properties": {
                 "displayName": "Application Insights (telemetry)",
@@ -1173,7 +1376,7 @@
             {
               "condition": "[not(empty(parameters('linuxVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'linuxvm')]",
               "properties": {
                 "displayName": "Linux VM",
@@ -1266,7 +1469,7 @@
             {
               "condition": "[not(empty(parameters('windowsVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'winserver')]",
               "properties": {
                 "displayName": "Windows VM",
@@ -1358,7 +1561,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'vmss')]",
               "properties": {
                 "displayName": "VMSS (predictive autoscale)",
@@ -1451,7 +1654,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'aks')]",
               "properties": {
                 "displayName": "AKS cluster",
@@ -1543,7 +1746,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'keyvault')]",
               "properties": {
                 "displayName": "Key Vault",
@@ -1614,7 +1817,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'storage')]",
               "properties": {
                 "displayName": "Storage Account",
@@ -1684,9 +1887,67 @@
               ]
             },
             {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence')]",
+              "properties": {
+                "displayName": "Real-Time Intelligence",
+                "impact": "Standard",
+                "canvasPosition": {
+                  "x": 750,
+                  "y": 200
+                },
+                "icon": {
+                  "iconName": "Analytics"
+                },
+                "signalGroups": {
+                  "dependencies": {
+                    "aggregationType": "WorstOf",
+                    "ignoreUnknown": true
+                  }
+                },
+                "alerts": "[if(empty(parameters('actionGroupId')), null(), createObject('unhealthy', createObject('severity', 'Sev2', 'description', 'AMLAB Real-Time Intelligence workload unhealthy (Fabric capacity rollup).', 'actionGroupIds', variables('actionGroupIds'))))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity')]",
+              "properties": {
+                "displayName": "Microsoft Fabric F2 capacity",
+                "impact": "Standard",
+                "canvasPosition": {
+                  "x": 750,
+                  "y": 450
+                },
+                "icon": {
+                  "iconName": "Analytics"
+                },
+                "signalGroups": {
+                  "azureResource": {
+                    "authenticationSetting": "[variables('authName')]",
+                    "azureResourceId": "[parameters('fabricCapacityId')]",
+                    "azureResourceKind": "capacity",
+                    "resourceHealth": {
+                      "enabled": "Enabled"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', parameters('healthModelName'), 'systemAssigned')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'aiworkload')]",
               "properties": {
                 "displayName": "AI workload (Foundry)",
@@ -1713,7 +1974,7 @@
             {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'foundry')]",
               "properties": {
                 "displayName": "Foundry account",
@@ -1811,7 +2072,7 @@
               },
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/entities",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), format('agent-{0}', variables('aiAgents')[copyIndex()].key))]",
               "properties": {
                 "displayName": "[variables('aiAgents')[copyIndex()].display]",
@@ -1878,7 +2139,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'frontend-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -1892,7 +2153,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'compute-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -1906,7 +2167,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'platform-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -1920,7 +2181,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'webapp-to-frontend')]",
               "properties": {
                 "parentEntityName": "frontend",
@@ -1934,7 +2195,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'appinsights-to-frontend')]",
               "properties": {
                 "parentEntityName": "frontend",
@@ -1949,7 +2210,7 @@
             {
               "condition": "[not(empty(parameters('linuxVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'linuxvm-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -1964,7 +2225,7 @@
             {
               "condition": "[not(empty(parameters('windowsVmId')))]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'winserver-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -1978,7 +2239,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'vmss-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -1992,7 +2253,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'aks-to-compute')]",
               "properties": {
                 "parentEntityName": "compute",
@@ -2006,7 +2267,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'keyvault-to-platform')]",
               "properties": {
                 "parentEntityName": "platform",
@@ -2020,7 +2281,7 @@
             },
             {
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'storage-to-platform')]",
               "properties": {
                 "parentEntityName": "platform",
@@ -2033,9 +2294,39 @@
               ]
             },
             {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/relationships",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'realtimeintelligence-to-root')]",
+              "properties": {
+                "parentEntityName": "[variables('rootName')]",
+                "childEntityName": "realtimeintelligence",
+                "displayName": "Real-Time Intelligence"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'realtimeintelligence')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableFabric')]",
+              "type": "Microsoft.CloudHealth/healthmodels/relationships",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', parameters('healthModelName'), 'fabriccapacity-to-realtimeintelligence')]",
+              "properties": {
+                "parentEntityName": "realtimeintelligence",
+                "childEntityName": "fabriccapacity"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'fabriccapacity')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', parameters('healthModelName'), 'realtimeintelligence')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]"
+              ]
+            },
+            {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'ai-to-root')]",
               "properties": {
                 "parentEntityName": "[variables('rootName')]",
@@ -2050,7 +2341,7 @@
             {
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), 'foundry-to-ai')]",
               "properties": {
                 "parentEntityName": "aiworkload",
@@ -2069,7 +2360,7 @@
               },
               "condition": "[parameters('enableAi')]",
               "type": "Microsoft.CloudHealth/healthmodels/relationships",
-              "apiVersion": "2026-01-01-preview",
+              "apiVersion": "2026-11-01",
               "name": "[format('{0}/{1}', parameters('healthModelName'), format('agent-{0}-to-ai', variables('aiAgents')[copyIndex()].key))]",
               "properties": {
                 "parentEntityName": "aiworkload",
@@ -2093,7 +2384,455 @@
             },
             "healthModelPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-01-01-preview', 'full').identity.principalId]"
+              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), '2026-11-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('enableCustomerDependencies')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "customer-health-model",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "namePrefix": {
+            "value": "[parameters('namePrefix')]"
+          },
+          "location": {
+            "value": "swedencentral"
+          },
+          "customerWebAppId": {
+            "value": "[resourceId('Microsoft.Web/sites', format('app-{0}-{1}-customer', parameters('namePrefix'), take(variables('suffix'), 5)))]"
+          },
+          "customerAppServicePlanId": {
+            "value": "[resourceId('Microsoft.Web/serverfarms', format('plan-{0}', parameters('namePrefix')))]"
+          },
+          "customerSqlDatabaseId": {
+            "value": "[resourceId('Microsoft.Sql/servers/databases', format('sql-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 8)), 'customer-orders')]"
+          },
+          "customerServiceBusId": {
+            "value": "[resourceId('Microsoft.ServiceBus/namespaces', format('sb-{0}-{1}', parameters('namePrefix'), take(variables('suffix'), 8)))]"
+          },
+          "customerWorkerId": {
+            "value": "[resourceId('Microsoft.Web/sites', format('func-{0}-{1}-orders', parameters('namePrefix'), take(variables('suffix'), 8)))]"
+          },
+          "customerWorkerStorageId": {
+            "value": "[resourceId('Microsoft.Storage/storageAccounts', format('storders{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8)))]"
+          },
+          "customerCentralLawId": {
+            "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('lawCentralName'))]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "5962604355043039655"
+            }
+          },
+          "parameters": {
+            "namePrefix": {
+              "type": "string",
+              "defaultValue": "amlab",
+              "minLength": 3,
+              "maxLength": 8,
+              "metadata": {
+                "description": "Customer model name is always hm-<prefix>-customer, separate from the workload model."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "swedencentral",
+              "allowedValues": [
+                "swedencentral"
+              ]
+            },
+            "customerWebAppId": {
+              "type": "string",
+              "metadata": {
+                "description": "Exact component resource IDs in this deployment resource group."
+              }
+            },
+            "customerAppServicePlanId": {
+              "type": "string"
+            },
+            "customerSqlDatabaseId": {
+              "type": "string"
+            },
+            "customerServiceBusId": {
+              "type": "string"
+            },
+            "customerWorkerId": {
+              "type": "string"
+            },
+            "customerWorkerStorageId": {
+              "type": "string"
+            },
+            "customerCentralLawId": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            }
+          },
+          "variables": {
+            "modelName": "[format('hm-{0}-customer', parameters('namePrefix'))]",
+            "authName": "systemAssigned",
+            "monitoringReader": "43d0d8ad-25c7-4714-9337-8ba259a9fe05",
+            "logReader": "73c42c96-874c-492b-b04d-ab87d138a893",
+            "metricComponents": [
+              {
+                "key": "customer-webapp",
+                "display": "Customer storefront",
+                "id": "[resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/')))]",
+                "namespace": "Microsoft.Web/sites",
+                "metric": "HttpResponseTime",
+                "aggregation": "Average",
+                "unit": "Seconds",
+                "degraded": 1,
+                "unhealthy": 3
+              },
+              {
+                "key": "customer-appservice-plan",
+                "display": "Shared customer App Service plan",
+                "id": "[resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/')))]",
+                "namespace": "Microsoft.Web/serverfarms",
+                "metric": "CpuPercentage",
+                "aggregation": "Average",
+                "unit": "Percent",
+                "degraded": 70,
+                "unhealthy": 90
+              },
+              {
+                "key": "customer-sql",
+                "display": "Customer orders SQL",
+                "id": "[resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1])]",
+                "namespace": "Microsoft.Sql/servers/databases",
+                "metric": "dtu_consumption_percent",
+                "aggregation": "Average",
+                "unit": "Percent",
+                "degraded": 70,
+                "unhealthy": 90
+              },
+              {
+                "key": "customer-servicebus",
+                "display": "Orders queue runtime (Service Bus)",
+                "id": "[resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/')))]",
+                "namespace": "Microsoft.ServiceBus/namespaces",
+                "metric": "DeadletteredMessages",
+                "aggregation": "Maximum",
+                "unit": "Count",
+                "degraded": 0,
+                "unhealthy": 4
+              },
+              {
+                "key": "customer-worker-storage",
+                "display": "Processor host storage",
+                "id": "[resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/')))]",
+                "namespace": "Microsoft.Storage/storageAccounts",
+                "metric": "Availability",
+                "aggregation": "Average",
+                "unit": "Percent",
+                "degraded": 99,
+                "unhealthy": 95
+              }
+            ],
+            "customerEdges": [
+              {
+                "parent": "[variables('modelName')]",
+                "child": "customer-webapp"
+              },
+              {
+                "parent": "customer-webapp",
+                "child": "customer-appservice-plan"
+              },
+              {
+                "parent": "customer-webapp",
+                "child": "customer-sql"
+              },
+              {
+                "parent": "customer-webapp",
+                "child": "customer-servicebus"
+              },
+              {
+                "parent": "customer-servicebus",
+                "child": "customer-processor"
+              },
+              {
+                "parent": "customer-processor",
+                "child": "customer-sql"
+              },
+              {
+                "parent": "customer-processor",
+                "child": "customer-worker-storage"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CloudHealth/healthmodels",
+              "apiVersion": "2026-11-01",
+              "name": "[variables('modelName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "tags": "[parameters('tags')]",
+              "properties": {}
+            },
+            {
+              "type": "Microsoft.CloudHealth/healthmodels/authenticationsettings",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', variables('modelName'), variables('authName'))]",
+              "properties": {
+                "displayName": "Customer model system-assigned identity",
+                "authenticationKind": "ManagedIdentity",
+                "managedIdentityName": "SystemAssigned"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('customerWebAppId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Web/serverfarms/{0}', last(split(parameters('customerAppServicePlanId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Sql/servers/{0}/databases/{1}', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1])]",
+              "name": "[guid(resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1]), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.ServiceBus/namespaces/{0}', last(split(parameters('customerServiceBusId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('customerWorkerId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', last(split(parameters('customerWorkerStorageId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', last(split(parameters('customerCentralLawId'), '/')))]",
+              "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('logReader'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('logReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', variables('modelName'), variables('modelName'))]",
+              "properties": {
+                "displayName": "Customer application architecture",
+                "impact": "Standard",
+                "signalGroups": {
+                  "dependencies": {
+                    "aggregationType": "WorstOf",
+                    "ignoreUnknown": false
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+              ]
+            },
+            {
+              "copy": {
+                "name": "metricEntities",
+                "count": "[length(variables('metricComponents'))]"
+              },
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', variables('modelName'), variables('metricComponents')[copyIndex()].key)]",
+              "properties": {
+                "displayName": "[variables('metricComponents')[copyIndex()].display]",
+                "impact": "Standard",
+                "signalGroups": {
+                  "dependencies": {
+                    "aggregationType": "WorstOf",
+                    "ignoreUnknown": false
+                  },
+                  "azureResource": {
+                    "authenticationSetting": "[variables('authName')]",
+                    "azureResourceId": "[variables('metricComponents')[copyIndex()].id]",
+                    "signals": "[concat(createArray(createObject('name', replace(variables('metricComponents')[copyIndex()].metric, '_', '-'), 'signalKind', 'AzureResourceMetric', 'displayName', variables('metricComponents')[copyIndex()].display, 'metricNamespace', variables('metricComponents')[copyIndex()].namespace, 'metricName', variables('metricComponents')[copyIndex()].metric, 'aggregationType', variables('metricComponents')[copyIndex()].aggregation, 'dataUnit', variables('metricComponents')[copyIndex()].unit, 'timeGrain', 'PT5M', 'refreshInterval', 'PT1M', 'evaluationRules', createObject('degradedRule', createObject('operator', if(equals(variables('metricComponents')[copyIndex()].key, 'customer-worker-storage'), 'LessThan', 'GreaterThan'), 'threshold', variables('metricComponents')[copyIndex()].degraded), 'unhealthyRule', createObject('operator', if(equals(variables('metricComponents')[copyIndex()].key, 'customer-worker-storage'), 'LessThan', 'GreaterThan'), 'threshold', variables('metricComponents')[copyIndex()].unhealthy)))), if(equals(variables('metricComponents')[copyIndex()].key, 'customer-webapp'), createArray(createObject('name', 'Http5xx', 'signalKind', 'AzureResourceMetric', 'displayName', 'Customer HTTP 5xx (5 min)', 'metricNamespace', 'Microsoft.Web/sites', 'metricName', 'Http5xx', 'aggregationType', 'Total', 'dataUnit', 'Count', 'timeGrain', 'PT5M', 'refreshInterval', 'PT1M', 'evaluationRules', createObject('degradedRule', createObject('operator', 'GreaterThan', 'threshold', 0), 'unhealthyRule', createObject('operator', 'GreaterThan', 'threshold', 4)))), createArray()))]"
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', variables('modelName'), variables('authName'))]",
+                "[extensionResourceId(resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader')))]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]",
+                "[extensionResourceId(resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader')))]",
+                "[extensionResourceId(resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader')))]",
+                "[extensionResourceId(resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1]), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1]), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader')))]",
+                "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.CloudHealth/healthmodels/entities",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', variables('modelName'), 'customer-processor')]",
+              "properties": {
+                "displayName": "Orders processor",
+                "impact": "Standard",
+                "signalGroups": {
+                  "dependencies": {
+                    "aggregationType": "WorstOf",
+                    "ignoreUnknown": false
+                  },
+                  "azureLogAnalytics": {
+                    "authenticationSetting": "[variables('authName')]",
+                    "logAnalyticsWorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/')))]",
+                    "signals": [
+                      {
+                        "name": "processor-errors",
+                        "signalKind": "LogAnalyticsQuery",
+                        "displayName": "Orders processor errors (5 min; no observations means Unknown)",
+                        "dataUnit": "Count",
+                        "refreshInterval": "PT1M",
+                        "valueColumnName": "Errors",
+                        "queryText": "[format('FunctionAppLogs | where TimeGenerated > ago(5m) | where _ResourceId =~ ''{0}'' | summarize Samples=count(), Errors=countif(Level in (''Error'', ''Critical'')) | where Samples > 0 | project Errors', resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))))]",
+                        "evaluationRules": {
+                          "degradedRule": {
+                            "operator": "GreaterThan",
+                            "threshold": 0
+                          },
+                          "unhealthyRule": {
+                            "operator": "GreaterThan",
+                            "threshold": 4
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels/authenticationsettings', variables('modelName'), variables('authName'))]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]",
+                "[extensionResourceId(resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader')))]",
+                "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('logReader')))]"
+              ]
+            },
+            {
+              "copy": {
+                "name": "relationships",
+                "count": "[length(variables('customerEdges'))]"
+              },
+              "type": "Microsoft.CloudHealth/healthmodels/relationships",
+              "apiVersion": "2026-11-01",
+              "name": "[format('{0}/{1}', variables('modelName'), format('{0}-to-{1}', variables('customerEdges')[copyIndex()].parent, variables('customerEdges')[copyIndex()].child))]",
+              "properties": {
+                "parentEntityName": "[variables('customerEdges')[copyIndex()].parent]",
+                "childEntityName": "[variables('customerEdges')[copyIndex()].child]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]",
+                "metricEntities",
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', variables('modelName'), 'customer-processor')]",
+                "[resourceId('Microsoft.CloudHealth/healthmodels/entities', variables('modelName'), variables('modelName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "healthModelName": {
+              "type": "string",
+              "value": "[variables('modelName')]"
+            },
+            "healthModelId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName'))]"
+            },
+            "healthModelPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), '2026-11-01', 'full').identity.principalId]"
             }
           }
         }
@@ -2520,5 +3259,15 @@
         }
       }
     }
-  ]
+  ],
+  "outputs": {
+    "customerHealthModelName": {
+      "type": "string",
+      "value": "[if(parameters('enableCustomerDependencies'), reference(resourceId('Microsoft.Resources/deployments', 'customer-health-model'), '2022-09-01').outputs.healthModelName.value, '')]"
+    },
+    "customerHealthModelId": {
+      "type": "string",
+      "value": "[if(parameters('enableCustomerDependencies'), reference(resourceId('Microsoft.Resources/deployments', 'customer-health-model'), '2022-09-01').outputs.healthModelId.value, '')]"
+    }
+  }
 }

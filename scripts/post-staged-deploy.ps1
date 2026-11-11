@@ -16,6 +16,14 @@
   Run the optional Service Group and SLI setup. Explicit values override the
   central config; when omitted, use stageToggles.enableStageE or default false.
 
+.PARAMETER CustomerDependencyDeploymentName
+  Exact Bicep customer deployment, for example stage-10-workloads. If omitted,
+  completion discovers the latest successful deployment for the customer app.
+
+.PARAMETER ApproveCustomerDependencies
+  Enabled customer SQL initialization and worker publication are approved by
+  default. Pass -ApproveCustomerDependencies:$false to request confirmation.
+
 .PARAMETER EnableStageSreAgent
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
@@ -23,6 +31,14 @@
 .PARAMETER EnableStageObservabilityAgent
   Validate Azure Copilot Observability Agent when true. When omitted, detect the
   deployed resource. Explicit false skips validation without changing it.
+
+.PARAMETER EnableStageFabric
+  Complete Fabric setup when true. When omitted, detect the deployed capacity.
+  Explicit false skips setup without changing or suspending the capacity.
+
+.PARAMETER EnableStageHealthModelDemo
+  Publish and verify the Health Model Demo when true. When omitted, detect its
+  deployed Cafe model. Explicit false skips completion without deleting anything.
 
 .EXAMPLE
   ./scripts/post-staged-deploy.ps1 -ResourceGroup rg-azure-monitor-lab
@@ -36,9 +52,13 @@ param(
   [string] $NamePrefix = 'amlab',
   [string] $SubscriptionId,
   [guid[]] $ConsoleOperatorObjectIds,
+  [string] $CustomerDependencyDeploymentName,
+  [switch] $ApproveCustomerDependencies = $true,
   [bool] $EnableStageE = $false,
   [bool] $EnableStageSreAgent = $false,
-  [bool] $EnableStageObservabilityAgent = $false
+  [bool] $EnableStageObservabilityAgent = $false,
+  [bool] $EnableStageFabric = $false,
+  [bool] $EnableStageHealthModelDemo = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,7 +68,8 @@ function Write-Info($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
 $labConfigPath = Join-Path $PSScriptRoot '..' 'lab.config.json'
 $labConfig = $null
 if (Test-Path $labConfigPath) {
-  $labConfig = Get-Content -Raw $labConfigPath | ConvertFrom-Json
+  . (Join-Path $PSScriptRoot 'lab-config.ps1')
+  $labConfig = Read-LabConfig -Path $labConfigPath
   if (-not $PSBoundParameters.ContainsKey('EnableStageE') -and $null -ne $labConfig.stageToggles.enableStageE) {
     if ($labConfig.stageToggles.enableStageE -isnot [bool]) { throw 'stageToggles.enableStageE must be a JSON boolean.' }
     $EnableStageE = $labConfig.stageToggles.enableStageE
@@ -85,8 +106,12 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageSreAgent')) {
 if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
   $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
 }
+if (-not $PSBoundParameters.ContainsKey('EnableStageFabric')) {
+  $EnableStageFabric = @($resources | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' }).Count -gt 0
+}
 $webApp = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*"
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and
+  $_.name -notmatch '-customer$|^app-cafe-[a-z0-9]{13}$'
 }) | Select-Object -First 1
 $aks = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.ContainerService/managedClusters' -and $_.name -ieq "aks-$NamePrefix"
@@ -98,6 +123,10 @@ $centralLaw = @($resources | Where-Object {
 if (-not $webApp) {
   throw "Could not find App Service 'app-$NamePrefix-<suffix>' in resource group '$ResourceGroup'. Complete the workload stage first."
 }
+$customerWebApp = @($resources | Where-Object {
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -ieq "$($webApp.name)-customer"
+}) | Select-Object -First 1
+$customerWebAppName = if ($customerWebApp) { $customerWebApp.name } else { $null }
 if (-not $aks) {
   throw "Could not find AKS cluster 'aks-$NamePrefix' in resource group '$ResourceGroup'. Complete the workload stage first."
 }
@@ -124,6 +153,9 @@ $postDeploy = Join-Path $PSScriptRoot 'post-deploy.ps1'
   -WebAppName $webApp.name `
   -AksName $aks.name `
   -WebAppHost $webAppHost `
+  -CustomerWebAppName $customerWebAppName `
+  -CustomerDependencyDeploymentName $CustomerDependencyDeploymentName `
+  -ApproveCustomerDependencies:$ApproveCustomerDependencies `
   -CentralLawName $centralLaw.name `
   -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
 
@@ -153,11 +185,39 @@ if ($EnableStageSreAgent) {
     -ResourceGroup $ResourceGroup
 }
 
+if ($EnableStageFabric) {
+  Write-Step "Fabric capacity detected - creating workspace and Real-Time Intelligence items"
+  $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
+  try {
+    & $setupFabric -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
+  } catch {
+    Write-Host "  Fabric SaaS setup failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  The F2 capacity may still be active and billable. Re-run setup or suspend it:" -ForegroundColor Yellow
+    Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($active.id) -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix" -ForegroundColor Yellow
+    Write-Host "  ./scripts/suspend-fabric.ps1 -SubscriptionId $($active.id) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+    throw
+  }
+}
+
 if ($EnableStageObservabilityAgent) {
   Write-Step 'Observability Agent stage enabled - validating scope, operations, and least-privilege RBAC'
   & (Join-Path $PSScriptRoot 'setup-observability-agent.ps1') `
     -SubscriptionId $active.id `
     -ResourceGroup $ResourceGroup
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $active.id `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
+}
+
+if (-not $PSBoundParameters.ContainsKey('EnableStageHealthModelDemo')) {
+  $EnableStageHealthModelDemo = @($resources | Where-Object {
+    $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -ceq 'hm-lab-cafe'
+  }).Count -gt 0
+}
+if ($EnableStageHealthModelDemo) {
+  & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
 }
 
 Write-Host "`nPost-staged deployment setup completed." -ForegroundColor Green

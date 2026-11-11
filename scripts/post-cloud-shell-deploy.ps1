@@ -5,11 +5,27 @@
 .DESCRIPTION
   Signs in to the selected tenant, pins and verifies the selected subscription, discovers the portal-deployed lab
   resources, resolves Application Insights through the core ARM CLI surface, and
-  runs the same workload, Health Model, SLI, SRE, and Observability Agent validation helpers used by deploy.ps1.
+  runs the same workload, Health Model, SLI, Fabric, SRE, and Observability Agent helpers used by deploy.ps1.
+
+.PARAMETER EnableStageFabric
+  Complete Fabric setup when true. When omitted, detect the deployed capacity.
+  Explicit false skips setup without changing or suspending the capacity.
+
+.PARAMETER EnableStageHealthModelDemo
+  Publish and verify the Health Model Demo when true. When omitted, detect its
+  deployed Cafe model. Explicit false skips completion without deleting anything.
 
 .PARAMETER EnableStageSreAgent
   Validate SRE Agent when true. When omitted, detect the deployed SRE resource.
   Explicit false skips validation without deleting or disabling the agent.
+
+.PARAMETER CustomerDependencyDeploymentName
+  Exact portal/Bicep customer deployment. If omitted, completion discovers the
+  latest successful deployment for the customer app.
+
+.PARAMETER ApproveCustomerDependencies
+  Enabled customer SQL initialization and worker publication are approved by
+  default. Pass -ApproveCustomerDependencies:$false to request confirmation.
 
 .PARAMETER EnableStageObservabilityAgent
   Validate Azure Copilot Observability Agent when true. When omitted, detect the
@@ -25,8 +41,12 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [string] $NamePrefix = 'amlab',
   [guid[]] $ConsoleOperatorObjectIds,
+  [string] $CustomerDependencyDeploymentName,
+  [switch] $ApproveCustomerDependencies = $true,
   [bool] $EnableStageSreAgent = $false,
-  [bool] $EnableStageObservabilityAgent = $false
+  [bool] $EnableStageObservabilityAgent = $false,
+  [bool] $EnableStageFabric = $false,
+  [bool] $EnableStageHealthModelDemo = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,8 +80,12 @@ if (-not $PSBoundParameters.ContainsKey('EnableStageSreAgent')) {
 if (-not $PSBoundParameters.ContainsKey('EnableStageObservabilityAgent')) {
   $EnableStageObservabilityAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' }).Count -gt 0
 }
+if (-not $PSBoundParameters.ContainsKey('EnableStageFabric')) {
+  $EnableStageFabric = @($resources | Where-Object { $_.type -ieq 'Microsoft.Fabric/capacities' }).Count -gt 0
+}
 $webApp = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*"
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -like "app-$NamePrefix-*" -and
+  $_.name -notmatch '-customer$|^app-cafe-[a-z0-9]{13}$'
 }) | Select-Object -First 1
 $aks = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.ContainerService/managedClusters' -and $_.name -ieq "aks-$NamePrefix"
@@ -70,13 +94,23 @@ $centralLaw = @($resources | Where-Object {
   $_.type -ieq 'Microsoft.OperationalInsights/workspaces' -and $_.name -like "law-$NamePrefix-central-*"
 }) | Select-Object -First 1
 $appInsights = @($resources | Where-Object {
-  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -ieq "appi-$NamePrefix"
-}) | Select-Object -First 1
+  $_.type -ieq 'Microsoft.Insights/components' -and $_.name -like "appi-$NamePrefix-*" -and
+  $_.name -notmatch '^appi-cafe-[a-z0-9]{13}$'
+} | Sort-Object name) | Select-Object -First 1
+if (-not $appInsights) {
+  $appInsights = @($resources | Where-Object {
+    $_.type -ieq 'Microsoft.Insights/components' -and $_.name -ieq "appi-$NamePrefix"
+  }) | Select-Object -First 1
+}
 
 if (-not $webApp) { throw "Could not find App Service 'app-$NamePrefix-<suffix>' in '$ResourceGroup'." }
+$customerWebApp = @($resources | Where-Object {
+  $_.type -ieq 'Microsoft.Web/sites' -and $_.name -ieq "$($webApp.name)-customer"
+}) | Select-Object -First 1
+$customerWebAppName = if ($customerWebApp) { $customerWebApp.name } else { $null }
 if (-not $aks) { throw "Could not find AKS cluster 'aks-$NamePrefix' in '$ResourceGroup'." }
 if (-not $centralLaw) { throw "Could not find central LAW 'law-$NamePrefix-central-<suffix>' in '$ResourceGroup'." }
-if (-not $appInsights) { throw "Could not find Application Insights 'appi-$NamePrefix' in '$ResourceGroup'." }
+if (-not $appInsights) { throw "Could not find Application Insights 'appi-$NamePrefix-<suffix>' in '$ResourceGroup'." }
 
 $webAppHost = "$($webApp.name).azurewebsites.net"
 Write-Info "Web App: $($webApp.name)"
@@ -107,6 +141,9 @@ Write-Step "Running App Service and AKS post-deployment setup"
   -WebAppName $webApp.name `
   -AksName $aks.name `
   -WebAppHost $webAppHost `
+  -CustomerWebAppName $customerWebAppName `
+  -CustomerDependencyDeploymentName $CustomerDependencyDeploymentName `
+  -ApproveCustomerDependencies:$ApproveCustomerDependencies `
   -CentralLawName $centralLaw.name `
   -AppInsightsConnectionString $appInsightsConnectionString `
   -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
@@ -126,6 +163,12 @@ try {
   Write-Warning 'Cloud Shell cannot request the Managed Prometheus token audience. SLI permissions are prepared, but source metric series were not verified. Continuing post-deployment.'
 }
 
+if ($EnableStageFabric) {
+  Write-Step 'Completing the deployed Fabric capacity (billable while active)'
+  & (Join-Path $PSScriptRoot 'setup-fabric.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
+}
+
 if ($EnableStageSreAgent) {
   Write-Step 'Validating the deployed SRE Agent and monitoring connectors'
   & (Join-Path $PSScriptRoot 'setup-sre-agent.ps1') -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup
@@ -134,6 +177,20 @@ if ($EnableStageSreAgent) {
 if ($EnableStageObservabilityAgent) {
   Write-Step 'Validating the deployed Observability Agent, monitored Application Insights resource, and RBAC'
   & (Join-Path $PSScriptRoot 'setup-observability-agent.ps1') -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup
+  & (Join-Path $PSScriptRoot 'cleanup-legacy-rbac.ps1') `
+    -SubscriptionId $SubscriptionId `
+    -ResourceGroup $ResourceGroup `
+    -ObservabilityAgent
+}
+
+if (-not $PSBoundParameters.ContainsKey('EnableStageHealthModelDemo')) {
+  $EnableStageHealthModelDemo = @($resources | Where-Object {
+    $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -ceq 'hm-lab-cafe'
+  }).Count -gt 0
+}
+if ($EnableStageHealthModelDemo) {
+  & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
+    -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
 }
 
 Write-Host @"

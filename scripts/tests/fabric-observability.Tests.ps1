@@ -1,0 +1,507 @@
+$ErrorActionPreference = 'Stop'
+$source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+. (Join-Path $source 'scripts/fabric-observability.ps1')
+. (Join-Path $source 'scripts/fabric-connections.ps1')
+. (Join-Path $source 'scripts/fabric-monitoring.ps1')
+. (Join-Path $source 'scripts/fabric-mirrored-dashboard.ps1')
+$errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $source 'scripts/setup-fabric.ps1'), [ref]$null, [ref]$errors)
+if ($errors.Count) { throw 'Fabric setup does not parse.' }
+foreach ($name in @('Get-CollectionItem', 'Ensure-FabricItem', 'New-FabricItem', 'ConvertTo-InlineBase64')) {
+  $definition = @($ast.EndBlock.Statements | Where-Object {
+    $_ -is [Management.Automation.Language.FunctionDefinitionAst] -and $_.Name -eq $name
+  })[0]
+  . ([scriptblock]::Create($definition.Extent.Text))
+}
+function Write-Info($Message) {}
+$fabricApi = 'https://api.fabric.microsoft.com/v1'
+$script:fabricHeaders = @{ Authorization = 'Bearer offline-fabric-test' }
+$connectionId = 'c65e7960-71e7-4e31-bacb-d379595fb3f0'
+$customerId = '33333333-3333-3333-3333-333333333333'
+$appConnectionId = '55555555-5555-5555-5555-555555555555'
+$appCustomerId = '44444444-4444-4444-4444-444444444444'
+$endpoint = 'https://test.kusto.fabric.microsoft.com'
+$fixture = @{}
+
+function New-Table($Columns, $Rows, $Name = 'Table_0') {
+  return @{ TableName = $Name; Columns = @($Columns | ForEach-Object { @{ ColumnName = $_ } }); Rows = $Rows }
+}
+function Reset-Fixture {
+  $fixture.Requests = [Collections.Generic.List[object]]::new()
+  $fixture.Topology = @{ sources = @(@{ name = 'source'; status = 'Running' }); destinations = @(@{ name = 'destination'; status = 'Running' }) }
+  $fixture.TableExists = $true
+  $fixture.LiveCount = 3
+  $fixture.Samples = @{}
+  $fixture.KqlError = $null
+  $fixture.PartialFailure = $false
+  $fixture.Dashboard = $null
+  $fixture.Mirror = $null
+  $fixture.Connections = @(
+    @{ id = $connectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$customerId;https://api.loganalytics.io/iceberg" } },
+    @{ id = $appConnectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$appCustomerId;https://api.loganalytics.io/iceberg" } }
+  )
+  $fixture.Scopes = @(@{ name = '(root)'; fullyQualifiedScope = @(); isSelectable = 'Selectable'; children = @(
+    @{ name = 'dbo'; fullyQualifiedScope = @('dbo'); isSelectable = 'NotSelectable' }
+  ) })
+  $fixture.Tables = @('AzureActivity', 'Perf' | ForEach-Object { @{ name = $_; fullyQualifiedScope = @('central', 'logs') } })
+  $fixture.MirrorStatus = 'Running'
+  $fixture.Delays = 0
+  $fixture.TokenFailure = $false
+  $fixture.HttpFailure = $false
+  $fixture.FeatureFailures = $false
+  $fixture.FullSetup = $false
+  $fixture.CapacityState = 'Active'
+  $fixture.DeletedWorkspace = $false
+  $fixture.Continuation = $null
+  $fixture.MoreConnections = @()
+  $fixture.MirrorDefinition = $null
+  $fixture.Mirrors = @()
+  $fixture.Dashboards = @()
+  $fixture.MonitoringItems = @()
+  $fixture.Agents = @()
+  $fixture.MonitoringState = 'Disabled'
+  $fixture.Definitions = @{}
+}
+function az {
+  if ($fixture.FullSetup) {
+    $global:LASTEXITCODE = 0
+    switch ($args[0..1] -join ' ') {
+      'account set' { return }
+      'account show' {
+        if ($args -contains 'id') { return '00000000-0000-0000-0000-000000000000' }
+        return '{"id":"00000000-0000-0000-0000-000000000000","tenantId":"00000000-0000-0000-0000-000000000000","userName":"operator@example.com","userType":"user"}'
+      }
+      'account get-access-token' {
+        if ($args -contains 'https://api.fabric.microsoft.com') { return 'offline-fabric-test' }
+      }
+      'monitor log-analytics' { if ($args -contains '/appinsights-law') { return $appCustomerId }; return $customerId }
+      'role definition' { return '[]' }
+      'resource show' { return ConvertTo-Json @{ state = $fixture.CapacityState; administrators = @('operator@example.com') } }
+      'resource list' {
+        if ($args -contains 'Microsoft.Fabric/capacities') {
+          if ($args -contains '[0].{id:id,name:name,location:location,sku:sku.name}') {
+            return '{"id":"/capacity","name":"testcapacity","location":"swedencentral","sku":"F2"}'
+          }
+          return '[{"name":"testcapacity","location":"swedencentral","sku":{"name":"F2"}}]'
+        }
+        if ($args -contains 'Microsoft.Logic/workflows') { return '[]' }
+        if ($args -contains 'Microsoft.EventHub/namespaces') { return 'testhub' }
+        if ($args -contains 'Microsoft.OperationalInsights/workspaces') { return '[{"id":"/central-law","name":"law-amlab-central-test"},{"id":"/appinsights-law","name":"law-amlab-appinsights-test"}]' }
+      }
+    }
+  }
+  if (($args -join ' ') -notlike 'account get-access-token --resource https://api.kusto.windows.net*') { throw 'Unexpected Azure CLI call.' }
+  $global:LASTEXITCODE = $(if ($fixture.TokenFailure) { 1 } else { 0 })
+  if (-not $fixture.TokenFailure) { 'offline-kusto-test' }
+}
+function Start-Sleep { param($Seconds); $fixture.Delays++ }
+function Invoke-RestMethod {
+  param($Method, $Uri, $Headers, $ContentType, $Body, $ResponseHeadersVariable, $StatusCodeVariable)
+  $fixture.Requests.Add(@{ Method = $Method; Uri = $Uri; Body = $Body })
+  if ($fixture.HttpFailure) { throw 'HTTP 403 access denied.' }
+  if ($fixture.FeatureFailures -and $Method -eq 'Get' -and
+      ($Uri -like '*/monitoringItems' -or $Uri -like '*/operationsAgents')) {
+    $response = [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::Forbidden)
+    $response.RequestMessage = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Get, $Uri)
+    $exception = [Microsoft.PowerShell.Commands.HttpResponseException]::new('HTTP 403 Forbidden.', $response)
+    $record = [Management.Automation.ErrorRecord]::new($exception, 'FabricFeatureFailure', [Management.Automation.ErrorCategory]::InvalidOperation, $null)
+    $code = if ($Uri -like '*/monitoringItems') { 'MonitoringReadDenied' } else { 'AgentReadDenied' }
+    $record.ErrorDetails = [Management.Automation.ErrorDetails]::new("{`"errorCode`":`"$code`",`"message`":`"Synthetic feature failure`"}")
+    throw $record
+  }
+  if ($Uri -like 'https://test.kusto.fabric.microsoft.com/v1/rest/*') {
+    if ($Headers.Authorization -ne 'Bearer offline-kusto-test') { throw 'Wrong Kusto audience/token.' }
+    if ($fixture.KqlError) { return @{ error = @{ message = $fixture.KqlError } } }
+    if ($fixture.PartialFailure) {
+      return @{ Tables = @((New-Table @('Count') @(,@(5))), (New-Table @('Severity', 'StatusDescription') @(,@(2, 'partial failure')) QueryStatus)) }
+    }
+    $query = ($Body | ConvertFrom-Json).csl
+    if ($query -eq '.show tables') {
+      $rows = @()
+      if ($fixture.TableExists) { $rows = @(,@('AzureDiagnosticsRaw')) }
+      return @{ Tables = @((New-Table @('TableName') $rows)) }
+    }
+    if ($query -eq '.show external tables') {
+      return @{ Tables = @((New-Table @('TableName') @(@('AzureActivity'), @('Perf'), @('AppRequests'), @('AppDependencies'), @('AppExceptions'), @('AppTraces')))) }
+    }
+    if ($query -match 'let RequestSummary = materialize\(') {
+      $rows = @([regex]::Matches($query, "MetricOrder=\d, Metric='([^']+)'") | ForEach-Object { ,@($_.Groups[1].Value, 42.0) })
+      if ($rows.Count -ne 6) { throw 'Application KPIs must return all six metrics.' }
+      return @{ Tables = @((New-Table @('Metric', 'Value') $rows)) }
+    }
+    if ($query -match "project Metric='") { return @{ Tables = @((New-Table @('Metric', 'Value') @(,@('Test metric', 42.0)))) } }
+    if ($query -match 'external_table') { return @{ Tables = @((New-Table @('Count') @(,@(5)))) } }
+    if ($query -like '.create-merge table LabSampleEvents*') { return @{ Tables = @() } }
+    if ($query -like '.set-or-append LabSampleEvents*') {
+      if ($query -notmatch 'where SampleId !in' -or $query -notmatch 'IsSynthetic = true') { throw 'Samples must be labelled and deduplicated.' }
+      foreach ($match in [regex]::Matches($query, "'(amlab-synthetic-v1-[^']+)'")) { $fixture.Samples[$match.Groups[1].Value] = $true }
+      return @{ Tables = @() }
+    }
+    if ($query -like 'LabSampleEvents*') { return @{ Tables = @((New-Table @('Samples') @(,@($fixture.Samples.Count)))) } }
+    if ($query -like 'AzureDiagnosticsRaw*ago(15m)*') { return @{ Tables = @((New-Table @('Count') @(,@($fixture.LiveCount)))) } }
+    throw "Unexpected KQL: $query"
+  }
+  if ($Headers.Authorization -ne $script:fabricHeaders.Authorization) { throw 'Wrong Fabric token.' }
+  if ($Method -eq 'Get') {
+    if ($fixture.FullSetup) {
+      switch ($Uri) {
+        "$fabricApi/capacities" { return @{ value = @(@{ id = 'capacity'; displayName = 'testcapacity' }) } }
+        "$fabricApi/workspaces" { return @{ value = @(@{ id = 'workspace'; displayName = 'Azure Monitor Demo Lab'; capacityId = 'capacity' }) } }
+        "$fabricApi/workspaces/workspace/eventhouses" { return @{ value = @(@{ id = 'eventhouse'; displayName = 'Azure Monitor Demo Eventhouse' }) } }
+        "$fabricApi/workspaces/workspace/kqlDatabases" { return @{ value = @(
+          @{ id = '22222222-2222-2222-2222-222222222222'; displayName = 'MonitoringTelemetry' },
+          @{ id = '66666666-6666-6666-6666-666666666666'; displayName = 'Azure Monitor Demo Mirrored Logs' },
+          @{ id = '77777777-7777-7777-7777-777777777777'; displayName = 'Azure Monitor Demo Mirrored App Insights' }
+        ) } }
+        "$fabricApi/workspaces/workspace/eventstreams" { return @{ value = @(@{ id = 'stream'; displayName = 'AzureMonitorEvents' }) } }
+        "$fabricApi/workspaces/workspace/kqlDatabases/22222222-2222-2222-2222-222222222222" { return @{ properties = @{ queryServiceUri = 'https://test.kusto.fabric.microsoft.com' } } }
+        "$fabricApi/workspaces/workspace/kqlDatabases/66666666-6666-6666-6666-666666666666" { return @{ id = '66666666-6666-6666-6666-666666666666'; properties = @{ queryServiceUri = $endpoint } } }
+        "$fabricApi/workspaces/workspace/kqlDatabases/77777777-7777-7777-7777-777777777777" { return @{ id = '77777777-7777-7777-7777-777777777777'; properties = @{ queryServiceUri = $endpoint } } }
+      }
+    }
+    switch -Wildcard ($Uri) {
+      '*/eventstreams/*/topology' { return $fixture.Topology }
+      '*/connections' { return @{ value = $fixture.Connections; continuationUri = $fixture.Continuation } }
+      '*/connections?page=2' { return @{ value = $fixture.MoreConnections } }
+      '*/catalogmirroring/scopes?*' { return @{ value = $fixture.Scopes } }
+      '*/catalogmirroring/tables?*' {
+        if ($Uri -notmatch '&scope=dbo') { throw 'Table discovery must use the leaf namespace, not an empty selectable root.' }
+        if ($Uri -like "*connectionId=$appConnectionId*") {
+          return @{ value = @('AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces' | ForEach-Object { @{ name = $_; fullyQualifiedScope = @('dbo') } }) }
+        }
+        return @{ value = $fixture.Tables }
+      }
+      '*/kqlDashboards' { return @{ value = $fixture.Dashboards } }
+      '*/monitoringItems' { return @{ value = $fixture.MonitoringItems } }
+      '*/operationsAgents' { return @{ value = $fixture.Agents } }
+      '*/monitoringItems/*' { return @{ properties = @{ dataCollectionState = $fixture.MonitoringState } } }
+      '*/mirroredCatalogs' { return @{ value = $fixture.Mirrors } }
+      '*/mirroringStatus?beta=true' { return @{ status = $fixture.MirrorStatus; error = @{ message = 'source access failed' } } }
+    }
+  }
+  if ($Method -eq 'Delete' -and $Uri -eq "$fabricApi/workspaces/workspace") {
+    $fixture.DeletedWorkspace = $true
+    return
+  }
+  if ($Method -eq 'Post' -and $Uri -like '*/enableDataCollection') {
+    $fixture.MonitoringState = 'Enabled'
+    return
+  }
+  if ($Method -eq 'Post' -and ($Uri -like '*/kqlDashboards' -or $Uri -like '*/mirroredCatalogs' -or
+      $Uri -like '*/monitoringItems' -or $Uri -like '*/operationsAgents')) {
+    if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 201 -Scope 1 }
+    $request = $Body | ConvertFrom-Json
+    $item = @{ id = [guid]::NewGuid().ToString(); displayName = $request.displayName }
+    if ($Uri -like '*/monitoringItems') { $fixture.MonitoringItems += $item }
+    elseif ($Uri -like '*/operationsAgents') { $fixture.Agents += $item }
+    elseif ($Uri -like '*/kqlDashboards') { $fixture.Dashboard = $item; $fixture.Dashboards += $item } else {
+      $fixture.Mirror = $item; $fixture.Mirrors += $item; $fixture.MirrorDefinition = $request.definition
+    }
+    $fixture.Definitions[$item.id] = $request.definition
+    return $item
+  }
+  if ($Method -eq 'Post' -and ($Uri -like '*/mirroredCatalogs/*/getDefinition' -or $Uri -like '*/kqlDashboards/*/getDefinition' -or
+      $Uri -like '*/monitoringItems/*/getDefinition' -or $Uri -like '*/operationsAgents/*/getDefinition')) {
+    if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 200 -Scope 1 }
+    return @{ definition = $fixture.Definitions[($Uri -split '/')[-2]] }
+  }
+  throw "Unexpected REST call: $Method $Uri"
+}
+function Assert-Failure([scriptblock] $Action, [string] $Expected) {
+  $message = ''
+  try { & $Action | Out-Null } catch { $message = $_.Exception.Message }
+  if ($message -notlike $Expected) { throw "Expected '$Expected', got '$message'." }
+}
+function Test-Telemetry {
+  Wait-FabricTelemetry -WorkspaceId workspace -EventstreamId stream -QueryServiceUri $endpoint `
+    -DatabaseName MonitoringTelemetry -TableName AzureDiagnosticsRaw -TimeoutSeconds 1
+}
+function Test-Mirror {
+  Initialize-FabricMirror -WorkspaceId workspace -SourceCustomerId $customerId -Tables AzureActivity, Perf
+}
+
+try { throw 'Non-HTTP failure.' } catch {
+  if ((Get-FabricErrorDetail -ErrorRecord $_) -ne 'Non-HTTP failure.') {
+    throw 'Non-HTTP exceptions must retain their original message without invented service details.'
+  }
+}
+$response = [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::BadRequest)
+$response.RequestMessage = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, "$fabricApi/test?token=not-for-output")
+$exception = [Microsoft.PowerShell.Commands.HttpResponseException]::new('HTTP 400 Bad Request.', $response)
+$record = [Management.Automation.ErrorRecord]::new($exception, 'TestHttpError', [Management.Automation.ErrorCategory]::InvalidOperation, $null)
+if ((Get-FabricErrorDetail -ErrorRecord $record) -ne "HTTP 400 Bad Request. [POST $fabricApi/test]") {
+  throw 'HTTP diagnostics must retain method/path, omit query strings and handle missing service error bodies.'
+}
+$record.ErrorDetails = [Management.Automation.ErrorDetails]::new('{"errorCode":"FeatureDisabled","message":"Review tenant setting"}')
+if ((Get-FabricErrorDetail -ErrorRecord $record) -notlike '*HTTP 400*POST*Service response:*FeatureDisabled*Review tenant setting*') {
+  throw 'Structured service error bodies must be retained alongside the HTTP context.'
+}
+Write-Output 'PASS: HTTP method/path and service errors retained; missing bodies and non-HTTP errors handled without exposing query strings.'
+
+Reset-Fixture
+if ((Test-Telemetry).Status -ne 'Verified') { throw 'Recent live rows must verify ingestion.' }
+foreach ($tableExists in @($true, $false)) {
+  Reset-Fixture
+  $fixture.TableExists = $tableExists
+  $fixture.LiveCount = 0
+  if ((Test-Telemetry).Status -ne 'Pending') { throw 'Missing tables/empty telemetry must never report success.' }
+}
+Reset-Fixture
+$fixture.Topology.sources[0].status = 'Failed'
+Assert-Failure { Test-Telemetry } '*data flow failed*'
+Reset-Fixture
+$fixture.Topology.destinations = @()
+Assert-Failure { Test-Telemetry } '*missing its source or destination*'
+Reset-Fixture
+$fixture.KqlError = 'query denied'
+Assert-Failure { Test-Telemetry } '*query denied*'
+Reset-Fixture
+$fixture.PartialFailure = $true
+Assert-Failure { Test-Telemetry } '*partial failure*'
+Reset-Fixture
+$fixture.TokenFailure = $true
+Assert-Failure { Test-Telemetry } '*Kusto API token*'
+Reset-Fixture
+$fixture.HttpFailure = $true
+Assert-Failure { Test-Telemetry } '*403*'
+Assert-Failure { Invoke-FabricKql -QueryServiceUri 'https://untrusted.example' -DatabaseName db -Query 'print 1' } '*unexpected KQL*'
+Assert-Failure { Get-FabricKqlScalar -Response @{ Tables = @() } -ColumnName Count } '*missing scalar*'
+Write-Output 'PASS: live ingestion verification distinguishes healthy, empty, absent, failed, denied and partial-failure results.'
+
+Reset-Fixture
+1..2 | ForEach-Object { Initialize-FabricSampleData -QueryServiceUri $endpoint -DatabaseName MonitoringTelemetry }
+if ($fixture.Samples.Count -ne 4) { throw 'Sample reruns must not duplicate events.' }
+$dashboard = New-FabricDashboardDefinition -WorkspaceId '11111111-1111-1111-1111-111111111111' `
+  -QueryServiceUri $endpoint -DatabaseId '22222222-2222-2222-2222-222222222222' -DatabaseName MonitoringTelemetry -TableName AzureDiagnosticsRaw
+if ($dashboard.dataSources[0].database -ne '22222222-2222-2222-2222-222222222222' -or
+    $dashboard.dataSources[0].name -ne 'MonitoringTelemetry') {
+  throw 'Fabric dashboard data sources must use the database item ID for binding and its display name only for the label.'
+}
+if ($dashboard.tiles.Count -ne 3 -or $dashboard.dataSources[0].kind -ne 'kusto-trident' -or
+    $dashboard.dataSources[0].clusterUri -ne $endpoint -or $dashboard.tiles[2].query -notmatch 'join kind=inner' -or
+    $dashboard.tiles[2].title -notmatch 'SYNTHETIC' -or $dashboard.tiles[2].query -notmatch 'IsSynthetic == true') {
+  throw 'Dashboard must bind live telemetry and explicitly labelled synthetic correlation to the KQL database.'
+}
+if ($dashboard.tiles[1].query -notmatch 'mv-expand Event=Events' -or
+    $dashboard.tiles[1].query -notmatch 'parse_json\(tostring\(Event.properties\)\)' -or
+    $dashboard.tiles[1].query -notmatch 'Status=toint\(Properties.ScStatus\)' -or
+    $dashboard.tiles[1].query -notmatch 'top 20 by Time desc') {
+  throw 'Recent telemetry must expand diagnostic batches and parse nested HTTP fields into timestamp-ordered event columns.'
+}
+foreach ($tile in $dashboard.tiles) {
+  if ($tile.layout.width -ne 24 -or $tile.layout.x -ne 0 -or $tile.layout.height -lt 7) {
+    throw 'Dashboard tiles must use the wide, left-aligned layout.'
+  }
+  if (-not $tile.query -or $tile.dataSourceId -ne $dashboard.dataSources[0].id -or $tile.pageId -ne $dashboard.pages[0].id -or $null -eq $tile.visualOptions) {
+    throw 'All dashboard tiles require queries, valid data-source/page references and visual options.'
+  }
+}
+$noSampleDashboard = New-FabricDashboardDefinition -WorkspaceId workspace -QueryServiceUri $endpoint `
+  -DatabaseId '22222222-2222-2222-2222-222222222222' -DatabaseName db -TableName AzureDiagnosticsRaw -IncludeSampleData:$false
+if ($noSampleDashboard.tiles.Count -ne 2 -or ($noSampleDashboard | ConvertTo-Json -Depth 15) -match 'LabSampleEvents') { throw 'Sample opt-out must remove sample-dependent tiles.' }
+$body = @{ displayName = $dashboard.title; definition = @{ parts = @(@{
+  path = 'RealTimeDashboard.json'; payloadType = 'InlineBase64'
+  payload = ConvertTo-InlineBase64 ($dashboard | ConvertTo-Json -Depth 15)
+}) } }
+1..2 | ForEach-Object { Ensure-FabricItem -CollectionPath workspaces/workspace/kqlDashboards -DisplayName $dashboard.title -CreateBody $body | Out-Null }
+if (@($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and $_.Uri -like '*/kqlDashboards' }).Count -ne 1) { throw 'Dashboard reruns must reuse the item without overwriting user edits.' }
+Write-Output 'PASS: synthetic sample deduplication, correlation joins, sample opt-out and idempotent dashboard creation.'
+
+foreach ($applicationInsights in @($true, $false)) {
+  $tables = if ($applicationInsights) { @('AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces') } else { @('AzureActivity', 'Perf') }
+  $mirroredDashboard = New-FabricMirroredDashboardDefinition -WorkspaceId workspace -QueryServiceUri $endpoint `
+    -DatabaseId '22222222-2222-2222-2222-222222222222' -DatabaseName 'Mirrored logs' -Tables $tables -ApplicationInsights:$applicationInsights
+  $expectedTiles = if ($applicationInsights) { 9 } else { 10 }
+  if ($mirroredDashboard.tiles.Count -ne $expectedTiles -or $mirroredDashboard.dataSources[0].database -ne '22222222-2222-2222-2222-222222222222') {
+    throw 'Mirrored dashboard must bind the actual database item GUID and include cards, charts and detail tables.'
+  }
+  $cards = @($mirroredDashboard.tiles | Where-Object visualType -ceq 'multistat')
+  $expectedCards = if ($applicationInsights) { 1 } else { 6 }
+  if ($cards.Count -ne $expectedCards) { throw 'Numeric visuals must serialize as lowercase multistat, with Application Insights KPIs combined into one query.' }
+  if ($mirroredDashboard.autoRefresh.defaultInterval -ne '5m' -or $mirroredDashboard.autoRefresh.minInterval -ne '5m') {
+    throw 'Mirrored dashboards must not introduce faster refresh bursts.'
+  }
+  if ($applicationInsights) {
+    if ($mirroredDashboard.pages.Count -ne 3 -or
+        ($mirroredDashboard.pages.name -join ',') -cne 'Application overview | last 24h,Reliability details | last 24h,Data freshness | last 24h') {
+      throw 'Application Insights must separate overview, reliability and freshness queries into three pages.'
+    }
+    $pageQueryCounts = @($mirroredDashboard.pages | ForEach-Object {
+      $pageId = $_.id
+      @($mirroredDashboard.tiles | Where-Object pageId -eq $pageId).Count
+    })
+    if (($pageQueryCounts -join ',') -ne '4,3,2') { throw 'Application Insights must issue at most four tile queries per page.' }
+    $summary = $cards[0].query
+    $expectedMetrics = @(
+      'Requests | 24h, sampling-adjusted', 'Server error rate | %', 'Request latency | P95 ms',
+      'Exceptions | 24h, sampling-adjusted', 'Source receipt delay | P95 seconds', 'Latest request event age | minutes'
+    )
+    $actualMetrics = @([regex]::Matches($summary, "MetricOrder=\d, Metric='([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+    if (($actualMetrics -join ',') -cne ($expectedMetrics -join ',') -or
+        [regex]::Matches($summary, "external_table\('AppRequests'\)").Count -ne 1 -or
+        [regex]::Matches($summary, "external_table\('AppExceptions'\)").Count -ne 1 -or
+        $summary -notmatch 'let RequestSummary = materialize\(' -or $summary -notmatch 'order by MetricOrder asc' -or
+        $summary -notmatch 'percentilew' -or $summary -notmatch 'ItemCount' -or $summary -notmatch 'project Metric, Value\s*$') {
+      throw 'The combined KPI query must preserve all six ordered metrics, sampling and output columns while sharing one request aggregation.'
+    }
+  } elseif ($mirroredDashboard.pages.Count -ne 1) { throw 'The central dashboard layout must remain unchanged.' }
+  foreach ($tile in $mirroredDashboard.tiles) {
+    $layout = $tile.layout
+    if ($tile.visualType -notin @('multistat', 'line', 'table') -or $layout.width -lt 9 -or $layout.height -lt 7 -or
+        $layout.x -lt 0 -or $layout.y -lt 0 -or $layout.x + $layout.width -gt 24) { throw 'Unsupported visual type or tile dimensions.' }
+    if ($tile.query -notmatch 'external_table\(' -or $tile.query -match '_ReceivedTime') { throw 'Mirror queries must use external tables and the actual source receipt timestamp.' }
+    if ($tile.pageId -notin $mirroredDashboard.pages.id) { throw 'Every tile must reference an existing page.' }
+    $numericProjection = if ($applicationInsights) { 'project Metric, Value\s*$' } else { "project Metric='.*', Value=toreal\(Value\)" }
+    if ($tile.visualType -eq 'multistat' -and ($tile.query -notmatch $numericProjection -or
+        $tile.visualOptions.multiStat__labelColumn -ne 'Metric' -or $tile.visualOptions.multiStat__valueColumn -ne 'Value')) {
+      throw 'Numeric cards require explicit Metric/Value columns and visual mappings.'
+    }
+    foreach ($other in $mirroredDashboard.tiles | Where-Object { $_.id -ne $tile.id -and $_.pageId -eq $tile.pageId }) {
+      if ($layout.x -lt $other.layout.x + $other.layout.width -and $other.layout.x -lt $layout.x + $layout.width -and
+          $layout.y -lt $other.layout.y + $other.layout.height -and $other.layout.y -lt $layout.y + $layout.height) { throw 'Dashboard tiles overlap.' }
+    }
+  }
+  if ($applicationInsights -and ($mirroredDashboard.tiles[2].query -notmatch 'percentilew' -or $mirroredDashboard.tiles[0].query -notmatch 'ItemCount')) {
+    throw 'Application Insights counts and percentiles must respect sampling weights.'
+  }
+}
+Write-Output 'PASS: mirrored dashboards retain supported visuals, sampling and bindings; Application Insights shares six KPIs and limits each page to four queries without overlapping tiles.'
+
+Reset-Fixture
+1..2 | ForEach-Object { if ((Test-Mirror).Status -ne 'Pending') { throw 'Created mirror is not proof of data availability.' } }
+$mirrorPosts = @($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and $_.Uri -like '*/mirroredCatalogs' })
+if ($mirrorPosts.Count -ne 1) { throw 'Mirror reruns must not duplicate or overwrite items.' }
+$part = ($mirrorPosts[0].Body | ConvertFrom-Json).definition.parts[0]
+$definition = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($part.payload)) | ConvertFrom-Json
+if ($part.path -ne 'MirroredCatalogDefinition.json' -or
+    $definition.properties.source.type -ne 'AzureMonitorMirroredCatalog' -or
+    $definition.properties.source.typeProperties.warehouse -ne $customerId -or
+    $definition.properties.mountedTables.Count -ne 2 -or
+    ($definition.properties.mountedTables.source.typeProperties.tableName -join ',') -ne 'AzureActivity,Perf') {
+  throw 'Mirror must mount only the explicitly requested tables using the documented source type.'
+}
+Reset-Fixture
+$fixture.Tables = @()
+if ((Test-Mirror).Status -ne 'ActionRequired' -or $fixture.Mirror) { throw 'Missing source tables must not widen mirroring to all tables.' }
+Reset-Fixture
+$fixture.Scopes += @{ fullyQualifiedScope = @('another'); isSelectable = 'Selectable' }
+if ((Test-Mirror).Status -ne 'ActionRequired') { throw 'Ambiguous scopes must require explicit selection.' }
+Reset-Fixture
+$fixture.Connections = @()
+if ((Test-Mirror).Status -ne 'ActionRequired') { throw 'Missing preauthorized connection must produce an actionable result.' }
+Reset-Fixture
+$fixture.MirrorStatus = 'Failed'
+Assert-Failure { Test-Mirror } '*Mirroring failed*'
+Reset-Fixture
+$fixture.HttpFailure = $true
+Assert-Failure { Test-Mirror } '*403*'
+Reset-Fixture
+$fixture.Continuation = "$fabricApi/connections?page=2"
+$fixture.MoreConnections = @(@{ id = 'second-connection' })
+if (@(Get-FabricApiCollection -Path connections).Count -ne 3) { throw 'Collection pagination must include all pages.' }
+$fixture.Continuation = 'https://untrusted.example/connections'
+Assert-Failure { Get-FabricApiCollection -Path connections } '*Unexpected Fabric continuation URL*'
+$fixture.Continuation = "$fabricApi/connections"
+Assert-Failure { Get-FabricApiCollection -Path connections } '*repeated continuation URL*'
+Assert-Failure {
+  Write-FabricSetupSummary -Results @([pscustomobject]@{ Feature = 'Test'; Status = 'Failed'; Detail = 'Test failure' })
+} "*automation steps failed.`nTest: Test failure"
+$summaryResults = @(
+  [pscustomobject]@{ Feature = 'Verified feature'; Status = 'Verified'; Detail = 'Successful check' }
+  [pscustomobject]@{ Feature = 'Workspace monitoring'; Status = 'Failed'; Detail = 'HTTP 403. Service response: MonitoringReadDenied' }
+  [pscustomobject]@{ Feature = 'Live ingestion'; Status = 'Pending'; Detail = 'Generate traffic' }
+  [pscustomobject]@{ Feature = 'Operations Agent'; Status = 'Failed'; Detail = "HTTP 400.`nService response: AgentReadDenied" }
+)
+Assert-Failure {
+  Write-FabricSetupSummary -Results $summaryResults
+} "One or more Fabric automation steps failed.`nWorkspace monitoring: HTTP 403. Service response: MonitoringReadDenied`nOperations Agent: HTTP 400.`nService response: AgentReadDenied"
+foreach ($status in @('Configured', 'Verified', 'Pending', 'ActionRequired', 'Skipped')) {
+  Write-FabricSetupSummary -Results @([pscustomobject]@{ Feature = 'Test'; Status = $status; Detail = 'No failed steps' })
+}
+Write-Output 'PASS: final setup exceptions retain every failed feature and full detail; nonfailed statuses do not throw.'
+Write-Output 'PASS: preview mirroring uses explicit mounts, reuses items and reports authorization/selection/status failures. No live calls.'
+
+Reset-Fixture
+$fixture.FullSetup = $true
+& (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' `
+  -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -SkipEventstreamConnection -EnableMirroring:$true -MirrorConnectionId $connectionId -MirrorTables AzureActivity, Perf `
+  -AppInsightsMirrorConnectionId $appConnectionId -AppInsightsMirrorTables AppRequests,AppDependencies,AppExceptions,AppTraces -EnableAutoSuspend:$false -VerificationTimeoutSeconds 1
+if ($fixture.Dashboards.Count -ne 3 -or $fixture.Mirrors.Count -ne 2 -or $fixture.Samples.Count -ne 4) {
+  throw 'Full setup must wire dashboard, synthetic correlation and configured mirroring without manual helper calls.'
+}
+if ($fixture.MonitoringItems.Count -or $fixture.MonitoringState -ne 'Disabled' -or $fixture.Agents.Count -or
+    @($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and
+      ($_.Uri -like '*/monitoringItems' -or $_.Uri -like '*/operationsAgents' -or $_.Uri -like '*/enableDataCollection') }).Count) {
+  throw 'Full setup must not create monitoring/agents or enable collection; those are manual post-deployment steps.'
+}
+Write-Output 'PASS: full setup orchestrates supported experiences and explicitly reports incomplete live ingestion and manual Capacity Metrics installation.'
+
+Reset-Fixture
+$fixture.FullSetup = $true
+& (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' `
+  -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -SkipEventstreamConnection -EnableMirroring:$false `
+  -EnableAutoSuspend:$false -SeedSampleData:$false -EnableWorkspaceMonitoring:$false -EnableOperationsAgent:$false
+if ($fixture.MonitoringItems.Count -or $fixture.Agents.Count -or $fixture.MonitoringState -ne 'Disabled') {
+  throw 'Explicit feature opt-outs must skip monitoring/agent API calls without changing existing state.'
+}
+Write-Output 'PASS: full setup honors monitoring and Operations Agent opt-outs.'
+
+Reset-Fixture
+$fixture.FullSetup = $true
+$featureBlock = @($ast.EndBlock.Statements | Where-Object {
+  $_ -is [Management.Automation.Language.ForEachStatementAst] -and $_.Extent.Text.StartsWith('foreach ($feature in')
+})[0]
+function Test-FeatureSummary {
+  param([switch] $ExpectFailures)
+  $workspace = @{ id = 'workspace' }
+  $kqlDatabase = @{ id = '11111111-1111-1111-1111-111111111111' }
+  $active = @{ userName = 'operator@example.com'; tenantId = '00000000-0000-0000-0000-000000000000' }
+  $DestinationTableName = 'AzureDiagnosticsRaw'
+  $EnableWorkspaceMonitoring = $true
+  $EnableOperationsAgent = $true
+  $setupResults = [Collections.Generic.List[object]]::new()
+  . ([scriptblock]::Create($featureBlock.Extent.Text))
+  if ($ExpectFailures) {
+    if ($setupResults.Count -ne 2 -or @($setupResults | Where-Object Status -eq Failed).Count -ne 2 -or
+        $setupResults[0].Detail -notlike '*GET*monitoringItems*MonitoringReadDenied*Synthetic feature failure*' -or
+        $setupResults[1].Detail -notlike '*GET*operationsAgents*AgentReadDenied*Synthetic feature failure*') {
+      throw "Monitoring and agent setup results must retain actual read failures, rather than hiding them as manual steps: $($setupResults | ConvertTo-Json -Depth 5 -Compress)"
+    }
+  } elseif ($setupResults.Count -ne 3 -or @($setupResults | Where-Object Status -eq ActionRequired).Count -ne 3 -or
+      $setupResults[0].Detail -notlike '*Allow monitoring data collection*' -or
+      $setupResults[2].Detail -notlike '*Generate/review the playbook*') {
+    throw 'Full orchestration must provide actionable manual monitoring, per-stream logging and agent setup results.'
+  }
+}
+Test-FeatureSummary
+$fixture.FeatureFailures = $true
+Test-FeatureSummary -ExpectFailures
+Write-Output 'PASS: monitoring/agent orchestration reports guided manual steps and retains genuine HTTP read failures.'
+
+Reset-Fixture
+$fixture.FullSetup = $true
+$fixture.CapacityState = 'Suspended'
+& (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -Teardown
+if (-not $fixture.DeletedWorkspace -or $fixture.Dashboard -or $fixture.Samples.Count -or
+    $fixture.MonitoringItems.Count -or $fixture.Agents.Count) {
+  throw 'Teardown must delete tenant items even after scheduled capacity suspension, without creating any demo items.'
+}
+Write-Output 'PASS: suspended capacity does not prevent tenant-workspace teardown.'
+
+$configBlock = @($ast.EndBlock.Statements | Where-Object {
+  $_ -is [Management.Automation.Language.IfStatementAst] -and $_.Extent.Text.StartsWith('if (Test-Path -LiteralPath $configPath)')
+})[0]
+function Test-WorkspaceConfig {
+  $configPath = 'fixture.json'
+  $Teardown = $true
+  $WorkspaceName = 'default'
+  $EnableAutoSuspend = $false
+  function Test-Path { return $true }
+  function Get-Content { return '{"fabricAutomation":{"workspaceName":"Isolated lab workspace","enableAutoSuspend":true}}' }
+  . ([scriptblock]::Create('$PSScriptRoot = Join-Path $source ''scripts''; ' + $configBlock.Extent.Text))
+  if ($WorkspaceName -ne 'Isolated lab workspace' -or $EnableAutoSuspend) {
+    throw 'Teardown must honor the configured workspace without applying setup-only options.'
+  }
+}
+Test-WorkspaceConfig
+Write-Output 'PASS: configured workspace isolation is preserved during teardown.'

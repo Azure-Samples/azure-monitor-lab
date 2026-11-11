@@ -31,7 +31,9 @@ test('API contracts, no-store, W3C correlation, and deterministic checkout', asy
   expect((await request.get('/api/checkout', { headers: { 'X-Amlab-Channel': '<script>' } })).status()).toBe(400);
   expect([200, 402]).toContain((await request.get('/api/checkout')).status());
   const config = await request.get('/api/console/config');
-  expect(Object.keys(await config.json()).sort()).toEqual(['links', 'performanceCooldownSeconds']);
+  const consoleConfig = await config.json();
+  expect(Object.keys(consoleConfig).sort()).toEqual(['links', 'performanceCooldownSeconds']);
+  expect(consoleConfig.links).toHaveProperty('CustomerApplication');
   expect(await config.text()).not.toMatch(/InstrumentationKey|ConnectionString|password/i);
 });
 
@@ -124,12 +126,23 @@ test('dependency control reports a result and timeout is explicit', async ({ pag
 
 test('configured monitoring links are HTTPS-only and response content is inert', async ({ page }) => {
   await page.route('**/api/console/config', route => route.fulfill({ json: {
-    links: { ApplicationInsights: 'https://portal.azure.com/#resource/test', Logs: 'javascript:alert(1)', Workbook: null, Grafana: 'https://example.grafana.azure.com/' }, performanceCooldownSeconds: 30
+    links: {
+      ApplicationInsights: 'https://portal.azure.com/#resource/test',
+      Logs: 'javascript:alert(1)',
+      Workbook: null,
+      Grafana: 'https://example.grafana.azure.com/',
+      CustomerApplication: 'https://customer.example.com/'
+    },
+    performanceCooldownSeconds: 30
   } }));
   await page.route('**/healthz', route => route.fulfill({ body: '<img src=x onerror="window.injected=true">', headers: { 'X-Amlab-Trace-Id': 'safe-trace' } }));
   await openTraffic(page);
   await expect(page.locator('[data-link="ApplicationInsights"]')).toHaveAttribute('href', 'https://portal.azure.com/#resource/test');
   await expect(page.locator('[data-link="Logs"]')).not.toHaveAttribute('href');
+  await expect(page.getByRole('link', { name: 'Customer app' })).toHaveAttribute('href', 'https://customer.example.com/');
+  await expect(page.getByRole('link', { name: 'Customer app' })).toHaveAttribute('target', '_blank');
+  await expect(page.getByRole('link', { name: 'Customer app' })).toHaveAttribute('rel', /noopener/);
+  await expect(page.getByRole('link', { name: 'Customer app' })).toHaveAttribute('rel', /noreferrer/);
   await page.getByRole('button', { name: /Check Health/ }).click();
   await page.getByRole('button', { name: 'Show Health check response 1' }).click();
   await expect(page.locator('#response-1 pre')).toContainText('<img');

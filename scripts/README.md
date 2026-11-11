@@ -10,40 +10,573 @@ Most scripts use the Azure CLI and require `az login`. Scripts that work with AK
 
 ## Deployment and configuration
 
+One-shot and staged Bicep deployments suppress Azure CLI/Bicep warnings and
+upgrade notices by default with `--only-show-errors`. Progress messages,
+what-if previews and deployment errors remain visible. Standalone Bicep builds
+and CI validation still show diagnostics; no global Azure CLI setting is changed.
+During script-based ARM deployment, an animated progress display shows the
+deployment name and elapsed time, followed by a green `[OK]` or red `[FAIL]`
+summary. This indicates activity, not a completion percentage or time estimate.
+Azure CLI diagnostics and exit codes are preserved, including during recovery
+retries. Stopping the local runner does not cancel an ARM deployment already
+submitted; verify its Azure status before retrying.
+
+The [central config example](../lab.config.json.example) separates `basicConfiguration` (subscription, tenant, resource group, regions, emails, VM credentials) from grouped `advancedConfiguration` settings (compute, monitoring, access, optional stages, and automation). Existing flat configs still work. See [config layout and compatibility](../docs/REFERENCE.md#config-layout-and-compatibility) for paths and optional migration.
+
+Scripts and custom runbooks should use the shared [lab-config.ps1](lab-config.ps1) helper:
+
+```powershell
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+```
+
+The returned object exposes the existing flat property names regardless of the input format. Documentation that names a setting without its grouping prefix refers to this normalized name; edit that setting in its group in the new template.
+
+### Network Watcher prerequisites
+
+The Bicep network-monitoring modules require `NetworkWatcher_<region>` in the
+shared `NetworkWatcherRG`. Azure automatic enablement is not a deployment
+dependency guarantee, especially after explicitly deleting this group.
+`deploy.ps1` prepares it before ARM deployment, including with `-SkipPreflight`.
+`Invoke-LabStage 10-workloads` prepares it before preview and requests confirmation
+if shared resources must be created. Other stages do not enable Network Watcher.
+Staged Terraform prepares it before Stage B through `terraform_data.network_watcher`;
+apply approval covers missing-only creation, and destroy leaves the shared watcher
+untouched. Portal deployments require the README's Cloud Shell prerequisite step
+before starting the wizard.
+
+[network-watcher.ps1](network-watcher.ps1) verifies the selected subscription/tenant,
+creates only a missing group/watcher, and waits for readiness. Existing group
+location/tags and watchers are preserved. A regional watcher in a different group
+or with a different name fails explicitly rather than being moved or replaced.
+For raw Bicep/portal deployments, prepare the prerequisite first:
+
+```powershell
+. ./scripts/lab-config.ps1
+. ./scripts/network-watcher.ps1
+$config = Read-LabConfig -Path ./lab.config.json
+Ensure-LabNetworkWatcher -SubscriptionId $config.subscriptionId -TenantId $config.tenantId `
+  -Location $config.location -Confirm
+```
+
+This restores the selected regional watcher, not deleted monitoring children or
+unrelated regional watchers. Rerun the lab deployment to restore its monitors.
+
+### Customer-slot provider failure recovery
+
+`deploy.ps1` and `Invoke-LabStage 10-workloads` share `deployment-slot-recovery.ps1`.
+Recovery is deliberately limited to an isolated failed
+`customer-webapp` → `customer-broken-slot` → `Microsoft.Web/sites/slots` **Create**
+whose structured leaf error is `InternalServerError`. An outer HTTP 400/`BadRequest`
+is not itself retryable. Generic `DeploymentFailed`, permissions, quotas, validation
+errors, mixed failures, and other resources do not qualify for this recovery.
+Existing capacity/metric-readiness policies in `deploy.ps1` remain separate.
+
+Before writing, the helper verifies the original deployments are terminal and reads
+the actual `broken` slot. Pending/unknown states are polled at five-second intervals
+for up to a 60-second polling window (13 reads); unreadable or failed reads stop
+recovery. A missing or terminal-failed slot gets at most **two additional leaf
+attempts**, delayed **30 then 90 seconds plus 0–10 seconds jitter**. Every failed
+attempt must again meet the same narrow error gate. A running, already-created
+slot skips leaf writes only after checking its nonsecret plan, region, subnet,
+identity, tags, HTTPS and runtime metadata against the submitted parameters.
+No app settings, connection strings, or tokens are read or printed.
+
+The helper replays the leaf's exported deployment-history template and nonsecure
+parameters with the same subscription, resource group, name and resource target.
+ARM cannot resume a terminal failed parent. Therefore, **only after slot
+reconciliation**, it performs one guarded incremental parent reconciliation using
+the original exported parent template and unchanged original parameter arguments
+(local input files are hash-checked). This necessarily re-evaluates the parent's
+other resources; it is not an unclassified full-deployment retry. Parent success
+is mandatory before capturing outputs or continuing post-deployment steps.
+Slot existence alone never counts as overall success. Recovery scratch templates
+under `.artifacts` are removed in `finally`.
+
+This does not add retry behavior to direct `az deployment` commands, Cloud Shell
+templates, Terraform, or other stages. Do not run competing deployment writers
+against the same deployment names. The polling window bounds reconciliation
+polls, not Azure CLI transport timeouts. The observed provider failure may be
+transient; this handling does not claim to establish its root cause.
+
+Local regression checks (mocked Azure CLI, no Azure access):
+
+```powershell
+& .\scripts\tests\deployment-slot-recovery.Tests.ps1
+& .\scripts\tests\staged-guide.Tests.ps1
+& .\scripts\tests\slot-failure-scenario.Tests.ps1
+```
+
 | Script | Purpose | Typical command |
 |---|---|---|
 | `sync-config.ps1` | Reads `lab.config.json` and generates the gitignored deployment inputs: `.azure-target.json`, `infra/main.parameters.json`, and `terraform/stages.tfvars`. | `./scripts/sync-config.ps1` |
-| `preflight-check.ps1` | Checks regional SKU availability, quota, and Azure resource-provider availability before deployment. | `./scripts/preflight-check.ps1 -Location northeurope` |
+| [migrate-lab-config.ps1](migrate-lab-config.ps1) | Optionally reorganizes an existing config without changing values; creates a private `.bak` backup and refuses to overwrite it. Does not deploy or regenerate inputs. | `./scripts/migrate-lab-config.ps1` |
+| `preflight-check.ps1` | Checks regional SKU availability, quota, AKS system-pool minimums, and Azure resource-provider availability. Compute failures identify config keys and eligible candidate alternatives; standalone checks require explicit sizing arguments to match your config (see [guidance](../README.md#option-2-scripted-one-shot-bicep--terraform-full-control)). | `./scripts/preflight-check.ps1 -Location northeurope -VmSize Standard_B2als_v2 -AksNodeVmSize Standard_D4as_v5 -AksNodeCount 2 -VmssSize Standard_B2als_v2` |
 | `deploy.ps1` | Runs the one-shot Bicep deployment, including resource creation, post-deployment workloads, health model setup, SLI prerequisite verification, optional AI setup, and optional SRE/Observability Agent deployment and validation. The preview SLIs remain a manual portal step. | `./scripts/deploy.ps1 -ResourceGroup rg-my-lab -Location northeurope` |
 | [staged-deploy-helpers.ps1](staged-deploy-helpers.ps1) | Loads or refreshes `Invoke-LabStage` and `Assert-LabAccount` after the Bicep guide's input bootstrap. Dot-sourcing preserves the current inputs and makes no Azure calls. | `. ./scripts/staged-deploy-helpers.ps1` |
 | `post-deploy.ps1` | Publishes the app, automatically initializes console infrastructure/sign-in/access, and applies AKS workloads. Normally called by a deployment wrapper. | `./scripts/post-deploy.ps1 -SubscriptionId <sub> -TenantId <tenant> -ResourceGroup <rg> -WebAppName <app> -AksName <aks> -WebAppHost <host>` |
-| [post-staged-deploy.ps1](post-staged-deploy.ps1) | After B, discovers and completes workloads/console setup. Stage E setup follows config or an explicit boolean; SRE and Observability Agent validation follow deployed resources or explicit booleans. Terraform passes its supported selections itself. | `./scripts/post-staged-deploy.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -EnableStageE $false` |
-| [post-cloud-shell-deploy.ps1](post-cloud-shell-deploy.ps1) | Portal wrapper that signs in to the tenant, pins the subscription, completes workloads/console setup, verifies SLI prerequisites, and validates discovered SRE and Observability Agents. Preview SLIs remain a portal step. | `./scripts/post-cloud-shell-deploy.ps1 -TenantId <tenant> -SubscriptionId <sub> -ResourceGroup <rg>` |
+| [post-staged-deploy.ps1](post-staged-deploy.ps1) | After B, discovers and completes workloads/console setup. Stage E setup follows config or an explicit boolean; Fabric setup and SRE/Observability Agent validation follow deployed resources or explicit booleans. Terraform passes its supported selections itself. Fabric failures stop completion; explicit `-EnableStageFabric $false` skips setup without suspending the capacity. | `./scripts/post-staged-deploy.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -EnableStageE $false` |
+| [post-cloud-shell-deploy.ps1](post-cloud-shell-deploy.ps1) | Portal wrapper that signs in to the tenant, pins the subscription, completes workloads/console setup, verifies SLI prerequisites, completes detected Fabric setup, and validates discovered SRE and Observability Agents. Explicit `-EnableStageFabric $false` skips setup without suspending the capacity. Preview SLIs remain a portal step. | `./scripts/post-cloud-shell-deploy.ps1 -TenantId <tenant> -SubscriptionId <sub> -ResourceGroup <rg>` |
+| [cleanup-legacy-rbac.ps1](cleanup-legacy-rbac.ps1) | After replacement grants are deployed and verified, removes only the obsolete Logic App resource-group Contributor and Observability Agent subscription Monitoring Reader assignments. Deployment wrappers invoke it automatically. | Normally called by a deployment wrapper. |
 | [initialize-webapp-console.ps1](initialize-webapp-console.ps1) | Called automatically by deployment. Provisions/builds the Azure runner, configures operator sign-in, health and scoped access, prepares optional agents, then enables the console. | No separate command after successful deployment. |
-| [deploy-webapp.ps1](deploy-webapp.ps1) | Updates an existing app and its console dependencies/access without reapplying AKS workloads. | See [upgrade and WhatIf](../workloads/webapp/README.md#monitoring-destinations). |
+| [deploy-webapp.ps1](deploy-webapp.ps1) | Updates an existing Control Center and, when supplied, its dedicated customer Web App and broken slot without reapplying AKS workloads. ZIP uploads are asynchronous; the script verifies the exact published deployment version for up to 15 minutes and does not blindly re-upload after an ambiguous SCM response. | See [upgrade and WhatIf](../workloads/webapp/README.md#monitoring-destinations). |
 | [setup-webapp-health-access.ps1](setup-webapp-health-access.ps1) | Targeted administrative repair for read-only health access; normal deployment handles this automatically. | See [hosted health access](../workloads/webapp/README.md#hosted-access). |
 | `gen-architecture-svg.ps1` | Regenerates `docs/architecture-overview-sre.svg` from the architecture definition and local Azure icons. | `./scripts/gen-architecture-svg.ps1` |
 
 For a fresh deployment, use `deploy.ps1` rather than calling `post-deploy.ps1` directly.
 
+Console setup and generated configuration select the Control Center's matching
+`appi-<suffix>` component for `app-<suffix>`, independently of Cafe, customer, or
+other Application Insights components. Missing or ambiguous targets stop setup
+rather than selecting another application's telemetry.
+
+### Opt-in customer dependencies (Bicep only)
+
+`stageToggles.enableCustomerDependencies` defaults to `false`. Enabling it requires
+JSON Boolean `enableSlotFailureScenario=true` and `enableStageB=true`, plus
+the SQL administrator group's `sqlEntraAdminObjectId` and `sqlEntraAdminName`.
+The portal and config example use `Group` and the one-worker `S2` slot plan
+automatically, without exposing those choices. Existing scripted configurations
+and template parameters retain their explicit overrides. Run
+`sync-config.ps1` before infrastructure preview. Terraform remains supported only
+with this dependency toggle disabled.
+
+The feature creates SQL Basic (2GB, Entra-only), Service Bus Standard (`orders`,
+1GB, deduplication 10 minutes, five delivery attempts, one-hour TTL), and a .NET 8
+isolated Flex processor (2048MB, maximum 40 instances, no always-ready instances).
+Customer production and `broken` slot share one UAMI; the processor has another.
+Private networking has a dedicated VNet, delegated customer/processor subnets,
+one SQL private endpoint and **two additional storage Private Link endpoints**
+(Blob and Queue), with corresponding private DNS zones and VNet links. All three
+endpoints use the existing `private-endpoints` subnet; there is no Azure Files
+endpoint or bootstrap VM. SQL/storage public networking, storage shared keys and
+anonymous blobs are disabled. The two storage endpoints add billable Private Link
+endpoint-hours/data processing plus two private DNS zones/query charges beyond
+the SQL endpoint/DNS costs. Resources remain inside the lab resource group.
+
+Stage B exposes `customerDependencies`; the one-shot template already reaches the
+ARM 64-output limit, so its object is in the nested `customer-dependencies`
+deployment. The guarded helper resolves both formats and rejects a deployment
+whose selected `enableCustomerDependencies` parameter is not `true`.
+
+After infrastructure and customer storefront publication, `deploy.ps1`,
+`post-staged-deploy.ps1`, and `post-cloud-shell-deploy.ps1` automatically invoke
+[customer backend completion](complete-customer-dependencies.ps1) when the feature
+is enabled. Completion is approved by default: it shows the exact database and
+worker targets, acquires a SQL administrator token, initializes schema/seed products
+and object-scoped managed-identity users, then publishes the worker. Pass
+`-ApproveCustomerDependencies:$false` to any deployment/completion wrapper to
+restore the interactive `yes` prompt. Declining that prompt or failing bootstrap/publication/readiness stops
+deployment; infrastructure success alone is not reported as backend readiness.
+Disabled backends do not prompt or run completion.
+
+Run as the configured SQL Entra administrator, with the .NET 8 SDK and Python
+available. Completion reuses `paramiko` if already installed; otherwise it creates
+a temporary virtual environment and installs it automatically before opening any
+tunnel. This requires Python venv/pip support and package-index access. The
+environment is removed on success or failure; system Python packages and PATH
+are unchanged. Completion opens an authenticated customer App Service SSH
+tunnel on an allocated loopback port, verifies an SSH response, and closes its
+owned tunnel after SQL initialization or on failure. It does not change public
+network access or firewall rules. Default approval does not grant administrator
+access or bypass target checks. Standalone `bootstrap-customer-sql.ps1` and
+`deploy-customer-dependencies.ps1` repair commands retain their existing
+`ShouldProcess` confirmation and `-WhatIf` behavior. Staged/Cloud Shell completion discovers the latest
+successful deployment whose output matches the exact customer app, then validates
+its enabled feature/context. Use `-CustomerDependencyDeploymentName <name>` to
+select the intended deployment explicitly. The one-shot driver passes its exact
+successful deployment name automatically.
+
+```powershell
+.\scripts\deploy.ps1
+# After a staged Bicep deployment:
+.\scripts\post-staged-deploy.ps1 -SubscriptionId '<subscription-guid>' `
+  -ResourceGroup '<lab-resource-group>' -CustomerDependencyDeploymentName stage-10-workloads
+# To request interactive customer backend approval:
+.\scripts\deploy.ps1 -ApproveCustomerDependencies:$false
+```
+
+For targeted repair without reapplying infrastructure or publishing the storefront,
+use the SQL-admin lifecycle below. The operator must reach SQL through the private network;
+temporary public-IP firewall rules cannot bypass disabled public networking or
+the lab's modifying policy. Do not use `-ApproveTemporaryFirewall` for this
+deployment. Neither script changes the selected Azure subscription/tenant or
+writes tokens to disk. Direct private-network bootstrap requires the `SqlServer`
+PowerShell module (`Invoke-Sqlcmd`). The SSH tunnel alternative below does not.
+
+```powershell
+$common = @{
+  SubscriptionId = '<subscription-guid>'
+  TenantId = '<tenant-guid>'
+  ResourceGroup = '<lab-resource-group>'
+  DeploymentName = 'stage-10-workloads' # Or the scoped customer-application deployment name.
+}
+. .\scripts\customer-dependency-helpers.ps1
+$context = Get-CustomerDependencyContext @common # Read-only account/output checks.
+.\scripts\deploy-customer-dependencies.ps1 @common -ConfirmTarget $context.workerId -WhatIf
+# Manage a temporary private tunnel automatically (recommended for laptop operators):
+.\scripts\deploy-customer-dependencies.ps1 @common -ConfirmTarget $context.workerId -StartCustomerPrivateTunnel
+# Private-network operator:
+.\scripts\deploy-customer-dependencies.ps1 @common -ConfirmTarget $context.workerId
+```
+
+The lifecycle bootstraps SQL first using the configured Entra administrator's
+in-memory token, publishes `workloads/customer-processor/CustomerProcessor.csproj`
+to a prebuilt ZIP, waits at most 120 seconds for Functions discovery, and runs
+read-only readiness. Worker packaging uses the .NET ZIP API to include hidden
+files such as `.azurefunctions` on Linux. Before upload, the script verifies
+that `host.json`, `functions.metadata` and `.azurefunctions` files are at the
+archive root, not nested under the publish directory. An incomplete package
+stops completion before upload. If publication fails after SQL initialization,
+rerun completion after fixing the error; SQL bootstrap is idempotent and no
+infrastructure redeployment is required. To bootstrap independently, use
+`bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId`
+from a private-network-connected operator environment. Schema creation/seeding is idempotent;
+existing SQL principal SID/type mismatches fail rather than replacing users.
+`CREATE USER WITH SID, TYPE=E` uses the managed identity's **client/application ID**
+(not principal/object ID), avoiding Graph lookup and Directory Readers grants.
+Customer grants: SELECT Products, SELECT/INSERT/UPDATE Orders. Processor grants:
+SELECT/UPDATE Orders. No SQL control-plane role substitutes for these grants.
+
+#### Private SQL bootstrap through the customer App Service
+
+Automatic completion uses `-StartCustomerPrivateTunnel` and manages its own
+tunnel; no separate terminal or `SqlServer` PowerShell module is needed.
+Transient SQL login resets/timeouts are retried up to three times, with 5s/10s
+delays, before executing any bootstrap SQL. Schema and verification errors are
+not replayed; permanent login/permission errors fail immediately. Failures report
+the SQL error number and whether login, initialization or verification failed.
+For an operator-managed existing tunnel, use `-UseCustomerPrivateTunnel -SshPort
+22446` instead. Prerequisites for both private tunnel modes:
+
+- Azure CLI authenticated as the current selected/configured Entra SQL
+  administrator, in the subscription/tenant checked by the guarded helper.
+- The existing **customer Linux App Service** is running, supports App Service
+  SSH, and has its customer VNet integration/private SQL DNS attached.
+- Local .NET 8 SDK and Python available as `dotnet` and `python` on PATH.
+  Lifecycle/completion installs missing `paramiko` automatically in an isolated
+  environment; Python venv support and package-index access are then required.
+  The SDK publishes `scripts\customer-sql-bootstrap\CustomerSqlBootstrap.csproj`
+  (.NET 8, Microsoft.Data.SqlClient 6.1.3); initial restore needs NuGet access.
+- Only for `-UseCustomerPrivateTunnel`: a separate terminal for the official authenticated Azure CLI TCP tunnel. Port
+  `22446` must be free; another port is allowed if both commands use the same one.
+
+No manual Python setup is needed for normal post-deployment completion or
+`deploy-customer-dependencies.ps1` in either private tunnel mode. Dependency
+installation failures stop before tunnel startup, SQL initialization or worker
+publication. If venv support is missing on Debian/Ubuntu, install the
+distribution's `python3-venv` package and rerun completion; infrastructure does
+not need to be redeployed. `-WhatIf` does not create an environment or install
+packages.
+
+For **standalone** `bootstrap-customer-sql.ps1` with an operator-owned tunnel,
+install and verify the SSH dependency in the same shell:
+
+```powershell
+python -m pip install paramiko
+python -c "import paramiko"
+```
+
+Using `python -m pip` ensures installation targets the interpreter used by the
+scripts, rather than a different `pip` on PATH. If Linux reports an
+`externally-managed-environment` error, use a
+virtual environment instead of overriding the system Python protections:
+
+```powershell
+python -m venv "$HOME/.venvs/azure-monitor-lab"
+& "$HOME/.venvs/azure-monitor-lab/bin/Activate.ps1"
+python -m pip install paramiko
+python -c "import paramiko"
+```
+
+On Windows, activate with `Scripts/Activate.ps1` instead of `bin/Activate.ps1`.
+If creating the environment fails because `venv`/`ensurepip` is unavailable,
+install your distribution's Python venv package first.
+After verification succeeds, run standalone bootstrap in that shell. An explicit
+`-PythonExecutable <path>` can select an existing Python environment for
+`bootstrap-customer-sql.ps1 -UseCustomerPrivateTunnel` without activating it.
+
+In **terminal 1**, substitute the exact selected subscription/resource group and
+the dedicated customer site name resolved as `$context.CustomerWebAppName` above:
+
+```powershell
+az webapp create-remote-connection --subscription '<subscription-guid>' `
+  --resource-group '<lab-resource-group>' --name '<deployed-customer-webapp-name>' `
+  --port 22446 --timeout 1200
+```
+
+Leave that foreground terminal running until the CLI reports the tunnel ready.
+In **terminal 2**, using `$common` and `$context` initialized above, choose the
+SQL-only command or the complete SQL-first worker-publication lifecycle:
+
+```powershell
+# Optional read-only login check; no schema, data or SQL users are changed:
+.\scripts\bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId `
+  -UseCustomerPrivateTunnel -SshPort 22446 -CheckOnly
+# Initialize SQL after the connection check passes:
+.\scripts\bootstrap-customer-sql.ps1 @common -ConfirmTarget $context.sqlDatabaseId `
+  -UseCustomerPrivateTunnel -SshPort 22446
+# Alternatively, bootstrap then publish the worker and check readiness:
+.\scripts\deploy-customer-dependencies.ps1 @common -ConfirmTarget $context.workerId `
+  -UseCustomerPrivateTunnel -SshPort 22446
+```
+
+For `-UseCustomerPrivateTunnel`, `-SshPort` defaults to `22446`; for
+`-StartCustomerPrivateTunnel`, an available port is allocated unless explicitly
+specified. The modes are mutually exclusive. Managed-tunnel mode cannot be
+combined with `-ApproveTemporaryFirewall` or `-OperatorIpv4`.
+The Python `paramiko` bridge sends the
+current selected admin token/query only over encrypted SSH stdin to the temporary
+.NET console; SFTP uploads contain only token-free binaries. No token
+files/logs/command-line arguments, admin identity changes, new roles, firewall
+rules, VMs or credentials are introduced. Exact temporary remote bootstrap
+artifacts are removed by the bridge.
+
+The bridge accepts SSH host keys only for its hard-coded loopback connection.
+Remote endpoint authentication is provided by the operator-owned Azure CLI
+App Service TLS tunnel, not by a separate `known_hosts` prerequisite. This scoped
+trust model assumes the local machine and tunnel owner are trusted; do not
+reuse it for direct SSH or point the bridge at an unrelated local listener.
+
+After an operator-managed bootstrap/lifecycle finishes, **close terminal 1 with Ctrl+C** to stop the
+foreground tunnel; do not leave it open beyond the operator task. Its configured
+timeout is 1200 seconds. A private-network-connected operator may instead use
+the direct `Invoke-Sqlcmd` path without either tunnel argument.
+
+Both runtimes receive `CustomerDependencies__Enabled`, `__SqlConnectionString`,
+`__ServiceBusNamespace`, `__QueueName`, and `__ManagedIdentityClientId`. SQL uses
+`Authentication=Active Directory Managed Identity;User Id=<runtime-UAMI-clientId>`.
+The processor binding additionally uses `OrdersBus__fullyQualifiedNamespace`,
+`OrdersBus__credential=managedidentity`, and `OrdersBus__clientId`.
+Its Service Bus trigger uses `%CustomerOrdersQueueName%`, resolved from the flat
+host setting `CustomerOrdersQueueName=orders`. Keep the existing hierarchical
+`CustomerDependencies__QueueName=orders` for application configuration; both
+settings name the same queue. The Functions host normalizes `__` to `:`, so the
+raw hierarchical setting must not be used as the trigger placeholder.
+Identity-based `OrdersBus` connection settings are unchanged.
+Host storage uses identity-based `AzureWebJobsStorage__accountName`,
+`__credential`, and `__clientId`. Output identities include both runtime UAMI
+resource/client/principal IDs; do not confuse
+the SQL SID client IDs with RBAC principal IDs.
+
+The processor's host/deployment storage disables its public network endpoint,
+with network rules `defaultAction=Deny`, `bypass=None`. Its existing Flex VNet
+integration reaches `privatelink.blob.core.windows.net` and
+`privatelink.queue.core.windows.net` through the dedicated private endpoints and
+VNet-linked DNS zones. Shared-key and anonymous blob access remain disabled;
+runtime/deployment UAMI permissions are unchanged. The processor deployment waits
+for the storage endpoints/DNS before creating the integrated Functions host.
+SQL bootstrap must likewise originate inside the connected VNet: use the direct
+private-network operator path or the implemented `-UseCustomerPrivateTunnel`
+flow above. Infrastructure deployment does not automatically run either bootstrap.
+
+Readiness can be rerun with `test-customer-dependencies.ps1 @common`: it verifies
+all three seeded products, the bounded active queue, and discoverable functions.
+It does **not** submit an order or prove queue-to-worker completion. Submit one
+synthetic order explicitly and verify `Completed` before claiming end-to-end
+health. Health Model relationships and diagnostics are configured, but
+Health Model APIs, regional Flex support, private DNS, identity propagation and
+live logs still need operator-side verification.
+
+The **separate** customer architecture Health Model, `hm-<prefix>-customer`, is
+pinned to `swedencentral`. `hm-<prefix>-workload` keeps its original entities,
+permissions, wiring and outputs; customer deployment must not extend that model.
+The new model has its own system-assigned identity/authentication, six
+resource-scoped Monitoring Reader assignments (customer site, shared plan,
+SQL database, Service Bus namespace, processor site and host storage), and
+Log Analytics Reader on the central workspace only. It grants no SQL data access,
+resource-group monitoring role or directory role.
+
+The customer Health Model includes direct customer-to-shared-App-Service-plan,
+SQL and orders-queue-runtime relationships, plus queue-to-processor and
+processor-to-SQL/storage. The **Orders queue runtime (Service Bus)** entity is
+anchored to the dedicated namespace, because Azure publishes `DeadletteredMessages`
+there (with an `EntityName` dimension); this deployment creates only the `orders`
+queue. It is not a second application or a claimed queue-resource metric endpoint.
+If more queues are added later, namespace-wide signals must be revisited.
+
+The storefront evaluates both `HttpResponseTime` and `Http5xx`. Worker execution
+volume is **not** treated as a failure: worker health evaluates resource-filtered
+`FunctionAppLogs` Error/Critical counts. No log observations in the last five
+minutes yields no query row, rather than a fabricated healthy zero; dependency
+aggregation keeps `ignoreUnknown=false`. Idle/telemetry gaps can therefore remain
+Unknown, not evidence of completed order processing.
+
+`infra/modules/customer-health-model.bicep` requires `customerWebAppId`,
+`customerAppServicePlanId`, `customerSqlDatabaseId`, `customerServiceBusId`,
+`customerWorkerId`, `customerWorkerStorageId`, and `customerCentralLawId`, all
+in its deployment resource group. Optional parameters: `namePrefix` (`amlab`),
+`location` (`swedencentral` only), `tags` (`{}`). It outputs `healthModelName`,
+`healthModelId`, and `healthModelPrincipalId`. Main retains its 64-output cap:
+discover these outputs on named nested deployment `customer-health-model`.
+Stage E additionally exposes `customerHealthModelName` and `customerHealthModelId`.
+The dedicated module can be deployed separately after the customer infrastructure,
+without resubmitting the existing workload model.
+
+For an existing lab, use `infra/customer-application.bicep` for the scoped
+dependency infrastructure **and dedicated customer Health Model together**. Its
+only resource deployments are `customer-dependencies` and `customer-health-model`,
+both conditional on `enableCustomerDependencies`. It does not redeploy existing
+customer/control-center sites, the shared plan, or the workload Health Model.
+Do not resubmit `infra/main.bicep` or Stage E merely to add
+the customer model: those entry points also include the existing workload model.
+Use the same `namePrefix`; the customer model's location remains `swedencentral`,
+independent of the components' `westeurope` location.
+
+The scoped wrapper supplies the customer model parameters as follows (the module
+can also be deployed independently with this same contract):
+
+| Customer model parameter | Exact resource ID source |
+| --- | --- |
+| `customerWebAppId` | Existing dedicated customer site ID; its name is wrapper output `customerWebAppName.value` |
+| `customerAppServicePlanId` | Existing shared App Service plan ID |
+| `customerSqlDatabaseId` | `customerDependencies.value.sqlDatabaseId` |
+| `customerServiceBusId` | `customerDependencies.value.serviceBusNamespaceId` (namespace, not queue) |
+| `customerWorkerId` | `customerDependencies.value.workerId` |
+| `customerWorkerStorageId` | `customerDependencies.value.workerStorageId` |
+| `customerCentralLawId` | Existing central Log Analytics workspace ID |
+
+All seven IDs must belong to the scoped deployment's resource group. The wrapper
+adds `healthModelName`, `healthModelId`, and `healthModelPrincipalId` to its
+`customerDependencies.value` object without changing its existing dependency fields.
+Point lifecycle scripts' `DeploymentName` at the **scoped wrapper** deployment,
+not the nested model deployment. Ordering: scoped infrastructure/model deployment,
+selectively attach the customer UAMI/subnet/settings to the existing site and
+broken slot, operator SQL bootstrap, worker ZIP publication and read-only readiness.
+Before publication/telemetry, model signals can remain Unknown. No wrapper resource
+replaces existing app settings or identities. The model does not bootstrap SQL
+users or publish application code. Local compilation/mocked tests are not ARM
+validation or live readiness; if ARM connectivity is unavailable, wait for
+connectivity before validation/what-if/deployment instead of bypassing them.
+
+```powershell
+.\scripts\set-customer-dependency-fault.ps1 @common -Fault SqlDelay `
+  -SqlDelaySeconds 3 -ConfirmTarget $context.CustomerWebAppId
+.\scripts\set-customer-dependency-fault.ps1 @common -Fault WorkerFailure `
+  -ConfirmTarget $context.workerId
+.\scripts\set-customer-dependency-fault.ps1 @common -Fault Recover `
+  -ConfirmTarget $context.CustomerWebAppId
+```
+
+Fault scripts require confirmation of the exact target and support `-WhatIf`.
+SQL delay is bounded to 0–5 seconds. Recovery resets delay to zero in both customer
+slots and worker failure to false; it does not replay dead-lettered messages.
+The script now explicitly restarts the changed customer app/slot or worker to apply
+environment settings. A restart failure is surfaced after a potentially applied
+setting; no automatic rollback occurs. The Control Center's **Break the application**
+menu wraps the same exact-target faults through the independent runner, fixing SQL
+delay at 3 seconds. Its full recovery also restores the working slot and checks
+HTTP health/catalogue. The menu never submits/replays orders; existing dead letters
+and latency/listener/Health Model recovery need independent verification.
+The runner-only parameter set accepts names solely from its approved environment,
+checks both feature flags live, and cannot be used as an unrestricted local target
+override. Updated bootstrap provisions conditional app-setting/restart rights at
+the customer app and worker scopes, packages both shared fault scripts, and pins
+the rebuilt image. Azure RBAC cannot constrain app-setting access to individual keys.
+The Control Center is never targeted. Disabling the toggle in an incremental
+deployment does **not** delete previously created resources or stop billing:
+use the guarded lab `teardown.ps1` when the lab is no longer needed.
+
+Offline checks (mocked Azure/SQL calls; no Azure writes):
+`pwsh -NoProfile -File scripts\tests\customer-dependencies.Tests.ps1` and
+`pwsh -NoProfile -File scripts\tests\customer-dependency-config.Tests.ps1`.
+Compiled-template parity uses the repository's pinned Bicep 0.37.4.
+
+Publication runs `dotnet publish` against the original repository Web App project,
+preserving `..\customer-orders\CustomerOrders.csproj`; package preparation works on
+published binaries, not a source-only copy. Its dependency manifest check fails
+closed if the referenced `CustomerOrders.dll` is missing. The operations runner
+copies only PowerShell/browser traffic assets, not .NET application sources.
+
+Usage traffic reports real order acceptance as `accepted-pending` or
+`accepted-queued`, distinct from `completed`. Confirmation navigation does not
+prove SQL completion, and the generator emits no `PurchaseCompleted` event itself.
+It performs **no automatic order refresh or polling**: completion requires the UI
+to have actually verified `Completed`. Disabled synthetic checkout retains its
+previous completed outcome. User/session counts and concurrency remain bounded
+by the existing generator arguments. The copied runner context includes the same
+outcome classifier as local execution.
+
+Focused checks: `pwsh -NoProfile -File scripts\tests\customer-publication.Tests.ps1`,
+`node --test scripts\tests\customer-journey-outcome.Tests.mjs`, and
+`pwsh -NoProfile -File scripts\tests\console-bootstrap.Tests.ps1`.
+
 `sync-config.ps1` also projects the JSON Boolean `enableVmOtelMetrics` (missing means `true`) into the Bicep parameter and Terraform `enable_vm_otel_metrics`. Both classic VM Insights and OpenTelemetry metrics are enabled by default; an explicit `false` opts out of the additional metrics. Strings such as `"false"`, numbers, and `null` are rejected before any output files are written. System metrics are added only to standalone VMs in Stage B; see [setup and targeted opt-out](../docs/STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics).
 
 Offline configuration/UI regression check: `pwsh -NoProfile -File scripts\tests\vm-otel-config.Tests.ps1`. It copies the sync script into a disposable fixture under `scripts/tests`, uses synthetic inputs, and removes the fixture afterwards; it does not read local configuration/secrets or call Azure. Terraform's companion mocked plan test is `terraform/tests/vm-otel-metrics.tftest.hcl` (run `terraform validate` first, then `terraform test` filtered to that file from the Terraform directory).
 
+### Optional Health Model Demo
+
+Set `advancedConfiguration.stageToggles.enableStageHealthModelDemo` to the JSON Boolean `true` and retain stages A, B, C and E (including core availability tests). Config sync projects it into Bicep `enableHealthModelDemo` and Terraform `enable_stage_health_model_demo`; missing means `false`. The [stage guide](../docs/STAGE-HEALTH-MODEL-DEMO.md) covers costs and deployment paths.
+
+`setup-health-model-demo.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix` publishes only the existing Cafe app, connects both existing models to the console and verifies one ordinary stored order plus new request/dependency telemetry. Normal full, portal and staged completion invoke it automatically when selected/discovered. Explicit `-EnableStageHealthModelDemo:$false` skips portal/staged completion without removing resources. No CLI Health Models extension is needed.
+
+`publish-healthmodel-cafe.ps1` is shared with the standalone tutorial and uses locked dependencies with ZipDeploy/Oryx. It retries only the recognized SCM-restart race. Completion does not recreate models or inject failures.
+
+During confirmed lab teardown, `remove-health-model-demo-roles.ps1` removes only recognized custom reporter roles with the exact lab RG as their sole assignable scope and only the documented read/report actions. It checks every assignment remains inside that RG, removes assignments before definitions, and leaves shared, broader and unrelated roles untouched. This does not change the Azure Monitor-managed group protections.
+
 ## Lab lifecycle and demo control
 
-The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes eight scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
+The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md) exposes allowlisted scripts through the [approved job wrapper](invoke-lab-operation.ps1), including cost-aware Start Lab and Stop Lab controls, bounded customer traffic, and the opt-in isolated customer slot-failure operation. Normal deployment builds and configures the Azure Container Apps Job automatically. The wrapper is not an unrestricted local executor; offline tests never call Azure.
 
 | Script | Purpose | Typical command |
 |---|---|---|
-| `start-the-lab.ps1` | Starts stopped or deallocated VMs, VMSS, AKS, and App Service resources. Add `-Wait` to poll until running. | `./scripts/start-the-lab.ps1 -ResourceGroup <rg> -Wait` |
+| `start-the-lab.ps1` | Starts stopped or deallocated VMs, VMSS, AKS, App Service, and the optional paused Fabric F2 capacity. Add `-Wait` to poll until running or Active. | `./scripts/start-the-lab.ps1 -ResourceGroup <rg> -Wait` |
 | `break-the-lab.ps1` | Intentionally degrades the lab: stops VMs, crashloops the AKS frontend, and increases load-generator failures. | `./scripts/break-the-lab.ps1 -ResourceGroup <rg>` |
 | `restore-the-lab.ps1` | Reverses the break scenario by starting VMs, restoring the AKS image, and applying a healthy load generator. | `./scripts/restore-the-lab.ps1 -ResourceGroup <rg>` |
 | `start-ramp.ps1` | Starts a 60-minute AKS load test against the App Service for Smart Detection and autoscale demonstrations. | `./scripts/start-ramp.ps1 -ResourceGroup <rg>` |
 | [simulate-high-cpu.ps1](simulate-high-cpu.ps1) | Submits fixed 10-minute CPU loads to the running Linux and Windows demo VMs. No AKS dependency; guest load expires independently. | `./scripts/simulate-high-cpu.ps1 -SubscriptionId <sub> -TenantId <tenant> -ResourceGroup <rg>`; add `-WhatIf` for readiness checks only. |
 | `teardown.ps1` | Removes tenant-scoped demo artifacts and monitoring dependencies, then deletes every resource group whose name contains the complete requested resource group name, including AKS-managed `MC_` groups. | `./scripts/teardown.ps1 -ResourceGroup <rg> -Yes` |
 
-[teardown.ps1](teardown.ps1) is destructive. It lists matching resource groups and verified lab-owned Entra identity IDs before deletion. The `-Yes` switch skips the confirmation prompt and approves both lists. If omitted, the script requires you to type `DELETE`.
+[teardown.ps1](teardown.ps1) is destructive. It lists matching resource groups and verified lab-owned Entra identity IDs before deletion. Normal Azure soft-delete recovery is preserved unless you explicitly add `-PurgeSoftDeletedResources`. The `-Yes` switch only skips confirmation; it never enables permanent cleanup on its own. Without `-Yes`, type `DELETE` to approve the displayed plan, including permanent-resource cleanup only when explicitly selected. Nested deletions do not ask again after approval. On Windows MSI Azure CLI installations, teardown applies a process-local Python filter for only the known `monitor-control-service` extension's `_create.py` invalid `\s` escape warning and its sample command. Installed files are unchanged; other CLI diagnostics, streams, and exit codes are preserved. Legacy Entra ownership warnings remain visible.
+
+### Permanent cleanup for same-name redeployment
+
+Normal teardown preserves Azure's soft-delete recovery policies and does not request deleted-resource inventories or purge permissions. To release reserved names, explicitly add `-PurgeSoftDeletedResources`:
+
+```powershell
+./scripts/teardown.ps1 -ResourceGroup '<rg>' -PurgeSoftDeletedResources
+```
+
+With that switch, [the cleanup helper](remove-lab-soft-deleted-resources.ps1) discovers live and already soft-deleted Key Vaults, Foundry/Cognitive Services accounts, and Log Analytics workspaces by exact original subscription/resource-group/resource IDs, not name prefixes. It uses each resource's actual region, including AI resources outside the main lab region. Only the exact requested lab group and the approved auxiliary groups are included; Azure Monitor-managed groups are never directly purged or deleted.
+
+> [!WARNING]
+> `-PurgeSoftDeletedResources` permanently destroys the displayed secrets, AI account data and logs. Review the plan before typing `DELETE`; adding `-Yes` also approves that permanent cleanup without prompting. Omit the purge switch to retain normal soft-delete recovery instead. Recovery retention can leave names reserved and block immediate same-name redeployment.
+
+When purge is selected, after agent/dependency cleanup and before resource-group deletion, live vaults and AI accounts are deleted, awaited in soft-deleted inventory, purged, and verified absent. Log Analytics workspaces use permanent (`--force`) deletion after replication is disabled. Already soft-deleted workspaces must first be recovered; teardown temporarily recreates the exact original resource group if necessary, recovers and permanently deletes the workspace, then includes that group in the final group deletion. This recovery is part of the displayed cleanup plan and works on reruns after an earlier group deletion.
+
+Key Vault purge protection cannot be bypassed. A protected vault blocks an opted-in purge before deletion; wait for its retention period or rerun without `-PurgeSoftDeletedResources`. Additional purge permissions include deleted-resource inventory reads, Key Vault purge (for example, **Key Vault Purge Operator** at subscription scope), Cognitive Services deleted-account purge at subscription scope, and workspace recovery/delete plus resource-group create rights for recovery. Permission errors retain Azure diagnostics and stop before resource-group deletion; the script never grants permissions. Inventory visibility and purge completion are bounded to 600 seconds per check. A timeout is not reported as successful cleanup.
+
+The other currently deployed resource types use their normal group-deletion lifecycle; teardown does not invent purge operations for Application Insights components, SQL backups, or soft-deleted storage blobs. Service-side deletion/DNS propagation can still delay reuse. Final resource-group deletion remains asynchronous: wait for `az group exists --subscription '<sub>' -n '<rg>'` to return `false` before redeploying.
+
+Offline regression checks (mocked Azure only):
+`pwsh -NoProfile -File scripts\tests\soft-delete-cleanup.Tests.ps1` and
+`pwsh -NoProfile -File scripts\tests\teardown.Tests.ps1`.
+
+### Optional shared Network Watcher resource-group deletion
+
+By default, teardown preserves `NetworkWatcherRG`, even with `-Yes`. To include the **entire group** in the confirmed cleanup plan:
+
+```powershell
+./scripts/teardown.ps1 -ResourceGroup '<rg>' --delete-networkwatcherrg yes
+# Equivalent native PowerShell parameter:
+./scripts/teardown.ps1 -ResourceGroup '<rg>' -DeleteNetworkWatcherRG yes
+```
+
+The option defaults to `no` and only accepts `yes` or `no`. Specify other arguments by name, including `-ResourceGroup`; the double-dash form is explicitly supported. `-Yes` may additionally skip the existing `DELETE` confirmation, but does not opt into this cleanup on its own.
+
+> [!WARNING]
+> This deletes all resources in the exact `NetworkWatcherRG` in the verified subscription, not only the lab's regional watcher or monitoring children. Network Watcher is shared across workloads and regions; connection monitors, flow logs, and unrelated resources in that group are also removed. The script warns before confirmation and submits the group deletion asynchronously. A missing group is safe to rerun; similarly named groups are not selected by this option.
+
+SRE Agent cleanup uses [remove-sre-agent.ps1](remove-sre-agent.ps1): explicitly scope the subscription/tenant, stop the agent, verify `Stopped`, submit one asynchronous deletion, then verify `ResourceNotFound` before continuing. State checks are bounded to 600 seconds per phase. Already-stopped/absent agents are safe to rerun; an accepted delete alone is not success. Unknown states, authorization errors, service conflicts and timeouts block resource-group cleanup and retain Azure diagnostics.
+
+The helper can also remove only one agent, without deleting its resource group:
+
+```powershell
+./scripts/remove-sre-agent.ps1 -SubscriptionId '<subscription-id>' -TenantId '<tenant-id>' -ResourceId '<full-agent-resource-id>'
+```
+
+It supports `-WhatIf`, confirmation and `-VerificationTimeoutSeconds`. A `currently being processed` conflict can indicate an ongoing or stuck Azure service operation; the helper does not reset that operation, change permissions, invent a force-delete option or repeatedly resubmit actions. If the operation remains stuck, Azure Support must investigate using the Activity Log and operation IDs. Stopping does not eliminate the agent's always-on charges; only verified deletion establishes that the agent is gone.
 
 ## Telemetry and monitoring demos
 
@@ -51,6 +584,7 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 |---|---|---|
 | `send-custom-logs.ps1` | Sends sample records through the Logs Ingestion API to the custom logs table. | `./scripts/send-custom-logs.ps1 -ResourceGroup <rg> -Count 10` |
 | `send-release-annotation.ps1` | Adds a deployment or incident release annotation to Application Insights charts. | `./scripts/send-release-annotation.ps1 -ResourceGroup <rg> -Name demo-release -Category Deployment` |
+| `generate-usage-traffic.ps1` | Drives bounded isolated Chromium users through the synthetic customer journey for Application Insights Usage analysis. Also available through the approval-gated Control Center operation. | `./scripts/generate-usage-traffic.ps1 -BaseUrl https://app-amlab-<suffix>.azurewebsites.net -Users 24 -Concurrency 4 -RepeatUsers 6` |
 | `trigger-code-optimization.ps1` | Drives traffic through the intentionally inefficient endpoint to produce Application Insights Code Optimization traces. Use `-SkipPublish` when the endpoint is already deployed. | `./scripts/trigger-code-optimization.ps1 -ResourceGroup <rg> -SkipPublish` |
 | `setup-grafana-alerts.ps1` | Creates the Grafana alert rule for the Managed Prometheus data source. | `./scripts/setup-grafana-alerts.ps1 -ResourceGroup <rg>` |
 | `create-summary-rule.ps1` | Creates or updates the hourly `Perf_Hourly_CL` summary rule. It discovers the suffixed central LAW when `-WorkspaceName` is omitted. | `./scripts/create-summary-rule.ps1 -ResourceGroup <rg>` |
@@ -64,6 +598,11 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 
 | Script | Purpose | Typical command |
 |---|---|---|
+| `setup-fabric.ps1` | Creates or reuses the workspace, Eventhouse, KQL database, keyless Extended Eventstream pipeline, dashboards and Azure Monitor mirrors. Workspace monitoring and Operations Agent use read-only readiness checks with [guided manual setup](../docs/STAGE-FABRIC.md#manual-monitoring-and-operations-agent-setup); existing settings/run states are preserved. Use `-EnableWorkspaceMonitoring:$false` / `-EnableOperationsAgent:$false` to skip those checks, `-SkipEventstreamConnection` for manual topology, `-MaxOperationMinutes` for the LRO ceiling, or `-Teardown` to remove the workspace. See [Fabric setup and prerequisites](../docs/STAGE-FABRIC.md). | `./scripts/setup-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `setup-fabric-cloud-shell.ps1` | Cloud Shell wrapper for the Fabric setup workflow. | `./scripts/setup-fabric-cloud-shell.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `setup-fabric-tenant.ps1` | Separate Fabric administrator helper: read-only discovery by default; `-Apply` and confirmation explicitly enable reviewed API setting names for an existing security group. Preserves existing scopes/exclusions and refuses unscoped tenant-wide enablement. Supports `-WhatIf`; never called by deployment. | `./scripts/setup-fabric-tenant.ps1 -TenantId <tenant>` |
+| `suspend-fabric.ps1` | Suspends the F2 capacity to stop active compute billing. | `./scripts/suspend-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
+| `resume-fabric.ps1` | Resumes the F2 capacity and active compute billing. | `./scripts/resume-fabric.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | [setup-ai.ps1](setup-ai.ps1) | Reuses or creates four matching Foundry agents, then starts a finite background batch unless `-SkipTraffic` is supplied. Console bootstrap uses `-SkipTraffic`; the legacy `-BackgroundTraffic` switch is unnecessary. | `./scripts/setup-ai.ps1 -SubscriptionId <sub> -TenantId <tenant> -g <rg> -Conversations 150` |
 | [setup-ai-cloud-shell.ps1](setup-ai-cloud-shell.ps1) | Verifies and forwards subscription/tenant, discovers Foundry and App Insights through core ARM, and uses the same background AI setup. Works locally too. | `./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
 | `setup-sre-agent.ps1` | Validates the deployed SRE Agent, connectors, and identity-specific RBAC. It discovers the agent identities automatically and is read-only unless `-GrantMissingRoles` is explicitly supplied. | `./scripts/setup-sre-agent.ps1 -SubscriptionId <sub> -ResourceGroup <rg>` |
@@ -73,6 +612,17 @@ The Control Center's [Lab Operations tab](../workloads/webapp/LAB-OPERATIONS.md)
 | `demo-slis.ps1` | Creates, inspects, or removes isolated AKS workloads that move the availability and pod-start latency SLIs. | `./scripts/demo-slis.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -Mode Degrade` |
 | [setup-rbac-demo.ps1](setup-rbac-demo.ps1) | Creates three lab-specific, ownership-tagged app registrations and service principals for the granular RBAC demonstration. A stable scope suffix separates labs; repeated setup reuses the same lab's identities. | `./scripts/setup-rbac-demo.ps1 -ResourceGroup <rg>` |
 | `demo-granular-rbac.ps1` | Runs the granular RBAC demonstration query using the generated local RBAC configuration. | `./scripts/demo-granular-rbac.ps1` |
+
+## Health model tutorial and lab user-flow model
+
+The tutorial scripts are standalone: they use their own resource group and don't need the lab. See [docs/HEALTH-MODEL-TUTORIAL.md](../docs/HEALTH-MODEL-TUTORIAL.md).
+
+| Script | Purpose | Example |
+|---|---|---|
+| `deploy-healthmodel-tutorial.ps1` | Deploys the Lab Café workload (`infra/healthmodel-tutorial/workload.bicep`, `workloads/cafe`). | `./scripts/deploy-healthmodel-tutorial.ps1` |
+| `build-healthmodel-tutorial.ps1` | Builds the café health model with the `az monitor health-models` CLI. | `./scripts/build-healthmodel-tutorial.ps1 [-SkipFailedOrderSignal] [-ControlCenterPrincipalId <id>]` |
+| `break-healthmodel-tutorial.ps1` | Breaks or restores the café: `BaristaQueue`, `BadRelease`, `NetworkCut`. | `./scripts/break-healthmodel-tutorial.ps1 -Scenario BadRelease [-Restore]` |
+| `deploy-lab-healthmodel.ps1` | Deploys the lab's user-flow health model `hm-amlab-flows` (`infra/healthmodel-lab/main.bicep`) next to `hm-amlab-workload`. Needs a deployed lab. | `./scripts/deploy-lab-healthmodel.ps1 -ResourceGroup <rg>` |
 
 ## Recommended sequence after deployment
 
@@ -124,11 +674,13 @@ To inspect just the eligible Entra identities without deleting anything:
 
 Cleanup includes name-matched auxiliary groups such as `MC_<lab-rg>_...` and Azure Monitor managed groups such as `MA_<workspace>_<region>_managed_...`. Monitor groups are selected only when their `managedBy` resource ID points to a `Microsoft.Monitor/accounts` workspace in the exact target subscription and resource group. The script does not guess ownership from the workspace name or numeric suffix, so another lab's `amw-amlab` managed group is left alone. Owned Monitor groups are included in the confirmation list before any cleanup; omit `-Yes` to review that list.
 
-Azure normally removes the Monitor managed group when its workspace is deleted. Teardown checks whether it still exists and rechecks its ownership before requesting cleanup. A rerun can find a leftover group through its `managedBy` link even if the target lab group is already gone. Groups with missing or different ownership metadata are not selected. Delete requests remain asynchronous; an accepted request is not confirmation that the group is gone.
+Azure removes the Monitor managed group when its workspace is deleted. These groups have service-managed deny assignments: teardown never directly deletes them or attempts to remove their protection. After submitting lab/auxiliary group deletion, teardown polls each verified Monitor group for up to 600 seconds, rechecking its resource ID and ownership while it exists. Only an authoritative `ResourceGroupNotFound` confirms removal; lookup errors, ownership changes, and stalled cleanup remain explicit failures. A rerun can verify a leftover group through its `managedBy` link even if the target lab group is already gone. Groups with missing or different ownership metadata are not selected. Ordinary group delete requests remain asynchronous; an accepted request is not confirmation that the group is gone. If Azure-managed cleanup times out, check the owning workspace's deletion and contact Azure Support if it remains stuck.
 
 New labs use a tenant-scoped Service Group ID of `amlab-workload-<scope-hash>`. The suffix is the first 12 lowercase hexadecimal characters of SHA-256 over the lowercased full resource-group ARM ID, including the subscription ID. Two resource groups in the same subscription get different IDs, while redeployments reuse the same ID. A subscription-only suffix or a new random ID on every run would not provide both guarantees. A new group's default display name includes the resource-group name. Existing groups retain their display names (including legacy, custom/shared, and explicitly selected groups) unless `-ServiceGroupDisplayName` is supplied. Failed or invalid group reads stop setup rather than silently renaming an existing group.
 
 [setup-health-model.ps1](setup-health-model.ps1) and [setup-slis.ps1](setup-slis.ps1) share [resolve-service-group-id.ps1](resolve-service-group-id.ps1). They reuse the selected RG's existing membership target before deriving a name, preserving legacy `amlab-workload` groups and custom IDs. An explicit `-ServiceGroupId` still overrides discovery. Existing memberships are not automatically migrated or reparented; membership lookup failures stop rather than silently selecting a different group. This applies to one-shot, staged, Cloud Shell, and Terraform post-deployment setup because they invoke these same helpers.
+
+SLI setup discovers the selected resource group's unique `id-sli-<prefix>` identity and its matching `amw-<prefix>` workspace, so custom prefixes also work without a local config. Missing or ambiguous identities stop setup rather than selecting another lab's resources.
 
 Teardown checks for the exact `sgm-amlab-rg` membership in the selected resource group before attempting tenant-scoped SLI or Service Group deletion; the helpers resolve its actual target. If the membership is absent, shared cleanup is skipped automatically. When the membership exists but other labs share a legacy or explicitly chosen Service Group and SLIs, add `-KeepServiceGroup` to preserve them. The selected lab's resource-group membership is removed with its resource group.
 

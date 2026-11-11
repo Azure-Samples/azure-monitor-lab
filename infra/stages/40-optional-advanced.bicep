@@ -1,4 +1,5 @@
 targetScope = 'resourceGroup'
+param enableCustomerDependencies bool = false
 
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
@@ -29,6 +30,9 @@ param enableMetricsExportDcr bool = false
 @description('Fold the AI (Foundry) workload into the workload health model as a fourth "AI" tier. Requires the AI stage (50-ai) to have run.')
 param enableAi bool = false
 
+@description('Fold the Microsoft Fabric F2 capacity into the workload health model. Requires Stage Fabric (60-fabric) to have run.')
+param enableFabric bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var lawCentralName = 'law-${namePrefix}-central-${take(suffix, 5)}'
 var amwName = 'amw-${namePrefix}'
@@ -37,7 +41,7 @@ var aksName = 'aks-${namePrefix}'
 var actionGroupName = 'ag-${namePrefix}-email'
 var storageAccountName = 'st${namePrefix}${take(suffix, 8)}'
 var keyVaultName = 'kv-${namePrefix}-${take(suffix, 5)}'
-var appInsightsName = 'appi-${namePrefix}'
+var appInsightsName = 'appi-${namePrefix}-${take(suffix, 5)}'
 var webAppName = 'app-${namePrefix}-${take(suffix, 5)}'
 var vmssName = 'vmss-${namePrefix}'
 var linuxVmName = 'vm-${namePrefix}-lin'
@@ -136,13 +140,24 @@ module availabilityTest '../modules/availability-test.bicep' = {
   }
 }
 
+module agentTaskAvailabilityTest '../modules/availability-test.bicep' = {
+  name: 'agent-task-availability-test'
+  params: {
+    name: 'test-${namePrefix}-agent-task'
+    location: location
+    appInsightsId: appInsights.id
+    testUrl: 'https://${webApp.properties.defaultHostName}/api/agent-task-availability'
+    actionGroupId: actionGroup.id
+    tags: commonTags
+  }
+}
+
 module healthModel '../modules/health-model.bicep' = {
   name: 'health-model'
   params: {
     healthModelName: 'hm-${namePrefix}-workload'
-    // Health Model (preview) is only available in a limited set of regions
-    // (UK South, Canada Central, Central US, Sweden Central, Southeast Asia),
-    // so its region is pinned to swedencentral independent of the lab location.
+    // Health models are not available in every region (az provider show -n Microsoft.CloudHealth
+    // lists them), so the region is pinned to swedencentral independent of the lab location.
     location: 'swedencentral'
     webAppId: webApp.id
     appInsightsId: appInsights.id
@@ -157,9 +172,29 @@ module healthModel '../modules/health-model.bicep' = {
     enableAi: enableAi
     foundryAccountId: enableAi ? resourceId('Microsoft.CognitiveServices/accounts', toLower('ai${namePrefix}${take(suffix, 8)}')) : ''
     appInsightsLawId: appInsights.properties.WorkspaceResourceId
+    enableFabric: enableFabric
+    fabricCapacityId: enableFabric ? resourceId('Microsoft.Fabric/capacities', toLower('fab${namePrefix}${take(suffix, 8)}')) : ''
     tags: commonTags
   }
 }
+
+module customerHealthModel '../modules/customer-health-model.bicep' = if (enableCustomerDependencies) {
+  name: 'customer-health-model'
+  params: {
+    namePrefix: namePrefix
+    location: 'swedencentral'
+    customerWebAppId: resourceId('Microsoft.Web/sites', 'app-${namePrefix}-${take(suffix, 5)}-customer')
+    customerAppServicePlanId: resourceId('Microsoft.Web/serverfarms', 'plan-${namePrefix}')
+    customerSqlDatabaseId: resourceId('Microsoft.Sql/servers/databases', 'sql-${namePrefix}-${take(suffix, 8)}', 'customer-orders')
+    customerServiceBusId: resourceId('Microsoft.ServiceBus/namespaces', 'sb-${namePrefix}-${take(suffix, 8)}')
+    customerWorkerId: resourceId('Microsoft.Web/sites', 'func-${namePrefix}-${take(suffix, 8)}-orders')
+    customerWorkerStorageId: resourceId('Microsoft.Storage/storageAccounts', 'storders${namePrefix}${take(suffix, 8)}')
+    customerCentralLawId: lawCentral.id
+    tags: commonTags
+  }
+}
+output customerHealthModelName string = enableCustomerDependencies ? customerHealthModel!.outputs.healthModelName : ''
+output customerHealthModelId string = enableCustomerDependencies ? customerHealthModel!.outputs.healthModelId : ''
 
 module sliIdentity '../modules/sli-identity.bicep' = {
   name: 'sli-identity'
