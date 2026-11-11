@@ -13,7 +13,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | Workload / theme | Scenarios |
 |---|---|
 | **Cross-stack — single pane of glass** | <ul><li>[1](#s1) Traffic-Lights workbook</li><li>[60](#s60) Lab Control Center</li></ul> |
-| **Workload health (Service Groups preview + Health Models)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[Tutorial](HEALTH-MODEL-TUTORIAL.md) explore and break a user-flow model (standalone)</li><li>[46](#s46) SLIs / SLOs</li></ul> |
+| **Workload health (Service Groups preview + Health Models)** | <ul><li>[45](#s45) Service Group + Health Model</li><li>[81](#s81) User-flow Health Models: Café failure and recovery</li><li>[Tutorial](HEALTH-MODEL-TUTORIAL.md) explore and break a user-flow model (standalone)</li><li>[46](#s46) SLIs / SLOs</li></ul> |
 | **App Service (.NET web app — `app-amlab-*`)** | <ul><li>[3](#s3) Code-less App Insights</li><li>[22](#s22) Availability Tests</li><li>[13](#s13) Smart Detection</li><li>[18](#s18) Code Optimizations</li><li>[25](#s25) Change Analysis</li><li>[28](#s28) Custom TrackMetric</li><li>[29](#s29) Profiler + Snapshot</li><li>[33](#s33) Release annotations</li><li>[69](#s69) End-to-end Application Insights incident</li><li>[70](#s70) Customer usage journey</li><li>[71](#s71) Broken-slot SRE rollback</li></ul> |
 | **AKS (`aks-amlab`)** | <ul><li>[4](#s4) Container Insights + Prom + Grafana</li><li>[14](#s14) OTel tracing AKS→App Service</li><li>[30](#s30) Node.js OTel</li><li>[31](#s31) Prom rule group</li><li>[32](#s32) Grafana alert rule</li></ul> |
 | **Azure VMs (Linux + Windows)** | <ul><li>[2](#s2) VM Insights cross-OS</li></ul> |
@@ -33,7 +33,7 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 | **Platform foundations** | <ul><li>[5](#s5) Policy auto-onboard</li><li>[6](#s6) Cross-workspace KQL</li><li>[24](#s24) Custom Logs Ingestion API</li><li>[26](#s26) KQL Functions</li><li>[51](#s51) Platform logs at scale (DCR)</li></ul> |
 | **Microsoft Fabric (optional Stage Fabric)** | <ul><li>[74](#s74) Event Hubs to Real-Time Intelligence</li><li>[75](#s75) Eventhouse telemetry</li><li>[76](#s76) Real-Time Dashboard</li><li>[77](#s77) Business-event correlation</li><li>[78](#s78) Capacity monitoring</li><li>[79](#s79) Suspend and resume</li><li>[80](#s80) Mirror Azure Monitor data (preview)</li></ul> |
 
-> **Suggested 25-min "by-workload" demos:** App Service → 3, 22, 28, 29, 33 · AKS → 4, 14, 30, 31 · Cost → 9, 11, 20, 39, 42 · Security → 27, 47, 48 · Workload health → 1 + 45 + 46.
+> **Suggested 25-min "by-workload" demos:** App Service → 3, 22, 28, 29, 33 · AKS → 4, 14, 30, 31 · Cost → 9, 11, 20, 39, 42 · Security → 27, 47, 48 · Workload health → 1 + 45 + 46, or 81 for the dedicated user-flow Health Model demo.
 
 ---
 
@@ -2085,6 +2085,8 @@ Service Groups suit Health Models because the same resource may have **different
 
 ### Go further: model user flows
 
+For a dedicated walkthrough of the new optional stage, including a scoped Café failure and verified recovery, use [scenario 81](#s81). It leaves this scenario's existing `hm-amlab-workload` model unchanged.
+
 `hm-amlab-workload` groups health by Azure resource tier, which is great for showing the graph. To design a model from what people *do* with the lab (open the Control Center, keep the app answering, get telemetry in), see the [lab user-flow model](healthmodel/lab/plan.md), deployed with `./scripts/deploy-lab-healthmodel.ps1`. To see a user-flow model react to failures on a small workload, run the [health model tutorial](HEALTH-MODEL-TUTORIAL.md).
 
 ![The lab's user-flow model hm-amlab-flows: three user flows (Operate the lab, Show the shop app live, Show live infrastructure data), eight components and their Azure resources; after the nightly VM shutdown, Virtual machines is Unhealthy and Show live infrastructure data only Degraded](images/healthmodel-lab-graph.png)
@@ -3931,6 +3933,81 @@ Mirror Azure Monitor exposes selected Log Analytics tables to Fabric without an 
 
 ---
 
+<a id="s81"></a>
+## 81 · Azure Monitor Health Models — user-flow impact, failure and recovery
+
+**Audience:** workload owners, application teams, SREs and observability architects.
+**Time:** 20–25 min including telemetry, evaluation and recovery waits; 5–8 min for the read-only walkthrough.
+
+> **Requires the optional Health Model Demo stage**, not Stage Fabric, AI or either agent stage. Enable and complete it using the [stage guide](STAGE-HEALTH-MODEL-DEMO.md). It adds `hm-lab-cafe` and `hm-amlab-flows` alongside the existing workload model. This scenario uses the already deployed stage; do not run the standalone tutorial deployment or model builders over it.
+
+### Story
+
+"The web app is running" is not the same as "customers can order coffee." The new Health Models start with user flows, attach request and dependency signals to the components those flows need, and roll health up to a customer-impact view. Show how an order-only failure leaves browsing available even though both flows use the same Azure resources.
+
+Unlike [scenario 45](#s45), which introduces the existing resource-tier workload model, this walkthrough focuses on the two new user-flow models, signal evidence, health objectives and recovery. No Service Group changes or Fabric setup are needed.
+
+### Prepare and establish a baseline
+
+1. Select the intended subscription and lab resource group. Confirm `hm-lab-cafe`, `hm-amlab-flows` and the stage's `app-cafe-*` web app are present. Use the stage's `healthModelDemoCafeWebAppUrl` output or the Café app's **Default domain**; do not use the Control Center or customer storefront as the fault target.
+2. Open **Control Center → Health Model**. Confirm the model selector offers **Café tutorial** and **Lab user flows**. If publication or model targets are missing, use the stage guide's completion/repair procedure, not a model rebuild.
+3. Open the Café, browse its menu, place an ordinary demo order and retrieve its confirmation. This writes a real demo order to the Café's storage, but takes no payment.
+4. In the dedicated `law-cafe-*` workspace's **Logs**, verify both request and dependency ingestion:
+
+   ```kusto
+   union
+     (AppRequests | where TimeGenerated > ago(15m) | summarize Records=count() | extend Source="AppRequests"),
+     (AppDependencies | where TimeGenerated > ago(15m) | summarize Records=count() | extend Source="AppDependencies")
+   | project Source, Records
+   ```
+
+   Both counts must be greater than zero. A missing table, query error, stale signal or zero-failure value alone is not proof of a working model. Check signal timestamps and errors, and wait for ingestion/evaluation before beginning the fault.
+5. In **Monitor → Health models → hm-lab-cafe → Graph**, establish a Healthy baseline for **Browse the menu**, **Order coffee** and the root. Resolve unrelated failures or Unknown states before presenting a controlled comparison.
+
+### Click-path: explain the new models
+
+1. Expand **Lab Café → Order coffee → Order API**. Show the failed-order and latency signals, their thresholds, evaluation timestamps and recent history. Trace a signal through its component to its user flow and the root.
+2. Expand **Browse the menu**. Explain that each entity has one parent: shared Azure resources have a separate representation under each relevant flow, while flow-specific request signals distinguish browsing from ordering.
+3. Inspect **Barista display (optional)** and its **Limited** impact without changing it. An Unhealthy optional notification component can make ordering Degraded rather than Unhealthy; it does not mean orders failed.
+4. Inspect **Order coffee → Edit** to show the configured health objective and health-state alert rules; close without saving. Distinguish model health from alert delivery: only claim a notification was delivered if its action-group configuration and delivery evidence confirm it.
+5. Switch the Control Center to **Lab user flows** and open `hm-amlab-flows` in the portal. Show **Operate the lab**, **Show the shop app live** and **Show live infrastructure data**. Explain that this is a separate model over existing lab workloads, not another name for the Café or a replacement for `hm-amlab-workload`. Return to **Café tutorial** for the failure.
+
+### Controlled fault: orders fail while browsing works
+
+> **Intentional disruption:** get the lab owner's approval before changing the Café. The following setting makes all Café orders fail and restarts the app; browsing can briefly be interrupted during restart. Do not run during another person's demo. Keep the recovery steps ready.
+
+1. In the verified **Café web app only**, open **Settings → Environment variables → App settings** (called **Configuration** in some portal views). Record whether `CHAOS_ORDER_FAILURE_PERCENT` exists and its original value. Start only if it is absent or `0`; otherwise the baseline already contains an injected fault.
+2. Add or change `CHAOS_ORDER_FAILURE_PERCENT` to `100` and apply. Restart that Café app if the running process has not picked up the change.
+3. After the app responds again, browse the menu and attempt at least three orders. Use browser developer tools to show successful `GET /api/menu` requests and failing `POST /api/orders` requests with HTTP 500. The app's `/healthz` can still return HTTP 200: it does not test the order path.
+4. Watch **Order API**, **Order coffee** and the root in `hm-lab-cafe`. Inspect the actual failed-order signal values and timestamps rather than refreshing only the root color. Signals use five-minute windows and refresh every minute after telemetry arrives; transitions are not immediate.
+5. Compare the observed state with this prediction after restart effects settle:
+
+   | Entity / evidence | Expected result |
+   |---|---|
+   | Order API | Unhealthy after failed orders reach its threshold |
+   | Order coffee and Lab Café root | Unhealthy through health rollup |
+   | Browse the menu | Healthy once any restart-related failures leave its signal window |
+   | App Service `/healthz` | Can remain HTTP 200 despite broken ordering |
+   | `hm-amlab-flows` | No intended direct impact from this Café-only fault; inspect independently rather than assuming it is Healthy |
+
+   **Point at:** the application process can be alive while a customer journey is broken. Health Models connect telemetry to the affected flow instead of declaring every flow down because a shared app had an error.
+
+### Recovery and verification
+
+1. Restore the recorded setting: put its original `0` value back, or remove **only** `CHAOS_ORDER_FAILURE_PERCENT` if it was absent. Apply and restart the Café if needed. Do this even if telemetry or the portal did not show the expected failure.
+2. Browse the menu, place a new order and retrieve its confirmation. Verify fresh successful request/dependency telemetry; removing the fault setting alone is not proof of recovery.
+3. Allow at least five minutes after the last failed request, plus ingestion and evaluation delay. Earlier failures remain in the rolling windows; new successes do not cancel them.
+4. Confirm the failed-order signal returns to zero with a fresh evaluation, then **Order API**, **Order coffee**, browsing and the root return to Healthy. Inspect any remaining signal error instead of rebuilding the model or deleting its history.
+5. Show the entity health history across the failure and recovery. Explain how Unhealthy time affects the configured flow health objective; do not claim a new deployment already has a full objective-period history. Do not use the catalogue's broad lab reset or teardown for this scoped fault.
+
+### Killer line
+
+> *"The server is up, but ordering is down. Health Models tell us which customer journey is affected, why, and when it really recovered."*
+
+**References:** [optional stage and completion](STAGE-HEALTH-MODEL-DEMO.md), [Café model design](healthmodel/cafe/plan.md), [lab user-flow design](healthmodel/lab/plan.md), and [standalone tutorial](HEALTH-MODEL-TUTORIAL.md) for additional limited-impact and network-failure exercises.
+
+---
+
 ## Updated demo flow (≈50 min)
 
 | Min | Scenario |
@@ -3972,6 +4049,7 @@ Mirror Azure Monitor exposes selected Log Analytics tables to Fabric without an 
 | **SecOps** | 27 → 47 → 48 → 49 → 44 |
 | **AI/ML curious** | 16 → 13 → 17 → 18 → 19 → 53 |
 | **Workload owners / SRE leads** | 60 → 1 → 45 → 12 → 7 → 8 (Root entity flips Unhealthy) |
+| **User-flow Health Models** | 81 (Café and lab models, order-only failure, verified recovery) |
 | **SRE Agent evaluation** | 54 → 55 → 56 → 57 → 58 → 59 → 71 |
 | **Agentic application troubleshooting** | 69 → 61 → 62 → 63 → 64 → 66 → 67 |
 | **Terminal incident investigation** | 61 → 68 → 61 Fixed → 71 |

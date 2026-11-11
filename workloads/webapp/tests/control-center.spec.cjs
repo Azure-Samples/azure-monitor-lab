@@ -35,6 +35,7 @@ for (const width of [1440, 820, 390, 320]) {
       await page.locator(`#tab-${id}`).click();
       const panel = page.locator(`#panel-${id}`);
       await expect(panel).toBeVisible();
+      await expect(page.locator('.skip-link')).toHaveJSProperty('hash', id === 'console' ? '#controls' : `#panel-${id}`);
       const clipped = await panel.locator('button, .button').evaluateAll(items => items
         .filter(item => item.clientWidth > 0 && item.scrollWidth > item.clientWidth + 2)
         .map(item => item.textContent));
@@ -46,6 +47,27 @@ for (const width of [1440, 820, 390, 320]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+test('tab skip links keep DOM-controlled text inside an encoded same-page fragment', async ({ page }) => {
+  await page.goto('/');
+  const target = 'panel-"><img src=x onerror=window.tabInjected=true>';
+  await page.evaluate(id => {
+    const panel = document.createElement('section');
+    panel.id = id;
+    panel.hidden = true;
+    document.body.append(panel);
+    document.getElementById('tab-foundry').setAttribute('aria-controls', id);
+  }, target);
+  await page.locator('#tab-foundry').click();
+  const link = await page.locator('.skip-link').evaluate(item => ({
+    origin: item.origin, pathname: item.pathname, hash: item.hash
+  }));
+  expect(link.origin).toBe(new URL(page.url()).origin);
+  expect(link.pathname).toBe(new URL(page.url()).pathname);
+  expect(decodeURIComponent(link.hash.slice(1))).toBe(target);
+  expect(await page.evaluate(() => window.tabInjected)).toBeUndefined();
+  await expect(page.locator('img[src="x"]')).toHaveCount(0);
+});
 
 test('Control Center uses brief panel motion and respects reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });

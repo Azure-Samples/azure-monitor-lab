@@ -7,7 +7,7 @@ A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability
 - One primary resource group: Azure resources land in `rg-azure-monitor-lab`; AKS has a managed resource group, and Fabric workspace items and Entra registrations are tenant-scoped.
 - Two ways to deploy it: Bicep or Terraform.
 - Three ways to deploy it: a [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) portal wizard, a scripted one-shot deployment using PowerShell, or a five-stage core workshop with optional AI, SRE Agent, Observability Agent, and Fabric extensions.
-- **80 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
+- **81 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, user-flow Health Models, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
 
 It's built for demos, microhacks, and hackathons. Deploy it, poke around, break it, restore it, and tear it down.
 
@@ -17,7 +17,7 @@ It's built for demos, microhacks, and hackathons. Deploy it, poke around, break 
 |---|---|
 | **Guided Scenarios** | Follow the existing [scenario walkthroughs](docs/DEMO-SCENARIOS.md) for the story, Azure portal steps, queries, and expected results. |
 | **Lab Control Center** | Check infrastructure health, generate traffic, try Foundry agents, and perform approved SRE MCP operations. Open the [Control Center guide](docs/LAB-CONTROL-CENTER.md) for screenshots, access requirements, and linked scenarios. |
-| **Health Model Demo** | Add Café and lab user-flow models through the [optional stage](docs/STAGE-HEALTH-MODEL-DEMO.md), or take the independent 45-minute [Café tutorial](docs/HEALTH-MODEL-TUTORIAL.md) without deploying the lab. |
+| **Health Model Demo** | Add Café and lab user-flow models through the [optional stage](docs/STAGE-HEALTH-MODEL-DEMO.md), then follow [scenario 81](docs/DEMO-SCENARIOS.md#s81) for a focused failure-and-recovery demo. Alternatively, take the independent 45-minute [Café tutorial](docs/HEALTH-MODEL-TUTORIAL.md) without deploying the lab. |
 
 The guided scenarios and the Control Center are complementary entry points into the same lab. The Control Center links to the guided scenarios; it does not replace their setup or walkthroughs. The health model tutorial is a standalone course with its own small workload.
 
@@ -53,7 +53,7 @@ The lab combines application, infrastructure, and AI workloads with Azure Monito
 In the Azure portal, check that `NetworkWatcher_<region>` exists in `NetworkWatcherRG` for your target subscription and is ready. If it is, skip preparation. If missing, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and run the commands below. Use the same subscription and region in the portal wizard:
 
 ```powershell
-git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
@@ -77,13 +77,13 @@ Once Network Watcher is ready, open the wizard:
 
 <div align="center">
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fintegration%2Finfra%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure-Samples%2Fazure-monitor-lab%2Fmain%2Finfra%2FcreateUiDefinition.json)
 
 </div>
 
 Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Shared settings match the config example, including App Service in `francecentral` and Observability Agent in `uksouth`. Select your subscription, resource group and main region in Basics, and supply your own alert email and VM admin password; sample identities and credentials are not pre-filled.
 
-This button deploys the `integration` templates and portal UI, which may contain changes not yet released to stable `main`. The Cloud Shell commands above use the same branch.
+This button deploys the stable `main` templates and portal UI. The Cloud Shell preparation and completion commands use the same branch so deployment and setup stay on the same release.
 
 | Tab | You provide |
 |---|---|
@@ -104,12 +104,12 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 if (-not (Test-Path -LiteralPath ./scripts/post-cloud-shell-deploy.ps1)) {
     if (-not (Test-Path -LiteralPath ./azure-monitor-lab)) {
-        git clone --branch integration https://github.com/Azure-Samples/azure-monitor-lab.git
+        git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
     }
     Set-Location ./azure-monitor-lab
 }
-git switch integration
-git pull --ff-only origin integration
+git switch main
+git pull --ff-only origin main
 
 $tenantId = Read-Host 'Tenant ID'
 $subscriptionId = Read-Host 'Subscription ID'
@@ -136,7 +136,7 @@ After the wrapper succeeds, deployment is complete. Continue with the [manual sc
 # 1. Clone the repo and enter it
 git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
 cd azure-monitor-lab
-git switch integration
+git switch main
 
 # 2. Copy the template and fill in basicConfiguration for your subscription
 Copy-Item lab.config.json.example lab.config.json

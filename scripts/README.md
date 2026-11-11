@@ -332,6 +332,12 @@ files/logs/command-line arguments, admin identity changes, new roles, firewall
 rules, VMs or credentials are introduced. Exact temporary remote bootstrap
 artifacts are removed by the bridge.
 
+The bridge accepts SSH host keys only for its hard-coded loopback connection.
+Remote endpoint authentication is provided by the operator-owned Azure CLI
+App Service TLS tunnel, not by a separate `known_hosts` prerequisite. This scoped
+trust model assumes the local machine and tunnel owner are trusted; do not
+reuse it for direct SSH or point the bridge at an unrelated local listener.
+
 After an operator-managed bootstrap/lifecycle finishes, **close terminal 1 with Ctrl+C** to stop the
 foreground tunnel; do not leave it open beyond the operator task. Its configured
 timeout is 1200 seconds. A private-network-connected operator may instead use

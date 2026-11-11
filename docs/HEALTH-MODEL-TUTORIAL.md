@@ -1,6 +1,6 @@
 # Health Model Tutorial: Lab Café ☕🩺
 
-In this tutorial you've finally done it. You run your own coffee shop! In the cloud. 
+In this tutorial you've finally done it. You run your own coffee shop! In the cloud.
 
 But you will see that a lot can go wrong, luckily a health model can help you you.
 
@@ -106,6 +106,8 @@ The first script deploys the café ([infra/healthmodel-tutorial/workload.bicep](
 Application Insights records every request and every storage call. Two availability tests act as synthetic customers that open the menu and order a flat white every 5 minutes, so the model has data even at 3 a.m. Storage only accepts private traffic, through VNet integration and private endpoints, which gives us a realistic way to break things later.
 
 > ✅ **Done when:** the printed URL opens the café, **Monitor → Health models → hm-lab-cafe** shows the graph, and the café workspace contains recent `AppRequests` and `AppDependencies` records after browsing and ordering. A zero-failure signal alone does not prove telemetry is arriving. Startup failures leave the signal windows after five minutes, plus telemetry and evaluation delay. Log signals can also say *insufficient access* for about 10 minutes while the model's role arrives. Wait; don't rerun the build or recreate entities, that deletes their history. Start §3 in the meantime.
+
+Café application logs and HTTP 500 responses use generic failure messages so raw identity or transport errors cannot expose credentials. Use request and dependency telemetry to identify the failed operation and its status.
 
 ## 3. Look around
 

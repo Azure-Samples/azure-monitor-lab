@@ -403,7 +403,22 @@ $fixture.Continuation = 'https://untrusted.example/connections'
 Assert-Failure { Get-FabricApiCollection -Path connections } '*Unexpected Fabric continuation URL*'
 $fixture.Continuation = "$fabricApi/connections"
 Assert-Failure { Get-FabricApiCollection -Path connections } '*repeated continuation URL*'
-Assert-Failure { Write-FabricSetupSummary -Results @([pscustomobject]@{ Feature = 'Test'; Status = 'Failed'; Detail = 'Test failure' }) } '*automation steps failed*'
+Assert-Failure {
+  Write-FabricSetupSummary -Results @([pscustomobject]@{ Feature = 'Test'; Status = 'Failed'; Detail = 'Test failure' })
+} "*automation steps failed.`nTest: Test failure"
+$summaryResults = @(
+  [pscustomobject]@{ Feature = 'Verified feature'; Status = 'Verified'; Detail = 'Successful check' }
+  [pscustomobject]@{ Feature = 'Workspace monitoring'; Status = 'Failed'; Detail = 'HTTP 403. Service response: MonitoringReadDenied' }
+  [pscustomobject]@{ Feature = 'Live ingestion'; Status = 'Pending'; Detail = 'Generate traffic' }
+  [pscustomobject]@{ Feature = 'Operations Agent'; Status = 'Failed'; Detail = "HTTP 400.`nService response: AgentReadDenied" }
+)
+Assert-Failure {
+  Write-FabricSetupSummary -Results $summaryResults
+} "One or more Fabric automation steps failed.`nWorkspace monitoring: HTTP 403. Service response: MonitoringReadDenied`nOperations Agent: HTTP 400.`nService response: AgentReadDenied"
+foreach ($status in @('Configured', 'Verified', 'Pending', 'ActionRequired', 'Skipped')) {
+  Write-FabricSetupSummary -Results @([pscustomobject]@{ Feature = 'Test'; Status = $status; Detail = 'No failed steps' })
+}
+Write-Output 'PASS: final setup exceptions retain every failed feature and full detail; nonfailed statuses do not throw.'
 Write-Output 'PASS: preview mirroring uses explicit mounts, reuses items and reports authorization/selection/status failures. No live calls.'
 
 Reset-Fixture
