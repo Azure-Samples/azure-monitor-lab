@@ -109,14 +109,14 @@ Read top to bottom: what presenters do, the parts of the lab that make it work, 
 | `stop-the-lab.ps1`: web app, cluster and VMs stopped | Control Center turns **Unhealthy** (the test visitor can't load it), then Log pipeline and Metrics pipeline once their data stops. Show the shop app live has nothing to measure while the shop is off and stays **Healthy** or **Unknown**: no traffic is not a fault | Operate the lab and Show live infrastructure data alerts fire |
 | Lab operations job fails | Lab operations turns **Unhealthy**; Operate the lab and Azure Monitor Lab only **Degraded** | None |
 | Test shopper apps stop | Test shoppers turns **Unhealthy**; Show the shop app live and Azure Monitor Lab turn **Unhealthy** | Shop alert fires |
-| Nobody shops, or the VMs stay off after the nightly shutdown | Nothing turns red: Shop API reads **Unknown** or **Healthy**, and Virtual machines is **Healthy** again 2 hours after its VMs went silent | None |
+| Nobody shops, or the VMs stay off after the nightly shutdown | Shop API reads **Unknown** or **Healthy**. The VM heartbeat signal reads **Unknown** after 2 hours without data, not Healthy; recent heartbeat losses still use the fault thresholds | No alert from Unknown alone |
 
 ## Assumptions
 
 - Operating the lab and the shop demo are held to 99.5%, live data to 99% of the time healthy.
 - One failing console or checkout request is worth a look (degraded); a handful means presenters are hurting (unhealthy).
 - Logs older than 10 minutes are getting stale, older than 20 minutes are broken.
-- The VMs only supply data and shut down every night, so they can't turn a flow red on their own. A VM that went silent more than 2 hours ago counts as stopped on purpose.
+- The VMs only supply data and shut down every night, so they can't turn a flow red on their own. A configured VM with no heartbeat in 2 hours makes the heartbeat signal Unknown unless another VM has a recent heartbeat loss. Silence does not prove a planned shutdown or recovery; Healthy requires fresh heartbeats from every configured VM (or no configured VMs).
 - The model flags faults (errors, slow responses, crashes, stale data), never idleness: no shoppers or no traffic is not a failure.
 
 ## What to do next?

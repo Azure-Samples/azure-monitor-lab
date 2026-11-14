@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "4035830434685487152"
+      "templateHash": "2309102136804137283"
     }
   },
   "parameters": {
@@ -66564,7 +66564,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "3794618085460971200"
+              "templateHash": "7040610069245103913"
             }
           },
           "parameters": {
@@ -67207,7 +67207,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.37.4.10188",
-                      "templateHash": "10073627406810141785"
+                      "templateHash": "4089422410484938555"
                     }
                   },
                   "functions": [
@@ -67980,7 +67980,7 @@
                         "displayName": "Virtual machines (optional)",
                         "icon": "SystemComponent",
                         "impact": "Limited",
-                        "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('vms-lost-heartbeat', 'VMs that stopped sending heartbeats', 'Heartbeat\n| where _ResourceId has \"/microsoft.compute/virtualmachines/\"\n| summarize newest = max(TimeGenerated) by _ResourceId\n| summarize value = countif(newest < ago(10m))\n', 'PT2H', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
+                        "signalGroups": "[__bicep.lawGroup(parameters('centralWorkspaceId'), createArray(__bicep.logSignal('vms-lost-heartbeat', 'VMs that stopped sending heartbeats', format('let expectedVmIds = dynamic({0});\nHeartbeat\n| where _ResourceId in~ (expectedVmIds)\n| summarize newest = max(TimeGenerated) by vmId = tolower(_ResourceId)\n| summarize reporting = count(), missing = countif(newest < ago(10m))\n| project value = case(missing > 0, todouble(missing), reporting < array_length(expectedVmIds), real(null), 0.0)\n', string(parameters('vmIds'))), 'PT2H', 'Count', __bicep.rules('GreaterThan', 0, 1))))]"
                       },
                       {
                         "name": "console-app",

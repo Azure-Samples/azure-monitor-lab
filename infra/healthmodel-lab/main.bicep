@@ -412,14 +412,15 @@ KubePodInventory
     icon: 'SystemComponent'
     impact: 'Limited'
     signalGroups: lawGroup(centralWorkspaceId, [
-      // A VM that was reporting and went silent is an outage. One silent for over 2 hours was stopped on purpose
-      // (nightly auto-shutdown, stop-the-lab) and reads Healthy. VMs that never report are not counted.
-      logSignal('vms-lost-heartbeat', 'VMs that stopped sending heartbeats', '''
+      // Missing history means Unknown, not recovery: silence alone cannot identify a planned shutdown.
+      logSignal('vms-lost-heartbeat', 'VMs that stopped sending heartbeats', format('''
+let expectedVmIds = dynamic({0});
 Heartbeat
-| where _ResourceId has "/microsoft.compute/virtualmachines/"
-| summarize newest = max(TimeGenerated) by _ResourceId
-| summarize value = countif(newest < ago(10m))
-''', 'PT2H', 'Count', rules('GreaterThan', 0, 1))
+| where _ResourceId in~ (expectedVmIds)
+| summarize newest = max(TimeGenerated) by vmId = tolower(_ResourceId)
+| summarize reporting = count(), missing = countif(newest < ago(10m))
+| project value = case(missing > 0, todouble(missing), reporting < array_length(expectedVmIds), real(null), 0.0)
+''', string(vmIds)), 'PT2H', 'Count', rules('GreaterThan', 0, 1))
     ])
   }
 
