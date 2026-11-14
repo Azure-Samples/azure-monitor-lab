@@ -7,13 +7,15 @@
 //   2. Resource graph query           -> the Foundry (AI Services) account.
 //   3. Resource graph query           -> the Foundry projects.
 //   4. Resource graph query           -> the observability services (App Insights + LAW).
-// Plus one explicit entity per agent persona, each carrying custom Log Analytics
-// signals for error-rate and token volume.
+// Plus one explicit entity per agent persona, each carrying a custom Log Analytics
+// signal for error-rate.
 //
 // Region-pinned (aiLocation, swedencentral) like the workload health model — the
 // CloudHealth is region-limited. Discovery + signals run under the model's
 // system-assigned identity (Reader + Monitoring Reader + Log Analytics Reader on the RG).
 // =====================================================================================
+
+import { layoutHealthModel } from './health-model-layout.bicep'
 
 @description('Location for the health model (pinned to a CloudHealth-supported region).')
 param location string
@@ -42,11 +44,14 @@ var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
 // Demo agent personas (gen_ai.agent.name from workloads/ai/create_agents.py) modelled
 // as explicit entities, since topology discovery only sees cloud-role nodes.
 var agents = [
-  { key: 'support-triage', display: 'Support Triage', x: 100, y: 100 }
-  { key: 'finops-qa', display: 'FinOps Q&A', x: 420, y: 100 }
-  { key: 'doc-summarizer', display: 'Doc Summarizer', x: 100, y: 320 }
-  { key: 'context-rich-assistant', display: 'Context-Rich Assistant', x: 420, y: 320 }
+  { key: 'support-triage', display: 'Support Triage' }
+  { key: 'finops-qa', display: 'FinOps Q&A' }
+  { key: 'doc-summarizer', display: 'Doc Summarizer' }
+  { key: 'context-rich-assistant', display: 'Context-Rich Assistant' }
 ]
+
+// No relationships are declared here, so the engine lines the agents up in one row.
+var layout = layoutHealthModel(healthModelName, map(agents, a => 'agent-${a.key}'), [])
 
 resource healthModel 'Microsoft.CloudHealth/healthmodels@2026-11-01' = {
   name: healthModelName
@@ -168,10 +173,9 @@ resource logAnalyticsReaderAssignment 'Microsoft.Authorization/roleAssignments@2
   }
 }
 
-// One explicit entity per agent persona, each carrying two custom Log Analytics
-// signals from the workspace-based App Insights `AppDependencies` table:
-//   - error-rate : failed runs %      -> health of the agent
-//   - token-volume : total tokens/hour -> anomalous volume drives the entity unhealthy
+// One explicit entity per agent persona, carrying an error-rate signal from the
+// workspace-based App Insights `AppDependencies` table: failed runs % -> health of the agent.
+// Token volume is cost, not health (the AI stage's token alerts watch it), so no signal counts it.
 resource agentEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = [for a in agents: {
   parent: healthModel
   name: 'agent-${a.key}'
@@ -179,7 +183,7 @@ resource agentEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' 
     displayName: a.display
     impact: 'Standard'
     healthObjective: 99
-    canvasPosition: { x: a.x, y: a.y }
+    canvasPosition: layout['agent-${a.key}']
     signalGroups: {
       azureLogAnalytics: {
         authenticationSetting: authSettingName
@@ -196,19 +200,6 @@ resource agentEntities 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' 
             evaluationRules: {
               degradedRule: { operator: 'GreaterThan', threshold: 5 }
               unhealthyRule: { operator: 'GreaterThan', threshold: 20 }
-            }
-          }
-          {
-            name: 'token-volume'
-            signalKind: 'LogAnalyticsQuery'
-            displayName: 'Total tokens/hour'
-            dataUnit: 'Count'
-            refreshInterval: 'PT5M'
-            valueColumnName: 'TotalTokens'
-            queryText: 'AppDependencies | where TimeGenerated > ago(1h) | where tostring(Properties[\'gen_ai.agent.name\']) == \'${a.display}\' | extend inTok=toint(Properties[\'gen_ai.usage.input_tokens\']), outTok=toint(Properties[\'gen_ai.usage.output_tokens\']) | summarize TotalTokens=coalesce(sum(inTok), 0)+coalesce(sum(outTok), 0)'
-            evaluationRules: {
-              degradedRule: { operator: 'GreaterThan', threshold: 100000 }
-              unhealthyRule: { operator: 'GreaterThan', threshold: 200000 }
             }
           }
         ]

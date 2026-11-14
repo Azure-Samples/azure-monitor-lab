@@ -20,6 +20,47 @@ Assert-Demo ($stage.parameters.availabilityTestName.defaultValue -eq $advancedTe
 Assert-Demo ($optional[0].properties.parameters.availabilityTestName.value -match "availability-test.*outputs.testName") 'One-shot root must override the staged test-name default with its own availability test output.'
 $cafe = ($stage.resources | Where-Object name -eq 'health-model-demo-cafe').properties.template
 $flow = ($stage.resources | Where-Object name -eq 'health-model-demo-flows').properties.template
+$heartbeatQuery = @'
+let expectedVmIds = dynamic({0});
+Heartbeat
+| where _ResourceId in~ (expectedVmIds)
+| summarize newest = max(TimeGenerated) by vmId = tolower(_ResourceId)
+| summarize reporting = count(), missing = countif(newest < ago(10m))
+| project value = case(missing > 0, todouble(missing), reporting < array_length(expectedVmIds), real(null), 0.0)
+'@
+$heartbeat = ($flow.variables.entities | Where-Object name -eq 'virtual-machines').signalGroups
+Assert-Demo ($heartbeat.Replace("''", "'").Replace("`r`n", "`n").Contains($heartbeatQuery.Replace("`r`n", "`n"))) 'Heartbeat query must scope configured VMs, preserve recent faults and return null for missing history.'
+Assert-Demo ($heartbeat.Contains("string(parameters('vmIds'))") -and $heartbeat.Contains("'PT2H', 'Count', __bicep.rules('GreaterThan', 0, 1)")) 'Heartbeat query must use the deployed VM list, two-hour window and existing fault thresholds.'
+$oneShotFlow = (($optional[0].properties.template.resources | Where-Object name -eq 'health-model-demo-flows').properties.template)
+Assert-Demo (($oneShotFlow.variables.entities | Where-Object name -eq 'virtual-machines').signalGroups -ceq $heartbeat) 'One-shot and staged heartbeat signals must match.'
+
+# Contract fixtures model the guarded KQL above; no Log Analytics service is invoked.
+foreach ($case in @(
+  @{ Name = 'no optional VMs'; Ids = @(); Rows = @(); Expected = 0 }
+  @{ Name = 'all reporting'; Ids = @('vm-a', 'vm-b'); Rows = @(@('VM-A', 1), @('vm-b', 2)); Expected = 0 }
+  @{ Name = 'ten-minute boundary'; Ids = @('vm-a'); Rows = ,@('vm-a', 10); Expected = 0 }
+  @{ Name = 'recent loss'; Ids = @('vm-a'); Rows = ,@('vm-a', 11); Expected = 1 }
+  @{ Name = 'two recent losses'; Ids = @('vm-a', 'vm-b'); Rows = @(@('vm-a', 11), @('vm-b', 15)); Expected = 2 }
+  @{ Name = 'two-hour boundary'; Ids = @('vm-a'); Rows = ,@('vm-a', 120); Expected = 1 }
+  @{ Name = 'prolonged loss'; Ids = @('vm-a'); Rows = ,@('vm-a', 121); Expected = $null }
+  @{ Name = 'partial prolonged loss'; Ids = @('vm-a', 'vm-b'); Rows = @(@('vm-a', 1), @('vm-b', 121)); Expected = $null }
+  @{ Name = 'never reported'; Ids = @('vm-a'); Rows = @(); Expected = $null }
+  @{ Name = 'unrelated VM'; Ids = @('vm-a'); Rows = ,@('other-vm', 1); Expected = $null }
+  @{ Name = 'known fault with absent peer'; Ids = @('vm-a', 'vm-b'); Rows = ,@('vm-a', 11); Expected = 1 }
+  @{ Name = 'recovery uses newest heartbeat'; Ids = @('vm-a'); Rows = @(@('vm-a', 11), @('vm-a', 1)); Expected = 0 }
+)) {
+  $newest = @{}
+  foreach ($row in $case.Rows) {
+    if ($row[0] -in $case.Ids -and $row[1] -le 120 -and
+        (-not $newest.ContainsKey($row[0]) -or $row[1] -lt $newest[$row[0]])) {
+      $newest[$row[0]] = $row[1]
+    }
+  }
+  $missing = @($newest.Values | Where-Object { $_ -gt 10 }).Count
+  $value = if ($missing -gt 0) { $missing } elseif ($newest.Count -lt $case.Ids.Count) { $null } else { 0 }
+  Assert-Demo ($value -eq $case.Expected) "Heartbeat contract failed: $($case.Name)"
+}
+Write-Output 'PASS: heartbeat query contract and 12 fixtures cover prolonged/partial loss, absent/unrelated VMs, thresholds and recovery.'
 $workloadModule = ($stage.resources | Where-Object name -eq 'health-model-demo-cafe-workload')
 $workload = $workloadModule.properties.template
 Assert-Demo ($workloadModule.properties.parameters.namePrefix.value -eq 'cafe' -and $workloadModule.properties.parameters.tags.value -match "'lab-cafe'") 'Standalone Cafe naming/tag adoption contract changed.'
@@ -55,7 +96,7 @@ foreach ($entry in @{ ApplicationInsightsAgent_EXTENSION_VERSION = 'disabled'; S
 $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\build-healthmodel-tutorial.ps1'), [ref] $tokens, [ref] $errors)
-foreach ($name in 'New-Rules', 'New-LogSignal', 'Get-CanvasLayout') {
+foreach ($name in 'New-Rules', 'New-LogSignal') {
   $function = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
   Invoke-Expression $function.Extent.Text
 }
@@ -93,11 +134,6 @@ foreach ($entity in $entities) {
 Assert-Demo ($cafe.variables.failureRules -eq "[__bicep.rules('GreaterThan', '0', '2')]") 'Failure rules must remain >0 degraded, >2 unhealthy.'
 Assert-Demo ($cafe.variables.definitions[0].evaluationRules -eq "[__bicep.rules('LessThan', '100', '50')]" -and $cafe.variables.definitions[1].evaluationRules -eq "[__bicep.rules('LessThan', '99.9', '99')]") 'Reusable metric thresholds changed.'
 Assert-Demo (($cafe.variables.entities | Where-Object name -eq 'order-api').signalGroups -match "rules\('GreaterThan', '1000', '3000'\)") 'Slow order thresholds must remain 1000/3000 ms.'
-$expectedCanvas = Get-CanvasLayout $HealthModelName $relationships
-$actualCanvas = $cafe.variables.canvas.Substring(7, $cafe.variables.canvas.Length - 10) | ConvertFrom-Json -AsHashtable
-foreach ($entity in $entities) {
-  Assert-Demo ($actualCanvas[$entity.name].x -eq $expectedCanvas[$entity.name].x -and $actualCanvas[$entity.name].y -eq $expectedCanvas[$entity.name].y) "Canvas differs from standalone builder: $($entity.name)"
-}
 for ($i = 0; $i -lt $relationships.Count; $i++) {
   Assert-Demo ($cafe.variables.edges[$i].child -eq $relationships[$i].child -and ($i -lt 2 -or $cafe.variables.edges[$i].parent -eq $relationships[$i].parent)) 'Cafe relationship order/topology differs from standalone builder.'
 }

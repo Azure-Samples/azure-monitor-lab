@@ -1,3 +1,5 @@
+import { layoutHealthModel } from '../modules/health-model-layout.bicep'
+
 @description('Stable model name; updating it preserves the existing model history.')
 param healthModelName string = 'hm-lab-cafe'
 param location string = 'swedencentral'
@@ -265,30 +267,16 @@ AppDependencies
   }
 ]
 
-// Same leaf ordering and centering as Get-CanvasLayout in the standalone builder.
-var canvas = json('''
-{
-  "order-coffee": { "x": -312.5, "y": 193 },
-  "browse-menu": { "x": 312.5, "y": 193 },
-  "order-store": { "x": -562.5, "y": 386 },
-  "order-api": { "x": -312.5, "y": 386 },
-  "barista-display": { "x": -62.5, "y": 386 },
-  "menu-catalog": { "x": 187.5, "y": 386 },
-  "cafe-website": { "x": 437.5, "y": 386 },
-  "order-storage": { "x": -562.5, "y": 579 },
-  "order-app": { "x": -312.5, "y": 579 },
-  "queue-storage": { "x": -62.5, "y": 579 },
-  "menu-storage": { "x": 187.5, "y": 579 },
-  "menu-app": { "x": 437.5, "y": 579 }
-}
-''')
+// Positions come from the relationships below. The standalone builder's Get-CanvasLayout
+// draws the same layout for the CLI path, so change both together.
+var canvas = layoutHealthModel(healthModelName, map(entities, e => e.name), edges)
 
 // CloudHealth creates this root automatically. PUT the same child ID, never a second root.
 resource root 'Microsoft.CloudHealth/healthmodels/entities@2026-11-01' = {
   parent: healthModel
   name: healthModelName
   properties: {
-    canvasPosition: { x: 0, y: 0 }
+    canvasPosition: canvas[healthModelName]
   }
 }
 
