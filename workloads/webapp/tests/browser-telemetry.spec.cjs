@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { randomUUID } = require('node:crypto');
 
 for (const path of ['/', '/customer/']) {
   test(`browser telemetry enriches SDK page views and dependencies at ${path}`, async ({ page }) => {
@@ -7,7 +8,7 @@ for (const path of ['/', '/customer/']) {
     await page.route('**/api/telemetry/config', route => route.fulfill({
       json: {
         enabled: true,
-        connectionString: 'InstrumentationKey=00000000-0000-0000-0000-000000000001;IngestionEndpoint=https://telemetry.example/',
+        connectionString: `InstrumentationKey=${randomUUID()};IngestionEndpoint=https://telemetry.example/`,
         serviceName: 'browser-test',
         serviceVersion: 'test-version',
         contentRecordingEnabled: false
