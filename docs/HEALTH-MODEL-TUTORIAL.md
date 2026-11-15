@@ -13,7 +13,7 @@ But you will see that a lot can go wrong, luckily a health model can help you yo
 | | |
 |---|---|
 | ⏱️ Time | About 45 minutes, depedning on how much you explore. |
-| 💶 Cost | Roughly EUR 1-2 per day: App Service B1, two private endpoints, two availability tests, a little Log Analytics. Delete the resource group when you're done ([§6](#6-clean-up)) |
+| 💶 Cost | A dedicated Linux Standard S1 App Service plan (higher cost than Basic B1), two private endpoints, two availability tests, and Log Analytics. Estimate current regional charges with the [Azure pricing calculator](https://azure.microsoft.com/pricing/calculator/). Stopping the web app does not stop plan billing; delete the resource group when you're done ([§6](#6-clean-up)). |
 | 📍 Region | Café workload defaults to `francecentral`; the health model remains in supported region `swedencentral`. Both use resource group `rg-healthmodel-tutorial`. The workload deployment's `-Location` does not change the model builder's region. |
 | 🧩 Standalone | You don't need the rest of the lab. Its own health models are in [scenario 45](DEMO-SCENARIOS.md#s45) |
 | ✅ Last verified | 2026-11-05 with Azure CLI 2.92, `health-models` extension 1.0.0b2, API `2026-11-01` |
@@ -94,7 +94,7 @@ Other terms will show up, you find all of them here 📚 [Health model concepts]
 ./scripts/build-healthmodel-tutorial.ps1 -SkipFailedOrderSignal
 ```
 
-The first script deploys the café ([infra/healthmodel-tutorial/workload.bicep](../infra/healthmodel-tutorial/workload.bicep)), publishes the app and places a test order (about 5 minutes). ZipDeploy runs an Oryx build on App Service to install the locked npm dependencies; the app initializes the Azure Monitor OpenTelemetry SDK before loading HTTP modules to collect requests and storage dependencies. The platform monitoring agent is disabled to avoid duplicate instrumentation. The second builds the health model with the `az monitor health-models` CLI (about 2 minutes). It leaves one signal out on purpose: you add it in §4.
+The first script deploys the café ([infra/healthmodel-tutorial/workload.bicep](../infra/healthmodel-tutorial/workload.bicep)), publishes the app and places a test order (about 5 minutes). ZipDeploy through `az webapp deploy` runs an Oryx build on App Service to install the locked npm dependencies and waits for the build to finish. The script then verifies startup by reading the actual menu before ordering, rather than relying on deployment runtime tracking that can retain pre-publication startup failures. Leave the App Service startup command empty: the platform serves its default site before publication and detects the package's `npm start` afterward, avoiding a crash loop while `server.js` is not yet deployed. The app initializes the Azure Monitor OpenTelemetry SDK before loading HTTP modules to collect requests and storage dependencies. The platform monitoring agent is disabled to avoid duplicate instrumentation. The second builds the health model with the `az monitor health-models` CLI (about 2 minutes). It leaves one signal out on purpose: you add it in §4.
 
 | Route | What it does | What it touches |
 |---|---|---|

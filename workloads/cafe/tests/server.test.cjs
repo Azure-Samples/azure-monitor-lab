@@ -13,11 +13,27 @@ test('deployment uses ZipDeploy and an Oryx build for the locked SDK dependencie
   const publish = fs.readFileSync(path.join(root, 'scripts', 'publish-healthmodel-cafe.ps1'), 'utf8');
   const template = fs.readFileSync(path.join(root, 'infra', 'healthmodel-tutorial', 'workload.bicep'), 'utf8');
   assert.match(deploy, /publish-healthmodel-cafe\.ps1/);
-  assert.match(publish, /az webapp deployment source config-zip\b/);
+  assert.match(publish, /az webapp deploy\b/);
+  assert.match(publish, /--type zip --track-status false --timeout 1200000/);
+  assert.doesNotMatch(publish, /--async\b/);
+  assert.match(deploy, /Invoke-RestMethod -Uri "\$webAppUrl\/api\/menu"/);
+  const completion = fs.readFileSync(path.join(root, 'scripts', 'setup-health-model-demo.ps1'), 'utf8');
+  assert.match(completion, /Invoke-RestMethod -Uri "\$url\/api\/menu"/);
+  assert.match(completion, /Café stored-order verification failed/);
+  assert.match(completion, /Café request\/dependency telemetry did not arrive/);
   assert.match(publish, /'server\.js', 'package\.json', 'package-lock\.json'/);
   assert.match(template, /name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true'/);
   assert.match(template, /name: 'ENABLE_ORYX_BUILD', value: 'true'/);
   assert.match(template, /name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: 'disabled'/);
+});
+
+test('first deployment uses platform startup detection until the Cafe source is published', () => {
+  const root = path.join(__dirname, '..', '..', '..');
+  const template = fs.readFileSync(path.join(root, 'infra', 'healthmodel-tutorial', 'workload.bicep'), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  assert.match(template, /appCommandLine: ''/);
+  assert.equal(manifest.scripts.start, 'node server.js');
+  assert.equal(manifest.main, 'server.js');
 });
 
 function fixture({ telemetry = false, failQueue = false, failHost = null } = {}) {

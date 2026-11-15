@@ -129,12 +129,16 @@ try {
     $publication.Sleeps++
   }
   function az {
-    if (($args[0..4] -join ' ') -ne 'webapp deployment source config-zip --subscription' -or
-        $args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription) {
+    if (($args[0..2] -join ' ') -ne 'webapp deploy --subscription' -or
+        $args[[Array]::IndexOf($args, '--subscription') + 1] -ne $fixture.Subscription -or
+        $args[[Array]::IndexOf($args, '--type') + 1] -ne 'zip' -or
+        $args -contains '--async' -or
+        $args[[Array]::IndexOf($args, '--track-status') + 1] -ne 'false' -or
+        $args[[Array]::IndexOf($args, '--timeout') + 1] -ne '1200000') {
       throw 'Publication lost the scoped ZipDeploy command.'
     }
     $publication.Calls++
-    $publication.Zip = $args[[Array]::IndexOf($args, '--src') + 1]
+    $publication.Zip = $args[[Array]::IndexOf($args, '--src-path') + 1]
     $archive = [IO.Compression.ZipFile]::OpenRead($publication.Zip)
     try {
       if (($archive.Entries.Name | Sort-Object) -join ',' -cne 'package-lock.json,package.json,server.js') {

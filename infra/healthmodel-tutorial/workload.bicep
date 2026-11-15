@@ -187,8 +187,8 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   tags: tags
   sku: {
-    name: 'B1'
-    tier: 'Basic'
+    name: 'S1'
+    tier: 'Standard'
     capacity: 1
   }
   kind: 'linux'
@@ -210,7 +210,7 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
     vnetRouteAllEnabled: true
     siteConfig: {
       linuxFxVersion: 'NODE|22-lts'
-      appCommandLine: 'node server.js'
+      appCommandLine: ''
       alwaysOn: true
       healthCheckPath: '/healthz'
       ftpsState: 'Disabled'

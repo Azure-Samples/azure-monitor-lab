@@ -81,7 +81,7 @@ function Invoke-Preflight($scenario, $overrides = @{}) {
         'rest --method' {
           $url = $args[[Array]::IndexOf($args, '--url') + 1]
           if ($url -match '/locations/(francecentral|swedencentral)/') {
-            return @{ value = @(@{ name = @{ localizedValue = 'Basic' }; currentValue = 0; limit = $scenario.CafeQuota }) } | ConvertTo-Json -Depth 5
+            return @{ value = @(@{ name = @{ localizedValue = 'Standard' }; currentValue = 0; limit = $scenario.CafeQuota }) } | ConvertTo-Json -Depth 5
           }
           return '{"value":[{"name":{"localizedValue":"Basic"},"currentValue":0,"limit":10},{"name":{"localizedValue":"Standard"},"currentValue":3,"limit":-1}]}'
         }
@@ -112,14 +112,14 @@ Write-Host 'PASS: eligible sizes and sufficient combined quota preserve successf
 if ($result.Text.Contains('Cafe App Service')) { throw 'Disabled Cafe demo must not query or report a separate plan.' }
 
 $scenario = New-Scenario
-$result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Standard' }
+$result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Basic' }
 if ($result.Failed) { throw "Cafe defaults must pass independently of the core region.`n$($result.Text)" }
-foreach ($text in @('Cafe App Service (B1)', 'available in francecentral', 'Cafe App Service quota', 'Basic tier in francecentral', 'Standard tier in westeurope', 'not a live capacity guarantee')) {
+foreach ($text in @('Cafe App Service (S1)', 'available in francecentral', 'Cafe App Service quota', 'Standard tier in francecentral', 'Basic tier in westeurope', 'not a live capacity guarantee')) {
   Assert-Contains $result $text
 }
 $scenario.CafeQuota = 0
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Standard' }
-Assert-Contains $result 'region reports 0 Basic quota'
+Assert-Contains $result 'region reports 0 Standard quota'
 Assert-Contains $result '[WARN] Cafe App Service quota'
 $scenario.CafeUnsupported = $true
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true }
@@ -127,10 +127,10 @@ if (-not $result.Failed) { throw 'Unavailable Cafe region must block deployment 
 Assert-Contains $result 'NOT available in francecentral'
 $scenario = New-Scenario
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; HealthModelDemoCafeLocation = 'swedencentral' }
-Assert-Contains $result 'Basic tier in swedencentral'
+Assert-Contains $result 'Standard tier in swedencentral'
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; HealthModelDemoCafeLocation = 'invalidregion' }
 if (-not $result.Failed) { throw 'An invalid Cafe region must fail preflight.' }
-Write-Host 'PASS: Cafe checks use the independent configured region and Basic tier, preserve overrides, and never promise live capacity.'
+Write-Host 'PASS: Cafe checks use the independent configured region and Standard tier, preserve overrides, and never promise live capacity.'
 
 $scenario = New-Scenario
 foreach ($sku in $scenario.Skus[0..1]) {

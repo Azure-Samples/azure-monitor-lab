@@ -69,6 +69,19 @@ foreach ($case in @(
 Write-Output 'PASS: heartbeat query contract and 12 fixtures cover prolonged/partial loss, absent/unrelated VMs, thresholds and recovery.'
 $workloadModule = ($stage.resources | Where-Object name -eq 'health-model-demo-cafe-workload')
 $workload = $workloadModule.properties.template
+foreach ($workloadTemplate in @(
+  $workload
+  ($optional[0].properties.template.resources | Where-Object name -eq 'health-model-demo-cafe-workload').properties.template
+)) {
+  $plans = @($workloadTemplate.resources | Where-Object type -eq 'Microsoft.Web/serverfarms')
+  Assert-Demo ($plans.Count -eq 1 -and $plans[0].sku.name -ceq 'S1' -and
+    $plans[0].sku.tier -ceq 'Standard' -and $plans[0].sku.capacity -eq 1 -and
+    $plans[0].properties.reserved -eq $true) 'Both deployment routes must use a dedicated single-instance Linux Standard S1 Cafe plan.'
+  $sites = @($workloadTemplate.resources | Where-Object type -eq 'Microsoft.Web/sites')
+  Assert-Demo ($sites.Count -eq 1 -and
+    $sites[0].properties.siteConfig.ContainsKey('appCommandLine') -and
+    $sites[0].properties.siteConfig.appCommandLine -ceq '') 'Both deployment routes must clear the startup override so a fresh Cafe does not crash before publication.'
+}
 Assert-Demo ($workloadModule.properties.parameters.namePrefix.value -eq 'cafe' -and $workloadModule.properties.parameters.tags.value -match "'lab-cafe'") 'Standalone Cafe naming/tag adoption contract changed.'
 Assert-Demo ($cafe.parameters.healthModelName.defaultValue -eq 'hm-lab-cafe' -and $flow.parameters.healthModelName.defaultValue -eq 'hm-amlab-flows') 'Demo model default names must adopt existing models.'
 Assert-Demo ($cafe.variables.entities.Count -eq 12 -and $cafe.variables.edges.Count -eq 12 -and $cafe.variables.definitions.Count -eq 2) 'Cafe must have 12 explicit entities, automatic root, 12 edges and 2 definitions.'

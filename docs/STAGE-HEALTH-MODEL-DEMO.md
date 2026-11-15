@@ -6,7 +6,7 @@ For a presenter-ready walkthrough of the deployed stage, follow [scenario 81: us
 
 ## What it adds
 
-- A Node.js Café on a dedicated Linux B1 App Service plan, with private Storage access, Blob menu/orders and Queue notifications.
+- A Node.js Café on a dedicated Linux Standard S1 App Service plan, with private Storage access, Blob menu/orders and Queue notifications.
 - Dedicated monitoring, availability tests and explicit Azure Monitor instrumentation.
 - `hm-lab-cafe`: 13 entities, 12 relationships and two reusable metric definitions, including failed-order request signals.
 - `hm-amlab-flows`: 21 entities, 20 relationships and four reusable definitions, backed by the existing lab workloads.
@@ -33,7 +33,7 @@ Invoke-LabStage -Stage 80-health-model-demo
 
 The shared helper previews stage 80 and requires confirmation before deployment. Café hosting defaults to **France Central** across one-shot, portal, staged Bicep, Terraform and standalone tutorial deployments. Both health models remain in **Sweden Central**, independently of the workload region, because preview region support is limited. Stage 80 does not inherit the core lab's `location`; use `-Overrides @{ location = '<region>' }` to explicitly preserve an existing Café deployment's region. One-shot uses `healthModelDemoCafeLocation`, and Terraform uses `health_model_demo_cafe_location`.
 
-Scripted deployment preflight separately checks the Café's configured App Service region and **Basic B1** quota when the demo is enabled, even if the core app uses Standard in another region. Offering/quota checks do not guarantee live capacity. Changing defaults does not move existing resources: if a Café was already deployed in another region, retain its region override or plan an explicit migration; do not redeploy the same resource names in a different region as an in-place move.
+Scripted deployment preflight separately checks the Café's configured App Service region and **Standard S1** quota when the demo is enabled, independently of the core app's region and tier. Standard quota does not use the Basic B1 quota, but offering/quota checks still do not guarantee live capacity. Changing defaults does not move existing resources: if a Café was already deployed in another region, retain its region override or plan an explicit migration; do not redeploy the same resource names in a different region as an in-place move.
 
 The four demo outputs are available from the stage deployment and Terraform; the full-lab template preserves its existing output contract.
 
@@ -55,7 +55,7 @@ Open **Control Center > Health Model** and switch between **Lab user flows** and
 
 ## Costs and lifecycle
 
-The B1 plan, private networking, Storage, monitoring and retained data add charges. **Stop Lab** stops both web apps but does not stop App Service plan or retained-data billing. **Start Lab** starts both. The usual lab teardown removes the demo resources in the same resource group; never delete Azure Monitor-managed groups directly.
+The Standard S1 plan costs more than Basic B1; private networking, Storage, monitoring and retained data also add charges. An existing Café plan in the same region is upgraded to S1 on redeployment. **Stop Lab** stops both web apps but does not stop App Service plan or retained-data billing. **Start Lab** starts both. The usual lab teardown removes the demo resources in the same resource group; never delete Azure Monitor-managed groups directly.
 
 Setting the stage back to `false` does **not** remove its resources or stop their billing. Bicep incremental deployments retain them; Terraform removes only the stage's deployment-history record, not its nested workloads, models or RBAC. Use explicit lab teardown for cleanup. No fault injection runs during deployment or completion. Use the standalone tutorial's break/fix exercises only when you intentionally want to demonstrate failures.
 

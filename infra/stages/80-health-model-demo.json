@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "10651441476602248058"
+      "templateHash": "12564971963329501058"
     }
   },
   "parameters": {
@@ -119,7 +119,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "6026644295015767549"
+              "templateHash": "11350620209401038776"
             }
           },
           "parameters": {
@@ -386,8 +386,8 @@
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "sku": {
-                "name": "B1",
-                "tier": "Basic",
+                "name": "S1",
+                "tier": "Standard",
                 "capacity": 1
               },
               "kind": "linux",
@@ -412,7 +412,7 @@
                 "vnetRouteAllEnabled": true,
                 "siteConfig": {
                   "linuxFxVersion": "NODE|22-lts",
-                  "appCommandLine": "node server.js",
+                  "appCommandLine": "",
                   "alwaysOn": true,
                   "healthCheckPath": "/healthz",
                   "ftpsState": "Disabled",

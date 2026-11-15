@@ -54,7 +54,7 @@
   creation of a sixth agent when the subscription preview limit is reached.
 
 .PARAMETER DeployHealthModelDemo
-  Check the optional Cafe workload's independent App Service region and Basic B1 quota.
+  Check the optional Cafe workload's independent App Service region and Standard S1 quota.
 
 .PARAMETER HealthModelDemoCafeLocation
   Cafe workload region (default francecentral). Does not change the health model region.
@@ -359,7 +359,7 @@ if ($DeployCustomerDependencies) {
   Add-Result 'Customer dependencies lifecycle' 'SQL Basic + Standard orders queue are billable even idle. Explicit Entra-admin SQL bootstrap and processor publication are required; no password/key or Azure-services SQL firewall fallback.' 'WARN'
 }
 if ($DeployHealthModelDemo) {
-  $paasTypes += @{ Label = 'Cafe App Service (B1)'; Ns = 'Microsoft.Web'; Type = 'sites'; Region = $HealthModelDemoCafeLocation }
+  $paasTypes += @{ Label = 'Cafe App Service (S1)'; Ns = 'Microsoft.Web'; Type = 'sites'; Region = $HealthModelDemoCafeLocation }
   if ($validLocations -notcontains (Get-RegionToken $HealthModelDemoCafeLocation)) {
     Add-Result 'Cafe region' "'$HealthModelDemoCafeLocation' is not a valid region for this subscription" 'FAIL'
   }
@@ -393,7 +393,7 @@ foreach ($t in $paasTypes) {
 # ---------------------------------------------------------------------------
 $planChecks = @(@{ Label = 'App Service quota'; Tier = $AppServicePlanTier; Region = $appServiceLocation })
 if ($DeployHealthModelDemo) {
-  $planChecks += @{ Label = 'Cafe App Service quota'; Tier = 'Basic'; Region = $HealthModelDemoCafeLocation }
+  $planChecks += @{ Label = 'Cafe App Service quota'; Tier = 'Standard'; Region = $HealthModelDemoCafeLocation }
 }
 foreach ($planCheck in $planChecks) {
   $tier = $planCheck.Tier
@@ -417,7 +417,7 @@ foreach ($planCheck in $planChecks) {
         $availWeb = $webLimit - [int]$tierUsage.currentValue
         $detail = "$tier tier in ${region}: reported limit $webLimit, used $($tierUsage.currentValue)"
         if ($availWeb -lt 1) {
-          Add-Result $label "$detail — region reports 0 $tier quota. This signal is UNRELIABLE (some regions create Basic plans anyway). If the deploy really is blocked it fails fast with 'InternalSubscriptionIsOverQuotaForSku' — then pick another region or request an increase." 'WARN'
+          Add-Result $label "$detail — region reports 0 $tier quota. This usage signal is advisory; ARM deployment validation is authoritative. If blocked by 'InternalSubscriptionIsOverQuotaForSku', request an increase for the required tier and region or choose another region." 'WARN'
         } else {
           Add-Result $label "$detail; not a live capacity guarantee" 'PASS'
         }
