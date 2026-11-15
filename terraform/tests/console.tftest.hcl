@@ -100,6 +100,27 @@ run "workloads_include_console" {
     condition     = !jsondecode(terraform_data.console_ready[0].triggers_replace.integrations).fabric
     error_message = "Disabled Fabric must be passed explicitly to console completion."
   }
+
+  assert {
+    condition     = !azapi_resource.stage_a[0].body.properties.parameters.enableSlotFailureScenario.value && !azapi_resource.stage_b[0].body.properties.parameters.enableSlotFailureScenario.value
+    error_message = "The customer slot scenario must remain disabled by default in every deployment stage."
+  }
+}
+
+run "slot_scenario_reaches_all_stages" {
+  command = plan
+
+  variables {
+    enable_stage_b               = true
+    enable_stage_c               = true
+    enable_stage_sre_agent       = true
+    enable_slot_failure_scenario = true
+  }
+
+  assert {
+    condition     = alltrue([for stage in [azapi_resource.stage_a[0], azapi_resource.stage_b[0], azapi_resource.stage_c[0], azapi_resource.stage_sre_agent[0]] : stage.body.properties.parameters.enableSlotFailureScenario.value])
+    error_message = "The slot scenario must reach foundation, workloads, alerting and SRE so telemetry, the customer app, outage alerts and rollback access deploy together."
+  }
 }
 
 run "stage_e_refreshes_optional_completion" {

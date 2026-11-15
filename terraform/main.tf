@@ -55,13 +55,14 @@ resource "azapi_resource" "stage_a" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/00-foundation.json")))
       parameters = {
-        location               = { value = var.location }
-        appServiceLocation     = { value = var.app_service_location }
-        namePrefix             = { value = var.name_prefix }
-        dailyCapGb             = { value = var.daily_cap_gb }
-        ownerTag               = { value = var.owner_tag }
-        enableLawReplication   = { value = var.enable_law_replication }
-        lawReplicationLocation = { value = var.law_replication_location }
+        location                  = { value = var.location }
+        appServiceLocation        = { value = var.app_service_location }
+        namePrefix                = { value = var.name_prefix }
+        dailyCapGb                = { value = var.daily_cap_gb }
+        ownerTag                  = { value = var.owner_tag }
+        enableLawReplication      = { value = var.enable_law_replication }
+        lawReplicationLocation    = { value = var.law_replication_location }
+        enableSlotFailureScenario = { value = var.enable_slot_failure_scenario }
       }
     }
   }
@@ -114,17 +115,18 @@ resource "azapi_resource" "stage_c" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/20-alerting.json")))
       parameters = {
-        location           = { value = var.location }
-        appServiceLocation = { value = var.app_service_location }
-        namePrefix         = { value = var.name_prefix }
-        alertEmail         = { value = var.alert_email }
-        siemWebhookUrl     = { value = var.siem_webhook_url }
-        vmAdminUsername    = { value = var.vm_admin_username }
-        vmAdminPassword    = { value = var.vm_admin_password }
-        vmssSize           = { value = var.vmss_size }
-        deployWindowsVm    = { value = var.deploy_windows_vm }
-        deployLinuxVm      = { value = var.deploy_linux_vm }
-        ownerTag           = { value = var.owner_tag }
+        location                  = { value = var.location }
+        appServiceLocation        = { value = var.app_service_location }
+        namePrefix                = { value = var.name_prefix }
+        alertEmail                = { value = var.alert_email }
+        siemWebhookUrl            = { value = var.siem_webhook_url }
+        vmAdminUsername           = { value = var.vm_admin_username }
+        vmAdminPassword           = { value = var.vm_admin_password }
+        vmssSize                  = { value = var.vmss_size }
+        deployWindowsVm           = { value = var.deploy_windows_vm }
+        deployLinuxVm             = { value = var.deploy_linux_vm }
+        enableSlotFailureScenario = { value = var.enable_slot_failure_scenario }
+        ownerTag                  = { value = var.owner_tag }
       }
     }
   }

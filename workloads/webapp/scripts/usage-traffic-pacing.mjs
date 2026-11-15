@@ -49,7 +49,7 @@ export async function fetchWithRateLimit(route, {
     const response = await route.fetch();
     if (response.status() !== 429 || attempt >= maxRetries) return response;
 
-    const retryAfter = retryAfterMilliseconds(await response.headerValue('retry-after'), now());
+    const retryAfter = retryAfterMilliseconds(response.headers()['retry-after'], now());
     const delay = Math.min(retryAfter ?? 30000, maxRetryAfterMs);
     await response.dispose();
     onRetry({ attempt: attempt + 1, delay });

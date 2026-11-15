@@ -18,7 +18,7 @@ param fabricAdminEmail string
 @description('Tag every resource with this owner.')
 param ownerTag string = 'demo-lab'
 
-var suffix = uniqueString(subscription().subscriptionId, resourceGroup().id)
+var suffix = uniqueString(resourceGroup().id)
 var fabricCapacityName = toLower('fab${namePrefix}${take(suffix, 8)}')
 var fabricLocation = 'swedencentral'
 

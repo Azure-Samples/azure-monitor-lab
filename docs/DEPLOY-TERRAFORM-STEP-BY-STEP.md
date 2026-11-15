@@ -49,6 +49,8 @@ For workshop planning and customer expectation-setting, use:
 
 Keeping stage boundaries identical across Bicep and Terraform avoids customer confusion.
 
+The optional `enable_slot_failure_scenario` toggle is forwarded to Stage A (customer Application Insights), Stage B (customer app and slot), Stage C (customer outage alerts), and SRE (customer-scoped rollback access). It defaults to false and requires Stage B.
+
 ## 4) Stage details (scenarios + deployed services)
 
 Use this matrix in customer sessions so Terraform users see exactly what each apply wave introduces.

@@ -45,8 +45,8 @@ export async function initializeBrowserTelemetry(options = {}) {
       }
     });
     client.addTelemetryInitializer(envelope => {
-      if (!envelope?.data?.baseData) return true;
-      const properties = envelope.data.baseData.properties ??= {};
+      if (!envelope?.baseData) return true;
+      const properties = envelope.baseData.properties ??= {};
       properties['synthetic.session_id'] = syntheticSessionId();
       properties['service.name'] = config.serviceName;
       properties['service.version'] = config.serviceVersion;

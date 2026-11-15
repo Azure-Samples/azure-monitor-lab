@@ -111,7 +111,9 @@ The documented role set is:
 | Log Analytics Reader | Lab resource group | Query workspace and Application Insights logs |
 | Monitoring Reader | Lab resource group | Read metrics and monitoring data |
 | Monitoring Contributor | Subscription | Acknowledge and close Azure Monitor alerts |
-| Lab SRE Slot Rollback *(only when enabled)* | Lab Web App | Read deployment slots and reverse the controlled `broken`-to-production swap after Review-mode approval |
+| Lab SRE Slot Rollback *(only when enabled)* | Dedicated customer Web App (`app-<prefix>-<suffix>-customer`) | Read deployment slots and reverse the controlled `broken`-to-production swap after Review-mode approval |
+
+Validation selects the dedicated customer app, not the Control Center or order worker, and checks rollback access on its exact resource scope when the `broken` slot exists. Multiple matching customer apps are rejected rather than silently skipping the check. Without a customer app, standalone SRE validation explicitly reports that the slot scenario is not deployed.
 
 The Bicep deployment assigns all roles in the table, including subscription-scope Monitoring Contributor. If that assignment was removed or an older deployment is being upgraded, review the scope and grant the missing role explicitly:
 

@@ -35,6 +35,17 @@ if (@(Get-ChildItem -LiteralPath (Join-Path $source 'infra/modules/appinsights-k
 }
 $appInsightsWorkbookFiles | ForEach-Object { $null = Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
+$fabricStage = Get-Content -LiteralPath (Join-Path $source 'infra/stages/60-fabric.json') -Raw | ConvertFrom-Json
+$advancedStage = Get-Content -LiteralPath (Join-Path $source 'infra/stages/40-optional-advanced.json') -Raw | ConvertFrom-Json
+if ($mainTemplate.variables.suffix -cne '[uniqueString(resourceGroup().id)]' -or
+    $fabricStage.variables.suffix -cne $mainTemplate.variables.suffix -or
+    $advancedStage.variables.suffix -cne $mainTemplate.variables.suffix -or
+    $fabricStage.variables.fabricCapacityName -cne $mainTemplate.variables.fabricCapacityName -or
+    $advancedStage.resources.Where({ $_.name -eq 'health-model' }).properties.parameters.fabricCapacityId -cne
+      "[if(parameters('enableFabric'), createObject('value', resourceId('Microsoft.Fabric/capacities', toLower(format('fab{0}{1}', parameters('namePrefix'), take(variables('suffix'), 8))))), createObject('value', ''))]") {
+  throw 'Fabric deployment and Stage E monitoring must use the same resource-group-only suffix and capacity name as the one-shot deployment.'
+}
+Write-Output 'PASS: standalone/staged Fabric capacity naming matches one-shot deployment and Stage E monitoring.'
 & (Join-Path $source 'infra/tests/health-model-demo.Tests.ps1')
 foreach ($moduleName in @('sre-agent', 'lab-console-platform')) {
   $module = @($mainTemplate.resources | Where-Object name -eq $moduleName)

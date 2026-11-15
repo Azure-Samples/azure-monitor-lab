@@ -47,6 +47,8 @@ The Bicep or Terraform deployment creates:
 - A **Real-Time Intelligence** tier in `hm-amlab-workload`, with the F2 capacity represented as an Azure resource entity using Resource Health
 - A dynamic **Fabric F2 Capacity Health** section in the main Azure Monitor Health Dashboard workbook, discovered through Azure Resource Graph
 
+One-shot Bicep, staged Bicep, Terraform, and Stage E monitoring use the same capacity name: `fab<prefix><first 8 characters of uniqueString(resourceGroup().id)>`, lowercased. If you deployed an earlier standalone Fabric stage using a subscription-plus-resource-group suffix, check for that older capacity before redeploying: incremental deployment does not rename or remove it, and both capacities can bill while active. Review workspace bindings before retiring any older capacity.
+
 After deployment, `setup-fabric.ps1` creates or reuses:
 
 - Fabric workspace

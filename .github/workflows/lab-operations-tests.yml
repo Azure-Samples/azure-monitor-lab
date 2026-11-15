@@ -69,6 +69,8 @@ on:
       - 'scripts/tests/teardown.Tests.ps1'
       - 'scripts/tests/soft-delete-cleanup.Tests.ps1'
       - 'scripts/tests/sre-agent-cleanup.Tests.ps1'
+      - 'scripts/tests/sre-agent-setup.Tests.ps1'
+      - 'scripts/tests/customer-journey-outcome.Tests.mjs'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
       - 'scripts/tests/customer-appinsights.Tests.ps1'
@@ -178,6 +180,7 @@ jobs:
           ./scripts/tests/teardown.Tests.ps1
           ./scripts/tests/soft-delete-cleanup.Tests.ps1
           ./scripts/tests/sre-agent-cleanup.Tests.ps1
+          ./scripts/tests/sre-agent-setup.Tests.ps1
           ./scripts/tests/observability-agent-config.Tests.ps1
           ./scripts/tests/entra-cleanup.Tests.ps1
           ./workloads/webapp/tests/webapp-access.Tests.ps1
@@ -195,6 +198,7 @@ jobs:
         run: |
           npm ci
           npm run build
+          node --test ../../scripts/tests/customer-journey-outcome.Tests.mjs
           npx playwright install --with-deps chromium
           npm test
 

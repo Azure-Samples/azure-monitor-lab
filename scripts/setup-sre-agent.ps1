@@ -185,14 +185,19 @@ if ([string]::IsNullOrWhiteSpace($AgentPrincipalId)) {
 Write-Step "Checking SRE Agent managed identity roles"
 $subscriptionScope = "/subscriptions/$SubscriptionId"
 $resourceGroupScope = "$subscriptionScope/resourceGroups/$ResourceGroup"
-$webApps = @($resources | Where-Object { $_.type.ToLowerInvariant() -eq 'microsoft.web/sites' -and $_.name -like 'app-*' })
+$customerWebApps = @($resources | Where-Object { $_.type.ToLowerInvariant() -eq 'microsoft.web/sites' -and $_.name -like 'app-*-customer' })
 $slotRollbackRequirement = @()
-if ($webApps.Count -eq 1) {
-  $slots = @(az webapp deployment slot list --subscription $SubscriptionId --resource-group $ResourceGroup --name $webApps[0].name -o json | ConvertFrom-Json)
+if ($customerWebApps.Count -gt 1) {
+  throw "Multiple customer Web Apps were found in '$ResourceGroup': $($customerWebApps.name -join ', '). Pass a resource group containing one lab customer app."
+}
+if ($customerWebApps.Count -eq 1) {
+  $slots = @(az webapp deployment slot list --subscription $SubscriptionId --resource-group $ResourceGroup --name $customerWebApps[0].name -o json | ConvertFrom-Json)
   if ($LASTEXITCODE -ne 0) { throw 'Could not inspect App Service slots while validating SRE Agent access.' }
-  if (@($slots | Where-Object name -eq 'broken').Count -eq 1) {
-    $slotRollbackRequirement = @(@{ RolePrefix = 'Lab SRE Slot Rollback '; Scope = $webApps[0].id })
+  if (@($slots | Where-Object { ($_.name -split '/')[-1] -eq 'broken' }).Count -eq 1) {
+    $slotRollbackRequirement = @(@{ RolePrefix = 'Lab SRE Slot Rollback '; Scope = $customerWebApps[0].id })
   }
+} else {
+  Write-Host '  Customer slot scenario is not deployed; no rollback role is required.'
 }
 $principalRequirements = @(
   @{ Label = 'Action UAMI'; PrincipalId = $AgentPrincipalId; Roles = @(

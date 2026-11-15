@@ -78,7 +78,7 @@ test('rate-limited fetch honors retry-after and remains bounded', async () => {
       const status = statuses.shift();
       return {
         status: () => status,
-        headerValue: async () => '2',
+        headers: () => ({ 'retry-after': '2' }),
         dispose: async () => disposed.push(status)
       };
     }
@@ -91,4 +91,33 @@ test('rate-limited fetch honors retry-after and remains bounded', async () => {
   assert.equal(paced, 3);
   assert.deepEqual(delays, [2000, 2000]);
   assert.deepEqual(disposed, [429, 429]);
+});
+
+test('rate-limit retries use APIResponse headers, cap delays and return the final response', async () => {
+  for (const [headers, expectedDelay] of [
+    [{}, 30000],
+    [{ 'retry-after': '120' }, 60000],
+    [{ 'retry-after': 'Tue, 13 Oct 2026 12:00:07 GMT' }, 7000]
+  ]) {
+    let attempts = 0;
+    let disposed = 0;
+    const delays = [];
+    const response = {
+      status: () => 429,
+      headers: () => headers,
+      dispose: async () => disposed++
+    };
+    const result = await fetchWithRateLimit({
+      fetch: async () => { attempts++; return response; }
+    }, {
+      pace: async () => {},
+      maxRetries: 2,
+      now: () => Date.parse('2026-10-13T12:00:00Z'),
+      pause: async delay => delays.push(delay)
+    });
+    assert.equal(result, response);
+    assert.equal(attempts, 3);
+    assert.equal(disposed, 2);
+    assert.deepEqual(delays, [expectedDelay, expectedDelay]);
+  }
 });

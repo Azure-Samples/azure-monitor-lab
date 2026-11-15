@@ -21,6 +21,8 @@ Generate a realistic mix of completed, abandoned, declined, support-assisted, an
 
 The generator uses isolated Chromium contexts and drives the actual customer UI; it does not post fabricated telemetry directly. In a deployed lab, **Lab Operations → Generate Customer Traffic** runs it through the approval-gated job with bounded user, concurrency, and repeat-session parameters. Install the existing browser-test dependencies first for local use if needed with `npm ci --prefix workloads\webapp` and `npx --prefix workloads\webapp playwright install chromium`. Application Insights ingestion and Usage aggregation can take several minutes.
 
+Customer API retries read `Retry-After` from Playwright's `APIResponse.headers()`. Retries are bounded to three by default, with each wait capped at 60 seconds; absent or invalid headers use a 30-second wait.
+
 ## Lab Operations
 
 The [Lab Operations reference](LAB-OPERATIONS.md) covers ten scripts, including cost-aware Start/Stop controls, bounded customer traffic, the isolated customer slot-failure scenario, and a bounded CPU simulation on both demo VMs, automatic Azure Container Apps Job provisioning, managed identities, persistent history, exact-operation approvals, and recovery. Normal deployment builds and pins the runner image, including Node.js and Chromium, configures access, and enables the tab. No GitHub credentials or manual runner setup are required; no shell is exposed through the Web App.
@@ -95,6 +97,8 @@ For local execution, log into the intended lab tenant with Azure CLI, then set `
 The deterministic troubleshooting catalog has eleven broken/fixed scenarios: slow tool, wrong tool, partial state-changing workflow failure, retry amplification, safe dependency fallback, context explosion, multi-agent handoff, model regression, broken trace propagation, model throttling, and parallel fan-out. These calls do not invoke a billable model. They emit synthetic request, `GenAI`, `OpenAI`, `AgentHandoff`, and `AgentTool` telemetry with separate technical/task/performance/trace outcomes, latency budgets, retries, tokens, versions, cohort, and semantic routing evidence.
 
 The browser Application Insights SDK initializes only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is configured. It uses W3C correlation for same-origin API calls and records page views, browser exceptions, dependencies, and a random session-storage-only synthetic session ID. Cookies and request/response header capture are disabled. Prompt, completion, tool payload, and response body content is never added by this feature. If telemetry configuration is absent or invalid, the UI remains functional and does not report a false setup success.
+
+Both frontend bundles enrich SDK telemetry items through top-level `baseData.properties`, including `synthetic.session_id`, service name/version, and synthetic/content-recording flags. Page views and browser dependencies therefore share the session identifier used by the browser-to-agent investigation queries.
 
 `GET /api/agent-task-availability` runs the fixed multi-agent handoff profile for the standard availability test. It is anonymous by design, deterministic, rate-limited, metadata-only, and never calls Foundry. Use the `qp-<prefix>-appinsights` query pack and **Application Insights — End-to-End Agent Investigation** workbook to compare broken/fixed outcomes and trace quality. See [Scenario 69](../../docs/DEMO-SCENARIOS.md#s69).
 
