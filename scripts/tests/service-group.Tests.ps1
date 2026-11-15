@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
 $previousExitCode = $global:LASTEXITCODE
 $source = Split-Path $PSScriptRoot -Parent
 $root = Join-Path ([IO.Path]::GetTempPath()) ('service-group-test-' + [guid]::NewGuid().ToString('N'))
@@ -13,11 +14,18 @@ $fixture = @{
   ResourceGroup = 'rg-lab-one'; Relationship = 'sgm-amlab-rg'
   Exists = 'true'; Membership = $false; Target = ''; Failure = ''
   GroupName = ''; GroupError = ''; GroupResponse = ''
+  RequestFailure = ''; Polls = 0; Sleeps = 0; NotFoundRemaining = 0
+  RelationshipsRegistered = $false
   Calls = 0; Writes = [Collections.Generic.List[object]]::new()
 }
 @{ expectedSubscriptionId = $fixture.Subscription; expectedTenantId = $fixture.Tenant } |
   ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root '.azure-target.json')
 $resolver = Join-Path $directory 'resolve-service-group-id.ps1'
+
+function Start-Sleep {
+  $fixture.Sleeps++
+  if ($fixture.Sleeps -gt 3) { throw 'Unexpected polling after a failed Azure request.' }
+}
 
 function az {
   $fixture.Calls++
@@ -30,7 +38,16 @@ function az {
   switch ($operation) {
     'account set' { }
     'account show' { return @{ id = $fixture.Subscription; tenantId = $fixture.Tenant } | ConvertTo-Json }
-    'provider show' { return 'Registered' }
+    'provider show' {
+      if ($args[[Array]::IndexOf($args, '-n') + 1] -eq 'Microsoft.Relationships' -and -not $fixture.RelationshipsRegistered) {
+        return 'NotRegistered'
+      }
+      return 'Registered'
+    }
+    'provider register' {
+      if ($args[[Array]::IndexOf($args, '-n') + 1] -ne 'Microsoft.Relationships') { throw 'Unexpected provider registration.' }
+      $fixture.RelationshipsRegistered = $true
+    }
     'group exists' { return $fixture.Exists }
     'resource list' {
       if ($args[[Array]::IndexOf($args, '-g') + 1] -ine $fixture.ResourceGroup) { throw 'Wrong resolution resource group.' }
@@ -46,9 +63,15 @@ function az {
     }
     'rest --method' {
       $url = $args[[Array]::IndexOf($args, '--url') + 1]
+      $resource = if ($url -like '*/Microsoft.Relationships/serviceGroupMember/*') { 'member' } else { 'group' }
       if ($args[2] -eq 'put') {
         $bodyFile = $args[[Array]::IndexOf($args, '--body') + 1]
-        $fixture.Writes.Add(@{ Url = $url; Body = (Get-Content -Raw -LiteralPath $bodyFile.Substring(1) | ConvertFrom-Json) })
+        $fixture.Writes.Add(@{ Url = $url; BodyFile = $bodyFile.Substring(1); Body = (Get-Content -Raw -LiteralPath $bodyFile.Substring(1) | ConvertFrom-Json) })
+        if ($fixture.RequestFailure -eq "$resource-put") {
+          $shell = Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
+          & $shell -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('ERROR: (InvalidTargetScope) Original Azure request diagnostic.'); exit 1"
+          $global:LASTEXITCODE = $LASTEXITCODE
+        }
         return
       }
       if ($args[2] -eq 'get') {
@@ -58,6 +81,21 @@ function az {
           if (-not $fixture.GroupName) { $global:LASTEXITCODE = 1; return 'ERROR: (ResourceNotFound) Service Group does not exist.' }
           return @{ properties = @{ displayName = $fixture.GroupName; provisioningState = 'Succeeded' } } | ConvertTo-Json
         }
+        $fixture.Polls++
+        if ($fixture.RequestFailure -eq "$resource-get") {
+          $global:LASTEXITCODE = 1
+          return 'ERROR: (AuthorizationFailed) Original Azure polling diagnostic.'
+        }
+        if ($fixture.RequestFailure -eq "$resource-disguised-notfound") {
+          $global:LASTEXITCODE = 1
+          return 'ERROR: Forbidden({"error":{"code":"AuthorizationFailed","message":"NotFound is not the error code.","details":[{"code":"ResourceNotFound"}]}})'
+        }
+        if ($fixture.RequestFailure -eq "$resource-notfound" -and $fixture.NotFoundRemaining -gt 0) {
+          $fixture.NotFoundRemaining--
+          $global:LASTEXITCODE = 1
+          return 'ERROR: Not Found({"error":{"code":"NotFound","message":""}})'
+        }
+        if ($fixture.RequestFailure -eq "$resource-json") { return 'not json' }
         return '{"properties":{"provisioningState":"Succeeded"}}'
       }
       throw 'Unexpected write in Service Group regression.'
@@ -116,9 +154,9 @@ try {
     $fixture.Writes.Clear()
     $expected = Resolve-TestGroup
     & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $rg | Out-Null
-    if ($fixture.Writes.Count -ne 2 -or
+    if (-not $fixture.RelationshipsRegistered -or $fixture.Writes.Count -ne 2 -or
         $fixture.Writes[0].Url -notlike "*/serviceGroups/$expected`?*" -or
-        $fixture.Writes[1].Body.properties.targetId -ne "providers/Microsoft.Management/serviceGroups/$expected" -or
+        $fixture.Writes[1].Body.properties.targetId -ne "/providers/Microsoft.Management/serviceGroups/$expected" -or
         $fixture.Writes[0].Body.properties.displayName -ne "AMLAB - $rg") {
       throw 'Setup must use the same per-lab ID for the Service Group and membership.'
     }
@@ -129,7 +167,7 @@ try {
     $fixture.GroupName = "Preserved name for $name"
     $fixture.Writes.Clear()
     & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup | Out-Null
-    if ($fixture.Writes[1].Body.properties.targetId -ne "providers/Microsoft.Management/serviceGroups/$name") {
+    if ($fixture.Writes[1].Body.properties.targetId -ne "/providers/Microsoft.Management/serviceGroups/$name") {
       throw 'Redeploying a lab must not reparent its legacy, generated, or custom membership.'
     }
     if ($fixture.Writes[0].Body.properties.displayName -cne $fixture.GroupName) {
@@ -175,11 +213,46 @@ try {
   $fixture.Writes.Clear()
   & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
     -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
-  if ($fixture.Writes[1].Body.properties.targetId -ne 'providers/Microsoft.Management/serviceGroups/explicit-group' -or
+  if ($fixture.Writes[1].Body.properties.targetId -ne '/providers/Microsoft.Management/serviceGroups/explicit-group' -or
       $fixture.Writes[0].Body.properties.displayName -ne 'Explicit display') { throw 'Explicit group IDs and display names must be honored.' }
+  foreach ($case in @(
+    @{ Failure = 'group-put'; Writes = 1; Polls = 0; Diagnostic = 'InvalidTargetScope' }
+    @{ Failure = 'member-put'; Writes = 2; Polls = 1; Diagnostic = 'InvalidTargetScope' }
+    @{ Failure = 'group-get'; Writes = 1; Polls = 1; Diagnostic = 'AuthorizationFailed' }
+    @{ Failure = 'member-get'; Writes = 2; Polls = 2; Diagnostic = 'AuthorizationFailed' }
+    @{ Failure = 'member-disguised-notfound'; Writes = 2; Polls = 2; Diagnostic = 'AuthorizationFailed' }
+    @{ Failure = 'group-json'; Writes = 1; Polls = 1; Diagnostic = 'JSON' }
+    @{ Failure = 'member-json'; Writes = 2; Polls = 2; Diagnostic = 'JSON' }
+  )) {
+    $fixture.RequestFailure = $case.Failure
+    $fixture.Writes.Clear(); $fixture.Polls = 0; $fixture.Sleeps = 0
+    $caught = ''
+    try {
+      & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
+        -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
+    } catch { $caught = $_.Exception.Message }
+    if (-not $caught.Contains($case.Diagnostic) -or $fixture.Writes.Count -ne $case.Writes -or
+        $fixture.Polls -ne $case.Polls -or $fixture.Sleeps -ne 0) {
+      throw "Setup must fail immediately with the original diagnostic for $($case.Failure): $caught"
+    }
+    foreach ($resource in @('group', 'member')) {
+      $fixture.RequestFailure = "$resource-notfound"; $fixture.NotFoundRemaining = 2
+      $fixture.Writes.Clear(); $fixture.Polls = 0; $fixture.Sleeps = 0
+      & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
+        -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
+      if ($fixture.Polls -ne 4 -or $fixture.Sleeps -ne 2 -or $fixture.Writes.Count -ne 2) {
+        throw 'An accepted write must tolerate temporary NotFound responses without submitting another PUT.'
+      }
+    }
+    foreach ($write in $fixture.Writes) {
+      if (Test-Path -LiteralPath $write.BodyFile) { throw 'Request body temporary files must be removed after failure.' }
+    }
+  }
   Write-Output 'PASS: per-RG/subscription IDs are distinct, stable, case-insensitive, and consistent across group/member setup. No Azure calls.'
   Write-Output 'PASS: legacy/custom memberships and explicit IDs are preserved; discovery errors and malformed targets fail closed. No Azure calls.'
   Write-Output 'PASS: existing display names are preserved unless explicitly overridden; failed group reads cannot cause writes. No Azure calls.'
+  Write-Output 'PASS: canonical membership targets and failed PUT/GET/JSON responses stop immediately with diagnostics and clean up request files. No Azure calls.'
+  Write-Output 'PASS: accepted writes tolerate eventual-consistency NotFound responses without masking authorization errors or resubmitting writes. No Azure calls.'
 } finally {
   Remove-Item -LiteralPath $root -Recurse -Force
   $global:LASTEXITCODE = $previousExitCode
