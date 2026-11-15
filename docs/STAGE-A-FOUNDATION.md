@@ -58,9 +58,11 @@ Resource group: **`rg-azure-monitor-lab-terraform-test`** in **North Europe** (t
 4. **`law-amlab-central` → Tables → AzureActivity** *(if visible)* — table is shaped by the workspace-transform DCR.
 5. **`appi-amlab-<suffix>` → Overview** — explain it's *workspace-based* (no separate ingestion).
 6. **`amw-amlab` → Overview** — call out "this is the Prometheus side; AKS will write here in Stage B."
-7. **Monitor → Workbooks → Browse** — open `wb-amlab-trafficlights`, `wb-amlab-cost`, **Application Insights — End-to-End Agent Investigation**, and **Application Insights — Customer Usage Journey**. They render empty/sparse right now. Promise the customer this is the "before" picture.
+7. Open [Azure Workbooks in the Azure portal](https://portal.azure.com/#browse/microsoft.insights%2Fworkbooks), filter to your lab's **subscription** and **resource group**, and open **Azure Monitor Lab — Health Dashboard** (Traffic-Lights), **Azure Monitor Lab — Central LAW ingestion volume**, **Application Insights — End-to-End Agent Investigation**, and **Application Insights — Customer Usage Journey**. Search by these display titles, not the template resource names. They render empty/sparse right now. Promise the customer this is the "before" picture.
 8. **Monitor → Data Collection Rules** — open `dcr-amlab-vminsights`, click *Resources*. Empty list. "Stage B fills this."
 9. **Policy → Assignments** — show the diagnostic-settings policy assignments scoped at this RG.
+10. **`law-amlab-central` → Logs → Queries** — [find and run a numbered saved query](DEMO-SCENARIOS.md#saved-queries), for example `03 — VM Heartbeat · which VMs are alive?`. Search by number/title; grouped views may show **AzureMonitorDemoLab** or **Other**. These queries are workspace saved searches, not part of the Application Insights query pack. No workload telemetry is expected yet.
+11. For the agent-investigation/customer-usage queries, open **`appi-amlab-<suffix>` → Logs → Queries**, then **ellipsis (`...`) → Select query packs → `qp-amlab-appinsights`** for this lab's resource group. In Queries hub, use **Select query packs** / **0 selected** instead. [Detailed query-pack selection and troubleshooting](DEMO-SCENARIOS.md#application-insights-and-ai-query-packs).
 
 ## 4) CLI validation
 

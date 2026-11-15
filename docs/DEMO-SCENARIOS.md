@@ -37,6 +37,36 @@ Pick a workload (or theme) and run only those scenarios. Each row links to the n
 
 ---
 
+<a id="saved-queries"></a>
+## Finding and running saved queries
+
+Whenever a scenario says **run saved query**, use the steps below. Resource names shown here use the default `amlab` prefix; select the resources in **your lab's subscription and resource group**, including any generated suffix.
+
+### Numbered lab queries (01-30)
+
+1. Open your lab resource group, select the **Log Analytics workspace** whose name starts with **`law-amlab-central`**, and open **Logs**.
+2. Expand the **Queries** pane on the left. If the portal opens **Queries hub** instead, use its query search. If the editor is in **Simple mode**, switch to **KQL mode** to run the saved KQL.
+3. Search for the query number or a distinctive part of its title, for example **`03`** or **`VM Heartbeat`**. When grouped by category, check **`AzureMonitorDemoLab`**; depending on the portal view, queries may also appear under **Other**.
+4. Open the matching query to load it into the editor, check the workspace scope and the scenario's time range, then select **Run**.
+
+> These numbered queries are deployed as **workspace saved searches (legacy queries)**, not in `qp-amlab-appinsights`. Selecting that query pack is not required for queries 01-30. If they are missing, confirm you opened the **central** workspace for the correct lab and that the foundation deployment completed.
+
+### Application Insights and AI query packs
+
+For a scenario that names `qp-amlab-appinsights` or `qp-ai-finops`, explicitly select the pack first:
+
+1. Open **Logs** on the Application Insights component named in the scenario.
+2. In the left **Queries** pane, select the **ellipsis (`...`) next to the search box → Select query packs**. In the Queries hub/dialog layout, use **Select query packs** (or **0 selected**) near the top instead.
+3. In **Select query packs**, filter to your lab subscription and resource group, then check **`qp-amlab-appinsights`** for agent-investigation/customer-usage queries, or **`qp-ai-finops`** for the optional AI FinOps queries. If identically named packs appear, use the **Resource group** column to choose your lab's pack.
+4. Return to the query list and search for the title given in the scenario. Expand the relevant category, such as **Applications** or **Other**, if using the grouped list.
+5. Open the query, switch to **KQL mode** if needed, verify the scope/time range, and select **Run**.
+
+> Selecting a pack makes its queries available; it does **not** change the query's execution scope. Use the Application Insights resource specified in the scenario. If a pack is absent, check the subscription filter, access to the pack, and whether its stage was deployed (`qp-ai-finops` requires the optional AI stage).
+
+See Microsoft's [Query packs in Azure Monitor Logs](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/query-packs#use-multiple-query-packs) for the portal's query-pack selection workflow.
+
+---
+
 <a id="s0"></a>
 ## 0 · 30-second elevator pitch (every demo starts here)
 
@@ -56,7 +86,7 @@ Open the resource group → expand the resource list → **show the count**: ~30
 Modern teams don't want to chain through 10 portal blades to know "is anything broken right now?". This workbook answers that in one screen, with a clear per-resource threshold legend.
 
 ### Click-path
-1. **Monitor → Workbooks** → search **"Azure Monitor Lab"** → open *Traffic Lights*.
+1. Open [Azure Workbooks in the Azure portal](https://portal.azure.com/#browse/microsoft.insights%2Fworkbooks), filter to your lab's **subscription** and **resource group**, and open **Azure Monitor Lab — Health Dashboard** (the Traffic-Lights workbook). Search for **`Health Dashboard`**, not `Traffic Lights`.
 2. Read the **legend table** out loud (Green/Orange/Red thresholds per resource type).
 3. Click any Red or Orange row → scroll down to the matching detail pane (VM heartbeat / AKS pods / App Service status codes / App Insights timechart).
 4. Change the time-range pill (15 min / 1 hour / 24 h) and re-run.
@@ -80,7 +110,7 @@ A single agent (Azure Monitor Agent) + a Data Collection Rule = full perf, heart
 ### Click-path
 1. Resource group → **`vmwin-<suffix>`** (Windows) → **Insights** → *Performance* and *Map* tab. Show the auto-discovered TCP connections.
 2. Switch to **`vm-amlab-lin`** (Linux) → **Insights** → *Performance* tab. (Map view is unavailable on Ubuntu 22.04+ — kernel-incompatible Dependency Agent.)
-3. Open **`law-amlab-central`** → **Logs** → run saved query `03 — VM Heartbeat · which VMs are alive?`.
+3. Open **`law-amlab-central`** → **Logs** → [run saved query](#saved-queries) `03 — VM Heartbeat · which VMs are alive?`.
 
 ### Killer line
 > *"Identical UI, identical KQL, identical alerts — across both OS families. The agent is the only thing the VM needs."*
@@ -124,7 +154,7 @@ AKS gets two parallel telemetry pipelines out of the box:
 1. **`aks-amlab`** → **Insights** → cluster → nodes → controllers → containers. Show drilling from cluster CPU to a single container.
 2. **Monitor → Workbooks** → *AKS Prometheus* category → open one of the prebuilt dashboards.
 3. **`amg-amlab-tr75…`** → click the Grafana endpoint → log in → import dashboard ID **`19623`** (Kubernetes / Cluster) from grafana.com → the AMW data source is already wired.
-4. **`law-amlab-central`** → Logs → run saved query `04 — AKS · Pod restarts in last 24h` and `05 — AKS · Container log errors (last 1h)`.
+4. **`law-amlab-central`** → Logs → [run saved queries](#saved-queries) `04 — AKS · Pod restarts in last 24h` and `05 — AKS · Container log errors (last 1h)`.
 
 ### Killer line
 > *"Same cluster, one click to add. Two world-class observability stacks, fully managed by Microsoft."*
@@ -161,7 +191,7 @@ Manually setting diagnostic settings on every new resource doesn't scale. We ass
 Ops owns the infra workspace, devs own App Insights. But during an incident you need both. KQL has `workspace()` — point at any workspace by name and `join` / `union` like it's local.
 
 ### Click-path
-1. Open `law-amlab-central` → **Logs** → **Queries** → category **`AzureMonitorDemoLab`**.
+1. Open `law-amlab-central` → **Logs**, then [find the numbered saved queries](#saved-queries) in **Queries** (category **`AzureMonitorDemoLab`** or **Other**, depending on the portal view).
 2. Run **`10 — CROSS-WS · App Insights failed requests vs central LAW VM CPU (normalized 0–100)`** — both series rendered on one chart.
 3. Run **`11 — CROSS-WS · End-to-end story (HTTP → AppI request → AKS pod logs)`** — `union` across three tables in two workspaces.
 4. Run **`12 — CROSS-WS · App Insights failures grouped by operation`**.
@@ -241,7 +271,7 @@ Observability can become an unbounded bill. We cap both LAWs at **3 GB/day each*
 
 ### Click-path
 1. **`law-amlab-central`** → **Usage and estimated costs** → show the configured daily cap (default 3 GB/day) and current burn. The App Insights LAW has its own independent cap.
-2. **Logs** → run saved query `09 — Activity log · Who changed what in this RG (last 24h)`.
+2. **Logs** → [run saved query](#saved-queries) `09 — Activity log · Who changed what in this RG (last 24h)`.
 3. *(Optional)* enable **Change Analysis** on the App Service → open *Diagnose and solve problems* → *Change Analysis*.
 
 ### Killer line
@@ -573,7 +603,7 @@ Azure Monitor now has AI woven into every blade. You don't need to memorize KQL 
 
 #### B) Copilot explains existing KQL (1 min)
 
-1. Open saved query **`10 — Cross-workspace · App Insights failed requests joined with AKS logs`** (one of the complex cross-workspace queries).
+1. [Open saved query](#saved-queries) **`11 — CROSS-WS · End-to-end story (HTTP → AppI request → AKS pod logs)`** on the central workspace (one of the complex cross-workspace queries).
 2. Select the full query text → click **Explain** (or right-click → *Explain query*).
 3. Copilot produces a step-by-step plain-English breakdown of the joins, filters, and projections.
 
@@ -905,7 +935,7 @@ Dashboards that scan millions of raw `Perf` rows every refresh are slow and expe
 ### Click-path
 
 1. **`law-amlab-central` → Tables** → find **`Perf_Hourly_CL`** → show it exists as a custom table with 180-day retention.
-2. Run saved query **`18 — Cost · Summary Rule: raw Perf vs aggregated Perf_Hourly_CL`** — shows the compression ratio (typically 50:1 to 200:1).
+2. [Run saved query](#saved-queries) **`18 — Cost · Summary Rule: raw Perf vs aggregated Perf_Hourly_CL`** — shows the compression ratio (typically 50:1 to 200:1).
 3. Compare two dashboard queries side by side:
    ```kql
    // RAW (slow, expensive — scans millions of rows)
@@ -964,7 +994,7 @@ Real users are spread across the world. **Availability Tests** ping your app fro
 1. **`appi-amlab-<suffix>` → Availability** (left nav) → show the scatter chart: each dot is a test execution from a global location.
 2. Click any dot → see response time, HTTP status, SSL validation result.
 3. **Map view** → show the 5 probe locations on a world map with green/red status.
-4. Run saved query **`22 — Availability · Global test results (last 1h)`** — tabular view with pass/fail per location.
+4. [Run saved query](#saved-queries) **`22 — Availability · Global test results (last 1h)`** — tabular view with pass/fail per location.
 5. **Live failure demo:** (ties into Scenario 8)
    ```powershell
    # Stop the App Service to trigger failures
@@ -1058,8 +1088,8 @@ Log Analytics isn't just for Azure resources. The **Logs Ingestion API** lets an
    ```powershell
    ./scripts/send-custom-logs.ps1 -Count 20
    ```
-3. Wait ~2-5 min, then run saved query **`16 — Custom Logs · SecurityAudit_CL events (last 1h)`**.
-4. Run saved query **`17 — Custom Logs · Security event breakdown`** — shows aggregation works exactly like any native table.
+3. Wait ~2-5 min, then [run saved query](#saved-queries) **`16 — Custom Logs · SecurityAudit_CL events (last 1h)`**.
+4. [Run saved query](#saved-queries) **`17 — Custom Logs · Security event breakdown`** — shows aggregation works exactly like any native table.
 5. *(Optional)* Show the DCR → Data flows → `transformKql` is `source` (passthrough). Explain that you could add filtering, enrichment, or redaction here — same pattern as Scenario 11.
 6. *(Optional)* Show the ingestion pipeline diagram:
    ```
@@ -1213,7 +1243,7 @@ Not everyone should see everything. Log Analytics now has **Granular RBAC** (GA 
      THEN table name MUST equal "SecurityAudit_CL"
      AND  Severity column MUST equal "Critical"
    ```
-2. Run saved query **`21 — RBAC · Granular RBAC proof (ABAC conditions)`**:
+2. [Run saved query](#saved-queries) **`21 — RBAC · Granular RBAC proof (ABAC conditions)`**:
    - Full-access user sees all severities: Info, Warning, Critical.
    - Row-filtered user sees **only Critical** rows — everything else is silently filtered.
 3. Show the filtering logic:
@@ -1315,8 +1345,8 @@ app.MapPost("/api/checkout", (HttpRequest req, TelemetryClient telemetry) =>
    }
    ```
 2. **`appi-amlab-<suffix>` → Metrics** → namespace **azure.applicationinsights** → metric **`amlab.cartValue`** → split by anything → render as line chart. Show p50 / p95 / avg pivots.
-3. Run saved query **`27 — Custom · App Insights amlab.cartValue metric (1h)`** — same data via KQL on `AppMetrics`.
-4. Run saved query **`28 — Custom · CheckoutCompleted events (1h)`** — `ok` vs `declined` stacked column — the **5% intentional decline** is plainly visible.
+3. [Run saved query](#saved-queries) **`27 — Custom · App Insights amlab.cartValue metric (1h)`** — same data via KQL on `AppMetrics`.
+4. [Run saved query](#saved-queries) **`28 — Custom · CheckoutCompleted events (1h)`** — `ok` vs `declined` stacked column — the **5% intentional decline** is plainly visible.
 5. Optional: add an alert directly on the custom metric — *"Avg cart value drops below €40 for 10 min"*. Same alert engine, same Action Group.
 
 ### Why this matters
@@ -1540,7 +1570,7 @@ The module is scoped to the singleton **`NetworkWatcher_northeurope`** in `Netwo
 ### Click-path
 
 1. **Network Watcher → Connection monitor → `cm-amlab-vms-to-appservice`** → *Test groups* → drill into a hop. Show round-trip-time histogram + topology view.
-2. **`law-amlab-central` → Logs** → run saved query **`23 — Network · Connection Monitor results (VMs → App Service)`** — table with `ChecksFailedPct` + `AvgRttMs` per (source, destination, 5-min bucket).
+2. **`law-amlab-central` → Logs** → [run saved query](#saved-queries) **`23 — Network · Connection Monitor results (VMs → App Service)`** — table with `ChecksFailedPct` + `AvgRttMs` per (source, destination, 5-min bucket).
 3. **Run query 30 — Network · End-to-end availability over 24h** — timechart with availability % per pair.
 4. **Live failure demo** (ties back into scenario 8):
    ```powershell
@@ -1576,7 +1606,7 @@ The module is scoped to the singleton **`NetworkWatcher_northeurope`** in `Netwo
 
 1. **Network Watcher → Flow logs → `fl-amlab-vnet`** → confirm status `Succeeded` + Traffic Analytics `Enabled`.
 2. **Storage account → containers → `insights-logs-flowlogflowevent`** → drill into the date partition → open a `PT1H.json` block — show the raw JSON.
-3. **`law-amlab-central` → Logs** → run saved query **`24 — Network · Traffic Analytics top-talkers (Flow Logs)`** — top inbound/outbound IP pairs by flow count.
+3. **`law-amlab-central` → Logs** → [run saved query](#saved-queries) **`24 — Network · Traffic Analytics top-talkers (Flow Logs)`** — top inbound/outbound IP pairs by flow count.
 4. Run **Traffic Analytics dashboard** (`Network Watcher → Traffic Analytics`) — geo map, top conversations, expected vs blocked. Use this **standalone dashboard**, not the *Network Insights → Traffic* tab — see the gotcha box below.
 
 > **Known portal gap (May 2026):** the *Network Insights → Traffic* tab still queries the **legacy `AzureNetworkAnalytics_CL`** table populated by NSG flow logs (being retired 30-Sep-2027). VNet flow logs only populate the modern **`NTANetAnalytics`** table, so that tab will read "No results found" in this lab. That is **expected**, not a deployment bug. The data is fully visible in the standalone Traffic Analytics dashboard (step 4) and via saved query 24 (step 3). Microsoft docs confirm: *"NTANetAnalytics in virtual network flow logs replaces AzureNetworkAnalytics_CL used in network security group flow logs."*
@@ -1598,13 +1628,13 @@ Both `keyvault-amlab-*` and `st<prefix>...` ship `allLogs` to the central LAW vi
 ### Click-path
 
 1. **`keyvault-amlab-*` → Insights** → built-in workbook → top operations, callers, failures.
-2. Run saved query **`25 — Key Vault · AuditEvent operations (last 1h)`** — same data via KQL on `AzureDiagnostics` filtered to `ResourceType == "VAULTS"`.
+2. [Run saved query](#saved-queries) **`25 — Key Vault · AuditEvent operations (last 1h)`** — same data via KQL on `AzureDiagnostics` filtered to `ResourceType == "VAULTS"`.
 3. Optional — force traffic to see live rows:
    ```powershell
    az keyvault secret show --vault-name $kv --name amlab-demo-secret -o none
    ```
 4. **`st<prefix> → Insights`** → built-in **Storage Insights** workbook → transactions per API + success-rate.
-5. Run saved query **`26 — Storage · Transactions per API (last 1h)`** for the raw KQL.
+5. [Run saved query](#saved-queries) **`26 — Storage · Transactions per API (last 1h)`** for the raw KQL.
 
 ### Killer line
 > *"Two `diagnosticSettings` resources in Bicep — and you instantly get full-fidelity audit + insights workbooks on Key Vault and Storage, with the same KQL surface as everything else in the lab."*
@@ -1736,7 +1766,7 @@ The App Service has **three** diagnostic settings stacked on it — same source 
 
 1. **`app-amlab-<suffix>` → Diagnostic settings** → show all three rows.
 2. Trigger traffic (e.g. 20 `/api/explode` calls).
-3. **LAW path** — run any saved query — rows visible within ~3 min.
+3. **LAW path** — [run a saved query](#saved-queries) — rows visible within ~3 min.
 4. **Storage path** — `<storageAccount>` → `insights-logs-appserviceconsolelogs` (or similar by category) → drill into today's partition → open the JSON.
 5. **Event Hub path** — `evhns-amlab-... → diagnostics → Process data → Capture` (or use `eh-capture` Function/Logic App) → show one event landing.
 
@@ -2542,7 +2572,7 @@ Every other scenario watches infra/platform telemetry. This one points the **exa
 ### Click-path
 
 1. **Foundry portal (`ai.azure.com`) → project `amlab-ai-proj` → Observability / Tracing** — show agent runs + token consumption per model from the simulated conversations.
-2. **`appi-amlab-<suffix>` → Logs → Queries** — run *Token usage by agent (24h)* and *Model router routed-model distribution* from the `qp-ai-finops` pack.
+2. **`appi-amlab-<suffix>` → Logs → Queries** — [select the `qp-ai-finops` query pack](#application-insights-and-ai-query-packs), then run *Token usage by agent (24h)* and *Model router routed-model distribution*.
 3. **model-router is the cost lever** — the router query shows easy prompts routed to a cheap model, hard prompts to a strong one (surfaced as `gen_ai.response.model`). Even a modest routing rate compounds into real savings.
 4. **Prompt caching reduces billable input** — the `Context-Rich Assistant` uses a >1024-token static system prompt, so repeated calls can hit the prompt cache; open *Cached-input token ratio*, then apply the actual model's current cached-input rate.
 5. **Monitor → Workbooks → "AI FinOps — Foundry Agents"** — token/efficiency tiles, token-share pie, and an illustrative PTU comparison populated with example assumptions. Replace all four assumptions with current rates for one comparable model and deployment type before using the result for planning.
@@ -3199,7 +3229,7 @@ This scenario ties together the Application Insights experiences described in th
 
 ### Cohort, change, and efficiency analysis
 
-1. Open **Logs → Queries** and use `qp-amlab-appinsights`:
+1. Open **Logs → Queries**, [select the `qp-amlab-appinsights` query pack](#application-insights-and-ai-query-packs), and run:
    - *Agent task health*
    - *End-to-end trace timeline*
    - *Broken versus fixed comparison*
@@ -3285,7 +3315,7 @@ Both paths drive the real customer UI with isolated Chromium contexts. The deter
 6. Open **User Flows**, start from `CustomerJourneyStarted`, and inspect the main commerce path, support-agent detour, payment decline, and abandonment points.
 7. Create or inspect a **Cohort** for users who emitted `SupportRequested`, then compare whether they reached `PurchaseCompleted`.
 8. Open **Workbooks → Application Insights — Customer Usage Journey** for the deployed funnel, cohort, and transition tables.
-9. Open **Logs → Queries** and run:
+9. Open **Logs → Queries**, [select the `qp-amlab-appinsights` query pack](#application-insights-and-ai-query-packs), and run:
    - *Customer usage funnel*
    - *Customer user flows*
    - *Customer cohort conversion*

@@ -378,7 +378,7 @@ The stage templates resolve prior-stage resources using the resource group and s
 After each stage:
 1. Inspect the deployment named `stage-<template-stem>`, for example `stage-00-foundation`, in the selected resource group.
 2. Verify expected resources exist.
-3. Run at least one saved query relevant to that stage.
+3. [Find and run at least one saved query](DEMO-SCENARIOS.md#saved-queries) relevant to that stage. Numbered queries live on the central workspace; Application Insights and AI queries require selecting the corresponding query pack in **Logs → Queries → ellipsis (`...`) → Select query packs** (or **Select query packs** / **0 selected** in Queries hub).
 4. For security stage, run:
 
 ```kql

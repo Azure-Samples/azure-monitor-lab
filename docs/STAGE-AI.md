@@ -41,8 +41,8 @@
 ## 3) Portal walkthrough (UI)
 
 1. **Foundry portal (`ai.azure.com`) → project `amlab-ai-proj` → Observability / Tracing** — show agent runs, token consumption by model, and traces from the simulated conversations.
-2. **`appi-amlab-<suffix>` → Logs** — run a query from the `qp-ai-finops` pack (Queries hub), e.g. *Token usage by agent (24h)* or *Model router routed-model distribution*.
-3. **Monitor → Workbooks → Shared → "AI FinOps — Foundry Agents"** — time-range picker, token/efficiency tiles, token-share pie, and a PTU comparison that works with illustrative defaults. Replace those defaults with current rates for one comparable model and deployment type before planning.
+2. **`appi-amlab-<suffix>` → Logs → Queries** — select **ellipsis (`...`) → Select query packs** (or **Select query packs** / **0 selected** in Queries hub), filter to your lab's subscription/resource group, and check **`qp-ai-finops`**. Return to the query list, search for *Token usage by agent (24h)* or *Model router routed-model distribution*, open it in KQL mode, and select **Run**. [Detailed saved-query instructions](DEMO-SCENARIOS.md#application-insights-and-ai-query-packs).
+3. Open [Azure Workbooks in the Azure portal](https://portal.azure.com/#browse/microsoft.insights%2Fworkbooks), filter to your lab's subscription/resource group, and open **AI FinOps — Foundry Agents** — time-range picker, token/efficiency tiles, token-share pie, and a PTU comparison that works with illustrative defaults. Replace those defaults with current rates for one comparable model and deployment type before planning.
 4. **Monitor → Alerts → Alert rules** — `alert-amlab-token-anomaly` + `alert-amlab-token-spike`.
 5. **Monitor → Health models → `hm-amlab-workload`** — open the graph; show the **AI** tier (`aiworkload` → Foundry account + 4 agent entities) rolling up alongside frontend/compute/platform.
 
@@ -76,7 +76,7 @@ az monitor app-insights query --app $appi -g $rg --analytics-query "dependencies
 ## 5) Done-when
 
 1. The Foundry account has **4** model deployments including `model-router`, all `GlobalStandard`.
-2. `qp-ai-finops` contains **14** saved queries and the AI FinOps workbook is visible under Monitor → Workbooks → Shared.
+2. After [selecting `qp-ai-finops`](DEMO-SCENARIOS.md#application-insights-and-ai-query-packs), its **14** saved queries are available. The **AI FinOps — Foundry Agents** workbook is visible in [Azure Workbooks](https://portal.azure.com/#browse/microsoft.insights%2Fworkbooks), filtered to the lab subscription/resource group.
 3. `alert-amlab-token-anomaly` and `alert-amlab-token-spike` exist and are enabled.
 4. `hm-amlab-workload` renders in the Health Models blade with an **AI** tier (`aiworkload` → Foundry + 4 agent entities) alongside the original frontend/compute/platform tiers.
 5. After `scripts/setup-ai.ps1`, App Insights `dependencies` shows `gen_ai.agent.name` spans for all agents plus Model Router.

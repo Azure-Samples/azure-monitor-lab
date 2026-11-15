@@ -87,6 +87,8 @@ The Control Center requires Stage B. Its Foundry Playground also needs AI; its S
 6. Stage AI: Foundry model deployments exist, App Insights receives AI telemetry, and the AI FinOps queries return data after `setup-ai.ps1` runs.
 7. Stage SRE Agent: the agent is in `swedencentral`, all three connectors are configured, and identity-specific RBAC validation passes.
 
+For query validation, follow [Finding and running saved queries](DEMO-SCENARIOS.md#saved-queries): numbered queries live on the central workspace; Application Insights and AI queries require selecting the corresponding query pack in **Logs → Queries → ellipsis (`...`) → Select query packs** (or **Select query packs** / **0 selected** in Queries hub). To find the deployed dashboards, open [Azure Workbooks](https://portal.azure.com/#browse/microsoft.insights%2Fworkbooks) and filter to your lab subscription/resource group. The Traffic-Lights workbook's display title is **Azure Monitor Lab — Health Dashboard**.
+
 ## 5) Terraform scaffold (orchestrating staged ARM/Bicep)
 
 This repo ships a working staged Terraform scaffold at `terraform/` and pre-compiled stage templates at `infra/stages/`:
