@@ -111,6 +111,8 @@ The chaos routes are not a user flow: they fail on purpose (S3), so no signal co
 
 Log signals on E_CONSOLE, E_LABOPS and E_SHOPAPI run on `law-amlab-appinsights-<sfx>`; E_LOGS and E_VMS on `law-amlab-central-<sfx>`; PromQL signals on `amw-amlab`. Refresh every minute.
 
+The compiled heartbeat queries in both deployment routes are syntax- and semantic-checked with Microsoft's Kusto parser in `HealthModelQueryTests`, for zero, one and two configured VMs. The aggregate uses `missingCount`: `missing` is a reserved KQL keyword and causes CloudHealth payload validation to reject the query.
+
 | Signal | Entity | Kind and data source | Measurement | Degraded and unhealthy rule | Sources or gap | Verification | Status |
 |---|---|---|---|---|---|---|---|
 | failed-console-requests | E_CONSOLE | Log Analytics query | `AppRequests`, console paths (S3) except `/api/operations/*` (Lab operations counts those, so its limited impact holds) plus empty path and `/index.html` (how the static UI is logged), `ResultCode` 5xx, count; 5 min | > 0, > 5 | S3, G1 | 0 (Healthy), S11 | done |

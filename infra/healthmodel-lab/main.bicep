@@ -418,8 +418,8 @@ let expectedVmIds = dynamic({0});
 Heartbeat
 | where _ResourceId in~ (expectedVmIds)
 | summarize newest = max(TimeGenerated) by vmId = tolower(_ResourceId)
-| summarize reporting = count(), missing = countif(newest < ago(10m))
-| project value = case(missing > 0, todouble(missing), reporting < array_length(expectedVmIds), real(null), 0.0)
+| summarize reporting = count(), missingCount = countif(newest < ago(10m))
+| project value = case(missingCount > 0, todouble(missingCount), reporting < array_length(expectedVmIds), real(null), 0.0)
 ''', string(vmIds)), 'PT2H', 'Count', rules('GreaterThan', 0, 1))
     ])
   }
