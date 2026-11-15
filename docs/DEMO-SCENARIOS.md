@@ -3466,6 +3466,8 @@ An application is slow, returning errors, or unavailable. Instead of giving a ge
 
 The agent is general-purpose within application incident response, not limited to the broken-slot demo. Its configuration contains no fixed subscription, hostname, model, or incident. It discovers the lab targets and distinguishes the Control Center from the customer application.
 
+It also handles agentic AI symptoms: retry amplification, wrong tool selection, lost handoff context, task-quality failures and token growth. The opening plan adapts to the symptom rather than requiring unrelated App Service checks. It distinguishes synthetic execution evidence from real calls, normalizes token usage by measured execution, and reports sampling and causal limits. Before recommending new billable trials, it checks available retained evidence and labels experiment counts/thresholds as proposals unless statistically justified. See the [three-demo walkthrough](agentic-ai-observability.md) for operator steps and prompts. SRE discovery, dispatch and returned findings are reported separately; a proposed experiment is not an executed fix.
+
 ### Prerequisites and safety
 
 - Use this repository checkout in VS Code or GitHub Copilot CLI. The agent file lives in `.github/agents/` and is shared by both clients. Restart CLI after adding it.

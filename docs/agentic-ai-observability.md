@@ -305,7 +305,8 @@ UTC windows, batch ID, run/trace IDs, and sanitized findings above.
 
 Ask the specialist to:
 1. Challenge the token-growth interpretation.
-2. Identify the smallest discriminating next check.
+2. Identify the smallest discriminating next check using retained run
+   artifacts if available, without exposing raw sensitive prompts.
 3. Propose a controlled comparison with explicit success criteria.
 
 Report the cohort sizes, input/output contributions, observed limits,
@@ -316,6 +317,9 @@ action approvals and check for an ongoing investigation/action.
 Present the handoff and request my separate approval before creating or
 starting an SRE investigation. If approvals cannot be verified, do not
 dispatch; provide a manual handoff and explain the gap.
+Reverify retained action approvals immediately before dispatch.
+Label proposed trial counts and thresholds as decision rules, not
+statistically validated criteria unless their justification is established.
 
 Investigation only: no model calls, resource changes, role grants,
 configuration changes, auto-approval, or YOLO mode.
@@ -336,6 +340,9 @@ Useful specialist follow-up:
 Using existing evidence only, what comparison would distinguish larger
 input from output variability? State the variables to hold constant,
 required sample information, and which conclusions remain unproven.
+First identify checks possible with retained artifacts and their gaps.
+Separate those checks from new billable trials. Explain how to assess
+answer quality and handle cache effects, ordering and failed runs.
 Do not run the proposed experiment.
 ```
 
@@ -343,12 +350,15 @@ Do not run the proposed experiment.
 
 The generator is not a clean input-only experiment because its completion ceiling differs from normal tasks. For a cleaner comparison, use **New task** for both compact and expanded synthetic inputs with the same agent, output requirements, and normal run limits.
 
-1. Present the planned prompts, call count, cost implications, and success criteria.
-2. Obtain separate approval for additional billable calls.
-3. Keep agent/model and instructions unchanged where verified; record any unknown version or configuration differences.
-4. Compare tokens per completed execution, latency, and answer usefulness over multiple runs. Do not assume output usage is deterministic.
-5. Treat unknown retries, cache behavior, and reasoning usage as gaps.
-6. Report the comparison as an input experiment, not an SRE-executed code repair.
+1. Inspect available retained run artifacts first, using sanitized input-size, version/settings and usage details. Report missing artifacts without retrieving or transmitting raw sensitive prompts.
+2. Present the planned prompts, call count, cost implications, and success criteria. Label trial counts and thresholds as proposed decision rules unless statistically justified.
+3. Obtain separate approval for additional billable calls.
+4. Keep agent/model and instructions unchanged where verified; record any unknown version or configuration differences.
+5. Compare tokens per completed execution, latency, and answer usefulness over multiple runs. Account for ordering/cache effects and failed runs; do not assume output usage is deterministic.
+6. Treat unknown retries, cache behavior, and reasoning usage as gaps.
+7. Report the comparison as an input experiment, not an SRE-executed code repair.
+
+End the investigation with four explicit states: **observation**, **cause**, **action**, and **verification**. For example: "Token growth observed; cause unresolved; controlled comparison proposed, not executed; verification pending." Report SRE discovery, dispatch, response and any independent checks separately.
 
 **Takeaway:** measured growth is not proven cause. A useful answer can still consume excessive context, but an operational regression needs comparable workloads and stronger evidence.
 
