@@ -16,6 +16,7 @@ It's built for demos, microhacks, and hackathons. Deploy it, poke around, break 
 | Experience | Start here |
 |---|---|
 | **Guided Scenarios** | Follow the existing [scenario walkthroughs](docs/DEMO-SCENARIOS.md) for the story, Azure portal steps, queries, and expected results. |
+| **Agentic AI Observability** | Run the [three-demo walkthrough](docs/agentic-ai-observability.md): retry amplification, wrong tool selection, and real Foundry token-growth investigation with an approval-gated SRE Agent handoff. |
 | **Lab Control Center** | Check infrastructure health, generate traffic, try Foundry agents, and perform approved SRE MCP operations. Open the [Control Center guide](docs/LAB-CONTROL-CENTER.md) for screenshots, access requirements, and linked scenarios. |
 | **Health Model Demo** | Add Café and lab user-flow models through the [optional stage](docs/STAGE-HEALTH-MODEL-DEMO.md), then follow [scenario 81](docs/DEMO-SCENARIOS.md#s81) for a focused failure-and-recovery demo. Alternatively, take the independent 45-minute [Café tutorial](docs/HEALTH-MODEL-TUTORIAL.md) without deploying the lab. |
 
