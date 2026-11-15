@@ -105,6 +105,23 @@ run "workloads_include_console" {
     condition     = !azapi_resource.stage_a[0].body.properties.parameters.enableSlotFailureScenario.value && !azapi_resource.stage_b[0].body.properties.parameters.enableSlotFailureScenario.value
     error_message = "The customer slot scenario must remain disabled by default in every deployment stage."
   }
+
+  assert {
+    condition = length(flatten([
+      for module in azapi_resource.stage_b[0].body.properties.template.resources : [
+        for plan in try(module.properties.template.resources, []) : plan
+        if plan.type == "Microsoft.Web/serverfarms"
+      ]
+      ])) == 1 && alltrue([
+      for module in azapi_resource.stage_b[0].body.properties.template.resources :
+      alltrue([
+        for plan in try(module.properties.template.resources, []) :
+        plan.sku.tier == "Standard" && plan.sku.name == "[if(parameters('enableSlotFailureScenario'), parameters('slotAppServicePlanSku'), 'S1')]" && plan.sku.capacity == 1
+        if plan.type == "Microsoft.Web/serverfarms"
+      ])
+    ])
+    error_message = "Terraform must consume the compiled Standard S1 core plan while preserving the configured Standard slot SKU."
+  }
 }
 
 run "slot_scenario_reaches_all_stages" {

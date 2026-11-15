@@ -143,7 +143,7 @@ if ($pfCustomerDependencies) {
     throw 'Customer dependencies require enableSlotFailureScenario=true and explicit SQL Entra administrator GUID/name/type in the selected parameters file.'
   }
 }
-$pfAppServicePlanTier = if ($deploymentInputs.parameters.enableSlotFailureScenario.value -eq $true) { 'Standard' } else { 'Basic' }
+$pfAppServicePlanTier = 'Standard'
 $pfDeployHealthModelDemo = $deploymentInputs.parameters.enableHealthModelDemo.value -eq $true
 $pfCafeLocation = if ($deploymentInputs.parameters.healthModelDemoCafeLocation.value) {
   $deploymentInputs.parameters.healthModelDemoCafeLocation.value

@@ -96,7 +96,7 @@ param enableAi bool = false
 @description('Deploy Azure SRE Agent in Sweden Central with Azure Monitor, Application Insights, and Log Analytics connectors. Off by default (billable usage).')
 param enableSreAgent bool = false
 
-@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan with configurable Standard S2 (one worker) instead of B1. Off by default.')
+@description('Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan with configurable Standard S2 (one worker) instead of the baseline S1. Off by default.')
 param enableSlotFailureScenario bool = false
 
 @description('Opt-in real customer SQL/Service Bus/Functions dependencies. Requires enableSlotFailureScenario and Stage B.')

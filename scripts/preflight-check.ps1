@@ -83,7 +83,7 @@ param(
   [string] $ObservabilityAgentLocation = 'westeurope',
   [string] $AppServiceLocation = 'westeurope',
   [string] $ResourceGroup,
-  [string] $AppServicePlanTier = 'Basic',
+  [string] $AppServicePlanTier = 'Standard',
   [bool] $DeployCustomerDependencies = $false,
   [bool] $DeployHealthModelDemo = $false,
   [string] $HealthModelDemoCafeLocation = 'francecentral',

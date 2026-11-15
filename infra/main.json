@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "16432233211356139831"
+      "templateHash": "1552809533063067230"
     }
   },
   "parameters": {
@@ -209,7 +209,7 @@
       "type": "bool",
       "defaultValue": false,
       "metadata": {
-        "description": "Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan with configurable Standard S2 (one worker) instead of B1. Off by default."
+        "description": "Enable the isolated customer Web App slot-recovery scenario. Reuses the lab App Service plan with configurable Standard S2 (one worker) instead of the baseline S1. Off by default."
       }
     },
     "enableCustomerDependencies": {
@@ -4230,7 +4230,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "702570499910960095"
+              "templateHash": "8114531582421984343"
             }
           },
           "parameters": {
@@ -4302,7 +4302,7 @@
               "type": "bool",
               "defaultValue": false,
               "metadata": {
-                "description": "Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1."
+                "description": "Provision the opt-in broken deployment slot scenario. Uses the configured Standard slot SKU instead of the baseline S1."
               }
             },
             "slotAppServicePlanSku": {
@@ -4326,8 +4326,8 @@
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "sku": {
-                "name": "[if(parameters('enableSlotFailureScenario'), parameters('slotAppServicePlanSku'), 'B1')]",
-                "tier": "[if(parameters('enableSlotFailureScenario'), 'Standard', 'Basic')]",
+                "name": "[if(parameters('enableSlotFailureScenario'), parameters('slotAppServicePlanSku'), 'S1')]",
+                "tier": "Standard",
                 "capacity": 1
               },
               "kind": "linux",

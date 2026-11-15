@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "17882747473514457051"
+      "templateHash": "14277453413565758868"
     }
   },
   "parameters": {
@@ -1564,7 +1564,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "702570499910960095"
+              "templateHash": "8114531582421984343"
             }
           },
           "parameters": {
@@ -1636,7 +1636,7 @@
               "type": "bool",
               "defaultValue": false,
               "metadata": {
-                "description": "Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1."
+                "description": "Provision the opt-in broken deployment slot scenario. Uses the configured Standard slot SKU instead of the baseline S1."
               }
             },
             "slotAppServicePlanSku": {
@@ -1660,8 +1660,8 @@
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "sku": {
-                "name": "[if(parameters('enableSlotFailureScenario'), parameters('slotAppServicePlanSku'), 'B1')]",
-                "tier": "[if(parameters('enableSlotFailureScenario'), 'Standard', 'Basic')]",
+                "name": "[if(parameters('enableSlotFailureScenario'), parameters('slotAppServicePlanSku'), 'S1')]",
+                "tier": "Standard",
                 "capacity": 1
               },
               "kind": "linux",

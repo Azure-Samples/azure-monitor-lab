@@ -64,7 +64,7 @@ rg-azure-monitor-lab/
 │   ├─ vmss-amlab                 ← Linux VMSS + Predictive autoscale
 │   ├─ aks-amlab                  ← AKS (Free tier, 2 × EC4as_v5 by default) + Container Insights + Managed Prom
 │   ├─ amlab-aks-prom-rules        ← Managed Prometheus recording + alerting rule group
-│   ├─ plan-amlab + app-amlab-XX  ← Linux App Service B1 + .NET 8 sample (auto-instrumented), in appServiceLocation
+│   ├─ plan-amlab + app-amlab-XX  ← Linux App Service Standard S1 + .NET 8 sample (auto-instrumented), in appServiceLocation
 │   └─ availability test + alert   ← Standard URL test from 5 global locations
 ├─ Networking
 │   ├─ vnet-amlab + nsg-amlab     ← /16 with workload, AKS, and VMSS subnets
@@ -124,7 +124,7 @@ Inside the central LAW you also get **12+ saved KQL searches** and **KQL functio
 - `kubectl` (any recent version)
 - Bicep CLI (bundled with `az` ≥ 2.20) — **OR** Terraform ≥ 1.6 if you prefer the Terraform path
 - PowerShell 7+ (the deploy scripts and helpers are `.ps1`)
-- A subscription with quota and SKU eligibility for: 1 AKS cluster (1 configured `aksNodeVmSize` node), 2 VMs (1 Linux and 1 Windows using `vmSize`), 1 Linux VMSS (1 configured `vmssSize` instance), 1 App Service B1 (in `appServiceLocation`), 1 Managed Grafana Standard instance, 2 Storage accounts, 1 Event Hubs Basic namespace, 1 Key Vault, and the other resources listed in the [cost guide](COST-GUIDE.md).
+- A subscription with quota and SKU eligibility for: 1 AKS cluster (1 configured `aksNodeVmSize` node), 2 VMs (1 Linux and 1 Windows using `vmSize`), 1 Linux VMSS (1 configured `vmssSize` instance), 1 App Service Standard S1 (in `appServiceLocation`; S2 by default with the slot scenario), 1 Managed Grafana Standard instance, 2 Storage accounts, 1 Event Hubs Basic namespace, 1 Key Vault, and the other resources listed in the [cost guide](COST-GUIDE.md).
 - *(Optional AI stage only)* Python 3.10+ for `scripts/setup-ai.ps1` (creates the demo agents + traffic simulator in `workloads/ai/`); the Foundry models it deploys are **billable**.
 - Console completion additionally requires the .NET 8 SDK, ACR Tasks availability, Container Apps Consumption capacity, and rights to manage the sign-in registration and scoped roles. See [Lab Operations prerequisites](../workloads/webapp/LAB-OPERATIONS.md#prerequisites).
 

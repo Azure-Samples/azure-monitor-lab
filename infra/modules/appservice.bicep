@@ -28,7 +28,7 @@ param diagEventHubName string = ''
 @description('Resource tags.')
 param tags object = {}
 
-@description('Provision the opt-in broken deployment slot scenario. Requires Standard S1 instead of Basic B1.')
+@description('Provision the opt-in broken deployment slot scenario. Uses the configured Standard slot SKU instead of the baseline S1.')
 param enableSlotFailureScenario bool = false
 
 @description('Slot scenario plan SKU. Defaults to S2 to preserve the current live plan; one worker.')
@@ -40,8 +40,8 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   tags: tags
   sku: {
-    name: enableSlotFailureScenario ? slotAppServicePlanSku : 'B1'
-    tier: enableSlotFailureScenario ? 'Standard' : 'Basic'
+    name: enableSlotFailureScenario ? slotAppServicePlanSku : 'S1'
+    tier: 'Standard'
     capacity: 1
   }
   kind: 'linux'
