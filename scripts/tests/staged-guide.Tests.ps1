@@ -220,15 +220,22 @@ function az {
         throw 'Temporary parameters must be readable and writable only by their owner.'
       }
       $parameters = (Get-Content -LiteralPath $parameterPath -Raw | ConvertFrom-Json -AsHashtable).parameters
+      if ($fixture.Stage -eq '80-health-model-demo' -and -not $fixture.Overrides.ContainsKey('location') -and
+          -not $sourceParameters.ContainsKey('healthModelDemoCafeLocation') -and $parameters.ContainsKey('location')) {
+        throw 'Stage 80 must use its Cafe region default, not the shared lab location.'
+      }
       $schema = Get-Content -LiteralPath (Join-Path $source "infra/stages/$($fixture.Stage).json") -Raw | ConvertFrom-Json -AsHashtable
       foreach ($name in $parameters.Keys) {
         if (-not $schema.parameters.ContainsKey($name)) { throw "Unexpected stage parameter '$name'." }
-        $expectedValue = if ($fixture.Overrides.ContainsKey($name)) { @{ value = $fixture.Overrides[$name] } } else { $sourceParameters[$name] }
+        $expectedValue = if ($fixture.Overrides.ContainsKey($name)) { @{ value = $fixture.Overrides[$name] } }
+          elseif ($fixture.Stage -eq '80-health-model-demo' -and $name -eq 'location') { $sourceParameters.healthModelDemoCafeLocation }
+          else { $sourceParameters[$name] }
         if (($parameters[$name] | ConvertTo-Json -Depth 20 -Compress) -ne ($expectedValue | ConvertTo-Json -Depth 20 -Compress)) { throw "Parameter '$name' was not preserved." }
       }
       foreach ($name in $schema.parameters.Keys) {
         if (-not $schema.parameters[$name].ContainsKey('defaultValue') -and -not $parameters.ContainsKey($name)) { throw "Missing required '$name'." }
-        if ($sourceParameters.ContainsKey($name) -and -not $parameters.ContainsKey($name)) { throw "Shared input '$name' was dropped." }
+        if ($sourceParameters.ContainsKey($name) -and -not $parameters.ContainsKey($name) -and
+            -not ($fixture.Stage -eq '80-health-model-demo' -and $name -eq 'location')) { throw "Shared input '$name' was dropped." }
       }
       if ($parameters.ContainsKey('vmAdminPassword') -and -not $parameters.vmAdminPassword.reference) { throw 'The Key Vault reference was lost.' }
       $fixture.Events.Add($operation)
@@ -295,6 +302,14 @@ try {
     $expectedRecoveryCalls = if ($stage -eq '10-workloads') { 1 } else { 0 }
     if ($fixture.RecoveryCalls -ne $expectedRecoveryCalls) { throw 'Only Stage B must use customer-slot deployment recovery.' }
   }
+  $fixture.Stage = '80-health-model-demo'
+  Invoke-LabStage -Stage $fixture.Stage
+  $sourceParameters.healthModelDemoCafeLocation = @{ value = 'westeurope' }
+  Invoke-LabStage -Stage $fixture.Stage
+  $fixture.Overrides = @{ location = 'francecentral' }
+  Invoke-LabStage -Stage $fixture.Stage -Overrides $fixture.Overrides
+  $sourceParameters.Remove('healthModelDemoCafeLocation')
+  $fixture.Overrides = @{}
   $fixture.Stage = '10-workloads'
   $fixture.Overrides = @{ location = 'westeurope' }
   Invoke-LabStage -Stage $fixture.Stage -Overrides $fixture.Overrides

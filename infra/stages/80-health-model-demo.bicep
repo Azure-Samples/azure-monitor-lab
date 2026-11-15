@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 
 @description('Region of the Cafe workload. Must be supported by App Service.')
-param location string = 'swedencentral'
+param location string = 'francecentral'
 @description('CloudHealth-supported model region.')
 param healthModelLocation string = 'swedencentral'
 @minLength(3)

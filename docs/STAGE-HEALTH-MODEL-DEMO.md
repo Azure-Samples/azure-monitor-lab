@@ -31,7 +31,11 @@ Invoke-LabStage -Stage 80-health-model-demo
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $sourceParameters.namePrefix.value
 ```
 
-The shared helper previews stage 80 and requires confirmation before deployment. It uses your configured `location` for Café hosting. One-shot, portal and Terraform deployments default Café hosting to Sweden Central; the preview models also default there. The four demo outputs are available from the stage deployment and Terraform; the full-lab template preserves its existing output contract.
+The shared helper previews stage 80 and requires confirmation before deployment. Café hosting defaults to **France Central** across one-shot, portal, staged Bicep, Terraform and standalone tutorial deployments. Both health models remain in **Sweden Central**, independently of the workload region, because preview region support is limited. Stage 80 does not inherit the core lab's `location`; use `-Overrides @{ location = '<region>' }` to explicitly preserve an existing Café deployment's region. One-shot uses `healthModelDemoCafeLocation`, and Terraform uses `health_model_demo_cafe_location`.
+
+Scripted deployment preflight separately checks the Café's configured App Service region and **Basic B1** quota when the demo is enabled, even if the core app uses Standard in another region. Offering/quota checks do not guarantee live capacity. Changing defaults does not move existing resources: if a Café was already deployed in another region, retain its region override or plan an explicit migration; do not redeploy the same resource names in a different region as an in-place move.
+
+The four demo outputs are available from the stage deployment and Terraform; the full-lab template preserves its existing output contract.
 
 The subscription must support the Cloud Health preview and register `Microsoft.CloudHealth`. Deployment requires resource-write permissions plus custom-role and role-assignment writes (for example Owner, or Contributor with User Access Administrator). Completion also needs query access to the Café workspace. Keep the existing core-stage and tenant prerequisites.
 

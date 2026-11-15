@@ -65,8 +65,8 @@ run "enabled_preserves_native_contract" {
     error_message = "Core IDs must use the configured prefix and only deployed VMs."
   }
   assert {
-    condition     = azapi_resource.stage_health_model_demo[0].body.properties.parameters.location.value == "swedencentral" && azapi_resource.stage_health_model_demo[0].body.properties.parameters.cafeMonitoringReaderAssignmentName.value == "11111111-1111-1111-1111-111111111111"
-    error_message = "Adoption must preserve the standalone Cafe region and existing reader assignment GUID."
+    condition     = azapi_resource.stage_health_model_demo[0].body.properties.parameters.location.value == "francecentral" && azapi_resource.stage_health_model_demo[0].body.properties.template.parameters.healthModelLocation.defaultValue == "swedencentral" && azapi_resource.stage_health_model_demo[0].body.properties.parameters.cafeMonitoringReaderAssignmentName.value == "11111111-1111-1111-1111-111111111111"
+    error_message = "Cafe hosting must default to France Central while health models remain in Sweden Central and existing reader assignments are preserved."
   }
   assert {
     condition     = length(azapi_resource.stage_health_model_demo[0].body.properties.template.resources) == 3 && azapi_resource.stage_health_model_demo[0].body.properties.template.outputs.healthModelDemoCafeModelName.value == "hm-lab-cafe" && azapi_resource.stage_health_model_demo[0].body.properties.template.outputs.healthModelDemoFlowModelName.value == "hm-amlab-flows"

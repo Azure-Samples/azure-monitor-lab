@@ -23,7 +23,7 @@ param namePrefix string = 'amlab'
 param enableHealthModelDemo bool = false
 
 @description('Cafe workload region. Keep the existing standalone workload region when adopting it.')
-param healthModelDemoCafeLocation string = 'swedencentral'
+param healthModelDemoCafeLocation string = 'francecentral'
 
 @description('Optional existing Cafe RG Monitoring Reader assignment GUID. Empty uses non-conflicting resource-scoped read access.')
 param healthModelDemoCafeMonitoringReaderAssignmentName string = ''

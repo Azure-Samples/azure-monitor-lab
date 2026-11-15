@@ -14,7 +14,7 @@ But you will see that a lot can go wrong, luckily a health model can help you yo
 |---|---|
 | ⏱️ Time | About 45 minutes, depedning on how much you explore. |
 | 💶 Cost | Roughly EUR 1-2 per day: App Service B1, two private endpoints, two availability tests, a little Log Analytics. Delete the resource group when you're done ([§6](#6-clean-up)) |
-| 📍 Region | `swedencentral` by default, everything in its own resource group `rg-healthmodel-tutorial`. Other regions that offer health models work too (`-Location`) |
+| 📍 Region | Café workload defaults to `francecentral`; the health model remains in supported region `swedencentral`. Both use resource group `rg-healthmodel-tutorial`. The workload deployment's `-Location` does not change the model builder's region. |
 | 🧩 Standalone | You don't need the rest of the lab. Its own health models are in [scenario 45](DEMO-SCENARIOS.md#s45) |
 | ✅ Last verified | 2026-11-05 with Azure CLI 2.92, `health-models` extension 1.0.0b2, API `2026-11-01` |
 

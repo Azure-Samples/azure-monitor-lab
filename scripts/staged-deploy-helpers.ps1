@@ -32,7 +32,11 @@ function Invoke-LabStage {
   $schema = Get-Content "./infra/stages/$Stage.json" -Raw | ConvertFrom-Json -AsHashtable
   $parameters = @{}
   foreach ($name in $schema.parameters.Keys) {
+    if ($Stage -eq '80-health-model-demo' -and $name -eq 'location') { continue }
     if ($sourceParameters.ContainsKey($name)) { $parameters[$name] = $sourceParameters[$name] }
+  }
+  if ($Stage -eq '80-health-model-demo' -and $sourceParameters.ContainsKey('healthModelDemoCafeLocation')) {
+    $parameters.location = $sourceParameters.healthModelDemoCafeLocation
   }
   foreach ($name in $Overrides.Keys) {
     if (-not $schema.parameters.ContainsKey($name)) { throw "Unknown parameter '$name' for $Stage." }

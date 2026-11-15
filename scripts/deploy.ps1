@@ -144,6 +144,10 @@ if ($pfCustomerDependencies) {
   }
 }
 $pfAppServicePlanTier = if ($deploymentInputs.parameters.enableSlotFailureScenario.value -eq $true) { 'Standard' } else { 'Basic' }
+$pfDeployHealthModelDemo = $deploymentInputs.parameters.enableHealthModelDemo.value -eq $true
+$pfCafeLocation = if ($deploymentInputs.parameters.healthModelDemoCafeLocation.value) {
+  $deploymentInputs.parameters.healthModelDemoCafeLocation.value
+} else { 'francecentral' }
 if ($SkipPreflight) {
   Write-Step "Skipping pre-flight availability/quota check (-SkipPreflight)"
 } else {
@@ -161,6 +165,8 @@ if ($SkipPreflight) {
                -ObservabilityAgentLocation $pfObservabilityAgentLocation `
                -DeployCustomerDependencies $pfCustomerDependencies `
                -AppServicePlanTier $pfAppServicePlanTier `
+               -DeployHealthModelDemo $pfDeployHealthModelDemo `
+               -HealthModelDemoCafeLocation $pfCafeLocation `
                -ResourceGroup $ResourceGroup
   if ($LASTEXITCODE -ne 0) {
     throw "Pre-flight check failed for region '$Location'. Fix the FAIL rows above (or re-run with -SkipPreflight to bypass) before deploying."

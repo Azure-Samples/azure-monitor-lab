@@ -15,7 +15,7 @@
   Resource group for the tutorial. Created if it doesn't exist.
 
 .PARAMETER Location
-  Region for the workload. Defaults to swedencentral.
+  Region for the workload. Defaults to francecentral; the health model stays in swedencentral.
 
 .PARAMETER SubscriptionId
   Subscription to deploy into. Defaults to .azure-target.json, then the active az subscription.
@@ -24,7 +24,7 @@
 [CmdletBinding()]
 param(
   [string] $ResourceGroup = 'rg-healthmodel-tutorial',
-  [string] $Location = 'swedencentral',
+  [string] $Location = 'francecentral',
   [string] $SubscriptionId
 )
 

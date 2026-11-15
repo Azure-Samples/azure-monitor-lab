@@ -1,6 +1,30 @@
 $ErrorActionPreference = 'Stop'
 $preflight = Join-Path $PSScriptRoot '..\preflight-check.ps1'
 
+$deployPath = Join-Path $PSScriptRoot '..\deploy.ps1'
+$deployAst = [Management.Automation.Language.Parser]::ParseFile($deployPath, [ref]$null, [ref]$null)
+$assignments = $deployAst.FindAll({
+  param($node)
+  $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left.Extent.Text -in @('$pfDeployHealthModelDemo', '$pfCafeLocation')
+}, $true)
+if ($assignments.Count -ne 2) { throw 'Deployment must derive both Cafe preflight inputs from the selected parameters.' }
+$deriveInputs = [scriptblock]::Create(($assignments.Extent.Text -join "`n") + "`n@{ Enabled = `$pfDeployHealthModelDemo; Region = `$pfCafeLocation }")
+foreach ($case in @(
+  @{ Parameters = @{}; Enabled = $false; Region = 'francecentral' }
+  @{ Parameters = @{ enableHealthModelDemo = @{ value = $true } }; Enabled = $true; Region = 'francecentral' }
+  @{ Parameters = @{ enableHealthModelDemo = @{ value = $true }; healthModelDemoCafeLocation = @{ value = 'swedencentral' } }; Enabled = $true; Region = 'swedencentral' }
+)) {
+  $deploymentInputs = [pscustomobject]@{ parameters = [pscustomobject]$case.Parameters }
+  $actual = & $deriveInputs
+  if ($actual.Enabled -ne $case.Enabled -or $actual.Region -ne $case.Region) { throw 'Deployment preflight must preserve selected Cafe enablement and region overrides.' }
+}
+$deployText = $deployAst.Extent.Text
+foreach ($argument in @('-DeployHealthModelDemo $pfDeployHealthModelDemo', '-HealthModelDemoCafeLocation $pfCafeLocation')) {
+  if (-not $deployText.Contains($argument)) { throw "Deployment preflight is missing '$argument'." }
+}
+Write-Host 'PASS: deployment forwards selected Cafe enablement and independent region to preflight.'
+
 function New-TestSku($name, $family, $cpu, $memory, $restrictions = @()) {
   @{
     name = $name; family = $family; restrictions = $restrictions
@@ -23,6 +47,7 @@ function New-Scenario {
       @{ name = @{ value = 'standardECASv5Family' }; limit = 100; currentValue = 6 }
     )
     FailSkus = $false; FailUsage = $false
+    CafeUnsupported = $false; CafeQuota = 10
   }
 }
 
@@ -38,7 +63,7 @@ function Invoke-Preflight($scenario, $overrides = @{}) {
       $global:LASTEXITCODE = 0
       switch ($args[0..1] -join ' ') {
         'account show' { return '{"name":"test-subscription","id":"11111111-1111-1111-1111-111111111111"}' }
-        'account list-locations' { return '["northeurope","westeurope"]' }
+        'account list-locations' { return '["northeurope","westeurope","francecentral","swedencentral"]' }
         'vm list-skus' {
           if ($args[[Array]::IndexOf($args, '--subscription') + 1] -ne '11111111-1111-1111-1111-111111111111') { throw 'SKU query lost the verified subscription.' }
           if ($scenario.FailSkus) { $global:LASTEXITCODE = 1; return 'ERROR: SKU inventory AuthorizationFailed' }
@@ -49,8 +74,17 @@ function Invoke-Preflight($scenario, $overrides = @{}) {
           if ($scenario.FailUsage) { $global:LASTEXITCODE = 1; return 'ERROR: quota AuthorizationFailed' }
           return ConvertTo-Json -InputObject $scenario.Usage -Depth 5
         }
-        'provider show' { return '["North Europe","West Europe"]' }
-        'rest --method' { return '{"value":[{"name":{"localizedValue":"Basic"},"currentValue":0,"limit":10}]}' }
+        'provider show' {
+          if ($scenario.CafeUnsupported) { return '["North Europe","West Europe"]' }
+          return '["North Europe","West Europe","France Central","Sweden Central"]'
+        }
+        'rest --method' {
+          $url = $args[[Array]::IndexOf($args, '--url') + 1]
+          if ($url -match '/locations/(francecentral|swedencentral)/') {
+            return @{ value = @(@{ name = @{ localizedValue = 'Basic' }; currentValue = 0; limit = $scenario.CafeQuota }) } | ConvertTo-Json -Depth 5
+          }
+          return '{"value":[{"name":{"localizedValue":"Basic"},"currentValue":0,"limit":10},{"name":{"localizedValue":"Standard"},"currentValue":3,"limit":-1}]}'
+        }
         default { throw "Unexpected Azure command: $args" }
       }
     }
@@ -75,6 +109,28 @@ function Assert-Contains($result, $text) {
 $result = Invoke-Preflight (New-Scenario)
 if ($result.Failed -or $result.Text.Contains('Resolving compute SKU')) { throw "Eligible configuration should pass without remediation guidance.`n$($result.Text)" }
 Write-Host 'PASS: eligible sizes and sufficient combined quota preserve successful preflight.'
+if ($result.Text.Contains('Cafe App Service')) { throw 'Disabled Cafe demo must not query or report a separate plan.' }
+
+$scenario = New-Scenario
+$result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Standard' }
+if ($result.Failed) { throw "Cafe defaults must pass independently of the core region.`n$($result.Text)" }
+foreach ($text in @('Cafe App Service (B1)', 'available in francecentral', 'Cafe App Service quota', 'Basic tier in francecentral', 'Standard tier in westeurope', 'not a live capacity guarantee')) {
+  Assert-Contains $result $text
+}
+$scenario.CafeQuota = 0
+$result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Standard' }
+Assert-Contains $result 'region reports 0 Basic quota'
+Assert-Contains $result '[WARN] Cafe App Service quota'
+$scenario.CafeUnsupported = $true
+$result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true }
+if (-not $result.Failed) { throw 'Unavailable Cafe region must block deployment even when core App Service is supported.' }
+Assert-Contains $result 'NOT available in francecentral'
+$scenario = New-Scenario
+$result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; HealthModelDemoCafeLocation = 'swedencentral' }
+Assert-Contains $result 'Basic tier in swedencentral'
+$result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; HealthModelDemoCafeLocation = 'invalidregion' }
+if (-not $result.Failed) { throw 'An invalid Cafe region must fail preflight.' }
+Write-Host 'PASS: Cafe checks use the independent configured region and Basic tier, preserve overrides, and never promise live capacity.'
 
 $scenario = New-Scenario
 foreach ($sku in $scenario.Skus[0..1]) {

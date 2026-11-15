@@ -12,7 +12,7 @@ Working document for the [health model tutorial](../../HEALTH-MODEL-TUTORIAL.md)
 
 | Model Name | Purpose and platform/workload role | Owner and team/organizational/legal boundary | Tenant, subscription and resource scope | Sources or gap | Status |
 |---|---|---|---|---|---|
-| M_CAFE `hm-lab-cafe` | Health of the Lab Café customer flows, for the tutorial audience | Tutorial user (single owner, no nested models) | Resource group `rg-healthmodel-tutorial`, region `swedencentral`, same as the workload | S1, S3, S6, G4 | done |
+| M_CAFE `hm-lab-cafe` | Health of the Lab Café customer flows, for the tutorial audience | Tutorial user (single owner, no nested models) | Resource group `rg-healthmodel-tutorial`, model region `swedencentral`; workload defaults independently to `francecentral` | S1, S3, S6, G4 | done |
 
 ## High-level health model diagram
 

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "14871187732993393381"
+      "templateHash": "13309076972230616837"
     }
   },
   "parameters": {
@@ -41,7 +41,7 @@
     },
     "healthModelDemoCafeLocation": {
       "type": "string",
-      "defaultValue": "swedencentral",
+      "defaultValue": "francecentral",
       "metadata": {
         "description": "Cafe workload region. Keep the existing standalone workload region when adopting it."
       }
@@ -66564,13 +66564,13 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "1629898029403429845"
+              "templateHash": "10651441476602248058"
             }
           },
           "parameters": {
             "location": {
               "type": "string",
-              "defaultValue": "swedencentral",
+              "defaultValue": "francecentral",
               "metadata": {
                 "description": "Region of the Cafe workload. Must be supported by App Service."
               }
@@ -66678,13 +66678,13 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.37.4.10188",
-                      "templateHash": "14591162796429087051"
+                      "templateHash": "6026644295015767549"
                     }
                   },
                   "parameters": {
                     "location": {
                       "type": "string",
-                      "defaultValue": "[resourceGroup().location]",
+                      "defaultValue": "francecentral",
                       "metadata": {
                         "description": "Region for every resource in the tutorial."
                       }

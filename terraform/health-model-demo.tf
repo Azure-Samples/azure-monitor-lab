@@ -7,7 +7,7 @@ variable "enable_stage_health_model_demo" {
 variable "health_model_demo_cafe_location" {
   description = "Cafe workload region. Preserve the existing standalone workload region when adopting it."
   type        = string
-  default     = "swedencentral"
+  default     = "francecentral"
 }
 
 variable "health_model_demo_cafe_monitoring_reader_assignment_name" {

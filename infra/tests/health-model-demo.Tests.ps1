@@ -20,6 +20,12 @@ Assert-Demo ($stage.parameters.availabilityTestName.defaultValue -eq $advancedTe
 Assert-Demo ($optional[0].properties.parameters.availabilityTestName.value -match "availability-test.*outputs.testName") 'One-shot root must override the staged test-name default with its own availability test output.'
 $cafe = ($stage.resources | Where-Object name -eq 'health-model-demo-cafe').properties.template
 $flow = ($stage.resources | Where-Object name -eq 'health-model-demo-flows').properties.template
+Assert-Demo ($main.parameters.healthModelDemoCafeLocation.defaultValue -ceq 'francecentral' -and
+  $stage.parameters.location.defaultValue -ceq 'francecentral' -and
+  $stage.parameters.healthModelLocation.defaultValue -ceq 'swedencentral') 'Cafe hosting must default to France Central independently of Sweden Central health models.'
+foreach ($modelModule in 'health-model-demo-cafe', 'health-model-demo-flows') {
+  Assert-Demo (($stage.resources | Where-Object name -eq $modelModule).properties.parameters.location.value -ceq "[parameters('healthModelLocation')]") 'Both health models must use their separate supported region.'
+}
 $heartbeatQuery = @'
 let expectedVmIds = dynamic({0});
 Heartbeat

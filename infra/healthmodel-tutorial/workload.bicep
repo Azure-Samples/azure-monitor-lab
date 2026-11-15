@@ -13,7 +13,7 @@
 // =============================================================================
 
 @description('Region for every resource in the tutorial.')
-param location string = resourceGroup().location
+param location string = 'francecentral'
 
 @description('Short prefix for resource names.')
 @maxLength(8)

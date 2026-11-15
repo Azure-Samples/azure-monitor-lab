@@ -53,6 +53,12 @@
   Target resource group. Used to distinguish an idempotent agent redeployment from
   creation of a sixth agent when the subscription preview limit is reached.
 
+.PARAMETER DeployHealthModelDemo
+  Check the optional Cafe workload's independent App Service region and Basic B1 quota.
+
+.PARAMETER HealthModelDemoCafeLocation
+  Cafe workload region (default francecentral). Does not change the health model region.
+
 .PARAMETER WarnOnly
   Report problems but do not fail (exit 0 / no throw). Useful for a dry inspection.
 
@@ -79,6 +85,8 @@ param(
   [string] $ResourceGroup,
   [string] $AppServicePlanTier = 'Basic',
   [bool] $DeployCustomerDependencies = $false,
+  [bool] $DeployHealthModelDemo = $false,
+  [string] $HealthModelDemoCafeLocation = 'francecentral',
   [switch] $WarnOnly
 )
 
@@ -350,6 +358,12 @@ if ($DeployCustomerDependencies) {
   }
   Add-Result 'Customer dependencies lifecycle' 'SQL Basic + Standard orders queue are billable even idle. Explicit Entra-admin SQL bootstrap and processor publication are required; no password/key or Azure-services SQL firewall fallback.' 'WARN'
 }
+if ($DeployHealthModelDemo) {
+  $paasTypes += @{ Label = 'Cafe App Service (B1)'; Ns = 'Microsoft.Web'; Type = 'sites'; Region = $HealthModelDemoCafeLocation }
+  if ($validLocations -notcontains (Get-RegionToken $HealthModelDemoCafeLocation)) {
+    Add-Result 'Cafe region' "'$HealthModelDemoCafeLocation' is not a valid region for this subscription" 'FAIL'
+  }
+}
 foreach ($t in $paasTypes) {
   $locsJson = az provider show -n $t.Ns --query "resourceTypes[?resourceType=='$($t.Type)'].locations | [0]" -o json 2>$null
   $locs = if ($locsJson) { $locsJson | ConvertFrom-Json } else { $null }
@@ -358,9 +372,8 @@ foreach ($t in $paasTypes) {
     Add-Result "$($t.Label)" "$($t.Ns)/$($t.Type): no region list (global or provider not registered) — skipped" 'WARN'
     continue
   }
-  # App Service is pinned to westeurope, so validate it against that region.
-  $checkLoc = if ($t.Ns -eq 'Microsoft.Web' -or $t.Customer) { $appServiceLocation } else { $Location }
-  $checkTok = if ($t.Ns -eq 'Microsoft.Web' -or $t.Customer) { $appServiceLocToken } else { $locToken }
+  $checkLoc = if ($t.Region) { $t.Region } elseif ($t.Ns -eq 'Microsoft.Web' -or $t.Customer) { $appServiceLocation } else { $Location }
+  $checkTok = Get-RegionToken $checkLoc
   $tokens = @($locs | ForEach-Object { Get-RegionToken $_ })
   if ($tokens -contains $checkTok) {
     Add-Result "$($t.Label)" "available in $checkLoc" 'PASS'
@@ -378,32 +391,41 @@ foreach ($t in $paasTypes) {
 #     tell those apart, we WARN (not FAIL) here and let ARM's fast preflight validation at
 #     deploy time be the authoritative gate (deploy.ps1 hard-fails in seconds with guidance).
 # ---------------------------------------------------------------------------
-Write-Step "Checking App Service Plan quota ($AppServicePlanTier tier in $appServiceLocation, advisory)"
-$webUsageJson = az rest --method get `
-  --url "https://management.azure.com/subscriptions/$($sub.id)/providers/Microsoft.Web/locations/$appServiceLocation/usages?api-version=2023-12-01" `
-  -o json 2>$null
-if ($webUsageJson) {
-  $webUsage = ($webUsageJson | ConvertFrom-Json).value
-  $tierUsage = $webUsage | Where-Object { $_.name.localizedValue -eq $AppServicePlanTier } | Select-Object -First 1
-  if ($null -eq $tierUsage) {
-    Add-Result "App Service quota" "$AppServicePlanTier-tier quota not reported for $appServiceLocation — verify manually" 'WARN'
-  } else {
-    $webLimit = [int]$tierUsage.limit
-    if ($webLimit -lt 0) {
-      # Azure reports -1 for "no cap" (unlimited).
-      Add-Result "App Service quota" "$AppServicePlanTier tier: unlimited (limit -1, used $($tierUsage.currentValue))" 'PASS'
+$planChecks = @(@{ Label = 'App Service quota'; Tier = $AppServicePlanTier; Region = $appServiceLocation })
+if ($DeployHealthModelDemo) {
+  $planChecks += @{ Label = 'Cafe App Service quota'; Tier = 'Basic'; Region = $HealthModelDemoCafeLocation }
+}
+foreach ($planCheck in $planChecks) {
+  $tier = $planCheck.Tier
+  $region = $planCheck.Region
+  $label = $planCheck.Label
+  Write-Step "Checking App Service Plan quota ($tier tier in $region, advisory)"
+  $webUsageJson = az rest --method get `
+    --url "https://management.azure.com/subscriptions/$($sub.id)/providers/Microsoft.Web/locations/$region/usages?api-version=2023-12-01" `
+    -o json 2>$null
+  if ($webUsageJson) {
+    $webUsage = ($webUsageJson | ConvertFrom-Json).value
+    $tierUsage = $webUsage | Where-Object { $_.name.localizedValue -eq $tier } | Select-Object -First 1
+    if ($null -eq $tierUsage) {
+      Add-Result $label "$tier-tier quota not reported for $region — verify manually" 'WARN'
     } else {
-      $availWeb = $webLimit - [int]$tierUsage.currentValue
-      $detail = "$AppServicePlanTier tier: reported limit $webLimit, used $($tierUsage.currentValue)"
-      if ($availWeb -lt 1) {
-        Add-Result "App Service quota" "$detail — region reports 0 $AppServicePlanTier quota. This signal is UNRELIABLE (some regions create Basic plans anyway). If the deploy really is blocked it fails fast with 'InternalSubscriptionIsOverQuotaForSku' — then pick another region or request an increase." 'WARN'
+      $webLimit = [int]$tierUsage.limit
+      if ($webLimit -lt 0) {
+        # Azure reports -1 for "no cap" (unlimited).
+        Add-Result $label "$tier tier in ${region}: unlimited quota (limit -1, used $($tierUsage.currentValue)); not a live capacity guarantee" 'PASS'
       } else {
-        Add-Result "App Service quota" $detail 'PASS'
+        $availWeb = $webLimit - [int]$tierUsage.currentValue
+        $detail = "$tier tier in ${region}: reported limit $webLimit, used $($tierUsage.currentValue)"
+        if ($availWeb -lt 1) {
+          Add-Result $label "$detail — region reports 0 $tier quota. This signal is UNRELIABLE (some regions create Basic plans anyway). If the deploy really is blocked it fails fast with 'InternalSubscriptionIsOverQuotaForSku' — then pick another region or request an increase." 'WARN'
+        } else {
+          Add-Result $label "$detail; not a live capacity guarantee" 'PASS'
+        }
       }
     }
+  } else {
+    Add-Result $label "could not query Microsoft.Web usages for $region — verify manually" 'WARN'
   }
-} else {
-  Add-Result "App Service quota" "could not query Microsoft.Web usages for $appServiceLocation — verify manually" 'WARN'
 }
 
 # ---------------------------------------------------------------------------
