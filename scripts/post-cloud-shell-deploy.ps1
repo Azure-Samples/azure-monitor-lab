@@ -11,6 +11,10 @@
   Complete Fabric setup when true. When omitted, detect the deployed capacity.
   Explicit false skips setup without changing or suspending the capacity.
 
+.PARAMETER FabricWorkspaceName
+  Explicit Fabric workspace override. Otherwise setup honors lab.config.json,
+  then selects a lab-scoped workspace. Use the same override during teardown.
+
 .PARAMETER EnableStageHealthModelDemo
   Publish and verify the Health Model Demo when true. When omitted, detect its
   deployed Cafe model. Explicit false skips completion without deleting anything.
@@ -40,6 +44,7 @@ param(
   [Parameter(Mandatory)] [string] $SubscriptionId,
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [string] $NamePrefix = 'amlab',
+  [string] $FabricWorkspaceName,
   [guid[]] $ConsoleOperatorObjectIds,
   [string] $CustomerDependencyDeploymentName,
   [switch] $ApproveCustomerDependencies = $true,
@@ -165,8 +170,10 @@ try {
 
 if ($EnableStageFabric) {
   Write-Step 'Completing the deployed Fabric capacity (billable while active)'
+  $fabricParameters = @{}
+  if ($PSBoundParameters.ContainsKey('FabricWorkspaceName')) { $fabricParameters.WorkspaceName = $FabricWorkspaceName }
   & (Join-Path $PSScriptRoot 'setup-fabric.ps1') `
-    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix @fabricParameters
 }
 
 if ($EnableStageSreAgent) {
@@ -193,9 +200,15 @@ if ($EnableStageHealthModelDemo) {
     -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
 }
 
+$completionMessage = if ($sliSourceMetricsVerified) {
+  'Cloud Shell automated post-deployment setup completed; manual preview SLI creation remains.'
+} else {
+  'Cloud Shell helpers completed, but SLI source metric verification is still outstanding. Use a credential that supports the Prometheus audience before creating SLIs.'
+}
+$completionColor = if ($sliSourceMetricsVerified) { 'Green' } else { 'Yellow' }
 Write-Host @"
 
-Cloud Shell post-deployment setup completed.
+$completionMessage
 
 Managed Prometheus source metrics verified: $sliSourceMetricsVerified
 
@@ -207,4 +220,4 @@ Manual SLI step still required:
 
 The Deploy to Azure button and this wrapper prepare SLI prerequisites but do not
 create the Microsoft.Monitor/slis preview resources.
-"@ -ForegroundColor Green
+"@ -ForegroundColor $completionColor

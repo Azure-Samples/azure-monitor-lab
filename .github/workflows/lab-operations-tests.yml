@@ -54,7 +54,9 @@ on:
       - 'scripts/tests/deployment-slot-recovery.Tests.ps1'
       - 'scripts/tests/deployment-progress.Tests.ps1'
       - 'scripts/tests/sli-setup.Tests.ps1'
+      - 'scripts/tests/completion-flow.Tests.ps1'
       - 'scripts/tests/fabric-setup.Tests.ps1'
+      - 'scripts/tests/fabric-workspace.Tests.ps1'
       - 'scripts/tests/fabric-observability.Tests.ps1'
       - 'scripts/tests/fabric-connections.Tests.ps1'
       - 'scripts/tests/fabric-auto-suspend.Tests.ps1'
@@ -169,7 +171,9 @@ jobs:
           ./scripts/tests/deployment-slot-recovery.Tests.ps1
           ./scripts/tests/deployment-progress.Tests.ps1
           ./scripts/tests/sli-setup.Tests.ps1
+          ./scripts/tests/completion-flow.Tests.ps1
           ./scripts/tests/fabric-setup.Tests.ps1
+          ./scripts/tests/fabric-workspace.Tests.ps1
           ./scripts/tests/fabric-observability.Tests.ps1
           ./scripts/tests/fabric-connections.Tests.ps1
           ./scripts/tests/fabric-auto-suspend.Tests.ps1

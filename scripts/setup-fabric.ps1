@@ -11,6 +11,11 @@
   Checks existing workspace monitoring and Operations Agent state and reports manual setup steps.
   Tenant settings require a separate administrator opt-in; licensing remains a prerequisite.
 
+.PARAMETER WorkspaceName
+  Explicit override of fabricAutomation.workspaceName in lab.config.json.
+  Blank/omitted configuration uses a subscription/resource-group-specific name.
+  An unconfigured legacy workspace is reused only on this lab's capacity.
+
 .EXAMPLE
   ./scripts/setup-fabric.ps1 -SubscriptionId <subscription-id> -ResourceGroup rg-azure-monitor-lab
 #>
@@ -19,7 +24,7 @@ param(
   [Parameter(Mandatory)] [string] $SubscriptionId,
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [string] $NamePrefix = 'amlab',
-  [string] $WorkspaceName = 'Azure Monitor Demo Lab',
+  [string] $WorkspaceName,
   [string] $EventhouseName = 'Azure Monitor Demo Eventhouse',
   [string] $KqlDatabaseName = 'MonitoringTelemetry',
   [string] $EventstreamName = 'AzureMonitorEvents',
@@ -95,6 +100,31 @@ function Get-CollectionItem {
   $items = @(Get-FabricApiCollection -Path $Path | Where-Object { $_.displayName -eq $DisplayName })
   if ($items.Count -gt 1) { throw "Multiple Fabric items are named '$DisplayName'; refusing an ambiguous match." }
   return $items | Select-Object -First 1
+}
+
+function Resolve-FabricWorkspaceName {
+  param([string] $ConfiguredName, [string] $SubscriptionId, [string] $ResourceGroup, [string] $CapacityId)
+
+  if (-not [string]::IsNullOrWhiteSpace($ConfiguredName)) { return $ConfiguredName }
+  $scope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup".ToLowerInvariant()
+  $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($scope))).ToLowerInvariant().Substring(0, 12)
+  $scopedName = "Azure Monitor Demo Lab - $hash"
+  if (Get-CollectionItem -Path workspaces -DisplayName $scopedName) { return $scopedName }
+
+  $legacy = Get-CollectionItem -Path workspaces -DisplayName 'Azure Monitor Demo Lab'
+  if ($legacy -and -not $legacy.capacityId) {
+    $legacy = Invoke-RestMethod -Method Get -Uri "$fabricApi/workspaces/$($legacy.id)" -Headers $script:fabricHeaders
+  }
+  if ($legacy -and $legacy.capacityId -eq $CapacityId) { return 'Azure Monitor Demo Lab' }
+  return $scopedName
+}
+
+function Assert-FabricWorkspaceCapacity {
+  param([object] $Workspace, [string] $CapacityId)
+
+  if (-not $Workspace.id -or -not $CapacityId -or $Workspace.capacityId -ne $CapacityId) {
+    throw "Workspace '$WorkspaceName' is not assigned to this lab's capacity; refusing to reuse, move, modify or delete a shared or unrelated workspace. Choose a unique WorkspaceName."
+  }
 }
 
 function Wait-FabricOperation {
@@ -489,6 +519,15 @@ $fabricToken = az account get-access-token --resource https://api.fabric.microso
 if ([string]::IsNullOrWhiteSpace($fabricToken)) { throw 'Could not acquire a Microsoft Fabric API token.' }
 $script:fabricHeaders = @{ Authorization = "Bearer $fabricToken" }
 
+$fabricCapacities = @(Get-FabricApiCollection -Path capacities | Where-Object displayName -eq $armCapacity.name)
+if ($fabricCapacities.Count -ne 1 -or -not $fabricCapacities[0].id) {
+  throw "Fabric API did not return one unambiguous capacity '$($armCapacity.name)'. Confirm the tenant is Fabric-enabled and your identity is a capacity administrator."
+}
+$fabricCapacity = $fabricCapacities[0]
+$WorkspaceName = Resolve-FabricWorkspaceName -ConfiguredName $WorkspaceName `
+  -SubscriptionId $SubscriptionId -ResourceGroup $ResourceGroup -CapacityId $fabricCapacity.id
+Write-Info "Fabric workspace: $WorkspaceName"
+
 if ($Teardown) {
   Write-Step 'Removing the Fabric workspace and contained items'
   $workspace = Get-CollectionItem -Path 'workspaces' -DisplayName $WorkspaceName
@@ -499,10 +538,7 @@ if ($Teardown) {
   if (-not $workspace.capacityId) {
     $workspace = Invoke-RestMethod -Method Get -Uri "$fabricApi/workspaces/$($workspace.id)" -Headers $script:fabricHeaders
   }
-  $teardownCapacities = @(Get-FabricApiCollection -Path capacities | Where-Object displayName -eq $armCapacity.name)
-  if ($teardownCapacities.Count -ne 1 -or $workspace.capacityId -ne $teardownCapacities[0].id) {
-    throw 'Teardown workspace is not on the lab capacity; refusing to delete a shared or unrelated workspace.'
-  }
+  Assert-FabricWorkspaceCapacity -Workspace $workspace -CapacityId $fabricCapacity.id
   $teardownNamespace = az resource list `
     --subscription $SubscriptionId `
     --resource-group $ResourceGroup `
@@ -542,12 +578,6 @@ if ($Teardown) {
   return
 }
 
-$capacities = Invoke-RestMethod -Method Get -Uri "$fabricApi/capacities" -Headers $script:fabricHeaders
-$fabricCapacity = @($capacities.value | Where-Object { $_.displayName -eq $armCapacity.name }) | Select-Object -First 1
-if (-not $fabricCapacity) {
-  throw "Fabric API did not return capacity '$($armCapacity.name)'. Confirm the tenant is Fabric-enabled and your identity is a capacity administrator."
-}
-
 Write-Step 'Creating or reusing the Fabric workspace'
 $workspace = Ensure-FabricItem `
   -CollectionPath 'workspaces' `
@@ -560,9 +590,7 @@ $workspace = Ensure-FabricItem `
 if (-not $workspace.capacityId) {
   $workspace = Invoke-RestMethod -Method Get -Uri "$fabricApi/workspaces/$($workspace.id)" -Headers $script:fabricHeaders
 }
-if ($workspace.capacityId -ne $fabricCapacity.id) {
-  throw "Existing workspace '$WorkspaceName' is not assigned to this lab's capacity. Choose a unique WorkspaceName; setup will not move a shared workspace or schedule suspension against another capacity."
-}
+Assert-FabricWorkspaceCapacity -Workspace $workspace -CapacityId $fabricCapacity.id
 
 Write-Step 'Creating or reusing Real-Time Intelligence items'
 $eventhouse = Ensure-FabricItem `

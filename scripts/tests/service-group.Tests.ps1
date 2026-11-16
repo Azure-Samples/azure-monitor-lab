@@ -16,6 +16,8 @@ $fixture = @{
   GroupName = ''; GroupError = ''; GroupResponse = ''
   RequestFailure = ''; Polls = 0; Sleeps = 0; NotFoundRemaining = 0
   RelationshipsRegistered = $false
+  Now = [datetime]'2026-01-01T00:00:00Z'
+  Responses = [Collections.Generic.Queue[string]]::new()
   Calls = 0; Writes = [Collections.Generic.List[object]]::new()
 }
 @{ expectedSubscriptionId = $fixture.Subscription; expectedTenantId = $fixture.Tenant } |
@@ -23,9 +25,13 @@ $fixture = @{
 $resolver = Join-Path $directory 'resolve-service-group-id.ps1'
 
 function Start-Sleep {
+  param([int] $Seconds)
   $fixture.Sleeps++
-  if ($fixture.Sleeps -gt 3) { throw 'Unexpected polling after a failed Azure request.' }
+  $fixture.Now = $fixture.Now.AddSeconds($Seconds)
+  if ($fixture.Sleeps -gt 60) { throw 'Polling exceeded the provisioning deadline.' }
 }
+
+function Get-Date { return $fixture.Now }
 
 function az {
   $fixture.Calls++
@@ -82,6 +88,11 @@ function az {
           return @{ properties = @{ displayName = $fixture.GroupName; provisioningState = 'Succeeded' } } | ConvertTo-Json
         }
         $fixture.Polls++
+        if ($fixture.Responses.Count) {
+          $response = $fixture.Responses.Dequeue()
+          if ($response.StartsWith('ERROR:')) { $global:LASTEXITCODE = 1 }
+          return $response
+        }
         if ($fixture.RequestFailure -eq "$resource-get") {
           $global:LASTEXITCODE = 1
           return 'ERROR: (AuthorizationFailed) Original Azure polling diagnostic.'
@@ -248,11 +259,66 @@ try {
       if (Test-Path -LiteralPath $write.BodyFile) { throw 'Request body temporary files must be removed after failure.' }
     }
   }
+  $authorization = "ERROR: (AuthorizationFailed) The client does not have authorization to perform action 'Microsoft.Management/serviceGroups/read' over scope '/providers/Microsoft.Management/serviceGroups/explicit-group'."
+  foreach ($responses in @(
+    @('ERROR: (ResourceNotFound) Not visible.', $authorization, '{"properties":{"provisioningState":"Creating"}}', '{"properties":{"provisioningState":"Succeeded"}}'),
+    @('ERROR: Not Found', 'ERROR: Forbidden({"error":{"code":"AuthorizationFailed","message":"Action Microsoft.Management/serviceGroups/read is not authorized."}})', '{"properties":{"provisioningState":"Succeeded"}}')
+  )) {
+    $fixture.RequestFailure = ''
+    $fixture.Responses.Clear()
+    foreach ($response in $responses) { $fixture.Responses.Enqueue($response) }
+    $fixture.Writes.Clear(); $fixture.Polls = 0; $fixture.Sleeps = 0
+    & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
+      -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
+    if ($fixture.Writes.Count -ne 2 -or $fixture.Polls -ne ($responses.Count + 1) -or $fixture.Sleeps -ne ($responses.Count - 1)) {
+      throw 'Service-group post-write read authorization propagation must recover without resubmitting writes.'
+    }
+  }
+  foreach ($response in @(
+    $authorization, 'ERROR: (ResourceNotFound) Still not visible.',
+    'ERROR: (Forbidden) Microsoft.Management/serviceGroups/read',
+    'ERROR: (AuthorizationFailed) Microsoft.Management/serviceGroups/write',
+    'ERROR: (AuthorizationFailed) Microsoft.Management/serviceGroups/readOther',
+    'ERROR: (InternalServerError) Unexpected service failure.',
+    '{"properties":{}}', '{"properties":{"provisioningState":"Unexpected"}}', 'null',
+    '[{"properties":{"provisioningState":"Succeeded"}}]', '{"properties":{"provisioningState":["Succeeded"]}}',
+    '{"properties":"Succeeded"}', '{}',
+    '{"properties":{"provisioningState":"Failed"}}', '{"properties":{"provisioningState":"Canceled"}}'
+  )) {
+    $retryable = $response -in @($authorization, 'ERROR: (ResourceNotFound) Still not visible.')
+    $fixture.Responses.Clear()
+    $expectedPolls = if ($retryable) { 60 } else { 1 }
+    for ($i = 0; $i -lt $expectedPolls; $i++) { $fixture.Responses.Enqueue($response) }
+    $fixture.Writes.Clear(); $fixture.Polls = 0; $fixture.Sleeps = 0
+    $caught = ''
+    try {
+      & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
+        -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
+    } catch { $caught = $_.Exception.Message }
+    if (-not $caught -or $fixture.Writes.Count -ne 1 -or $fixture.Polls -ne $expectedPolls -or
+        $fixture.Sleeps -ne $(if ($retryable) { 60 } else { 0 })) {
+      throw "Polling must fail closed with bounded retries: $response; $caught"
+    }
+    if ($retryable -and ($caught -notlike '*within 300 seconds*' -or -not $caught.Contains($response))) {
+      throw 'Exhaustion must retain the final Azure diagnostic and timeout, not report success.'
+    }
+  }
+  $fixture.Responses.Enqueue('{"properties":{"provisioningState":"Succeeded"}}')
+  $fixture.Responses.Enqueue($authorization)
+  $fixture.Writes.Clear(); $fixture.Polls = 0; $fixture.Sleeps = 0
+  $caught = ''
+  try {
+    & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
+      -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
+  } catch { $caught = $_.Exception.Message }
+  if (-not $caught.Contains('AuthorizationFailed') -or $fixture.Polls -ne 2 -or $fixture.Sleeps -ne 0) {
+    throw 'Member polling must not retry authorization errors, even when they mention service-group read.'
+  }
   Write-Output 'PASS: per-RG/subscription IDs are distinct, stable, case-insensitive, and consistent across group/member setup. No Azure calls.'
   Write-Output 'PASS: legacy/custom memberships and explicit IDs are preserved; discovery errors and malformed targets fail closed. No Azure calls.'
   Write-Output 'PASS: existing display names are preserved unless explicitly overridden; failed group reads cannot cause writes. No Azure calls.'
   Write-Output 'PASS: canonical membership targets and failed PUT/GET/JSON responses stop immediately with diagnostics and clean up request files. No Azure calls.'
-  Write-Output 'PASS: accepted writes tolerate eventual-consistency NotFound responses without masking authorization errors or resubmitting writes. No Azure calls.'
+  Write-Output 'PASS: accepted service-group writes recover from read-authorization propagation and NotFound; exhaustion fails with diagnostics. Other authorization/errors/invalid/failed states fail immediately. No Azure calls.'
 } finally {
   Remove-Item -LiteralPath $root -Recurse -Force
   $global:LASTEXITCODE = $previousExitCode
