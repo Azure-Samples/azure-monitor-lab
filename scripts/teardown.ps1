@@ -22,6 +22,10 @@
   resource group has the lab's Service Group membership. Teardown automatically
   skips these shared resources when that membership is absent.
 
+.PARAMETER FabricWorkspaceName
+  Workspace override used during completion. Otherwise use lab.config.json or
+  the same lab-scoped/owned-legacy selection as setup; ownership is still checked.
+
 .PARAMETER KeepEntraApplications
   Preserve Entra app registrations and service principals. Otherwise, remove only
   identities explicitly tagged as owned by this lab after directory preflight.
@@ -45,6 +49,7 @@ param(
   [ValidateSet('yes', 'no')]
   [string] $DeleteNetworkWatcherRG = 'no',
   [switch] $KeepServiceGroup,
+  [string] $FabricWorkspaceName,
   [switch] $KeepEntraApplications,
   [switch] $PurgeSoftDeletedResources,
   [switch] $Yes,
@@ -456,10 +461,12 @@ if ($fabricCapacity) {
   $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
   if (Test-Path $setupFabric) {
     try {
-      & $setupFabric -SubscriptionId $active.id -ResourceGroup $ResourceGroup -Teardown
+      $fabricParameters = @{}
+      if ($PSBoundParameters.ContainsKey('FabricWorkspaceName')) { $fabricParameters.WorkspaceName = $FabricWorkspaceName }
+      & $setupFabric -SubscriptionId $active.id -ResourceGroup $ResourceGroup -Teardown @fabricParameters
     } catch {
       Write-Host "  Fabric workspace cleanup failed: $($_.Exception.Message)" -ForegroundColor Yellow
-      Write-Host "  Resource-group deletion will still remove the F2 capacity. Delete the 'Azure Monitor Demo Lab' workspace manually if it remains." -ForegroundColor Yellow
+      Write-Host "  Resource-group deletion will still remove the F2 capacity. Inspect the reported workspace and verify ownership before any manual cleanup; never delete an unrelated workspace." -ForegroundColor Yellow
     }
   }
 }

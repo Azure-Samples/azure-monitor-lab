@@ -123,6 +123,10 @@ if ([string]::IsNullOrWhiteSpace($namePrefix)) { $namePrefix = 'amlab' }
 
 The wrapper detects deployed optional integrations, including Fabric, and reports any remaining manual actions. If the Cloud Shell session expires, rerun this block to reopen the clone and restore your deployment variables.
 
+Fabric completion defaults to a workspace specific to the subscription and resource group, not a shared tenant-wide display name. To override it, add `-FabricWorkspaceName '<unique-lab-workspace>'` to the wrapper and use that same override for teardown. Local configuration and safe legacy-workspace reuse are described in [Fabric workspace isolation](docs/STAGE-FABRIC.md#workspace-isolation-and-configuration).
+
+**Already partially completed?** Do not redeploy infrastructure or blindly rerun the wrapper if workload publication and private SQL initialization succeeded. Resume at the failed helper and complete the remaining stages using [partial-completion recovery](docs/POST-DEPLOYMENT.md#recovery-after-partial-completion). An accepted service-group write can temporarily return not-found or a read-authorization error; the helper now polls within a bounded deadline without assuming a permanent permission deficiency. This is separate from Cloud Shell's possible Prometheus token-audience limitation.
+
 If you enabled the optional AI stage and want to generate AI telemetry, run this next from the same Cloud Shell session. Skip it when AI is disabled:
 
 ```powershell

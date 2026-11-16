@@ -48,7 +48,7 @@
     },
     "fabric": {
       "fabricAutomation": {
-        "workspaceName": "Azure Monitor Demo Lab",
+        "workspaceName": "",
         "enableWorkspaceMonitoring": true,
         "enableOperationsAgent": true,
         "seedSampleData": true,

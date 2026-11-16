@@ -130,29 +130,37 @@ function Wait-ForProvisioning {
   param(
     [string] $Url,
     [string] $What,
-    [int]    $TimeoutSeconds = 300
+    [int]    $TimeoutSeconds = 300,
+    [switch] $RetryServiceGroupReadAuthorization
   )
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   $response = ''
   while ((Get-Date) -lt $deadline) {
     $response = az rest --method get --url $Url --only-show-errors -o json 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
-      if ((Get-ServiceGroupErrorCode -Output $response) -in @('ResourceNotFound', 'ServiceGroupNameNotFound', 'NotFound')) {
-        Write-Info "$What : accepted write is not visible yet, retrying..."
+      $errorCode = Get-ServiceGroupErrorCode -Output $response
+      $readAuthorizationPropagating = $RetryServiceGroupReadAuthorization -and
+        $errorCode -eq 'AuthorizationFailed' -and
+        $response -match '(?i)(?<![\w/])Microsoft\.Management/serviceGroups/read(?![\w/])'
+      if ($errorCode -in @('ResourceNotFound', 'ServiceGroupNameNotFound', 'NotFound') -or $readAuthorizationPropagating) {
+        Write-Info "$What : accepted write is not readable yet ($errorCode), retrying within the provisioning deadline..."
         Start-Sleep -Seconds 5
         continue
       }
       throw "Failed to GET $What at '$Url' (Azure CLI exit code $LASTEXITCODE). Details:`n$response"
     }
-    $resp = $response | ConvertFrom-Json -ErrorAction Stop
-    if ($null -eq $resp -or $null -eq $resp.properties) {
+    $resp = $response | ConvertFrom-Json -NoEnumerate -ErrorAction Stop
+    if ($resp -isnot [System.Management.Automation.PSCustomObject] -or
+        $resp.properties -isnot [System.Management.Automation.PSCustomObject]) {
       throw "$What returned an invalid resource response at '$Url':`n$response"
     }
     $state = $resp.properties.provisioningState
-    if (-not $state) { $state = '(none)' }
+    if ($state -isnot [string] -or $state -notin @('Accepted', 'Creating', 'Updating', 'Running', 'Succeeded', 'Failed', 'Canceled', 'Cancelled')) {
+      throw "$What returned an invalid provisioningState '$state' at '$Url':`n$response"
+    }
     Write-Info "$What : provisioningState = $state"
     if ($state -eq 'Succeeded') { return $resp }
-    if ($state -in 'Failed','Canceled') {
+    if ($state -in 'Failed','Canceled','Cancelled') {
       throw "$What ended in state '$state'. Response: $($resp | ConvertTo-Json -Depth 6)"
     }
     Start-Sleep -Seconds 5
@@ -229,7 +237,7 @@ try {
   Remove-Item -LiteralPath $sgBodyFile -Force
 }
 
-Wait-ForProvisioning -Url $sgUrl -What "Service group" -TimeoutSeconds 300 | Out-Null
+Wait-ForProvisioning -Url $sgUrl -What "Service group" -TimeoutSeconds 300 -RetryServiceGroupReadAuthorization | Out-Null
 Write-Info "Service group created."
 
 # --- 2. Service Group Member: lab RG -------------------------------------------

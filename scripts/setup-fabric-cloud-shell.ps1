@@ -7,7 +7,7 @@ param(
   [Parameter(Mandatory)] [string] $SubscriptionId,
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [string] $NamePrefix = 'amlab',
-  [string] $WorkspaceName = 'Azure Monitor Demo Lab',
+  [string] $WorkspaceName,
   [bool] $EnableWorkspaceMonitoring = $true,
   [bool] $EnableOperationsAgent = $true,
   [bool] $SeedSampleData = $true,
@@ -29,14 +29,12 @@ $ErrorActionPreference = 'Stop'
 $setupParameters = @{
   SubscriptionId = $SubscriptionId
   ResourceGroup = $ResourceGroup
-  NamePrefix = $NamePrefix
-  WorkspaceName = $WorkspaceName
   MaxOperationMinutes = $MaxOperationMinutes
 }
 if ($SkipEventstreamConnection) {
   $setupParameters.SkipEventstreamConnection = $true
 }
-foreach ($parameter in @('EnableWorkspaceMonitoring', 'EnableOperationsAgent', 'SeedSampleData', 'EnableMirroring', 'MirrorConnectionId', 'MirrorScope',
+foreach ($parameter in @('NamePrefix', 'WorkspaceName', 'EnableWorkspaceMonitoring', 'EnableOperationsAgent', 'SeedSampleData', 'EnableMirroring', 'MirrorConnectionId', 'MirrorScope',
     'MirrorTables', 'AppInsightsMirrorConnectionId', 'AppInsightsMirrorTables', 'VerificationTimeoutSeconds', 'EnableAutoSuspend', 'AutoSuspendHourUtc', 'AutoSuspendMinuteUtc')) {
   if ($PSBoundParameters.ContainsKey($parameter)) { $setupParameters[$parameter] = $PSBoundParameters[$parameter] }
 }

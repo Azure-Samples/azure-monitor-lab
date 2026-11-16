@@ -22,6 +22,10 @@
 .PARAMETER ParametersFile
   Bicep parameters file. Defaults to infra/main.parameters.json.
 
+.PARAMETER FabricWorkspaceName
+  Explicit Fabric workspace override; otherwise use lab.config.json or the
+  lab-scoped default. Use the same override during teardown.
+
 .PARAMETER ApproveCustomerDependencies
   Approve SQL schema/users/seed initialization and orders worker publication for
   the enabled customer backend. Defaults to true. Pass
@@ -42,6 +46,7 @@ param(
   [switch] $SkipPreflight,
   [int]    $MaxDeployRetries = 0,
   [guid[]] $ConsoleOperatorObjectIds,
+  [string] $FabricWorkspaceName,
   [switch] $ApproveCustomerDependencies = $true
 )
 
@@ -494,12 +499,15 @@ if ($fabricEnabled) {
   $setupFabric = Join-Path $PSScriptRoot 'setup-fabric.ps1'
   try {
     $fabricNamePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
-    & $setupFabric -SubscriptionId $target.expectedSubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $fabricNamePrefix
+    $fabricParameters = @{}
+    if ($PSBoundParameters.ContainsKey('FabricWorkspaceName')) { $fabricParameters.WorkspaceName = $FabricWorkspaceName }
+    & $setupFabric -SubscriptionId $target.expectedSubscriptionId -ResourceGroup $ResourceGroup -NamePrefix $fabricNamePrefix @fabricParameters
   } catch {
     Write-Host "  Fabric SaaS setup failed: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host "  The F2 capacity may still be active and billable. Re-run setup manually or suspend it:" -ForegroundColor Yellow
     Write-Host "  ./scripts/setup-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
     Write-Host "  ./scripts/suspend-fabric.ps1 -SubscriptionId $($target.expectedSubscriptionId) -ResourceGroup $ResourceGroup" -ForegroundColor Yellow
+    throw
   }
 }
 

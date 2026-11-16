@@ -66,11 +66,25 @@ Setup provisions or reuses the workspace identity, assigns hub-scoped receiver a
 
 These operations require Fabric workspace administration and source-scoped Azure RBAC administration. Keep `disableLocalAuth=true` on Entra-only namespaces. An existing Basic connection is preserved and reported for action rather than silently converted. New sources start at `Latest`; old Event Hub messages are not replayed. See [Event Hubs source authentication](https://learn.microsoft.com/fabric/real-time-intelligence/event-streams/add-source-azure-event-hubs).
 
-Setup polls Eventstream failures and checks for rows ingested into `AzureDiagnosticsRaw` in the last 15 minutes. Its default verification window is 180 seconds, configurable up to 900 seconds. Empty/missing tables remain **Pending**, not healthy; API/authorization/query failures are reported explicitly. A final feature-by-feature summary shows what succeeded and what still requires action. Failures cause setup to throw after reporting results; the main deployment reports optional Fabric setup failure without undoing infrastructure. Portal and staged completion propagate failures, and Terraform apply fails if its completion hook fails; already-created resources are not rolled back.
+Setup polls Eventstream failures and checks for rows ingested into `AzureDiagnosticsRaw` in the last 15 minutes. Its default verification window is 180 seconds, configurable up to 900 seconds. Empty/missing tables remain **Pending**, not healthy; API/authorization/query failures are reported explicitly. A final feature-by-feature summary shows what succeeded and what still requires action. Failures cause setup to throw after reporting results; one-shot, portal and staged completion propagate failures, and Terraform apply fails if its completion hook fails. Already-created resources are not rolled back; the capacity can remain active and billable even though completion failed.
 
 Portal and staged completion detect deployed capacities unless `-EnableStageFabric` is supplied explicitly. Terraform passes its selected flag and runs setup after capacity deployment, including without Stage B. Explicit false skips setup, not billing: suspend the capacity separately when idle.
 
 Reruns reuse existing items and preserve user-edited dashboards and mirror definitions. Sample rows are deduplicated by their stable synthetic IDs. A conflicting mirror source/table selection is reported, not overwritten. Custom Eventstream nodes are not replaced: use a distinct `EventstreamName` or `-SkipEventstreamConnection`. A workspace on another capacity is rejected rather than moved or coupled to the wrong suspension schedule.
+
+## Workspace isolation and configuration
+
+Workspace selection is identical in local, Cloud Shell and teardown helpers:
+
+1. Explicit `-WorkspaceName` on `setup-fabric.ps1` or `setup-fabric-cloud-shell.ps1`, or `-FabricWorkspaceName` on `deploy.ps1`, `post-cloud-shell-deploy.ps1` and `teardown.ps1`.
+2. `fabricAutomation.workspaceName` in the repository's `lab.config.json` (flat format or `advancedConfiguration.fabric.fabricAutomation.workspaceName`).
+3. If blank/omitted, `Azure Monitor Demo Lab - <scope-hash>`, where the suffix is the first 12 lowercase SHA-256 hexadecimal characters of the lowercased full subscription/resource-group ARM ID. This is stable across reruns and distinct across labs.
+
+When no name is configured and the scoped workspace does not exist, the legacy `Azure Monitor Demo Lab` workspace is reused **only if assigned to the selected lab capacity**. An unrelated or unassigned legacy workspace is left untouched and the scoped name is used instead. An existing scoped or explicitly selected workspace on another capacity fails ownership validation, not moved or deleted. Ambiguous names, ambiguous capacities and lookup errors fail explicitly.
+
+The example config now leaves `workspaceName` blank. Existing nonblank configurations remain explicit selections, including the legacy name; change that setting or supply a unique override if the named workspace belongs to another lab. A fresh Cloud Shell clone does not inherit local configuration: copy the intended non-secret Fabric settings or explicitly pass the workspace override. Record any custom name and retain the same configuration/override for future teardown. Never delete or reassign a workspace just to resolve a name collision.
+
+For an existing lab with a custom workspace, continue using its exact name; the capacity ownership check still applies. Default selection prefers an existing scoped workspace over legacy reuse. See [partial-completion recovery](POST-DEPLOYMENT.md#recovery-after-partial-completion) when earlier workloads already succeeded.
 
 Workspace monitoring and Operations Agent are [manual post-deployment steps](#manual-monitoring-and-operations-agent-setup). Setup checks existing collection/run state and reports **ActionRequired** when manual setup is needed; it never creates these items, enables collection, generates a playbook or starts/stops an agent. Existing destinations, instructions, actions, recipient and run state are preserved. Enabled/running state is not proof of fresh telemetry or correct agent behavior. Monitoring adds storage/compute consumption on F2.
 
@@ -239,7 +253,7 @@ The setup helpers read `advancedConfiguration.fabric.fabricAutomation` directly 
 
 ```json
 "fabricAutomation": {
-  "workspaceName": "Azure Monitor Demo Lab",
+  "workspaceName": "",
   "enableWorkspaceMonitoring": true,
   "enableOperationsAgent": true,
   "seedSampleData": true,
@@ -255,7 +269,7 @@ The setup helpers read `advancedConfiguration.fabric.fabricAutomation` directly 
 }
 ```
 
-For multiple lab resource groups in the same tenant, set a distinct `workspaceName` for each one. The same name is honored during setup and teardown; explicit `-WorkspaceName` overrides config. Never point a lab's teardown at another lab's workspace.
+Leave `workspaceName` blank for automatic per-lab isolation, or set a distinct override for each lab. The same selection is honored during setup and teardown; explicit `-WorkspaceName` overrides config. The Fabric-only Cloud Shell wrapper exposes the full settings above; the general completion wrapper exposes `-FabricWorkspaceName` and otherwise lets the helper read configuration. Never point a lab's teardown at another lab's workspace.
 
 `appInsightsMirrorConnectionId` is optional and omitted from the default config. Setup reuses a unique connection matching the App Insights workspace, or creates one when none exists. If multiple connections match, add this setting under `advancedConfiguration.fabric.fabricAutomation` to select one explicitly; setup will not guess.
 
@@ -344,7 +358,7 @@ Full lab teardown also removes the tenant-scoped workspace and its contained Eve
 ./scripts/setup-fabric.ps1 -SubscriptionId '<subscription-id>' -ResourceGroup '<resource-group>' -Teardown
 ```
 
-The standalone helper honors the root config's `namePrefix` unless explicitly overridden; use a distinct `workspaceName` for each lab. Tenant resources are not removed by `terraform destroy` alone.
+The standalone helper honors the root config's `namePrefix` unless explicitly overridden. Keep the same workspace configuration/override used for completion; a blank setting selects the same lab-scoped default or verified owned legacy workspace. Tenant resources are not removed by `terraform destroy` alone.
 
 ## Capacity Metrics credentials
 
