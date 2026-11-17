@@ -103,6 +103,35 @@ try {
       (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_stage_health_model_demo = true') {
     throw 'Health Model Demo enablement was lost during config generation.'
   }
+  $flat | Add-Member -NotePropertyName healthModelDemoCafeLocation -NotePropertyValue 'westeurope'
+  $flat | Add-Member -NotePropertyName healthModelDemoCafeMonitoringReaderAssignmentName -NotePropertyValue ([guid]::NewGuid().ToString())
+  $flat | Add-Member -NotePropertyName enableSentinel -NotePropertyValue $false
+  $flat | Add-Member -NotePropertyName enablePlatformLogsDcr -NotePropertyValue $true
+  $flat | Add-Member -NotePropertyName enableMetricsExportDcr -NotePropertyValue $true
+  $flat | Add-Member -NotePropertyName routerModelVersion -NotePropertyValue 'fixture-router'
+  $flat.sqlEntraAdminName = 'Fixture ${literal} %{literal} "Operators"\Group'
+  $flat | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+  $overrideBicep = (Get-Content -LiteralPath $outputs[1] -Raw | ConvertFrom-Json).parameters
+  $overrideTf = Get-Content -LiteralPath $outputs[2] -Raw
+  foreach ($setting in @(
+    @{ Bicep = 'healthModelDemoCafeLocation'; Terraform = 'health_model_demo_cafe_location'; Value = 'westeurope' },
+    @{ Bicep = 'healthModelDemoCafeMonitoringReaderAssignmentName'; Terraform = 'health_model_demo_cafe_monitoring_reader_assignment_name'; Value = $flat.healthModelDemoCafeMonitoringReaderAssignmentName },
+    @{ Bicep = 'enableSentinel'; Terraform = 'enable_sentinel'; Value = $false },
+    @{ Bicep = 'enablePlatformLogsDcr'; Terraform = 'enable_platform_logs_dcr'; Value = $true },
+    @{ Bicep = 'enableMetricsExportDcr'; Terraform = 'enable_metrics_export_dcr'; Value = $true },
+    @{ Bicep = 'routerModelVersion'; Terraform = 'router_model_version'; Value = 'fixture-router' }
+  )) {
+    $literal = if ($setting.Value -is [bool]) { $setting.Value.ToString().ToLower() } else { '"' + $setting.Value + '"' }
+    if ($overrideBicep.($setting.Bicep).value -cne $setting.Value -or -not $overrideTf.Contains("$($setting.Terraform) = $literal")) {
+      throw "Config sync lost shared override '$($setting.Bicep)'."
+    }
+  }
+  if (-not $overrideTf.Contains('sql_entra_admin_name = "Fixture $${literal} %%{literal} \"Operators\"\\Group"')) {
+    throw 'Terraform string projection must preserve literal interpolation markers, quotes and backslashes.'
+  }
+  Write-Output 'PASS: Cafe adoption settings, optional telemetry, Sentinel opt-out, router version and literal Terraform strings survive config sync.'
+  $before = (Get-FileHash -LiteralPath $outputs).Hash
   foreach ($value in @('false', 0, $null)) {
     $invalidStage = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
     $invalidStage.stageToggles.enableStageHealthModelDemo = $value

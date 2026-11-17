@@ -40,7 +40,7 @@
     "customerApplicationServices": {
       "sqlEntraAdminObjectId": "",
       "sqlEntraAdminName": "",
-      "_customerDependenciesDocs": "Bicep/Azure CLI only. Requires Stage B and enableSlotFailureScenario. The slot scenario automatically uses Standard S2 with one worker. SQL Basic is Entra-only and defaults to a Group administrator: supply the Entra group's object ID and name, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL networking. After provisioning explicitly run deploy-customer-dependencies.ps1 using the SQL Entra admin identity, approving only an exact temporary operator firewall IP if needed. Disabling is not deletion under ARM incremental mode; teardown removes the lab resource group."
+      "_customerDependenciesDocs": "Supported by one-shot Bicep, staged Bicep and staged Terraform. Requires Stage B and enableSlotFailureScenario. The slot scenario automatically uses Standard S2 with one worker. SQL Basic is Entra-only and defaults to a Group administrator: supply the Entra group's object ID and name, never a password. Shared customer/slot UAMI, separate worker UAMI; private SQL/storage networking. Completion initializes SQL through a temporary private App Service tunnel, publishes the orders worker and verifies readiness; run as the SQL Entra administrator with .NET 8 and Python/venv available. Terraform apply invokes completion automatically. Disabling is not deletion; follow explicit lab teardown and Terraform state guidance."
     },
     "observabilityAgent": {
       "enableObservabilityAgentAutomaticInvestigation": false,

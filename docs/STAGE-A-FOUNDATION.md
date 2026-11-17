@@ -19,6 +19,7 @@
 | Key Vault | `kv-amlab-<suffix>` | Diagnostic settings already routed to `law-amlab-central`. |
 | Governance | Policy assignments (diagnostic-settings policies) | Ensures any future resource gets diagnostic settings pointed to the central LAW. |
 | Saved queries + KQL functions | Many, plus `qp-amlab-appinsights` | Drop the infrastructure starter pack, seven agent-investigation queries, and three customer-usage queries into the relevant `Queries` panes. |
+| Hourly performance summary table | `Perf_Hourly_CL` on the central LAW | Analytics-plan destination with 180-day retention. Stage B completion creates `rule-perf-hourly`; no workload rows are expected during Stage A. |
 | Workbooks | Traffic-Lights, Cost-of-Monitoring, **Application Insights — End-to-End Agent Investigation**, and **Application Insights — Customer Usage Journey** | Infrastructure overview, monitoring cost, agent troubleshooting, and customer funnel/cohort analysis. |
 
 > All resources are tagged `purpose=azure-monitor-lab`, `owner=demo-lab`.

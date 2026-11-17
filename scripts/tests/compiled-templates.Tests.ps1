@@ -126,7 +126,8 @@ if ($nightlyVmProperties.schedule.timeZone -ne 'Romance Standard Time' -or $vmTy
   throw 'The nightly rule must suppress only VM alert actions from 23:00 through 07:00 CET/CEST.'
 }
 Write-Output 'PASS: VM alert actions are suppressed only during the DST-aware 23:00-07:00 shutdown window.'
-$cpuAlerts = @($mainTemplate.resources | Where-Object name -eq 'alert-vm-cpu-dynamic')
+$cpuModule = @($mainTemplate.resources | Where-Object name -eq 'vm-cpu-dynamic-alert')
+$cpuAlerts = @($cpuModule.properties.template.resources | Where-Object name -eq 'alert-vm-cpu-dynamic')
 if ($cpuAlerts.Count -ne 1 -or $cpuAlerts[0].type -ne 'Microsoft.Insights/metricAlerts') { throw 'The main template must contain exactly one dynamic VM CPU metric alert.' }
 $cpuAlert = $cpuAlerts[0].properties
 if ($cpuAlert.evaluationFrequency -ne 'PT5M' -or $cpuAlert.windowSize -ne 'PT15M') { throw 'The dynamic VM CPU alert must check every 5 minutes with a 15-minute lookback.' }

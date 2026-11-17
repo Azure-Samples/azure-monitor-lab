@@ -51,6 +51,8 @@ on:
       - 'scripts/tests/console-deployment.Tests.ps1'
       - 'scripts/tests/ai-traffic.Tests.ps1'
       - 'scripts/tests/staged-guide.Tests.ps1'
+      - 'scripts/tests/staged-parity.Tests.ps1'
+      - 'scripts/tests/customer-dependency-config.Tests.ps1'
       - 'scripts/tests/deployment-slot-recovery.Tests.ps1'
       - 'scripts/tests/deployment-progress.Tests.ps1'
       - 'scripts/tests/sli-setup.Tests.ps1'
@@ -167,6 +169,8 @@ jobs:
           ./scripts/tests/webapp-publication.Tests.ps1
           ./scripts/tests/ai-traffic.Tests.ps1
           ./scripts/tests/staged-guide.Tests.ps1
+          ./scripts/tests/staged-parity.Tests.ps1
+          ./scripts/tests/customer-dependency-config.Tests.ps1
           ./scripts/tests/network-watcher.Tests.ps1
           ./scripts/tests/deployment-slot-recovery.Tests.ps1
           ./scripts/tests/deployment-progress.Tests.ps1

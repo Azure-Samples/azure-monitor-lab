@@ -9,6 +9,13 @@
 #   az group create -n <resource_group_name> -l <location>
 data "azurerm_resource_group" "lab" {
   name = var.resource_group_name
+
+  lifecycle {
+    precondition {
+      condition     = !var.enable_customer_dependencies || (var.enable_stage_a && var.enable_stage_b && var.enable_slot_failure_scenario && trimspace(var.sql_entra_admin_object_id) != "" && trimspace(var.sql_entra_admin_name) != "")
+      error_message = "Customer dependencies require enable_stage_a, enable_stage_b, enable_slot_failure_scenario=true and explicit sql_entra_admin_object_id/sql_entra_admin_name."
+    }
+  }
 }
 
 data "azurerm_client_config" "current" {
@@ -82,20 +89,25 @@ resource "azapi_resource" "stage_b" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/10-workloads.json")))
       parameters = {
-        location                  = { value = var.location }
-        appServiceLocation        = { value = var.app_service_location }
-        namePrefix                = { value = var.name_prefix }
-        vmAdminUsername           = { value = var.vm_admin_username }
-        vmAdminPassword           = { value = var.vm_admin_password }
-        deployWindowsVm           = { value = var.deploy_windows_vm }
-        deployLinuxVm             = { value = var.deploy_linux_vm }
-        enableVmOtelMetrics       = { value = var.enable_vm_otel_metrics }
-        vmSize                    = { value = var.vm_size }
-        aksNodeVmSize             = { value = var.aks_node_vm_size }
-        aksNodeCount              = { value = var.aks_node_count }
-        grafanaAdminObjectId      = { value = var.grafana_admin_object_id }
-        enableSlotFailureScenario = { value = var.enable_slot_failure_scenario }
-        ownerTag                  = { value = var.owner_tag }
+        location                   = { value = var.location }
+        appServiceLocation         = { value = var.app_service_location }
+        namePrefix                 = { value = var.name_prefix }
+        vmAdminUsername            = { value = var.vm_admin_username }
+        vmAdminPassword            = { value = var.vm_admin_password }
+        deployWindowsVm            = { value = var.deploy_windows_vm }
+        deployLinuxVm              = { value = var.deploy_linux_vm }
+        enableVmOtelMetrics        = { value = var.enable_vm_otel_metrics }
+        vmSize                     = { value = var.vm_size }
+        aksNodeVmSize              = { value = var.aks_node_vm_size }
+        aksNodeCount               = { value = var.aks_node_count }
+        grafanaAdminObjectId       = { value = var.grafana_admin_object_id }
+        enableSlotFailureScenario  = { value = var.enable_slot_failure_scenario }
+        enableCustomerDependencies = { value = var.enable_customer_dependencies }
+        sqlEntraAdminObjectId      = { value = var.sql_entra_admin_object_id }
+        sqlEntraAdminName          = { value = var.sql_entra_admin_name }
+        sqlEntraAdminType          = { value = var.sql_entra_admin_type }
+        slotAppServicePlanSku      = { value = var.slot_app_service_plan_sku }
+        ownerTag                   = { value = var.owner_tag }
       }
     }
   }
@@ -175,16 +187,17 @@ resource "azapi_resource" "stage_e" {
       mode     = "Incremental"
       template = sensitive(jsondecode(file("${path.module}/../infra/stages/40-optional-advanced.json")))
       parameters = {
-        location               = { value = var.location }
-        namePrefix             = { value = var.name_prefix }
-        enableSentinel         = { value = var.enable_sentinel }
-        deployWindowsVm        = { value = var.deploy_windows_vm }
-        deployLinuxVm          = { value = var.deploy_linux_vm }
-        ownerTag               = { value = var.owner_tag }
-        enablePlatformLogsDcr  = { value = var.enable_platform_logs_dcr }
-        enableMetricsExportDcr = { value = var.enable_metrics_export_dcr }
-        enableAi               = { value = var.enable_stage_ai }
-        enableFabric           = { value = var.enable_stage_fabric }
+        location                   = { value = var.location }
+        namePrefix                 = { value = var.name_prefix }
+        enableSentinel             = { value = var.enable_sentinel }
+        deployWindowsVm            = { value = var.deploy_windows_vm }
+        deployLinuxVm              = { value = var.deploy_linux_vm }
+        ownerTag                   = { value = var.owner_tag }
+        enablePlatformLogsDcr      = { value = var.enable_platform_logs_dcr }
+        enableMetricsExportDcr     = { value = var.enable_metrics_export_dcr }
+        enableAi                   = { value = var.enable_stage_ai }
+        enableFabric               = { value = var.enable_stage_fabric }
+        enableCustomerDependencies = { value = var.enable_customer_dependencies }
       }
     }
   }

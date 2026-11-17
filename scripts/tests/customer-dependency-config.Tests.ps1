@@ -23,7 +23,9 @@ try {
   if ($parameters.enableCustomerDependencies.value -ne $false -or $parameters.slotAppServicePlanSku.value -ne 'S2' -or
       $parameters.sqlEntraAdminType.value -ne 'Group') { throw 'Dependencies must default false; omitted settings must automatically use S2 and Group.' }
   $tf = Get-Content (Join-Path $fixture 'terraform\stages.tfvars') -Raw
-  if ($tf -match 'customer_dependencies|sql_entra') { throw 'Disabled baseline must not introduce unsupported Terraform settings.' }
+  if ($tf -notmatch 'enable_customer_dependencies = false' -or
+      $tf -notmatch 'slot_app_service_plan_sku = "S2"' -or
+      $tf -notmatch 'sql_entra_admin_type = "Group"') { throw 'Terraform must preserve default-off dependencies and the shared S2/Group defaults.' }
   foreach ($invalid in @('true',1,$null)) {
     $cfg.stageToggles.enableCustomerDependencies = $invalid
     $failed = $false
@@ -50,12 +52,21 @@ try {
   Invoke-FixtureSync
   $parameters = (Get-Content (Join-Path $fixture 'infra\main.parameters.json') -Raw | ConvertFrom-Json).parameters
   if ($parameters.enableCustomerDependencies.value -ne $true -or $parameters.sqlEntraAdminName.value -ne 'Customer SQL Operators' -or $parameters.sqlEntraAdminType.value -ne 'Group') { throw 'Enabled Entra configuration was not materialized.' }
+  $tf = Get-Content (Join-Path $fixture 'terraform\stages.tfvars') -Raw
+  foreach ($setting in @('enable_customer_dependencies = true', 'enable_slot_failure_scenario = true',
+      'sql_entra_admin_object_id = "22222222-aaaa-bbbb-cccc-dddddddddddd"', 'sql_entra_admin_name = "Customer SQL Operators"')) {
+    if (-not $tf.Contains($setting)) { throw "Terraform lost customer setting: $setting" }
+  }
   $cfg | Add-Member -NotePropertyName slotAppServicePlanSku -NotePropertyValue 'S1'
   $cfg | Add-Member -NotePropertyName sqlEntraAdminType -NotePropertyValue 'User'
   Invoke-FixtureSync
   $parameters = (Get-Content (Join-Path $fixture 'infra\main.parameters.json') -Raw | ConvertFrom-Json).parameters
   if ($parameters.slotAppServicePlanSku.value -ne 'S1' -or $parameters.sqlEntraAdminType.value -ne 'User') {
     throw 'Existing explicit scripted overrides must remain supported.'
+  }
+  $tf = Get-Content (Join-Path $fixture 'terraform\stages.tfvars') -Raw
+  if ($tf -notmatch 'slot_app_service_plan_sku = "S1"' -or $tf -notmatch 'sql_entra_admin_type = "User"') {
+    throw 'Terraform lost explicit slot SKU or SQL administrator-type overrides.'
   }
   $cfg.PSObject.Properties.Remove('slotAppServicePlanSku')
   $cfg.PSObject.Properties.Remove('sqlEntraAdminType')
@@ -89,7 +100,7 @@ try {
       $ui.parameters.outputs.enableCustomerDependencies -cne $sqlCondition) {
     throw 'Portal SQL guidance and deployment must follow the same effective customer-dependency selection.'
   }
-  Write-Output 'PASS: customer feature default-off, prerequisites, automatic S2/Group settings, conditional SQL group inputs, legacy overrides and Terraform disabled compatibility.'
+  Write-Output 'PASS: customer feature default-off, prerequisites, automatic S2/Group settings, conditional SQL group inputs, legacy overrides and Terraform parameter parity.'
 } finally {
   Remove-Item -LiteralPath $fixture -Recurse -Force
 }

@@ -18,7 +18,7 @@ The original contribution and tutorial are by [@abossard](https://github.com/abo
 
 Set `advancedConfiguration.stageToggles.enableStageHealthModelDemo` to `true` in your private `lab.config.json`, then use the normal [scripted deployment](../README.md#option-2-scripted-deployment-recommended). Stages A, B, C and E must also be enabled; E supplies the core availability test used by the flow model. For the portal, select **Enable Health Model Demo** under **Optional stages**, then run the README's Cloud Shell completion command.
 
-Terraform uses `enable_stage_health_model_demo = true`. Run config sync before planning, review the plan, and run the [normal staged completion](DEPLOY-TERRAFORM-STEP-BY-STEP.md) after applying. Compiled templates are committed; no Health Models CLI extension is required for normal stage completion.
+Terraform uses `enable_stage_health_model_demo = true`. Run config sync before planning and review the plan. Apply invokes [normal staged completion](DEPLOY-TERRAFORM-STEP-BY-STEP.md) automatically; do not run a second wrapper after a successful apply. Compiled templates are committed; no Health Models CLI extension is required for normal stage completion.
 
 For staged Bicep, deploy the dedicated [stage 80 template](../infra/stages/80-health-model-demo.bicep) only after stages A, B, C and E. Use the template's explicit resource-ID parameters with the existing core outputs; do not create a second foundation or workload deployment. Defaults derive standard staged names. When adopting a one-shot lab, pass its actual `availabilityTestName` rather than the staged default.
 
@@ -32,6 +32,14 @@ Invoke-LabStage -Stage 80-health-model-demo
 ```
 
 The shared helper previews stage 80 and requires confirmation before deployment. Café hosting defaults to **France Central** across one-shot, portal, staged Bicep, Terraform and standalone tutorial deployments. Both health models remain in **Sweden Central**, independently of the workload region, because preview region support is limited. Stage 80 does not inherit the core lab's `location`; use `-Overrides @{ location = '<region>' }` to explicitly preserve an existing Café deployment's region. One-shot uses `healthModelDemoCafeLocation`, and Terraform uses `health_model_demo_cafe_location`.
+
+Config sync preserves `healthModelDemoCafeLocation` and
+`healthModelDemoCafeMonitoringReaderAssignmentName` from the private config
+(`advancedConfiguration.other` for grouped configs) in both deployment formats.
+The Bicep stage helper maps the reader-assignment override to Stage 80's
+`cafeMonitoringReaderAssignmentName`; Terraform uses
+`health_model_demo_cafe_monitoring_reader_assignment_name`. Preserve these values
+when adopting an existing Cafe instead of changing its region or duplicating RBAC.
 
 Scripted deployment preflight separately checks the Café's configured App Service region and **Standard S1** quota when the demo is enabled, independently of the core app's region and tier. Standard quota does not use the Basic B1 quota, but offering/quota checks still do not guarantee live capacity. Changing defaults does not move existing resources: if a Café was already deployed in another region, retain its region override or plan an explicit migration; do not redeploy the same resource names in a different region as an in-place move.
 

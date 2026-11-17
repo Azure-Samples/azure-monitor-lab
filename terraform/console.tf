@@ -26,6 +26,11 @@ locals {
     tolist(fileset("${path.module}/..", "workloads/operations/*")),
     tolist(fileset("${path.module}/..", "workloads/ai/*.py")),
     tolist(fileset("${path.module}/..", "workloads/cafe/*")),
+    tolist(fileset("${path.module}/..", "workloads/customer-processor/*.cs")),
+    tolist(fileset("${path.module}/..", "workloads/customer-processor/*.csproj")),
+    tolist(fileset("${path.module}/..", "scripts/customer-sql-bootstrap/*.cs")),
+    tolist(fileset("${path.module}/..", "scripts/customer-sql-bootstrap/*.csproj")),
+    tolist(fileset("${path.module}/..", "scripts/customer-sql-bootstrap/*.py")),
     [
       "workloads/webapp/AmlabHello.csproj",
       "workloads/ai/requirements.txt",
@@ -39,6 +44,12 @@ locals {
       "scripts/setup-slis.ps1",
       "scripts/resolve-service-group-id.ps1",
       "scripts/post-deploy.ps1",
+      "scripts/create-summary-rule.ps1",
+      "scripts/complete-customer-dependencies.ps1",
+      "scripts/deploy-customer-dependencies.ps1",
+      "scripts/bootstrap-customer-sql.ps1",
+      "scripts/customer-dependency-helpers.ps1",
+      "scripts/test-customer-dependencies.ps1",
       "scripts/prepare-webapp-package.ps1",
       "scripts/wait-webapp-publication.ps1",
       "scripts/prepare-broken-slot.ps1",
@@ -76,7 +87,7 @@ resource "terraform_data" "console_ready" {
     resource_group = data.azurerm_resource_group.lab.id
     prefix         = var.name_prefix
     sources        = sha256(join("", [for name in local.console_sources : filesha256("${path.module}/../${name}")]))
-    integrations   = jsonencode({ ai = var.enable_stage_ai, sre = var.enable_stage_sre_agent, fabric = var.enable_stage_fabric, health_model_demo = var.enable_stage_health_model_demo, slot_failure = var.enable_slot_failure_scenario, stage_e = var.enable_stage_e, ai_location = var.ai_location, router_model_version = var.router_model_version })
+    integrations   = jsonencode({ ai = var.enable_stage_ai, sre = var.enable_stage_sre_agent, fabric = var.enable_stage_fabric, health_model_demo = var.enable_stage_health_model_demo, slot_failure = var.enable_slot_failure_scenario, customer_dependencies = var.enable_customer_dependencies, stage_e = var.enable_stage_e, ai_location = var.ai_location, router_model_version = var.router_model_version })
     operators      = jsonencode(var.console_operator_object_ids)
   }
 
@@ -88,7 +99,7 @@ resource "terraform_data" "console_ready" {
 
   provisioner "local-exec" {
     interpreter = ["pwsh", "-NoProfile", "-NonInteractive", "-Command"]
-    command     = "& (Join-Path $env:LAB_REPOSITORY_ROOT 'scripts/post-staged-deploy.ps1') -SubscriptionId $env:LAB_SUBSCRIPTION_ID -ResourceGroup $env:LAB_RESOURCE_GROUP -NamePrefix $env:LAB_NAME_PREFIX -ConsoleOperatorObjectIds @($env:LAB_OPERATOR_IDS | ConvertFrom-Json) -EnableStageE ([bool]::Parse($env:LAB_ENABLE_STAGE_E)) -EnableStageSreAgent ([bool]::Parse($env:LAB_ENABLE_STAGE_SRE_AGENT)) -EnableStageFabric ([bool]::Parse($env:LAB_ENABLE_STAGE_FABRIC)) -EnableStageHealthModelDemo ([bool]::Parse($env:LAB_ENABLE_STAGE_HEALTH_MODEL_DEMO))"
+    command     = "& (Join-Path $env:LAB_REPOSITORY_ROOT 'scripts/post-staged-deploy.ps1') -SubscriptionId $env:LAB_SUBSCRIPTION_ID -ResourceGroup $env:LAB_RESOURCE_GROUP -NamePrefix $env:LAB_NAME_PREFIX -ConsoleOperatorObjectIds @($env:LAB_OPERATOR_IDS | ConvertFrom-Json) -CustomerDependencyDeploymentName 'stage-b-workloads' -EnableStageE ([bool]::Parse($env:LAB_ENABLE_STAGE_E)) -EnableStageSreAgent ([bool]::Parse($env:LAB_ENABLE_STAGE_SRE_AGENT)) -EnableStageFabric ([bool]::Parse($env:LAB_ENABLE_STAGE_FABRIC)) -EnableStageHealthModelDemo ([bool]::Parse($env:LAB_ENABLE_STAGE_HEALTH_MODEL_DEMO))"
     environment = {
       LAB_REPOSITORY_ROOT                = abspath("${path.module}/..")
       LAB_SUBSCRIPTION_ID                = var.subscription_id

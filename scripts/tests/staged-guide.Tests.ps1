@@ -220,6 +220,11 @@ function az {
         throw 'Temporary parameters must be readable and writable only by their owner.'
       }
       $parameters = (Get-Content -LiteralPath $parameterPath -Raw | ConvertFrom-Json -AsHashtable).parameters
+      if ($fixture.Stage -eq '80-health-model-demo' -and
+          $sourceParameters.ContainsKey('healthModelDemoCafeMonitoringReaderAssignmentName') -and
+          -not $parameters.ContainsKey('cafeMonitoringReaderAssignmentName')) {
+        throw 'Stage 80 must preserve the configured Cafe reader-assignment adoption override.'
+      }
       if ($fixture.Stage -eq '80-health-model-demo' -and -not $fixture.Overrides.ContainsKey('location') -and
           -not $sourceParameters.ContainsKey('healthModelDemoCafeLocation') -and $parameters.ContainsKey('location')) {
         throw 'Stage 80 must use its Cafe region default, not the shared lab location.'
@@ -229,6 +234,7 @@ function az {
         if (-not $schema.parameters.ContainsKey($name)) { throw "Unexpected stage parameter '$name'." }
         $expectedValue = if ($fixture.Overrides.ContainsKey($name)) { @{ value = $fixture.Overrides[$name] } }
           elseif ($fixture.Stage -eq '80-health-model-demo' -and $name -eq 'location') { $sourceParameters.healthModelDemoCafeLocation }
+          elseif ($fixture.Stage -eq '80-health-model-demo' -and $name -eq 'cafeMonitoringReaderAssignmentName') { $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName }
           else { $sourceParameters[$name] }
         if (($parameters[$name] | ConvertTo-Json -Depth 20 -Compress) -ne ($expectedValue | ConvertTo-Json -Depth 20 -Compress)) { throw "Parameter '$name' was not preserved." }
       }
@@ -305,10 +311,12 @@ try {
   $fixture.Stage = '80-health-model-demo'
   Invoke-LabStage -Stage $fixture.Stage
   $sourceParameters.healthModelDemoCafeLocation = @{ value = 'westeurope' }
+  $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName = @{ value = [guid]::NewGuid().ToString() }
   Invoke-LabStage -Stage $fixture.Stage
   $fixture.Overrides = @{ location = 'francecentral' }
   Invoke-LabStage -Stage $fixture.Stage -Overrides $fixture.Overrides
   $sourceParameters.Remove('healthModelDemoCafeLocation')
+  $sourceParameters.Remove('healthModelDemoCafeMonitoringReaderAssignmentName')
   $fixture.Overrides = @{}
   $fixture.Stage = '10-workloads'
   $fixture.Overrides = @{ location = 'westeurope' }

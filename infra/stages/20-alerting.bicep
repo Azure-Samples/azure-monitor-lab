@@ -145,6 +145,16 @@ module amba '../modules/amba.bicep' = {
   }
 }
 
+module alertVmCpuDynamic '../modules/vm-cpu-dynamic-alert.bicep' = if (deployLinuxVm || deployWindowsVm) {
+  name: 'vm-cpu-dynamic-alert'
+  params: {
+    location: location
+    vmIds: concat(deployLinuxVm ? [ vmLinux.id ] : [], deployWindowsVm ? [ vmWindows.id ] : [])
+    actionGroupId: actionGroup.outputs.id
+    tags: commonTags
+  }
+}
+
 module healthAlerts '../modules/health-alerts.bicep' = {
   name: 'health-alerts'
   params: {

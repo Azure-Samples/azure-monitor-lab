@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "18171970224737494696"
+      "templateHash": "683524201450930482"
     }
   },
   "parameters": {
@@ -2206,6 +2206,129 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'law-appinsights')]",
+        "[resourceId('Microsoft.Resources/deployments', 'law-central')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "summary-rules",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "centralLawName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+          },
+          "centralLawId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "8210817863758867681"
+            }
+          },
+          "parameters": {
+            "centralLawName": {
+              "type": "string",
+              "metadata": {
+                "description": "Central LAW name."
+              }
+            },
+            "centralLawId": {
+              "type": "string",
+              "metadata": {
+                "description": "Central LAW resource ID (reserved for future use)."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region (reserved for future use)."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags (reserved for future use)."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/tables",
+              "apiVersion": "2022-10-01",
+              "name": "[format('{0}/{1}', parameters('centralLawName'), 'Perf_Hourly_CL')]",
+              "properties": {
+                "plan": "Analytics",
+                "schema": {
+                  "name": "Perf_Hourly_CL",
+                  "columns": [
+                    {
+                      "name": "TimeGenerated",
+                      "type": "datetime",
+                      "description": "Hour bucket start"
+                    },
+                    {
+                      "name": "Computer",
+                      "type": "string",
+                      "description": "Source computer"
+                    },
+                    {
+                      "name": "CounterName",
+                      "type": "string",
+                      "description": "Performance counter name"
+                    },
+                    {
+                      "name": "AvgValue",
+                      "type": "real",
+                      "description": "Average value in the hour"
+                    },
+                    {
+                      "name": "MinValue",
+                      "type": "real",
+                      "description": "Minimum value in the hour"
+                    },
+                    {
+                      "name": "MaxValue",
+                      "type": "real",
+                      "description": "Maximum value in the hour"
+                    },
+                    {
+                      "name": "SampleCount",
+                      "type": "long",
+                      "description": "Number of raw samples aggregated"
+                    }
+                  ]
+                },
+                "retentionInDays": 180
+              }
+            }
+          ],
+          "outputs": {
+            "tableName": {
+              "type": "string",
+              "value": "Perf_Hourly_CL"
+            }
+          }
+        }
+      },
+      "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'law-central')]"
       ]
     },

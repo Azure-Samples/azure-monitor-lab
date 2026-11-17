@@ -130,7 +130,7 @@ Console setup and generated configuration select the Control Center's matching
 other Application Insights components. Missing or ambiguous targets stop setup
 rather than selecting another application's telemetry.
 
-### Opt-in customer dependencies (Bicep only)
+### Opt-in customer dependencies
 
 `stageToggles.enableCustomerDependencies` defaults to `false`. Enabling it requires
 JSON Boolean `enableSlotFailureScenario=true` and `enableStageB=true`, plus
@@ -138,8 +138,12 @@ the SQL administrator group's `sqlEntraAdminObjectId` and `sqlEntraAdminName`.
 The portal and config example use `Group` and the one-worker `S2` slot plan
 automatically, without exposing those choices. Existing scripted configurations
 and template parameters retain their explicit overrides. Run
-`sync-config.ps1` before infrastructure preview. Terraform remains supported only
-with this dependency toggle disabled.
+`sync-config.ps1` before infrastructure preview. Terraform forwards the same
+settings through `enable_customer_dependencies`, `sql_entra_admin_object_id`,
+`sql_entra_admin_name`, `sql_entra_admin_type` and `slot_app_service_plan_sku`.
+Its Stage B completion hook targets `stage-b-workloads` explicitly and performs
+the same guarded initialization/publication. Stages A/B and the dedicated slot
+scenario are required; Stage E adds the separate customer Health Model.
 
 The feature creates SQL Basic (2GB, Entra-only), Service Bus Standard (`orders`,
 1GB, deduplication 10 minutes, five delivery attempts, one-hour TTL), and a .NET 8

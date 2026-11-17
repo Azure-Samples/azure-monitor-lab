@@ -38,6 +38,9 @@ function Invoke-LabStage {
   if ($Stage -eq '80-health-model-demo' -and $sourceParameters.ContainsKey('healthModelDemoCafeLocation')) {
     $parameters.location = $sourceParameters.healthModelDemoCafeLocation
   }
+  if ($Stage -eq '80-health-model-demo' -and $sourceParameters.ContainsKey('healthModelDemoCafeMonitoringReaderAssignmentName')) {
+    $parameters.cafeMonitoringReaderAssignmentName = $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName
+  }
   foreach ($name in $Overrides.Keys) {
     if (-not $schema.parameters.ContainsKey($name)) { throw "Unknown parameter '$name' for $Stage." }
     if ($schema.parameters[$name].type -like 'secure*') { throw 'Supply secure inputs through the private parameters file, not Overrides.' }

@@ -301,14 +301,9 @@ Write-Host '  Custom-log operator access configured. Data-plane RBAC propagation
 Write-Step "Creating summary rule rule-perf-hourly (scenario 21 prereq)"
 $summaryRuleScript = Join-Path $PSScriptRoot 'create-summary-rule.ps1'
 if (Test-Path $summaryRuleScript) {
-  try {
-    & $summaryRuleScript -ResourceGroup $ResourceGroup -WorkspaceName $CentralLawName
-  } catch {
-    Write-Host "  Summary rule provisioning failed: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "  Continuing — re-run scripts/create-summary-rule.ps1 manually." -ForegroundColor Yellow
-  }
+  & $summaryRuleScript -ResourceGroup $ResourceGroup -WorkspaceName $CentralLawName
 } else {
-  Write-Host "  create-summary-rule.ps1 not found — skipping." -ForegroundColor Yellow
+  throw 'Required summary rule helper create-summary-rule.ps1 was not found.'
 }
 
 # 6. Post a release annotation on App Insights so the deploy is visible on charts.

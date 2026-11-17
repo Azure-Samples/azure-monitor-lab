@@ -743,43 +743,16 @@ module vmss 'modules/vmss.bicep' = {
 // ---------------------------------------------------------------------------------
 // Condition must use the plain params (not vmLinux/vmWindows outputs) — a resource
 // `if` can't depend on another conditional resource's output (BCP177).
-resource alertVmCpuDynamic 'Microsoft.Insights/metricAlerts@2018-03-01' = if (deployLinuxVm || deployWindowsVm) {
-  name: 'alert-vm-cpu-dynamic'
-  location: 'global'
-  tags: commonTags
-  properties: {
-    description: 'Lab VM CPU above its ML-learned baseline (medium sensitivity)'
-    severity: 3
-    enabled: true
-    scopes: filter([
+module alertVmCpuDynamic 'modules/vm-cpu-dynamic-alert.bicep' = if (deployLinuxVm || deployWindowsVm) {
+  name: 'vm-cpu-dynamic-alert'
+  params: {
+    location: location
+    vmIds: filter([
       deployLinuxVm ? vmLinux!.outputs.vmId : ''
       deployWindowsVm ? vmWindows!.outputs.vmId : ''
     ], id => !empty(id))
-    targetResourceType: 'Microsoft.Compute/virtualMachines'
-    targetResourceRegion: location
-    evaluationFrequency: 'PT5M'
-    windowSize: 'PT15M'
-    criteria: {
-      'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
-      allOf: [
-        {
-          name: 'CpuDynamic'
-          metricNamespace: 'Microsoft.Compute/virtualMachines'
-          metricName: 'Percentage CPU'
-          operator: 'GreaterThan'
-          timeAggregation: 'Average'
-          criterionType: 'DynamicThresholdCriterion'
-          alertSensitivity: 'Medium'
-          failingPeriods: {
-            numberOfEvaluationPeriods: 1
-            minFailingPeriodsToAlert: 1
-          }
-        }
-      ]
-    }
-    actions: [
-      { actionGroupId: actionGroup.outputs.id }
-    ]
+    actionGroupId: actionGroup.outputs.id
+    tags: commonTags
   }
 }
 

@@ -262,6 +262,16 @@ module kqlFunctions '../modules/kql-functions.bicep' = {
   }
 }
 
+module summaryRules '../modules/summary-rules.bicep' = {
+  name: 'summary-rules'
+  params: {
+    centralLawName: lawCentral.outputs.name
+    centralLawId: lawCentral.outputs.id
+    location: location
+    tags: commonTags
+  }
+}
+
 module workbook '../modules/workbook.bicep' = {
   name: 'workbook-traffic-lights'
   params: {

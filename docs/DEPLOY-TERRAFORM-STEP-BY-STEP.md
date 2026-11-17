@@ -2,6 +2,57 @@
 
 This guide is for customers standardizing on Terraform while still using this lab.
 
+## Feature coverage and remaining differences
+
+Terraform orchestrates the same compiled stage templates as staged Bicep, rather
+than a separate native resource implementation. Stage A includes `Perf_Hourly_CL`;
+Stage B completion creates its hourly summary rule and stops on setup failure.
+Stage C deploys the shared dynamic VM CPU alert for the enabled VMs. Reapply the
+affected stages in an existing lab; these fixes do not alter deployed resources
+until applied.
+
+| Service/scenario | Terraform coverage and limitations |
+|---|---|
+| Core services and scenarios | A-E and automatic completion hooks. Successful ARM deployment records alone do not prove working telemetry or scenarios. |
+| Customer SQL, Service Bus and orders processor | Supported with `enable_customer_dependencies=true`, stages A/B, `enable_slot_failure_scenario=true` and explicit SQL Entra administrator inputs. Apply initializes SQL, publishes the worker and verifies readiness; Stage E adds the customer Health Model. |
+| AI, SRE Agent and Fabric | Optional stages. Completion prepares the console without AI traffic; standalone AI needs its documented setup. SRE/Fabric have standalone hooks without Stage B. |
+| Observability Agent and its investigation scenarios | **Not supported by the preview's Terraform provisioning path.** No Terraform toggle is provided; use the [Bicep route](DEPLOY-BICEP-STEP-BY-STEP.md) in a separately managed deployment. Do not mix state ownership or assume config sync deploys it. |
+| Cafe app and native health models | Supported with `enable_stage_health_model_demo=true`, after A/B/C/E. Apply publishes the Cafe, connects `hm-lab-cafe` and `hm-amlab-flows`, verifies a stored order and actual request/dependency telemetry. Hosting defaults to France Central; models use Sweden Central. |
+
+The customer feature is off by default. Configure these private inputs before
+planning (config sync also generates them from the corresponding central settings):
+
+```hcl
+enable_slot_failure_scenario = true
+enable_customer_dependencies = true
+sql_entra_admin_object_id    = "<SQL-ENTRA-ADMIN-OBJECT-ID>"
+sql_entra_admin_name         = "<SQL-ENTRA-ADMIN-NAME>"
+sql_entra_admin_type         = "Group"
+slot_app_service_plan_sku    = "S2"
+```
+
+Run apply as the configured SQL administrator (or an authorized member for a
+group). Completion needs .NET 8, Python/venv and the documented private-tunnel
+prerequisites. Enabling the feature also approves its SQL initialization and
+worker publication through the completion hook; review these effects before
+approving apply. Missing prerequisites or failed readiness fail completion.
+See the [customer backend lifecycle](../scripts/README.md#opt-in-customer-dependencies).
+
+Keep all prerequisite stage toggles enabled in later waves. For an existing Cafe,
+retain its region with `health_model_demo_cafe_location` and, when adopting a
+previous assignment, `health_model_demo_cafe_monitoring_reader_assignment_name`.
+Central config sync preserves the matching `healthModelDemoCafeLocation` and
+`healthModelDemoCafeMonitoringReaderAssignmentName` overrides from
+`advancedConfiguration.other`.
+
+Neither route automates every scenario: preview SLIs require the portal handoff;
+Fabric tenant settings, licensing, workspace monitoring and Operations Agent
+authoring can require manual work. Regional model/SKU availability, quota, preview
+registration and permissions still apply. Traffic, notifications, investigations
+and fault injection need deliberate execution. A successful apply or static
+parity test does not certify those live outcomes. Terraform destroy removes nested
+deployment records, not all deployed services; follow this guide's cleanup steps.
+
 ## 1) Strategy options
 
 Use one of these patterns.

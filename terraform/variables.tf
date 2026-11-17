@@ -157,7 +157,49 @@ variable "enable_stage_sre_agent" {
 variable "enable_slot_failure_scenario" {
   type        = bool
   default     = false
-  description = "Provision an S1 App Service plan and a preloaded broken slot for the opt-in SRE rollback scenario."
+  description = "Provision the configurable Standard App Service plan and a preloaded broken slot for the opt-in SRE rollback scenario."
+}
+
+variable "enable_customer_dependencies" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "Add Entra-only SQL, Service Bus and the orders processor to the customer slot scenario. Requires stages A/B, the slot scenario, and an explicit SQL administrator. Apply also initializes SQL and publishes/verifies the worker."
+}
+
+variable "sql_entra_admin_object_id" {
+  type    = string
+  default = ""
+
+  validation {
+    condition     = var.sql_entra_admin_object_id == "" || (can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.sql_entra_admin_object_id)) && var.sql_entra_admin_object_id != "00000000-0000-0000-0000-000000000000")
+    error_message = "sql_entra_admin_object_id must be empty or a nonzero Microsoft Entra object ID in GUID format."
+  }
+}
+
+variable "sql_entra_admin_name" {
+  type    = string
+  default = ""
+}
+
+variable "sql_entra_admin_type" {
+  type    = string
+  default = "Group"
+
+  validation {
+    condition     = contains(["User", "Group", "Application"], var.sql_entra_admin_type)
+    error_message = "sql_entra_admin_type must be User, Group, or Application."
+  }
+}
+
+variable "slot_app_service_plan_sku" {
+  type    = string
+  default = "S2"
+
+  validation {
+    condition     = contains(["S1", "S2", "S3"], var.slot_app_service_plan_sku)
+    error_message = "slot_app_service_plan_sku must be S1, S2, or S3."
+  }
 }
 
 variable "ai_location" {

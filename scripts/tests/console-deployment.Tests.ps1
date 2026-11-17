@@ -669,6 +669,29 @@ if ($fixture.AiSetupFails) { throw 'Traffic startup failed.' }
     -CentralLawName law-amlab-central-test -CustomerWebAppName app-amlab-test-customer `
     -CustomerDependencyDeploymentName test-customer-deployment -ApproveCustomerDependencies:$false | Out-Null
   if ($fixture.CustomerCompletionApproval) { throw 'Shared post-deployment must preserve explicit false for interactive customer approval.' }
+  @'
+param($ResourceGroup, $WorkspaceName)
+throw 'Summary rule setup failed.'
+'@ | Set-Content (Join-Path $directory 'create-summary-rule.ps1')
+  $fixture.Events.Clear()
+  $caught = $null
+  try {
+    & (Join-Path $directory 'post-deploy.ps1') @parameters -AksName aks-amlab -WebAppHost app-amlab-test.azurewebsites.net `
+      -CentralLawName law-amlab-central-test -CustomerWebAppName app-amlab-test-customer | Out-Null
+  } catch { $caught = $_ }
+  if (-not $caught -or $caught.Exception.Message -ne 'Summary rule setup failed.') {
+    throw 'Required summary rule failure must propagate instead of reporting successful completion.'
+  }
+  Remove-Item -LiteralPath (Join-Path $directory 'create-summary-rule.ps1')
+  $fixture.Events.Clear()
+  $caught = $null
+  try {
+    & (Join-Path $directory 'post-deploy.ps1') @parameters -AksName aks-amlab -WebAppHost app-amlab-test.azurewebsites.net `
+      -CentralLawName law-amlab-central-test -CustomerWebAppName app-amlab-test-customer | Out-Null
+  } catch { $caught = $_ }
+  if (-not $caught -or $caught.Exception.Message -notlike 'Required summary rule helper*') {
+    throw 'A missing required summary rule helper must fail completion.'
+  }
   Write-Output 'PASS: one-shot/staged/Cloud Shell approval forwarding and shared customer completion after publication, with readiness failures stopping deployment.'
   Write-Output 'PASS: one-shot, app, staged, and Cloud Shell handoffs preserve account/operator inputs, bootstrap before publication, and stop on setup failures. No Azure calls.'
 } finally {

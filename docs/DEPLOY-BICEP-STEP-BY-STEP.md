@@ -6,6 +6,38 @@ This guide shows how to deploy the lab in controlled stages so you can enable sc
 
 The repository has dedicated [stage templates](../infra/stages) for the core lab and optional add-ons. Bicep supports the preview Observability Agent stage; Terraform does not because that provisioning path is not supported by the preview. [The one-shot script](../scripts/deploy.ps1) continues to use [the full-lab template](../infra/main.bicep); it is a separate deployment path, not a foundation-only deployment.
 
+### Feature coverage and remaining differences
+
+The stages reuse the one-shot deployment's service modules. Stage A includes the
+`Perf_Hourly_CL` summary destination table; Stage B completion creates its hourly
+summary rule, and failure stops completion. Stage C includes the same dynamic VM
+CPU alert as the one-shot route, scoped only to enabled VMs. These changes do not
+repair an existing staged lab until its affected stages/completion are rerun.
+
+| Service/scenario | Staged Bicep coverage and required follow-through |
+|---|---|
+| Core services and scenarios | A-E plus Stage B/E completion; deploying ARM resources alone is not scenario acceptance. |
+| Customer SQL, Service Bus and orders processor | Opt-in Stage B plus its completion; requires the customer slot scenario and explicit SQL Entra administrator. Stage E adds the separate customer Health Model. |
+| AI, SRE Agent and Fabric | Separate opt-in stages and their documented setup/validation. Refresh an existing Control Center after adding integrations. |
+| Observability Agent | Supported by optional Stage 70, subject to preview regions, registration and RBAC. Investigations are separate, billable actions. |
+| Cafe app and native health models | Optional [Stage 80](STAGE-HEALTH-MODEL-DEMO.md), after A/B/C/E. Completion publishes the Cafe, connects `hm-lab-cafe` and `hm-amlab-flows`, verifies a stored order and waits for request/dependency telemetry. Hosting defaults to France Central; models use Sweden Central. |
+
+There is no known intentional one-shot service exclusion in staged Bicep, but it
+is not an unattended equivalent of `deploy.ps1`: run each selected stage and its
+completion explicitly. Optional toggles alone do not execute stages. For an
+existing Cafe, preserve its hosting region and any approved existing reader-role
+assignment through `healthModelDemoCafeLocation` and
+`healthModelDemoCafeMonitoringReaderAssignmentName` in the private config
+(`advancedConfiguration.other` in grouped configs).
+
+Some scenarios cannot be fully automated by either route: preview SLIs need the
+portal handoff; Fabric tenant settings, licensing, workspace monitoring and
+Operations Agent authoring can need manual steps. Model/SKU quota, preview access,
+Entra permissions and actual telemetry must be checked in the target environment.
+AI traffic, alert delivery tests, investigations and fault injection are separate
+actions, not evidence supplied by infrastructure success. No static parity test
+certifies live regional availability or every scenario end to end.
+
 ## 2) Guardrails (must-do)
 
 1. Select and verify the expected subscription and tenant before every write. The helper below does this before preview and again before deployment.
@@ -230,7 +262,7 @@ explicitly; otherwise the wrapper discovers the latest successful deployment for
 the exact customer app and validates its enabled context. Declined approval or
 failed readiness stops completion rather than leaving a successful-looking,
 uninitialized catalogue. SQL public access and firewall rules remain unchanged.
-See [customer backend lifecycle](../scripts/README.md#opt-in-customer-dependencies-bicep-only).
+See [customer backend lifecycle](../scripts/README.md#opt-in-customer-dependencies).
 
 ### Stage C deploy
 
