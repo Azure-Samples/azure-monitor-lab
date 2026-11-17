@@ -141,6 +141,15 @@ The legacy `infra/main.bicep` continues to work unchanged for the original Bicep
 
 Run the commands from the repository root. `-chdir=terraform` keeps Terraform in its own directory without changing the working directory for the later setup scripts.
 
+### Clone the repository
+
+Clone the published `main` branch and enter the repository before continuing. If you already have a checkout, use its repository root instead.
+
+```powershell
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
+Set-Location azure-monitor-lab
+```
+
 ### Step 1 - Confirm the existing terraform files
 
 The shipped files already contain the staged wiring described above. Open them and confirm:

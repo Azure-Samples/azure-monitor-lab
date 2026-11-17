@@ -89,6 +89,15 @@ Run these examples from the repository root in the same PowerShell 7 session. Ea
 
 Deployment examples use `--only-show-errors` to hide CLI/Bicep warnings and upgrade notices while preserving what-if previews and errors. Standalone Bicep builds and CI validation still show diagnostics.
 
+### Clone the repository
+
+Clone the published `main` branch and enter the repository before continuing. If you already have a checkout, use its repository root instead.
+
+```powershell
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
+Set-Location azure-monitor-lab
+```
+
 ### Step 0 - Bootstrap inputs (recommended)
 
 Create a private config from [the example](../lab.config.json.example), fill in the subscription, tenant, resource group, prefix, region, notification address, and VM credentials, then generate the local inputs. Do not overwrite an existing config:
