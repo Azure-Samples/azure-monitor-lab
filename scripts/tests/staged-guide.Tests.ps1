@@ -2,6 +2,36 @@ $ErrorActionPreference = 'Stop'
 $previousExitCode = $global:LASTEXITCODE
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $guide = Get-Content -LiteralPath (Join-Path $source 'docs/DEPLOY-BICEP-STEP-BY-STEP.md') -Raw
+$terraformGuide = Get-Content -LiteralPath (Join-Path $source 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md') -Raw
+$stageNames = @(Get-ChildItem -LiteralPath (Join-Path $source 'infra/stages') -Filter '*.bicep' | ForEach-Object BaseName)
+$terraformSource = (Get-ChildItem -LiteralPath (Join-Path $source 'terraform') -Filter '*.tf' |
+  ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
+$terraformStages = @([regex]::Matches($terraformSource, 'infra/stages/([^"/]+)\.json') |
+  ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+foreach ($stage in $stageNames) {
+  if (-not $guide.Contains("--template-file ./infra/stages/$stage.bicep") -or
+      -not $guide.Contains(('--parameters "@$($stageParameterFiles[''{0}''])"' -f $stage))) {
+    throw "The Bicep walkthrough must deploy every available stage, including $stage."
+  }
+}
+foreach ($stage in $terraformStages) {
+  if (-not $terraformGuide.Contains("``infra/stages/$stage.json``") -or
+      -not $terraformGuide.Contains("az bicep build --file infra/stages/$stage.bicep")) {
+    throw "The Terraform guide must list and regenerate every consumed stage template, including $stage."
+  }
+}
+foreach ($toggle in [regex]::Matches($terraformSource, 'variable "(enable_stage_[^"]+)"')) {
+  $name = $toggle.Groups[1].Value
+  if ($terraformGuide -notmatch "(?m)^$name\s*=\s*(true|false)" -or
+      -not $terraformGuide.Contains("| ``$name`` |")) {
+    throw "The Terraform guide must show an input and template mapping for $name."
+  }
+}
+if ($guide -notmatch '(?s)### Stage 80 Health Model Demo deploy.*?-EnableStageHealthModelDemo \$true' -or
+    $terraformGuide -notmatch '(?s)### Step 10 - Enable Stage 80 Health Model Demo.*?terraform -chdir=terraform apply' -or
+    $terraformGuide -notmatch 'output -raw health_model_demo_cafe_web_app_url') {
+  throw 'Both walkthroughs must include an executable Cafe deployment/completion step, not just a deep-dive link.'
+}
 $guideStageE = $guide.IndexOf('--template-file ./infra/stages/40-optional-advanced.bicep')
 $guideSentinelContent = $guide.IndexOf('--template-file ./infra/stages/41-sentinel-content.bicep')
 if ($guideStageE -lt 0 -or $guideSentinelContent -le $guideStageE -or
@@ -139,7 +169,7 @@ foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md'
     if ($errors.Count) { throw "Invalid PowerShell in ${relativePath}: $($errors.Message -join '; ')" }
   }
 }
-foreach ($block in $blocks) {
+foreach ($block in @($blocks) + @([regex]::Matches($terraformGuide, '(?ms)^```powershell\r?\n(.*?)^```'))) {
   $parseErrors = $null
   $ast = [Management.Automation.Language.Parser]::ParseInput($block.Groups[1].Value, [ref]$null, [ref]$parseErrors)
   if ($parseErrors.Count) { throw "Invalid PowerShell in the Bicep guide: $($parseErrors.Message -join '; ')" }
@@ -253,6 +283,44 @@ function az {
 
 Push-Location $source
 try {
+  & {
+    $bootstrap = @($blocks | Where-Object { $_.Groups[1].Value.Contains('$stageNames = @(') })
+    if ($bootstrap.Count -ne 1) { throw 'The Bicep guide must have one stage parameter bootstrap.' }
+    $projection = $bootstrap[0].Groups[1].Value
+    $projection = [scriptblock]::Create($projection.Substring($projection.IndexOf('$stageNames = @(')))
+    $sourceParameters = $sourceParameters.Clone()
+    $sourceParameters.location = @{ value = 'northeurope' }
+    $sourceParameters.Remove('healthModelDemoCafeLocation')
+    $sourceParameters.Remove('healthModelDemoCafeMonitoringReaderAssignmentName')
+    foreach ($customCafe in @($false, $true)) {
+      if ($customCafe) {
+        $sourceParameters.healthModelDemoCafeLocation = @{ value = 'westeurope' }
+        $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName = @{ value = [guid]::NewGuid().ToString() }
+      }
+      $stageParameterDirectory = $null
+      try {
+        . $projection
+        foreach ($stage in $stageNames) {
+          if (-not $stageParameterFiles.ContainsKey($stage)) { throw "Bootstrap omitted $stage." }
+        }
+        $parameters = (Get-Content -LiteralPath $stageParameterFiles['80-health-model-demo'] -Raw |
+          ConvertFrom-Json -AsHashtable).parameters
+        if ($customCafe) {
+          if ($parameters.location.value -cne 'westeurope' -or
+              $parameters.cafeMonitoringReaderAssignmentName.value -cne $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName.value) {
+            throw 'The guide bootstrap must preserve Cafe hosting and reader-assignment overrides.'
+          }
+        } elseif ($parameters.ContainsKey('location') -or $parameters.ContainsKey('cafeMonitoringReaderAssignmentName')) {
+          throw 'Without Cafe overrides, the guide bootstrap must retain Stage 80 defaults, not the core region.'
+        }
+      } finally {
+        if ($stageParameterDirectory -and (Test-Path -LiteralPath $stageParameterDirectory)) {
+          Remove-Item -LiteralPath $stageParameterDirectory -Recurse -Force
+        }
+      }
+    }
+  }
+  Write-Output 'PASS: guide bootstrap projects every stage and preserves Cafe defaults and adoption overrides.'
   function Assert-LabAccount { throw 'The stale account guard was not replaced.' }
   function Invoke-LabStage {
     param(
@@ -284,18 +352,18 @@ try {
   if ($allowedStages -notcontains '41-sentinel-content') { throw 'Reloading must replace the stale Stage ValidateSet.' }
   if ($allowedStages -notcontains '60-fabric') { throw 'Reloading must add the optional Fabric stage.' }
   Write-Output 'PASS: dot-sourcing replaces stale stage helpers, accepts Stage 41, and preserves inputs without Azure calls.'
-  foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
+  foreach ($stage in $stageNames) {
     $templateReference = "--template-file ./infra/stages/$stage.bicep"
     $parameterReference = '--parameters "@$($stageParameterFiles[''{0}''])"' -f $stage
     if (-not $guide.Contains($templateReference) -or -not $guide.Contains($parameterReference)) {
       throw "The guide must deploy $stage with its native Azure CLI command and projected parameter file."
     }
   }
-  if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt 10) {
+  if ([regex]::Matches($guide, '--confirm-with-what-if').Count -lt $stageNames.Count) {
     throw 'Every staged deployment command must include a what-if confirmation.'
   }
-  if ([regex]::Matches($guide, '--confirm-with-what-if[^\r\n]*(?:\r?\n[^\r\n]*)?--only-show-errors').Count -ne 10) {
-    throw 'All ten raw staged deployment examples must suppress CLI warnings without hiding errors.'
+  if ([regex]::Matches($guide, '--confirm-with-what-if[^\r\n]*(?:\r?\n[^\r\n]*)?--only-show-errors').Count -ne $stageNames.Count) {
+    throw 'Every raw staged deployment example must suppress CLI warnings without hiding errors.'
   }
   foreach ($stage in @('00-foundation', '10-workloads', '20-alerting', '30-security-posture', '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent', '60-fabric', '70-observability-agent')) {
     $fixture.Stage = $stage
@@ -360,7 +428,7 @@ try {
     if ($stage -eq 'Observability Agent' -and $section.IndexOf('./scripts/setup-observability-agent.ps1') -gt $section.IndexOf('./scripts/deploy-webapp.ps1')) { throw 'Observability Agent validation must precede console publication.' }
   }
   if ($guide -match '--template-file infra/main.bicep') { throw 'A staged guide must not deploy the full-lab template.' }
-  Write-Output 'PASS: all ten Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls.'
+  Write-Output "PASS: all $($stageNames.Count) Bicep guide stages use valid projected parameters, preserve secure references, and enforce preview/account/cleanup guards. No Azure calls."
   Write-Output 'PASS: late AI/SRE/Observability Agent instructions refresh existing consoles and preserve standalone A-only scenarios.'
 } finally {
   Pop-Location

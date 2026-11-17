@@ -26,6 +26,7 @@ After deploying those prerequisite stages, continue in the same PowerShell sessi
 
 ```powershell
 ./scripts/sync-config.ps1
+$sourceParameters = (Get-Content ./infra/main.parameters.json -Raw | ConvertFrom-Json -AsHashtable).parameters
 . ./scripts/staged-deploy-helpers.ps1
 Invoke-LabStage -Stage 80-health-model-demo
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $sourceParameters.namePrefix.value

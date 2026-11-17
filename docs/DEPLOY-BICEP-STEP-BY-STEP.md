@@ -58,6 +58,7 @@ For workshop planning and customer expectation-setting, use:
 - [STAGE-D-SECURITY-POSTURE.md](STAGE-D-SECURITY-POSTURE.md)
 - [STAGE-E-OPTIONAL-ADVANCED.md](STAGE-E-OPTIONAL-ADVANCED.md)
 - [STAGE-AI.md](STAGE-AI.md)
+- [STAGE-FABRIC.md](STAGE-FABRIC.md)
 - [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md)
 - [STAGE-OBSERVABILITY-AGENT.md](STAGE-OBSERVABILITY-AGENT.md)
 - [STAGE-HEALTH-MODEL-DEMO.md](STAGE-HEALTH-MODEL-DEMO.md) - optional Café and lab user-flow models after stages A, B, C and E.
@@ -74,6 +75,12 @@ Deploy in this order.
 6. Stage AI - Optional Microsoft Foundry GenAI workload (off by default)
 7. Stage SRE Agent - Optional Azure SRE Agent evaluation (off by default)
 8. Stage Observability Agent - Optional autonomous alert correlation and agentic-application investigation (off by default)
+9. Stage Fabric - Optional Real-Time Intelligence workload (off by default)
+10. Stage 80 - Optional Cafe and lab user-flow Health Models (off by default; requires A/B/C/E)
+
+The optional stages below have their own deployment commands; they are not
+deployed by Stage E or by setting a config toggle alone. Deploy AI/Fabric before
+Stage E if their optional health tiers are selected, or rerun Stage E afterward.
 
 ## 4) Stage details (scenarios + deployed services)
 
@@ -89,6 +96,8 @@ Use this as the workshop script: each stage adds a bounded set of capabilities a
 | Stage AI - Optional GenAI workload | Add a Microsoft Foundry workload emitting token/trace/cost telemetry, with AI FinOps observability. Off by default (billable models, region-limited). | - | Foundry account + project in swedencentral by default, four model deployments (gpt-5-mini, text-embedding-3-small, gpt-5.4, model-router), App Insights connection, token alerts, AI FinOps query pack + workbook. Stage E can add the AI health tier after AI is deployed; a standalone AI health model is separately opt-in. Agent setup starts a finite background traffic batch unless skipped. |
 | Stage SRE Agent - Optional incident investigation | Add Azure SRE Agent investigation and Review-mode response workflows. Off by default (preview and billable). | 54, 55, 56, 57, 58 | Azure SRE Agent hard pinned to swedencentral, system-assigned and user-assigned managed identities, Azure Monitor, Application Insights, and Log Analytics connectors, resource-group reader roles, and subscription-scope Monitoring Contributor. |
 | Stage Observability Agent - Optional autonomous operations | Correlate agentic-application alerts, create issues, investigate failures, and compare broken/fixed trace evidence. Off by default (preview; investigations consume Azure Agent Credits). | 61, 62, 63, 64, 65, 66, 67 | Azure Copilot Observability Agent and a dedicated Azure Monitor workspace in a supported region, one monitored Application Insights resource, system-assigned identity, Issue Contributor on the workspace, and Monitoring Reader directly on the monitored Application Insights resource. |
+| Stage Fabric | Stream the lab Event Hub feed into Real-Time Intelligence. | See [Fabric scenarios](STAGE-FABRIC.md) | F2 capacity in Sweden Central; setup creates the workspace, Eventstream, Eventhouse and dashboard. Tenant settings/licensing and some authoring remain manual. |
+| Stage 80 - Health Model Demo | Observe the Cafe and end-to-end lab user flows. | 81 | Dedicated Node.js Cafe, Standard S1 App Service plan, private Storage, monitoring and availability tests; `hm-lab-cafe`, `hm-amlab-flows`, and model-scoped Control Center permissions. Completion publishes the app and verifies orders and telemetry. |
 
 ### Stage dependency chain
 
@@ -100,6 +109,8 @@ Use this as the workshop script: each stage adds a bounded set of capabilities a
 6. Stage AI depends only on Stage A (it connects to `appi-amlab-<suffix>`); deploy it any time after Stage A.
 7. Stage SRE Agent depends only on Stage A (Application Insights and central LAW); deploy it any time after Stage A.
 8. Stage Observability Agent depends only on Stage A (Application Insights); deploy it any time after Stage A. Its Control Center scenario runner additionally requires Stage B.
+9. Stage Fabric depends on Stage A's Event Hub feed. Deploy it before Stage E to include its optional health tier, or rerun Stage E afterward.
+10. Stage 80 depends on A/B/C/E, including Stage E's console availability test. It is separate from Stage E completion.
 
 The Control Center requires Stage B. Its Foundry Playground additionally requires AI; its SRE MCP Assistant requires both AI and SRE. An A+AI or A+SRE lab is valid without a Web App. Portal investigators and response plans are separate scenarios, not prerequisites for the MCP assistant.
 
@@ -114,6 +125,7 @@ The Control Center requires Stage B. Its Foundry Playground additionally require
 7. Stage SRE Agent done: the agent is in `swedencentral`, all three connectors are configured, and identity-specific RBAC validation passes.
 8. Stage Observability Agent done: the agent and dedicated workspace share a supported region, Application Insights is monitored, automatic issue creation is enabled, investigation mode matches the explicit selection, and least-privilege RBAC validation passes.
 9. Stage Fabric done: capacity and tenant-scoped items exist, and the Eventstream ingests the Stage A Event Hub feed.
+10. Stage 80 done: completion publishes the Cafe, stores and retrieves an order, verifies actual request/dependency telemetry, and connects both models in Control Center > Health Model.
 
 ## 5) Practical deployment commands (stage-by-stage)
 
@@ -165,7 +177,7 @@ az group create --subscription $sub --name $rg --location $location --output non
 $stageNames = @(
    '00-foundation', '10-workloads', '20-alerting', '30-security-posture',
    '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent',
-   '60-fabric', '70-observability-agent'
+   '60-fabric', '70-observability-agent', '80-health-model-demo'
 )
 $stageParameterDirectory = Join-Path ([IO.Path]::GetTempPath()) ('azure-monitor-lab-stages-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $stageParameterDirectory
@@ -174,7 +186,16 @@ foreach ($stage in $stageNames) {
    $schema = Get-Content "./infra/stages/$stage.json" -Raw | ConvertFrom-Json -AsHashtable
    $parameters = @{}
    foreach ($name in $schema.parameters.Keys) {
+      if ($stage -eq '80-health-model-demo' -and $name -eq 'location') { continue }
       if ($sourceParameters.ContainsKey($name)) { $parameters[$name] = $sourceParameters[$name] }
+   }
+   if ($stage -eq '80-health-model-demo') {
+      if ($sourceParameters.ContainsKey('healthModelDemoCafeLocation')) {
+         $parameters.location = $sourceParameters.healthModelDemoCafeLocation
+      }
+      if ($sourceParameters.ContainsKey('healthModelDemoCafeMonitoringReaderAssignmentName')) {
+         $parameters.cafeMonitoringReaderAssignmentName = $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName
+      }
    }
    foreach ($name in $schema.parameters.Keys) {
       if (-not $parameters.ContainsKey($name) -and -not $schema.parameters[$name].ContainsKey('defaultValue')) {
@@ -317,6 +338,8 @@ Stage E's `enableAi` value follows `stages.enableStageAI` from the central confi
 
 Sentinel uses two deployments because its analytics-rule provider cannot preview a rule until the workspace is already onboarded. Stage E first creates the onboarding state, then `41-sentinel-content` previews and creates the dependent demo rule with normal provider validation.
 
+**Stage E does not deploy the Cafe.** Continue to [Stage 80](#stage-80-health-model-demo-deploy-optional) below to add it. The completion script only auto-detects and publishes the Cafe after Stage 80 infrastructure exists.
+
 ### Stage AI deploy (optional)
 
 Deploy after Stage A. Verify Model Router version availability for `aiLocation` before opting in; the default is `swedencentral`. If Stage B already exists, refresh its package, inventory, and agent permissions before starting optional traffic:
@@ -403,6 +426,41 @@ if ($webApp) {
 ```
 
 An A+Observability Agent deployment can correlate and investigate Application Insights signals without a Web App. Stage B adds the Control Center's deterministic broken/fixed scenario runner. Follow [Stage Observability Agent](STAGE-OBSERVABILITY-AGENT.md) for supported regions, cost and privacy boundaries, validation, and the demo workflow.
+
+### Stage 80 Health Model Demo deploy (optional)
+
+Run after stages A, B, C and E, using the same bootstrap inputs and temporary
+parameter files. This is the explicit step that adds the Cafe; Stage E alone does
+not create it. The subscription needs `Microsoft.CloudHealth` registration and
+preview access, and the deployer needs resource-write, custom-role/assignment
+permissions and query access to the Cafe workspace.
+
+The Cafe uses a billable **Standard S1** plan in **France Central** by default;
+check that region's Standard quota/capacity separately from the core lab. Both
+models use **Sweden Central**. The bootstrap deliberately does not inherit the
+core lab's `location` for this stage. When adopting an existing Cafe, set
+`healthModelDemoCafeLocation` and any existing
+`healthModelDemoCafeMonitoringReaderAssignmentName` in the private config before
+rerunning sync and the bootstrap; do not try to move existing resources in place.
+
+```powershell
+az deployment group create `
+   --subscription $sub --resource-group $rg --name stage-80-health-model-demo `
+   --template-file ./infra/stages/80-health-model-demo.bicep `
+   --parameters "@$($stageParameterFiles['80-health-model-demo'])" `
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
+./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $true -EnableStageHealthModelDemo $true
+```
+
+Completion publishes the Cafe, connects `hm-lab-cafe` and `hm-amlab-flows` to the
+Control Center, stores/retrieves an ordinary order, and waits for actual
+`AppRequests` and `AppDependencies` records (allow up to ten minutes). Open
+**Control Center > Health Model** and select **Lab user flows** or **Cafe tutorial**.
+No fault injection runs during deployment. See [Stage 80](STAGE-HEALTH-MODEL-DEMO.md)
+for publication-only repair and the scenario 81 walkthrough.
+
+Omitting this stage later does not delete it or stop billing. Use the lab teardown
+for cleanup; stopping the app does not stop App Service plan or retained-data costs.
 
 After the final stage in the current session, remove the temporary parameter files:
 
