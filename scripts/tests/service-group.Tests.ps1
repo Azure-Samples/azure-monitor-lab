@@ -259,6 +259,37 @@ try {
       if (Test-Path -LiteralPath $write.BodyFile) { throw 'Request body temporary files must be removed after failure.' }
     }
   }
+  $fixture.RequestFailure = ''
+  foreach ($resource in @('group', 'member')) {
+    foreach ($outcome in @('Succeeded', 'Failed', 'Timeout')) {
+      $fixture.Responses.Clear()
+      if ($resource -eq 'member') { $fixture.Responses.Enqueue('{"properties":{"provisioningState":"Succeeded"}}') }
+      $pendingReads = if ($outcome -eq 'Timeout') { 60 } else { 2 }
+      for ($i = 0; $i -lt $pendingReads; $i++) {
+        $fixture.Responses.Enqueue('{"properties":{"provisioningState":"Provisioning"}}')
+      }
+      if ($outcome -ne 'Timeout') {
+        $fixture.Responses.Enqueue((@{ properties = @{ provisioningState = $outcome } } | ConvertTo-Json -Compress))
+      }
+      $fixture.Writes.Clear(); $fixture.Polls = 0; $fixture.Sleeps = 0
+      $caught = ''
+      try {
+        & (Join-Path $directory 'setup-health-model.ps1') -ResourceGroup $fixture.ResourceGroup `
+          -ServiceGroupId 'explicit-group' -ServiceGroupDisplayName 'Explicit display' | Out-Null
+      } catch { $caught = $_.Exception.Message }
+      $expectedWrites = if ($resource -eq 'member' -or $outcome -eq 'Succeeded') { 2 } else { 1 }
+      $expectedPolls = if ($outcome -eq 'Succeeded') { 4 } else { $pendingReads + [int]($outcome -eq 'Failed') + [int]($resource -eq 'member') }
+      if ($fixture.Writes.Count -ne $expectedWrites -or $fixture.Polls -ne $expectedPolls -or $fixture.Sleeps -ne $pendingReads) {
+        throw "The $resource must poll Provisioning without resubmitting writes or reporting early success: $outcome; $caught"
+      }
+      if (($outcome -eq 'Succeeded' -and $caught) -or
+          ($outcome -eq 'Failed' -and $caught -notlike "*ended in state 'Failed'*") -or
+          ($outcome -eq 'Timeout' -and ($caught -notlike '*within 300 seconds*' -or $caught -notlike '*Provisioning*'))) {
+        throw "The $resource must preserve terminal errors and bounded provisioning timeouts: $outcome; $caught"
+      }
+    }
+  }
+  Write-Output 'PASS: group/member Provisioning states wait for success, fail on terminal errors, and time out after 300 seconds without another PUT.'
   $authorization = "ERROR: (AuthorizationFailed) The client does not have authorization to perform action 'Microsoft.Management/serviceGroups/read' over scope '/providers/Microsoft.Management/serviceGroups/explicit-group'."
   foreach ($responses in @(
     @('ERROR: (ResourceNotFound) Not visible.', $authorization, '{"properties":{"provisioningState":"Creating"}}', '{"properties":{"provisioningState":"Succeeded"}}'),

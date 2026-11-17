@@ -155,7 +155,7 @@ function Wait-ForProvisioning {
       throw "$What returned an invalid resource response at '$Url':`n$response"
     }
     $state = $resp.properties.provisioningState
-    if ($state -isnot [string] -or $state -notin @('Accepted', 'Creating', 'Updating', 'Running', 'Succeeded', 'Failed', 'Canceled', 'Cancelled')) {
+    if ($state -isnot [string] -or $state -notin @('Accepted', 'Creating', 'Provisioning', 'Updating', 'Running', 'Succeeded', 'Failed', 'Canceled', 'Cancelled')) {
       throw "$What returned an invalid provisioningState '$state' at '$Url':`n$response"
     }
     Write-Info "$What : provisioningState = $state"
