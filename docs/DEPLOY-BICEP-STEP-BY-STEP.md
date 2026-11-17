@@ -429,8 +429,8 @@ An A+Observability Agent deployment can correlate and investigate Application In
 
 ### Stage 80 Health Model Demo deploy (optional)
 
-Run after stages A, B, C and E, using the same bootstrap inputs and temporary
-parameter files. This is the explicit step that adds the Cafe; Stage E alone does
+Run after stages A, B, C and E, using the same bootstrap subscription, tenant and
+resource group. This is the explicit step that adds the Cafe; Stage E alone does
 not create it. The subscription needs `Microsoft.CloudHealth` registration and
 preview access, and the deployer needs resource-write, custom-role/assignment
 permissions and query access to the Cafe workspace.
@@ -441,9 +441,35 @@ models use **Sweden Central**. The bootstrap deliberately does not inherit the
 core lab's `location` for this stage. When adopting an existing Cafe, set
 `healthModelDemoCafeLocation` and any existing
 `healthModelDemoCafeMonitoringReaderAssignmentName` in the private config before
-rerunning sync and the bootstrap; do not try to move existing resources in place.
+rerunning sync; do not try to move existing resources in place.
+
+Use the reloadable helper below. It reads the current Stage 80 schema, creates
+its own private parameter file, previews the deployment and requires confirmation.
+It does not depend on `$stageParameterFiles`, so it also works when continuing a
+session bootstrapped before Stage 80 was added. If config values changed, run
+`./scripts/sync-config.ps1` before loading the generated parameters.
 
 ```powershell
+$sourceParameters = (Get-Content ./infra/main.parameters.json -Raw | ConvertFrom-Json -AsHashtable).parameters
+. ./scripts/staged-deploy-helpers.ps1
+Invoke-LabStage -Stage 80-health-model-demo
+./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $sourceParameters.namePrefix.value -EnableStageE $true -EnableStageHealthModelDemo $true
+```
+
+<details>
+<summary>Raw Azure CLI alternative (requires the current Step 0 bootstrap)</summary>
+
+Run this instead of the helper, not in addition to it. An older session can lack
+the Stage 80 entry; a fresh session or deleted temporary files require rerunning
+Step 0 too. An empty entry expands the parameter argument to just `@`, which Azure
+CLI rejects with `Unable to parse parameter: @`.
+
+```powershell
+if (-not $stageParameterFiles -or
+    [string]::IsNullOrWhiteSpace($stageParameterFiles['80-health-model-demo']) -or
+    -not (Test-Path -LiteralPath $stageParameterFiles['80-health-model-demo'] -PathType Leaf)) {
+   throw 'Stage 80 parameter file is missing. Use the helper above or rerun the Step 0 bootstrap.'
+}
 az deployment group create `
    --subscription $sub --resource-group $rg --name stage-80-health-model-demo `
    --template-file ./infra/stages/80-health-model-demo.bicep `
@@ -451,6 +477,8 @@ az deployment group create `
    --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $true -EnableStageHealthModelDemo $true
 ```
+
+</details>
 
 Completion publishes the Cafe, connects `hm-lab-cafe` and `hm-amlab-flows` to the
 Control Center, stores/retrieves an ordinary order, and waits for actual

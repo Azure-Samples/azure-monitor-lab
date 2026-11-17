@@ -47,6 +47,36 @@ if ($workloadSection.IndexOf('Invoke-LabStage -Stage 10-workloads') -lt 0 -or
     $workloadSection -notmatch [regex]::Escape($helperImport)) {
   throw 'Stage B must recommend the shared prerequisite/recovery helper before its raw CLI alternative.'
 }
+$cafeSection = [regex]::Match($guide, '(?ms)^### Stage 80 Health Model Demo deploy.*?(?=^### |^## |\z)').Value
+$cafeBlocks = [regex]::Matches($cafeSection, '(?ms)^```powershell\r?\n(.*?)^```')
+$parameterReload = '$sourceParameters = (Get-Content ./infra/main.parameters.json -Raw | ConvertFrom-Json -AsHashtable).parameters'
+if ($cafeBlocks.Count -lt 2 -or
+    -not $cafeBlocks[0].Groups[1].Value.Contains($parameterReload) -or
+    -not $cafeBlocks[0].Groups[1].Value.Contains($helperImport) -or
+    -not $cafeBlocks[0].Groups[1].Value.Contains('Invoke-LabStage -Stage 80-health-model-demo') -or
+    $cafeBlocks[0].Groups[1].Value.Contains('$stageParameterFiles') -or
+    $cafeSection.IndexOf('Invoke-LabStage -Stage 80-health-model-demo') -gt $cafeSection.IndexOf('<details>')) {
+  throw 'Stage 80 must recommend reloading inputs and helpers without depending on an old parameter-file map.'
+}
+$rawCafeBlock = $cafeBlocks[1].Groups[1].Value
+$rawCafeCommand = $rawCafeBlock.IndexOf('az deployment group create')
+if ($rawCafeCommand -lt 0) { throw 'Stage 80 must retain a guarded raw CLI alternative.' }
+$rawCafeGuard = [scriptblock]::Create($rawCafeBlock.Substring(0, $rawCafeCommand))
+& {
+  foreach ($stageParameterFiles in @(
+    @{},
+    @{ '80-health-model-demo' = '' },
+    @{ '80-health-model-demo' = (Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N') + '.json')) }
+  )) {
+    $caught = ''
+    try { & $rawCafeGuard } catch { $caught = $_.Exception.Message }
+    if ($caught -notlike '*Stage 80 parameter file is missing*') {
+      throw 'Raw Stage 80 instructions must reject absent, empty and deleted parameter files before calling Azure.'
+    }
+  }
+  $stageParameterFiles = @{ '80-health-model-demo' = (Join-Path $source 'infra/stages/80-health-model-demo.json') }
+  & $rawCafeGuard
+}
 $readme = Get-Content -LiteralPath (Join-Path $source 'README.md') -Raw
 $portalPrerequisite = $readme.IndexOf('Ensure-LabNetworkWatcher')
 $portalButton = $readme.IndexOf('[![Deploy to Azure]')
@@ -377,7 +407,10 @@ try {
     if ($fixture.RecoveryCalls -ne $expectedRecoveryCalls) { throw 'Only Stage B must use customer-slot deployment recovery.' }
   }
   $fixture.Stage = '80-health-model-demo'
-  Invoke-LabStage -Stage $fixture.Stage
+  & {
+    $stageParameterFiles = @{ '00-foundation' = 'old-session-parameters.json' }
+    Invoke-LabStage -Stage $fixture.Stage
+  }
   $sourceParameters.healthModelDemoCafeLocation = @{ value = 'westeurope' }
   $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName = @{ value = [guid]::NewGuid().ToString() }
   Invoke-LabStage -Stage $fixture.Stage
