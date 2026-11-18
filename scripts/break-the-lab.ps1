@@ -8,7 +8,9 @@
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory)] [string] $ResourceGroup
+  [Parameter(Mandatory)] [string] $ResourceGroup,
+  [string] $WebAppName = $env:LAB_WEB_APP_NAME,
+  [string] $AppInsightsName
 )
 $ErrorActionPreference = 'Stop'
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Magenta }
@@ -30,16 +32,19 @@ if (Test-Path $targetFile) {
   }
 }
 
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
+$AppInsightsName = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $WebAppName -AppInsightsName $AppInsightsName
+if (-not $WebAppName) {
+  if ($AppInsightsName -cnotmatch '^appi-.+$') { throw 'Specify -WebAppName for a nonstandard Application Insights name.' }
+  $WebAppName = 'app-' + $AppInsightsName.Substring(5)
+}
+. (Join-Path $PSScriptRoot 'slot-health.ps1')
+$webAppHost = (Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $WebAppName).defaultHostName
+
 $aksName = az aks list -g $ResourceGroup --query "[0].name" -o tsv
 Assert-NativeCommandSucceeded 'Looking up the AKS cluster'
 if ([string]::IsNullOrWhiteSpace($aksName)) {
   throw "No AKS cluster found in resource group '$ResourceGroup'."
-}
-
-$webAppHost = az webapp list -g $ResourceGroup --query "[?starts_with(name,'app-')] | [0].defaultHostName" -o tsv
-Assert-NativeCommandSucceeded 'Looking up the Web App'
-if ([string]::IsNullOrWhiteSpace($webAppHost)) {
-  throw "No lab Web App found in resource group '$ResourceGroup'."
 }
 
 az aks get-credentials --resource-group $ResourceGroup --name $aksName --overwrite-existing --output none
@@ -101,5 +106,5 @@ Write-Host "Run scripts/restore-the-lab.ps1 to bring everything back." -Foregrou
 # Drop an App Insights release annotation tagged 'Incident' so the chart shows the moment.
 $annot = Join-Path $PSScriptRoot 'send-release-annotation.ps1'
 if (Test-Path $annot) {
-  & $annot -ResourceGroup $ResourceGroup -Name "break-the-lab-$(Get-Date -Format yyyyMMdd-HHmmss)" -Category 'Incident'
+  & $annot -ResourceGroup $ResourceGroup -WebAppName $WebAppName -AppInsightsName $AppInsightsName -Name "break-the-lab-$(Get-Date -Format yyyyMMdd-HHmmss)" -Category 'Incident'
 }

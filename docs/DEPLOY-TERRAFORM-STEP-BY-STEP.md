@@ -2,6 +2,57 @@
 
 This guide is for customers standardizing on Terraform while still using this lab.
 
+## Feature coverage and remaining differences
+
+Terraform orchestrates the same compiled stage templates as staged Bicep, rather
+than a separate native resource implementation. Stage A includes `Perf_Hourly_CL`;
+Stage B completion creates its hourly summary rule and stops on setup failure.
+Stage C deploys the shared dynamic VM CPU alert for the enabled VMs. Reapply the
+affected stages in an existing lab; these fixes do not alter deployed resources
+until applied.
+
+| Service/scenario | Terraform coverage and limitations |
+|---|---|
+| Core services and scenarios | A-E and automatic completion hooks. Successful ARM deployment records alone do not prove working telemetry or scenarios. |
+| Customer SQL, Service Bus and orders processor | Supported with `enable_customer_dependencies=true`, stages A/B, `enable_slot_failure_scenario=true` and explicit SQL Entra administrator inputs. Apply initializes SQL, publishes the worker and verifies readiness; Stage E adds the customer Health Model. |
+| AI, SRE Agent and Fabric | Optional stages. Completion prepares the console without AI traffic; standalone AI needs its documented setup. SRE/Fabric have standalone hooks without Stage B. |
+| Observability Agent and its investigation scenarios | **Not supported by the preview's Terraform provisioning path.** No Terraform toggle is provided; use the [Bicep route](DEPLOY-BICEP-STEP-BY-STEP.md) in a separately managed deployment. Do not mix state ownership or assume config sync deploys it. |
+| Cafe app and native health models | Supported with `enable_stage_health_model_demo=true`, after A/B/C/E. Apply publishes the Cafe, connects `hm-lab-cafe` and `hm-amlab-flows`, verifies a stored order and actual request/dependency telemetry. Hosting defaults to France Central; models use Sweden Central. |
+
+The customer feature is off by default. Configure these private inputs before
+planning (config sync also generates them from the corresponding central settings):
+
+```hcl
+enable_slot_failure_scenario = true
+enable_customer_dependencies = true
+sql_entra_admin_object_id    = "<SQL-ENTRA-ADMIN-OBJECT-ID>"
+sql_entra_admin_name         = "<SQL-ENTRA-ADMIN-NAME>"
+sql_entra_admin_type         = "Group"
+slot_app_service_plan_sku    = "S2"
+```
+
+Run apply as the configured SQL administrator (or an authorized member for a
+group). Completion needs .NET 8, Python/venv and the documented private-tunnel
+prerequisites. Enabling the feature also approves its SQL initialization and
+worker publication through the completion hook; review these effects before
+approving apply. Missing prerequisites or failed readiness fail completion.
+See the [customer backend lifecycle](../scripts/README.md#opt-in-customer-dependencies).
+
+Keep all prerequisite stage toggles enabled in later waves. For an existing Cafe,
+retain its region with `health_model_demo_cafe_location` and, when adopting a
+previous assignment, `health_model_demo_cafe_monitoring_reader_assignment_name`.
+Central config sync preserves the matching `healthModelDemoCafeLocation` and
+`healthModelDemoCafeMonitoringReaderAssignmentName` overrides from
+`advancedConfiguration.other`.
+
+Neither route automates every scenario: preview SLIs require the portal handoff;
+Fabric tenant settings, licensing, workspace monitoring and Operations Agent
+authoring can require manual work. Regional model/SKU availability, quota, preview
+registration and permissions still apply. Traffic, notifications, investigations
+and fault injection need deliberate execution. A successful apply or static
+parity test does not certify those live outcomes. Terraform destroy removes nested
+deployment records, not all deployed services; follow this guide's cleanup steps.
+
 ## 1) Strategy options
 
 Use one of these patterns.
@@ -34,7 +85,9 @@ For workshop planning and customer expectation-setting, use:
 - [STAGE-D-SECURITY-POSTURE.md](STAGE-D-SECURITY-POSTURE.md)
 - [STAGE-E-OPTIONAL-ADVANCED.md](STAGE-E-OPTIONAL-ADVANCED.md)
 - [STAGE-AI.md](STAGE-AI.md)
+- [STAGE-FABRIC.md](STAGE-FABRIC.md)
 - [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md)
+- [STAGE-HEALTH-MODEL-DEMO.md](STAGE-HEALTH-MODEL-DEMO.md) - optional `enable_stage_health_model_demo`, requiring stages A, B, C and E.
 
 ## 3) Stage model (same as Bicep)
 
@@ -45,8 +98,13 @@ For workshop planning and customer expectation-setting, use:
 5. Stage E - Optional advanced add-ons
 6. Stage AI - Optional Microsoft Foundry GenAI workload (off by default)
 7. Stage SRE Agent - Optional Azure SRE Agent (off by default)
+8. Stage Fabric - Optional Real-Time Intelligence workload (off by default)
+9. Stage 80 - Optional Cafe and lab user-flow Health Models (off by default; requires A/B/C/E)
 
-Keeping stage boundaries identical across Bicep and Terraform avoids customer confusion.
+These stages match Bicep, except Observability Agent is Bicep-only. Optional
+stages require their own toggles; enabling Stage E does not enable the Cafe.
+
+The optional `enable_slot_failure_scenario` toggle is forwarded to Stage A (customer Application Insights), Stage B (customer app and slot), Stage C (customer outage alerts), and SRE (customer-scoped rollback access). It defaults to false and requires Stage B.
 
 ## 4) Stage details (scenarios + deployed services)
 
@@ -54,13 +112,15 @@ Use this matrix in customer sessions so Terraform users see exactly what each ap
 
 | Stage | High-level scenario goals | Scenario IDs (from DEMO-SCENARIOS.md) | Azure services/resources deployed |
 |---|---|---|---|
-| Stage A - Foundation | Build the shared monitoring substrate and governance prerequisites. | 1, 5, 6, 9 (foundation portions) | Resource group, central LAW + AppInsights LAW, workspace-based App Insights, Azure Monitor Workspace, DCE baseline, core networking (VNet/NSG), baseline diagnostics and policy assignments, shared storage/event-hub/Key Vault foundations, VM Insights DCR and AzureActivity workspace transform DCR, saved queries, KQL functions, traffic-lights and cost workbooks. |
+| Stage A - Foundation | Build the shared monitoring substrate and governance prerequisites. | 1, 5, 6, 9 (foundation portions) | Central LAW + AppInsights LAW, workspace-based App Insights, Azure Monitor Workspace, DCE baseline, core networking (VNet/NSG), baseline diagnostics and policy assignments, shared storage/event-hub/Key Vault foundations, VM Insights DCR and AzureActivity workspace transform DCR, saved queries, KQL functions, traffic-lights and cost workbooks. Create the resource group separately. |
 | Stage B - Workloads and dashboards | Onboard app/compute workloads and expose observability views. | 2, 3, 4, 22, 28, 29, 30, 31, 32, 34, 35, 36, 42 | Optional Linux/Windows VMs with AMA + DCR associations + per-VM 23:00 CET/CEST auto-shutdown schedules, AKS with Container Insights + Managed Prometheus + Grafana, App Service + App Insights, Control Center runner platform with diagnostics/RBAC, custom logs, Connection Monitor, and flow logs. Completion publishes workloads and the digest-pinned runner. |
 | Stage C - Alerts and response | Introduce detection, suppression, and auto-response controls. | 7, 8, 12, 15, 17, 19, 23, 37 | Action Group with email + Logic App + optional SIEM webhook, metric/log/AKS/App alerts, AMBA, Service/Resource Health alerts, maintenance/low-severity/nightly-VM suppression rules, and VMSS predictive autoscale. |
 | Stage D - Security posture | Deliver Azure Monitor-native security detections without requiring SIEM. | 27, 47, 48, 49 | LAW granular RBAC roles + ABAC assignments, scheduled query alerts for control-plane drift, privilege-escalation watch, and exfil early warning. |
 | Stage E - Optional advanced add-ons | Add optional SOC and reliability preview capabilities. | 43, 44, 45, 46 | Optional Sentinel onboarding and analytics rule, Heartbeat data export, Managed Prometheus rule group, availability tests, health model, SLI identity prerequisites. |
 | Stage AI - Optional GenAI workload | Add a Microsoft Foundry workload that emits token/trace/cost telemetry, with AI FinOps observability. Off by default (billable models, region-limited). | - | Foundry account + project in swedencentral by default, four model deployments (gpt-5-mini chat, text-embedding-3-small, gpt-5.4, model-router), Application Insights connection, token alerts, AI FinOps query pack + workbook. When Stage E is enabled, its workload health model includes the AI tier. Optional traffic always runs as a finite background batch. |
 | Stage SRE Agent - Optional SRE integration | Provision and validate the preview SRE Agent and monitoring connectors. | 54, 55, 56, 57, 58 | Agent pinned to swedencentral, system-assigned and user-assigned identities, Azure Monitor/Application Insights/Log Analytics connectors, resource-group access and subscription-scope Monitoring Contributor. Automatic validation works with or without Stage B. Portal investigation scenarios remain separate from the Control Center MCP assistant. |
+| Stage Fabric | Stream the lab Event Hub feed into Real-Time Intelligence. | See [Fabric scenarios](STAGE-FABRIC.md) | F2 capacity in Sweden Central; automatic setup creates the workspace, Eventstream, Eventhouse and dashboard. Tenant settings/licensing and some authoring remain manual. |
+| Stage 80 - Health Model Demo | Observe the Cafe and end-to-end lab user flows. | 81 | Dedicated Node.js Cafe, Standard S1 App Service plan, private Storage, monitoring and availability tests; `hm-lab-cafe`, `hm-amlab-flows`, and model-scoped Control Center permissions. Apply publishes the app and verifies orders and telemetry. |
 
 ### Dependency and apply order
 
@@ -68,9 +128,11 @@ Use this matrix in customer sessions so Terraform users see exactly what each ap
 2. Apply Stage B next; workload resources require Stage A workspaces/network.
 3. Apply Stage C after Stage B; alert scopes/actions depend on deployed workloads.
 4. Apply Stage D after Stage A and C; security detections need Activity data and action routing.
-5. Apply Stage E last; optional features rely on the previously deployed monitor estate.
+5. Apply Stage E after A/B/C; optional features rely on the previously deployed monitor estate.
 6. Apply Stage AI any time after Stage A; it uses the Stage A Application Insights component and is independent of Stages B to E.
 7. Apply Stage SRE Agent any time after Stage A; it uses the Stage A monitoring resources and does not require workloads.
+8. Apply Stage Fabric after Stage A; setup uses its Event Hub feed. Terraform orders Fabric before Stage E when both are enabled and refreshes the optional health tier on later applies.
+9. Apply Stage 80 after A/B/C/E. Keep all four prerequisite toggles true; Stage E owns the console availability test used by the flow model.
 
 The Control Center requires Stage B. Its Foundry Playground also needs AI; its SRE MCP Assistant needs both AI and SRE. A+AI and A+SRE remain valid standalone scenarios without a Web App.
 
@@ -83,6 +145,10 @@ The Control Center requires Stage B. Its Foundry Playground also needs AI; its S
 5. Stage E: optional Sentinel/health/SLI capabilities are reachable and testable.
 6. Stage AI: Foundry model deployments exist, App Insights receives AI telemetry, and the AI FinOps queries return data after `setup-ai.ps1` runs.
 7. Stage SRE Agent: the agent is in `swedencentral`, all three connectors are configured, and identity-specific RBAC validation passes.
+8. Stage Fabric: capacity and tenant-scoped items exist, and the Eventstream ingests the Stage A Event Hub feed.
+9. Stage 80: completion publishes the Cafe, stores/retrieves an order, verifies actual request/dependency telemetry, and connects both models in Control Center > Health Model.
+
+For query validation, follow [Finding and running saved queries](DEMO-SCENARIOS.md#saved-queries): numbered queries live on the central workspace; Application Insights and AI queries require selecting the corresponding query pack in **Logs → Queries → ellipsis (`...`) → Select query packs** (or **Select query packs** / **0 selected** in Queries hub). To find the deployed dashboards, open [Azure Workbooks](https://portal.azure.com/#browse/microsoft.insights%2Fworkbooks) and filter to your lab subscription/resource group. The Traffic-Lights workbook's display title is **Azure Monitor Lab — Health Dashboard**.
 
 ## 5) Terraform scaffold (orchestrating staged ARM/Bicep)
 
@@ -97,6 +163,9 @@ This repo ships a working staged Terraform scaffold at `terraform/` and pre-comp
 | `enable_stage_e` | `infra/stages/40-optional-advanced.json` and, when Sentinel is enabled, `infra/stages/41-sentinel-content.json` |
 | `enable_stage_ai` | `infra/stages/50-ai.json` |
 | `enable_stage_sre_agent` | `infra/stages/60-sre-agent.json` |
+| `enable_stage_fabric` | `infra/stages/60-fabric.json` |
+| `enable_stage_health_model_demo` | `infra/stages/80-health-model-demo.json` |
+| `enable_slot_failure_scenario` | Upgrades Stage B App Service to S1, provisions the `broken` slot, and grants Stage SRE Agent bounded rollback access |
 
 Each toggle gates its own `azapi_resource "Microsoft.Resources/deployments@2022-09-01"` block. Disabling a flag removes its deployment record, not the nested Azure resources. Console and SRE completion also follow explicit Terraform selections; they do not require matching flags in a local central config.
 
@@ -106,11 +175,18 @@ Folder layout:
 - `terraform/variables.tf`
 - `terraform/main.tf`
 - [terraform/console.tf](../terraform/console.tf)
+- [terraform/health-model-demo.tf](../terraform/health-model-demo.tf)
 - `terraform/stages.tfvars`
 
 ### Regenerating stage templates from Bicep
 
 If you change anything under `infra/stages/*.bicep`, recompile the JSON templates that Terraform consumes:
+
+Use the pinned Bicep version `0.37.4` and preserve LF line endings in embedded
+KQL/workbook inputs, as specified by `.gitattributes`. `loadTextContent` embeds
+those bytes in ARM JSON, so stale CRLF working copies can produce template drift
+even when query behavior is unchanged. After regeneration, run
+`./scripts/tests/compiled-templates.Tests.ps1` before committing.
 
 ```powershell
 az bicep build --file infra/stages/00-foundation.bicep        --outfile infra/stages/00-foundation.json
@@ -121,6 +197,8 @@ az bicep build --file infra/stages/40-optional-advanced.bicep --outfile infra/st
 az bicep build --file infra/stages/41-sentinel-content.bicep    --outfile infra/stages/41-sentinel-content.json
 az bicep build --file infra/stages/50-ai.bicep               --outfile infra/stages/50-ai.json
 az bicep build --file infra/stages/60-sre-agent.bicep        --outfile infra/stages/60-sre-agent.json
+az bicep build --file infra/stages/60-fabric.bicep           --outfile infra/stages/60-fabric.json
+az bicep build --file infra/stages/80-health-model-demo.bicep --outfile infra/stages/80-health-model-demo.json
 ```
 
 The legacy `infra/main.bicep` continues to work unchanged for the original Bicep-only deployment path.
@@ -129,26 +207,37 @@ The legacy `infra/main.bicep` continues to work unchanged for the original Bicep
 
 Run the commands from the repository root. `-chdir=terraform` keeps Terraform in its own directory without changing the working directory for the later setup scripts.
 
+### Clone the repository
+
+Clone the published `main` branch and enter the repository before continuing. If you already have a checkout, use its repository root instead.
+
+```powershell
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
+Set-Location azure-monitor-lab
+```
+
 ### Step 1 - Confirm the existing terraform files
 
 The shipped files already contain the staged wiring described above. Open them and confirm:
 
 - `terraform/providers.tf` declares `azurerm ~> 4.0` and `azapi ~> 2.0` and threads `subscription_id` through both providers.
-- `terraform/variables.tf` declares seven stage toggles plus shared inputs (`subscription_id`, `resource_group_name` (default `rg-azure-monitor-lab`), `location`, `alert_email`, `vm_admin_password`, etc.).
-- `terraform/main.tf` declares one `data "azurerm_resource_group"` (BYO RG, looked up by name) plus seven `azapi_resource` deployments, each guarded by its own stage toggle.
-- [terraform/console.tf](../terraform/console.tf) runs console completion when B is enabled, or standalone SRE validation when SRE is enabled without B.
+- `terraform/variables.tf` and [terraform/health-model-demo.tf](../terraform/health-model-demo.tf) declare nine stage toggles plus shared inputs (`subscription_id`, `resource_group_name` (default `rg-azure-monitor-lab`), `location`, `alert_email`, `vm_admin_password`, etc.).
+- `terraform/main.tf` declares one `data "azurerm_resource_group"` (BYO RG, looked up by name) and the A-E/AI/SRE/Fabric deployments, including separate Sentinel content. [terraform/health-model-demo.tf](../terraform/health-model-demo.tf) adds Stage 80.
+- [terraform/console.tf](../terraform/console.tf) runs console completion when B is enabled, including Cafe publication when selected, or standalone SRE/Fabric setup without B.
 
 ### Step 2 - Set inputs in `terraform/stages.tfvars`
 
 **Recommended:** bootstrap from the central `lab.config.json` instead of hand-editing this file. From the repo root:
 
+Fill in `basicConfiguration` for your subscription and customize `advancedConfiguration.stageToggles` as needed. Legacy flat configs remain supported; see [config layout](REFERENCE.md#config-layout-and-compatibility).
+
 ```powershell
-Copy-Item lab.config.json.example lab.config.json
+if (-not (Test-Path ./lab.config.json)) { Copy-Item ./lab.config.json.example ./lab.config.json }
 notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdminPassword, stageToggles, ...
 ./scripts/sync-config.ps1 # regenerates terraform/stages.tfvars + .azure-target.json + infra/main.parameters.json
 ```
 
-`scripts/sync-config.ps1` writes `terraform/stages.tfvars` from your central config, including all seven stage toggles. Re-run it any time you change `lab.config.json` (e.g. to flip the next stage).
+`scripts/sync-config.ps1` writes `terraform/stages.tfvars` from your central config, including all nine supported stage toggles. Re-run it any time you change `lab.config.json` (e.g. to flip the next stage). Keep only Stage A enabled for the first wave below; optional stages remain opt-in.
 
 VM OpenTelemetry metrics default to **enabled alongside classic VM Insights**. No explicit `true` is required: omitted `enableVmOtelMetrics` in central configuration and Terraform's `enable_vm_otel_metrics` both default to `true`. An explicit `false` opts out. The value is passed **only to Stage B**; Stage A and VMSS are unchanged. See [both monitoring views, costs, and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics): setting `false` on an incremental redeployment does not delete already-deployed OTel associations.
 
@@ -169,6 +258,8 @@ enable_stage_d = false
 enable_stage_e = false
 enable_stage_ai = false   # optional Foundry GenAI workload (swedencentral)
 enable_stage_sre_agent = false
+enable_stage_fabric = false
+enable_stage_health_model_demo = false
 ```
 
 > Note: if `lab.config.json` exists, running `scripts/deploy.ps1` will auto-overwrite `terraform/stages.tfvars` on its next invocation. Pick **one** workflow (central config OR hand-edit) and stick with it.
@@ -178,11 +269,13 @@ enable_stage_sre_agent = false
 Terraform looks the RG up via data source rather than creating it, so `terraform destroy` will not nuke it. Create it once (idempotent - safe to re-run):
 
 ```powershell
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = $config.subscriptionId.ToString()
 $tenant = $config.tenantId.ToString()
 $rg = $config.resourceGroup
 $location = $config.location
+$prefix = $config.namePrefix
 az account set --subscription $sub
 $active = az account show --query '{id:id,tenantId:tenantId}' -o json | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $active.id -ne $sub -or $active.tenantId -ne $tenant) {
@@ -191,7 +284,7 @@ if ($LASTEXITCODE -ne 0 -or $active.id -ne $sub -or $active.tenantId -ne $tenant
 az group create --subscription $sub -n $rg -l $location --tags purpose=azure-monitor-lab owner=demo-lab
 ```
 
-This uses the same central config that `sync-config.ps1` projects into `terraform/stages.tfvars`. If you chose the hand-edited tfvars workflow instead, set `$sub`, `$tenant`, `$rg`, and `$location` manually to the matching values. If you omit `resource_group_name` from `stages.tfvars`, Terraform defaults to `rg-azure-monitor-lab`. If you skip this step, `terraform plan` will fail because the configured resource group was not found.
+This uses the same central config that `sync-config.ps1` projects into `terraform/stages.tfvars`. If you chose the hand-edited tfvars workflow instead, set `$sub`, `$tenant`, `$rg`, `$location`, and `$prefix` manually to the matching values (`name_prefix` defaults to `amlab`). If you omit `resource_group_name` from `stages.tfvars`, Terraform defaults to `rg-azure-monitor-lab`. If you skip this step, `terraform plan` will fail because the configured resource group was not found.
 
 ### Step 4 - Init
 
@@ -217,11 +310,18 @@ If your shell reports "Too many command line arguments", retype the command manu
 
 ### Step 6 - Enable Stage B, then C, then D, then E
 
-Flip one stage flag at a time in `stages.tfvars` and rerun plan/apply. Stage B adds both its ARM deployment and `terraform_data.console_ready`. This completion hook publishes the app and AKS workloads and automatically provisions console sign-in, health permissions, the registry/image/job, and selected agent integrations. Do not run another post-deployment command after a successful apply.
+Flip one stage flag at a time and rerun plan/apply, keeping previously enabled prerequisites true. In the central-config workflow, update `advancedConfiguration.stageToggles` and rerun `./scripts/sync-config.ps1`; otherwise edit `stages.tfvars` directly. Stage B adds its ARM deployment, `terraform_data.network_watcher`, and `terraform_data.console_ready`. Before workloads deploy, the prerequisite hook verifies the CLI subscription against the selected subscription and provider tenant and creates only a missing shared group/watcher. Existing shared resources remain unchanged and are not deleted by `terraform destroy`. The completion hook publishes the app and AKS workloads and automatically provisions console sign-in, health permissions, the registry/image/job, and selected agent integrations. Do not run another post-deployment command after a successful apply.
+
+For the optional stages below, use that same input workflow: the HCL blocks show
+the resulting tfvars values. Central-config users should change the corresponding
+`enableStageAI`, `enableStageSreAgent`, `enableStageFabric`, or
+`enableStageHealthModelDemo` flag and sync before planning.
+
+The Terraform apply approval includes missing Network Watcher creation; the hook does not prompt again. If the shared watcher is deleted outside Terraform after that hook has succeeded, restore it with `terraform -chdir=terraform apply -var-file stages.tfvars '-replace=terraform_data.network_watcher[0]'` before retrying workloads.
 
 The machine running apply needs PowerShell 7, Azure CLI signed into the selected subscription, the .NET 8 SDK, and the lab workload tools. The deployer needs Azure role-definition/assignment and Entra registration permissions. Optional AI/SRE packaging also needs Python/npm/tar. For a service-principal deployment, set `console_operator_object_ids` to approved tenant user object IDs. See [console prerequisites](../workloads/webapp/LAB-OPERATIONS.md#prerequisites).
 
-Changes to relevant stages or source files rerun initialization. Terraform passes Stage E and SRE selections explicitly, including false, so stale central config cannot enable or skip that completion work. A failed completion hook fails apply, so incomplete setup is not reported as deployment success. The hook has no destroy-time provisioner: the registry/job and other nested resources follow the lab's existing resource-group cleanup model.
+Changes to relevant stages or source files rerun initialization. Terraform passes Stage E, SRE, and Fabric selections explicitly, including false, so stale central config cannot enable or skip that completion work. Completion waits for the selected Fabric capacity even when Stage E is disabled. A failed completion hook fails apply, so incomplete setup is not reported as deployment success. The hook has no destroy-time provisioner: the registry/job and other nested resources follow the lab's existing resource-group cleanup model.
 
 ### Step 7 - Enable Stage AI (optional)
 
@@ -277,12 +377,82 @@ SRE-only completion requires PowerShell 7 and Azure CLI signed into the selected
 
 Follow [Stage SRE Agent](STAGE-SRE-AGENT.md) for optional portal investigators and Review-mode response plans. Those are separate scenarios, not prerequisites for the Control Center's MCP questions and approved operations.
 
-### Step 9 - Security stage validation
+### Step 9 - Enable Stage Fabric (optional)
+
+Stage Fabric deploys an F2 capacity pinned to `swedencentral`. It is off by default because indicative PAYG retail pricing while active is about $0.36/hour, $8.64/day, or $262.80/month, plus possible OneLake storage and other usage charges.
+
+Set the Fabric flag and a tenant user UPN in `stages.tfvars`:
+
+```hcl
+enable_stage_fabric = true
+fabric_admin_email = "<FABRIC-ADMIN-UPN>"
+```
+
+Then apply from the repository root:
+
+```powershell
+terraform -chdir=terraform plan -var-file stages.tfvars
+terraform -chdir=terraform apply -var-file stages.tfvars
+```
+
+Apply automatically runs Fabric setup after the capacity is ready, through console completion when Stage B is enabled or a standalone hook otherwise. Fabric script changes rerun completion. Workspace monitoring, Operations Agent authoring, tenant settings, and licensing still require the guided manual steps; a configured capacity is not proof of working ingestion.
+
+The setup script attempts to create the Event Hubs connection and publish the complete topology. If the tenant rejects public API connection creation, create only the connection once in Fabric and rerun `./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg`. Follow the [Fabric post-deploy checklist](STAGE-FABRIC.md#after-deployps1-checklist), then suspend F2 when the demo is idle:
+
+```powershell
+./scripts/suspend-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
+
+See [STAGE-FABRIC.md](STAGE-FABRIC.md) for permissions, setup, and demo flow.
+
+### Step 10 - Enable Stage 80 Health Model Demo (optional)
+
+This is the explicit Cafe deployment step; Stage E alone does not include it.
+Keep A/B/C/E enabled and set the demo flag in your chosen input workflow:
+
+```hcl
+enable_stage_a = true
+enable_stage_b = true
+enable_stage_c = true
+enable_stage_e = true
+enable_stage_health_model_demo = true
+health_model_demo_cafe_location = "francecentral"
+```
+
+The subscription needs `Microsoft.CloudHealth` registration and preview access.
+The deployer needs resource-write, custom-role/assignment permissions and query
+access to the Cafe workspace. Check **Standard S1** quota/capacity in the Cafe
+region separately from the core app. Its plan, Storage, networking and monitoring
+are billable. Models use **Sweden Central**, independently of the Cafe region.
+For an existing Cafe, retain its hosting region and approved existing reader-role
+assignment using the overrides described above before applying.
+
+```powershell
+terraform -chdir=terraform plan -var-file stages.tfvars
+terraform -chdir=terraform apply -var-file stages.tfvars
+terraform -chdir=terraform output -raw health_model_demo_cafe_web_app_url
+```
+
+Apply orders Stage 80 after its prerequisites and reruns console completion to
+publish the Cafe, connect `hm-lab-cafe` and `hm-amlab-flows`, store/retrieve an order,
+and verify actual `AppRequests` and `AppDependencies` records (allow up to ten
+minutes). Failed publication or verification fails apply. **Do not run a second
+post-deployment wrapper after success.** Open **Control Center > Health Model**
+and select **Lab user flows** or **Cafe tutorial**. No fault injection runs.
+See [Stage 80](STAGE-HEALTH-MODEL-DEMO.md) for publication-only repair and scenario 81.
+
+Setting the flag back to false or destroying its deployment record does not
+delete the nested Cafe/models/RBAC or stop billing. Use the lab teardown below.
+
+### Step 11 - Security stage validation
 
 After Stage D, verify Activity Log ingestion:
 
 ```powershell
-$lawId = az monitor log-analytics workspace show -g rg-azure-monitor-lab -n law-amlab-central --query customerId -o tsv
+$workspaces = az monitor log-analytics workspace list --subscription $sub -g $rg -o json | ConvertFrom-Json
+$centralLaw = $workspaces | Where-Object { $_.name -like "law-$prefix-central-*" } | Select-Object -First 1
+if (-not $centralLaw.customerId) { throw 'Central workspace not found; use the deployed name_prefix for hand-edited tfvars.' }
+$lawId = $centralLaw.customerId
 az monitor log-analytics query -w $lawId --analytics-query "AzureActivity | where TimeGenerated > ago(1d) | summarize count()" -o table
 ```
 
@@ -296,7 +466,7 @@ Migrate in this order:
 2. Workload resources (VM, AKS, App Service, Grafana)
 3. Alerting resources (action groups, metric/log/activity alerts)
 4. Security posture query alerts and RBAC
-5. Optional preview resources (health model, SLI, Sentinel)
+5. Optional resources (health model, SLI preview, Sentinel)
 
 Use `azapi_resource` for preview/control-plane resources not fully covered in `azurerm`.
 
@@ -325,10 +495,11 @@ The resource group is BYO (Terraform does not own it via data source), so `terra
 
 ### Option A - run the teardown wrapper (recommended)
 
-The wrapper cleans up Azure dependencies before deleting the resource group. This is the same cleanup path used after one-shot or staged Bicep deployments.
+The wrapper cleans up Azure dependencies before deleting the resource group. This is the same cleanup path used after one-shot or staged Bicep deployments. Normal Azure soft-delete recovery is preserved, including with `-Yes`. Add `-PurgeSoftDeletedResources` only when you want **irreversible deletion** of the lab's Key Vault secrets, Foundry/Cognitive Services account data and Log Analytics logs to release reserved names. See [permanent cleanup safeguards and permissions](../scripts/README.md#permanent-cleanup-for-same-name-redeployment).
 
 ```powershell
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = $config.subscriptionId.ToString()
 $rg = $config.resourceGroup
 az account set --subscription $sub
@@ -357,32 +528,11 @@ az group delete --subscription $sub -n $rg --yes --no-wait
 
 A few resources are subscription-scoped or live in `NetworkWatcherRG` and survive RG deletion.
 
-1. Soft-deleted Log Analytics workspaces (14-day grace period; names stay reserved until purged or expired):
+1. Log Analytics workspaces, Key Vaults and Foundry/Cognitive Services accounts can retain soft-deleted data and reserved names after either option. Explicitly run `./scripts/teardown.ps1 -ResourceGroup $rg -PurgeSoftDeletedResources` to permanently clean up only the exact lab and approved auxiliary groups, including after an earlier group deletion. Workspace cleanup recovers the workspace first, temporarily recreating its original group if needed, then permanently deletes it and includes that group in final deletion.
 
-```powershell
-# Keep the filter in PowerShell. Windows Azure CLI can strip quoted JMESPath
-# expressions before az receives them, producing "] was unexpected at this time."
-$deletedLaw = az monitor log-analytics workspace list-deleted-workspaces --subscription $sub -o json | ConvertFrom-Json
-$deletedLaw | Where-Object { $_.name -like '*amlab*' } | Format-Table
-# Permanent purge if needed:
-# az rest --method delete --url "https://management.azure.com/subscriptions/$sub/providers/Microsoft.OperationalInsights/locations/northeurope/deletedWorkspaces/<name>?api-version=2023-09-01"
-```
+2. Application Insights components use ordinary group deletion; their workspace-backed data follows the Log Analytics cleanup above. No separate component purge command is required here.
 
-2. Soft-deleted Application Insights components (also 14-day grace):
-
-```powershell
-$deletedAppInsights = az monitor app-insights component list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedAppInsights | Where-Object { $_.name -like '*amlab*' } | Format-Table
-```
-
-3. Soft-deleted Key Vault (7-day retention, `enablePurgeProtection: null` so it can be purged). Key Vault names are deterministic (`kv-${namePrefix}-${take(suffix,5)}` from `resourceGroup().id`), so redeploying to the **same RG name** before the vault is purged fails with `VaultAlreadyExists`:
-
-```powershell
-$deletedVaults = az keyvault list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedVaults | Where-Object { $_.name -like 'kv-amlab-*' } | Format-Table name, @{n='location';e={$_.properties.location}}
-# Purge before redeploying to the same RG name:
-# az keyvault purge --name <vaultName> --subscription $sub
-```
+3. Key Vault purge protection cannot be bypassed. Wait for retention expiry or omit `-PurgeSoftDeletedResources` to retain normal recovery. Wait for asynchronous resource-group deletion and normal service/DNS propagation before attempting same-name redeployment.
 
 4. NSG/VNet flow logs in `NetworkWatcherRG` (Stage B creates them outside the lab RG):
 

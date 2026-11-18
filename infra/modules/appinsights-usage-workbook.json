@@ -1,0 +1,119 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Application Insights — Customer Usage Journey\nAnalyze synthetic customers across page views, business events, funnel conversion, support escalation, A/B variants, and repeat sessions. Use the native **Users**, **Sessions**, **Events**, **Funnels**, **User Flows**, and **Cohorts** panes for the full portal experience."
+      },
+      "name": "title"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "p-timerange",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": { "durationMs": 604800000 },
+            "typeSettings": {
+              "selectableValues": [
+                { "durationMs": 3600000 },
+                { "durationMs": 86400000 },
+                { "durationMs": 604800000 },
+                { "durationMs": 2592000000 }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "p-appinsights",
+            "version": "KqlParameterItem/1.0",
+            "name": "AppInsights",
+            "label": "Application Insights",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": false,
+            "quote": "'",
+            "resourceType": "microsoft.insights/components",
+            "typeSettings": {
+              "resourceTypeFilter": { "microsoft.insights/components": true }
+            },
+            "value": "__APPINSIGHTS_ID__"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": { "json": "## Six-step conversion funnel\nThe generator intentionally mixes completion, abandonment, payment decline, support escalation, and repeat visits." },
+      "name": "funnel-heading"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let steps=datatable(Step:int,EventName:string)[1,'CustomerJourneyStarted',2,'CatalogViewed',3,'ProductSelected',4,'CartUpdated',5,'CheckoutStarted',6,'PurchaseCompleted']; let observations=customEvents | where name in ('CustomerJourneyStarted','CatalogViewed','ProductSelected','CartUpdated','CheckoutStarted','PurchaseCompleted') | extend User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | summarize Users=dcount(User),Sessions=dcount(session_Id),Events=count() by EventName=name; steps | join kind=leftouter observations on EventName | project Step,EventName,Users=coalesce(Users,0),Sessions=coalesce(Sessions,0),Events=coalesce(Events,0) | order by Step asc",
+        "size": 0,
+        "title": "Customer conversion funnel",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": [ "{AppInsights}" ],
+        "visualization": "table"
+      },
+      "name": "usage-funnel"
+    },
+    {
+      "type": 1,
+      "content": { "json": "## Cohort and experiment conversion\nCompare new, returning, and premium synthetic users across experience variants A and B." },
+      "name": "cohort-heading"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let starts=customEvents | where name=='CustomerJourneyStarted' | extend Segment=tostring(customDimensions['customer.segment']),Variant=tostring(customDimensions['journey.variant']),User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | summarize StartedUsers=dcount(User),StartedSessions=dcount(session_Id) by Segment,Variant; let purchases=customEvents | where name=='PurchaseCompleted' | extend Segment=tostring(customDimensions['customer.segment']),Variant=tostring(customDimensions['journey.variant']),User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | summarize ConvertedUsers=dcount(User),ConvertedSessions=dcount(session_Id) by Segment,Variant; starts | join kind=leftouter purchases on Segment,Variant | extend ConvertedUsers=coalesce(ConvertedUsers,0),ConvertedSessions=coalesce(ConvertedSessions,0) | extend UserConversionPct=round(100.0*ConvertedUsers/StartedUsers,1),SessionConversionPct=round(100.0*ConvertedSessions/StartedSessions,1) | project Segment,Variant,StartedUsers,ConvertedUsers,UserConversionPct,StartedSessions,ConvertedSessions,SessionConversionPct | order by Segment asc,Variant asc",
+        "size": 0,
+        "title": "Conversion by segment and A/B variant",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": [ "{AppInsights}" ],
+        "visualization": "table"
+      },
+      "name": "usage-cohorts"
+    },
+    {
+      "type": 1,
+      "content": { "json": "## Observed flow transitions\nUse this table to corroborate the native User Flows visualization and identify support detours or abandonment points." },
+      "name": "flow-heading"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let journey=union (pageViews | where name startswith 'Customer /' | project timestamp,session_Id,user_Id,user_AuthenticatedId,Event=name,ItemType='pageView'),(customEvents | where name in ('CustomerJourneyStarted','CatalogViewed','ProductSelected','CartUpdated','SupportRequested','AgentResolutionViewed','CheckoutStarted','PaymentDeclined','PurchaseCompleted') | project timestamp,session_Id,user_Id,user_AuthenticatedId,Event=name,ItemType='customEvent'); journey | extend User=iff(isempty(user_AuthenticatedId),user_Id,user_AuthenticatedId) | order by session_Id asc,timestamp asc | serialize | extend NextSession=next(session_Id),NextEvent=next(Event),NextItemType=next(ItemType) | where session_Id==NextSession | summarize Transitions=count(),Users=dcount(User) by Event,ItemType,NextEvent,NextItemType | order by Transitions desc",
+        "size": 0,
+        "title": "Customer journey transitions",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": [ "{AppInsights}" ],
+        "visualization": "table"
+      },
+      "name": "usage-flows"
+    }
+  ],
+  "styleSettings": {},
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "2914668496453868903"
+    }
+  },
+  "parameters": {
+    "capacityName": {
+      "type": "string",
+      "minLength": 3,
+      "metadata": {
+        "description": "Existing lab F2 capacity name."
+      }
+    },
+    "principalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Lab Operations runner managed identity principal ID."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Authorization/roleDefinitions",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, 'lab-console-fabric-resume-role')]",
+      "properties": {
+        "roleName": "[format('Lab Console Fabric Resume {0}', take(uniqueString(resourceGroup().id), 8))]",
+        "description": "Read and resume the lab Fabric capacity; assigned only on that capacity.",
+        "type": "CustomRole",
+        "assignableScopes": [
+          "[resourceGroup().id]"
+        ],
+        "permissions": [
+          {
+            "actions": [
+              "Microsoft.Fabric/capacities/read",
+              "Microsoft.Fabric/capacities/resume/action"
+            ],
+            "notActions": [],
+            "dataActions": [],
+            "notDataActions": []
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Fabric/capacities/{0}', parameters('capacityName'))]",
+      "name": "[guid(resourceId('Microsoft.Fabric/capacities', parameters('capacityName')), parameters('principalId'), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role')))]",
+      "properties": {
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]",
+        "principalId": "[parameters('principalId')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]"
+      ]
+    }
+  ]
+}

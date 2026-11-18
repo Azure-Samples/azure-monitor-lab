@@ -1,11 +1,13 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'cpu', 'logs', 'annotation')] [string] $Operation = $env:OP_OPERATION,
+  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure', 'slot-restore', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover')] [string] $Operation = $env:OP_OPERATION,
   [ValidatePattern('^[a-f0-9]{32}$')] [string] $RequestId = $env:OP_REQUEST_ID,
   [guid] $SubscriptionId = $env:LAB_SUBSCRIPTION_ID,
   [guid] $TenantId = $env:LAB_TENANT_ID,
   [ValidatePattern('^[a-zA-Z0-9_().-]{1,90}$')] [string] $ResourceGroup = $env:LAB_RESOURCE_GROUP,
   [ValidateRange(0, 100)] [int] $Count = [int]($env:OP_COUNT ?? '0'),
+  [ValidateRange(0, 10)] [int] $Concurrency = [int]($env:OP_CONCURRENCY ?? '0'),
+  [ValidateRange(0, 100)] [int] $RepeatUsers = [int]($env:OP_REPEAT_USERS ?? '0'),
   [AllowEmptyString()] [string] $Name = $env:OP_ANNOTATION_NAME ?? '',
   [AllowEmptyString()] [string] $Category = $env:OP_ANNOTATION_CATEGORY ?? '',
   [switch] $ValidateOnly,
@@ -17,19 +19,39 @@ $PSNativeCommandUseErrorActionPreference = $true
 if ($SubscriptionId -eq [guid]::Empty -or $TenantId -eq [guid]::Empty -or $ResourceGroup.EndsWith('.')) { throw 'Invalid target identifiers.' }
 if (-not $Operation -or -not $RequestId -or $env:LAB_RUNNER_MODE -ne 'ContainerAppsJob') { throw 'An approved Container Apps Job request is required.' }
 if ($SubscriptionId.ToString() -cne $env:LAB_SUBSCRIPTION_ID -or $TenantId.ToString() -cne $env:LAB_TENANT_ID -or $ResourceGroup -cne $env:LAB_RESOURCE_GROUP) { throw 'The requested target does not match the deployed runner environment.' }
-if ($Operation -eq 'logs') { if ($Count -lt 1) { throw 'Custom logs requires 1-100 events.' } }
-elseif ($Count -ne 0) { throw 'Event count is only allowed for custom logs.' }
+if ($env:LAB_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The Control Center Web App target is not configured.' }
+if ($env:LAB_CUSTOMER_WEB_APP_NAME -and $env:LAB_CUSTOMER_WEB_APP_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$') { throw 'The customer Web App target is invalid.' }
+if ($Operation -in @('slot-failure', 'slot-restore') -and -not $env:LAB_CUSTOMER_WEB_APP_NAME) { throw 'The customer Web App slot scenario is not enabled.' }
+$dependencyOperation = $Operation -in @('customer-sql-delay', 'customer-worker-failure', 'customer-recover')
+if ($dependencyOperation -and ($env:LAB_CUSTOMER_WORKER_NAME -notmatch '^[a-zA-Z0-9-]{2,60}$' -or
+    $env:LAB_CUSTOMER_WEB_APP_NAME -cne "$($env:LAB_WEB_APP_NAME)-customer" -or
+    $env:LAB_CUSTOMER_WORKER_NAME -ceq $env:LAB_WEB_APP_NAME -or $env:LAB_CUSTOMER_WORKER_NAME -ceq $env:LAB_CUSTOMER_WEB_APP_NAME)) {
+  throw 'The exact dedicated customer dependency targets are not configured.'
+}
+if ($Operation -eq 'logs') {
+  if ($Count -lt 1 -or $Concurrency -ne 0 -or $RepeatUsers -ne 0) { throw 'Custom logs requires 1-100 events and no browser parameters.' }
+} elseif ($Operation -eq 'usage') {
+  if ($Count -lt 1 -or $Concurrency -lt 1 -or $RepeatUsers -gt $Count) { throw 'Customer traffic requires 1-100 users, concurrency 1-10, and repeat users no greater than users.' }
+} elseif ($Count -ne 0 -or $Concurrency -ne 0 -or $RepeatUsers -ne 0) { throw 'Count and browser parameters are not allowed for this operation.' }
 if ($Operation -eq 'annotation') {
   if ($Name -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9 ._()-]{0,79}$' -or $Category -cnotin @('Deployment', 'Incident')) { throw 'Invalid release marker parameters.' }
 } elseif ($Name -or $Category) { throw 'Marker parameters are only allowed for annotations.' }
 $scripts = @{
   start = 'start-the-lab.ps1'; stop = 'stop-the-lab.ps1'; break = 'break-the-lab.ps1'; restore = 'restore-the-lab.ps1'
   ramp = 'start-ramp.ps1'; logs = 'send-custom-logs.ps1'; annotation = 'send-release-annotation.ps1'
+  usage = 'generate-usage-traffic.ps1'
   cpu = 'simulate-high-cpu.ps1'
+  'slot-failure' = 'trigger-broken-slot.ps1'
+  'slot-restore' = 'rollback-broken-slot.ps1'
+  'customer-sql-delay' = 'set-customer-dependency-fault.ps1'
+  'customer-worker-failure' = 'set-customer-dependency-fault.ps1'
+  'customer-recover' = 'set-customer-dependency-fault.ps1'
 }
 if ($ValidateOnly) { Write-Output 'Approved operation parameters validated. No Azure command executed.'; return }
 
 $repository = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'slot-health.ps1')
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
 $azureExecutable = (Get-Command az -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $kubernetesExecutable = $null
 $kubeloginExecutable = $null
@@ -42,6 +64,40 @@ $env:KUBECONFIG = Join-Path $temporary 'kubeconfig'
 $env:TEMP = $temporary
 $env:TMP = $temporary
 $commandFailure = @{ Name = $null }
+$runnerPhase = 'initialization'
+
+function Write-RunnerPhase {
+  param(
+    [Parameter(Mandatory)] [string] $Phase,
+    [Parameter(Mandatory)] [ValidateSet('started', 'retrying', 'succeeded', 'failed')] [string] $State,
+    [int] $Attempt = 1
+  )
+  Write-Information ([ordered]@{ event = 'lab-operation-phase'; requestId = $RequestId; phase = $Phase; state = $State; attempt = $Attempt } | ConvertTo-Json -Compress) -InformationAction Continue
+}
+
+function Invoke-ReadOnlyPreflight {
+  param(
+    [Parameter(Mandatory)] [string] $Phase,
+    [Parameter(Mandatory)] [scriptblock] $Action,
+    [ValidateRange(1, 3)] [int] $Attempts = 3
+  )
+  $script:runnerPhase = $Phase
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    Write-RunnerPhase -Phase $Phase -State started -Attempt $attempt
+    try {
+      $result = & $Action
+      Write-RunnerPhase -Phase $Phase -State succeeded -Attempt $attempt
+      return $result
+    } catch {
+      if ($attempt -eq $Attempts) {
+        Write-RunnerPhase -Phase $Phase -State failed -Attempt $attempt
+        throw
+      }
+      Write-RunnerPhase -Phase $Phase -State retrying -Attempt $attempt
+      Start-Sleep -Seconds ([Math]::Pow(2, $attempt))
+    }
+  }
+}
 
 function az {
   $arguments = [Collections.Generic.List[string]]::new()
@@ -59,6 +115,7 @@ function az {
     $arguments.Add('--context'); $arguments.Add($context)
   }
   if (-not $arguments.Contains('--only-show-errors')) { $arguments.Add('--only-show-errors') }
+  $commandFailure.Name = $null
   try {
     $output = & $azureExecutable @arguments 2>&1
     if ($LASTEXITCODE -ne 0) { throw 'Native command failed.' }
@@ -84,26 +141,33 @@ function kubectl {
   } catch { throw 'A Kubernetes operation failed. Diagnostic output is suppressed.' }
 }
 
-$runnerPhase = 'managed identity validation'
 try {
+  $runnerPhase = 'managed identity validation'
+  Write-RunnerPhase -Phase $runnerPhase -State started
   if (-not $env:IDENTITY_ENDPOINT -or -not $env:IDENTITY_HEADER -or -not $env:AZURE_CLIENT_ID) { throw 'The deployed runner managed identity is unavailable.' }
-  $runnerPhase = 'managed identity login'
-  $null = & $azureExecutable login --identity --client-id $env:AZURE_CLIENT_ID --output none --only-show-errors 2>&1
-  if ($LASTEXITCODE -ne 0) { throw 'Managed identity login failed.' }
-  $runnerPhase = 'account verification'
-  az account set --subscription $SubscriptionId | Out-Null
-  $account = az account show --query '{id:id,tenantId:tenantId}' --output json | ConvertFrom-Json
+  Write-RunnerPhase -Phase $runnerPhase -State succeeded
+  $null = Invoke-ReadOnlyPreflight -Phase 'managed identity login' -Action {
+    $null = & $azureExecutable login --identity --client-id $env:AZURE_CLIENT_ID --output none --only-show-errors 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Managed identity login failed.' }
+  }
+  $account = Invoke-ReadOnlyPreflight -Phase 'account verification' -Action {
+    az account set --subscription $SubscriptionId | Out-Null
+    az account show --query '{id:id,tenantId:tenantId}' --output json | ConvertFrom-Json
+  }
   if ($account.id -ne $SubscriptionId.ToString() -or $account.tenantId -ne $TenantId.ToString()) { throw 'Azure account does not match the approved target.' }
-  $runnerPhase = 'resource group verification'
-  if ((az group exists --name $ResourceGroup --output tsv) -ne 'true') { throw 'The approved resource group does not exist.' }
+  $resourceGroupExists = Invoke-ReadOnlyPreflight -Phase 'resource group verification' -Action {
+    az group exists --name $ResourceGroup --output tsv
+  }
+  if ($resourceGroupExists -ne 'true') { throw 'The approved resource group does not exist.' }
   @{ expectedSubscriptionId = $SubscriptionId.ToString(); expectedTenantId = $TenantId.ToString() } | ConvertTo-Json | Set-Content -LiteralPath $targetFile
 
   if ($Operation -in @('break', 'restore', 'ramp')) {
     $runnerPhase = 'Kubernetes preflight'
     $clusters = @(az aks list --resource-group $ResourceGroup --output json | ConvertFrom-Json)
     if ($clusters.Count -ne 1 -or $clusters[0].powerState.code -ne 'Running') { throw 'Exactly one running lab AKS cluster is required.' }
-    $apps = @(az webapp list --resource-group $ResourceGroup --output json | ConvertFrom-Json | Where-Object { $_.name -like 'app-*' })
-    if ($apps.Count -ne 1) { throw 'Exactly one app-prefixed lab web app is required.' }
+    $apps = @(Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $env:LAB_WEB_APP_NAME)
+    if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running') { throw 'The configured Control Center Web App is not running.' }
+    if ($Operation -eq 'ramp' -and [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'The ramp target Web App did not report a default host.' }
     $version = $clusters[0].currentKubernetesVersion
     if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'AKS did not report a supported Kubernetes client version.' }
     $kubectlPath = Join-Path $temporary 'kubectl'
@@ -126,14 +190,57 @@ try {
   }
   if ($Operation -in @('annotation', 'break', 'restore')) {
     $runnerPhase = 'annotation preflight'
-    $components = @(az resource list --resource-group $ResourceGroup --resource-type Microsoft.Insights/components --output json | ConvertFrom-Json)
-    if ($components.Count -ne 1) { throw 'Exactly one Application Insights component is required.' }
+    $annotationTarget = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $env:LAB_WEB_APP_NAME
   }
   if ($Operation -eq 'logs') {
     $runnerPhase = 'custom-log preflight'
     foreach ($resourceType in @('Microsoft.Insights/dataCollectionRules', 'Microsoft.Insights/dataCollectionEndpoints')) {
       $resources = @(az resource list --resource-group $ResourceGroup --resource-type $resourceType --output json | ConvertFrom-Json | Where-Object { $_.name -like '*customlogs*' })
       if ($resources.Count -ne 1) { throw 'Exactly one custom-logs DCR and endpoint are required.' }
+    }
+  }
+  if ($Operation -eq 'usage') {
+    $usageWebAppName = if ($env:LAB_CUSTOMER_WEB_APP_NAME) { $env:LAB_CUSTOMER_WEB_APP_NAME } else { $env:LAB_WEB_APP_NAME }
+    $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer web app discovery' -Action {
+      @(Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $usageWebAppName)
+    })
+    if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running' -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) { throw 'The configured customer Web App is not ready.' }
+    $customerUrl = "https://$($apps[0].defaultHostName)/customer/"
+    $null = Invoke-ReadOnlyPreflight -Phase 'customer endpoint readiness' -Action {
+      $readiness = Invoke-WebRequest -Uri $customerUrl -Method Get -MaximumRedirection 0 -SkipHttpErrorCheck -TimeoutSec 20
+      if ([int]$readiness.StatusCode -ne 200) { throw 'The customer journey endpoint is not ready.' }
+      $readiness
+    }
+  }
+  if ($Operation -in @('slot-failure', 'slot-restore', 'customer-recover')) {
+    $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer deployment slot discovery' -Action {
+      @(Get-LabWebAppMetadata -ResourceGroup $ResourceGroup -WebAppName $env:LAB_CUSTOMER_WEB_APP_NAME)
+    })
+    if ($apps.Count -ne 1 -or $apps[0].state -ne 'Running' -or [string]::IsNullOrWhiteSpace($apps[0].defaultHostName)) {
+      throw 'The configured customer Web App is not running.'
+    }
+    $slots = @(az webapp deployment slot list --resource-group $ResourceGroup --name $env:LAB_CUSTOMER_WEB_APP_NAME --output json | ConvertFrom-Json)
+    $brokenSlots = @($slots | Where-Object name -eq 'broken')
+    if ($LASTEXITCODE -ne 0 -or $brokenSlots.Count -ne 1 -or [string]::IsNullOrWhiteSpace($brokenSlots[0].defaultHostName)) {
+      throw "The opt-in customer 'broken' deployment slot is not uniquely addressable."
+    }
+    $productionStatus = Get-LabWebAppHealthStatus -HostName $apps[0].defaultHostName
+    $brokenStatus = Get-LabWebAppHealthStatus -HostName $brokenSlots[0].defaultHostName
+    if ($Operation -eq 'slot-failure' -and ($productionStatus -ne 200 -or $brokenStatus -ne 503)) {
+      throw "The customer slot is not armed (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
+    }
+    if ($Operation -in @('slot-restore', 'customer-recover') -and -not (
+      ($productionStatus -eq 503 -and $brokenStatus -eq 200) -or
+      ($productionStatus -eq 200 -and $brokenStatus -eq 503))) {
+      throw "The slot state is ambiguous (production HTTP $productionStatus, broken slot HTTP $brokenStatus). No swap was attempted."
+    }
+    if ($dependencyOperation) {
+      $runnerPhase = 'customer dependency preflight'
+      foreach ($site in @($env:LAB_CUSTOMER_WEB_APP_NAME, $env:LAB_CUSTOMER_WORKER_NAME)) {
+        $enabled = @(az webapp config appsettings list --resource-group $ResourceGroup --name $site `
+          --query "[?name=='CustomerDependencies__Enabled'].value" --output json | ConvertFrom-Json)
+        if ($enabled.Count -ne 1 -or $enabled[0] -ine 'true') { throw 'Real customer dependencies are not enabled on both exact targets.' }
+      }
     }
   }
   if ($CheckAccessOnly) {
@@ -144,18 +251,59 @@ try {
     Write-Output 'Runner prerequisites verified. No lab operation executed.'
     return
   }
-  $parameters = @{ ResourceGroup = $ResourceGroup }
+  $parameters = if ($Operation -eq 'usage') { @{} } else { @{ ResourceGroup = $ResourceGroup } }
+  if ($Operation -in @('annotation', 'break', 'restore')) {
+    $parameters.WebAppName = $env:LAB_WEB_APP_NAME
+    $parameters.AppInsightsName = $annotationTarget
+  }
   switch ($Operation) {
     'start' { $parameters.Wait = $true; $parameters.TimeoutMinutes = 20 }
-    'ramp' { $parameters.WebAppName = $apps[0].name }
+    'ramp' { $parameters.WebAppName = $apps[0].name; $parameters.WebAppHost = $apps[0].defaultHostName }
+    'usage' {
+      $parameters.BaseUrl = "https://$($apps[0].defaultHostName)"
+      $parameters.Users = $Count
+      $parameters.Concurrency = $Concurrency
+      $parameters.RepeatUsers = $RepeatUsers
+    }
     'logs' { $parameters.Count = $Count }
     'annotation' { $parameters.Name = $Name; $parameters.Category = $Category }
+    'slot-failure' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
+    'slot-restore' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
+  }
+  if ($dependencyOperation) {
+    $fault = switch ($Operation) { 'customer-sql-delay' { 'SqlDelay' }; 'customer-worker-failure' { 'WorkerFailure' }; 'customer-recover' { 'Recover' } }
+    $confirmedSite = if ($fault -eq 'WorkerFailure') { $env:LAB_CUSTOMER_WORKER_NAME } else { $env:LAB_CUSTOMER_WEB_APP_NAME }
+    $parameters.SubscriptionId = $SubscriptionId
+    $parameters.TenantId = $TenantId
+    $parameters.CustomerWebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME
+    $parameters.WorkerName = $env:LAB_CUSTOMER_WORKER_NAME
+    $parameters.Fault = $fault
+    $parameters.ConfirmTarget = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Web/sites/$confirmedSite"
+    $parameters.Confirm = $false
   }
   $runnerPhase = 'approved script execution'
+  Write-RunnerPhase -Phase $runnerPhase -State started
   Write-Output "Approved action '$Operation' is starting."
   $null = & (Join-Path $PSScriptRoot $scripts[$Operation]) @parameters *>&1
+  if ($Operation -eq 'customer-recover') {
+    $runnerPhase = 'customer slot recovery'
+    $null = & (Join-Path $PSScriptRoot 'rollback-broken-slot.ps1') -ResourceGroup $ResourceGroup -WebAppName $env:LAB_CUSTOMER_WEB_APP_NAME *>&1
+    $runnerPhase = 'customer recovery verification'
+    $null = Invoke-ReadOnlyPreflight -Phase $runnerPhase -Action {
+      $status = Get-LabWebAppHealthStatus -HostName $apps[0].defaultHostName
+      if ($status -ne 200) { throw 'Recovered customer app does not return HTTP 200.' }
+      $products = Invoke-RestMethod -Uri "https://$($apps[0].defaultHostName)/api/customer/products" -MaximumRedirection 0 -TimeoutSec 60
+      if ($products -isnot [array] -or $products.Count -ne 3) {
+        Write-Information 'Customer recovery verification requires a JSON array containing exactly three SQL catalogue products.' -InformationAction Continue
+        throw 'Recovered SQL catalogue does not contain the expected three products.'
+      }
+    }
+    Write-Output 'Customer recovery verified: HTTP 200 and three SQL catalogue products.'
+  }
   Write-Output "Approved action '$Operation' completed. Azure state and telemetry can take time to settle."
+  Write-RunnerPhase -Phase $runnerPhase -State succeeded
 } catch {
+  Write-RunnerPhase -Phase $runnerPhase -State failed
   $commandDetail = if ($commandFailure.Name) { " Azure command '$($commandFailure.Name)' failed." } else { '' }
   throw "The approved operation failed during $runnerPhase.$commandDetail No automatic rollback or retry was performed. Check the affected lab resources before another operation."
 }

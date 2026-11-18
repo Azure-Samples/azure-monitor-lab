@@ -52,6 +52,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Info($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
 function Write-Warn($msg) { Write-Host "    $msg" -ForegroundColor Yellow }
@@ -104,6 +105,7 @@ function Register-Provider {
 if (-not $Teardown) {
   Write-Step "Ensuring required resource providers are registered"
   Register-Provider -Namespace 'Microsoft.Management'
+  Register-Provider -Namespace 'Microsoft.Relationships'
 }
 
 # --- API endpoints -------------------------------------------------------------
@@ -113,32 +115,57 @@ $sgUrl   = "https://management.azure.com/providers/Microsoft.Management/serviceG
 $rgScope = "/subscriptions/$subId/resourceGroups/$ResourceGroup"
 $sgmUrl  = "https://management.azure.com$rgScope/providers/Microsoft.Relationships/serviceGroupMember/$RelationshipId" + "?api-version=$sgmApi"
 
+function Get-ServiceGroupErrorCode {
+  param([string] $Output)
+  if ($Output -match '(?ms)^\s*ERROR:\s*[^\{\r\n]*(?<body>\{.*\})\)\s*$') {
+    return ($Matches.body | ConvertFrom-Json).error.code
+  }
+  if ($Output -match '(?m)^\s*ERROR:\s*\((?<code>[A-Za-z0-9]+)\)') { return $Matches.code }
+  if ($Output -match '(?m)^\s*ERROR:\s*Not Found\s*$') { return 'NotFound' }
+  return ''
+}
+
 # --- Helper: poll provisioningState until terminal ----------------------------
 function Wait-ForProvisioning {
   param(
     [string] $Url,
     [string] $What,
-    [int]    $TimeoutSeconds = 300
+    [int]    $TimeoutSeconds = 300,
+    [switch] $RetryServiceGroupReadAuthorization
   )
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $response = ''
   while ((Get-Date) -lt $deadline) {
-    try {
-      $resp = az rest --method get --url $Url --only-show-errors 2>$null | ConvertFrom-Json
-    } catch {
-      Write-Info "$What : GET returned non-JSON, retrying..."
-      Start-Sleep -Seconds 5
-      continue
+    $response = az rest --method get --url $Url --only-show-errors -o json 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+      $errorCode = Get-ServiceGroupErrorCode -Output $response
+      $readAuthorizationPropagating = $RetryServiceGroupReadAuthorization -and
+        $errorCode -eq 'AuthorizationFailed' -and
+        $response -match '(?i)(?<![\w/])Microsoft\.Management/serviceGroups/read(?![\w/])'
+      if ($errorCode -in @('ResourceNotFound', 'ServiceGroupNameNotFound', 'NotFound') -or $readAuthorizationPropagating) {
+        Write-Info "$What : accepted write is not readable yet ($errorCode), retrying within the provisioning deadline..."
+        Start-Sleep -Seconds 5
+        continue
+      }
+      throw "Failed to GET $What at '$Url' (Azure CLI exit code $LASTEXITCODE). Details:`n$response"
+    }
+    $resp = $response | ConvertFrom-Json -NoEnumerate -ErrorAction Stop
+    if ($resp -isnot [System.Management.Automation.PSCustomObject] -or
+        $resp.properties -isnot [System.Management.Automation.PSCustomObject]) {
+      throw "$What returned an invalid resource response at '$Url':`n$response"
     }
     $state = $resp.properties.provisioningState
-    if (-not $state) { $state = '(none)' }
+    if ($state -isnot [string] -or $state -notin @('Accepted', 'Creating', 'Provisioning', 'Updating', 'Running', 'Succeeded', 'Failed', 'Canceled', 'Cancelled')) {
+      throw "$What returned an invalid provisioningState '$state' at '$Url':`n$response"
+    }
     Write-Info "$What : provisioningState = $state"
     if ($state -eq 'Succeeded') { return $resp }
-    if ($state -in 'Failed','Canceled') {
+    if ($state -in 'Failed','Canceled','Cancelled') {
       throw "$What ended in state '$state'. Response: $($resp | ConvertTo-Json -Depth 6)"
     }
     Start-Sleep -Seconds 5
   }
-  throw "$What did not reach terminal state within $TimeoutSeconds seconds."
+  throw "$What did not reach terminal state within $TimeoutSeconds seconds. Last response:`n$response"
 }
 
 # ===============================================================================
@@ -170,7 +197,6 @@ if ($Teardown) {
 
 # --- 1. Service Group (tenant scope) ------------------------------------------
 if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
-  $PSNativeCommandUseErrorActionPreference = $false
   $groupOutput = az rest --method get --url $sgUrl --only-show-errors -o json 2>&1 | Out-String
   $groupExitCode = $LASTEXITCODE
   if ($groupExitCode -eq 0) {
@@ -181,15 +207,8 @@ if ([string]::IsNullOrWhiteSpace($ServiceGroupDisplayName)) {
     }
     Write-Info "Preserving existing Service Group display name: $ServiceGroupDisplayName"
   } else {
-    $errorCode = ''
-    if ($groupOutput -match '(?ms)^\s*ERROR:\s*[^\{\r\n]*(?<body>\{.*\})\)\s*$') {
-      $errorCode = ($Matches.body | ConvertFrom-Json).error.code
-    } elseif ($groupOutput -match '(?m)^\s*ERROR:\s*\((?<code>[A-Za-z0-9]+)\)') {
-      $errorCode = $Matches.code
-    } elseif ($groupOutput -match '(?m)^\s*ERROR:\s*Not Found\s*$') {
-      $errorCode = 'NotFound'
-    }
-    if ($errorCode -notin @('ResourceNotFound', 'NotFound')) {
+    $errorCode = Get-ServiceGroupErrorCode -Output $groupOutput
+    if ($errorCode -notin @('ResourceNotFound', 'ServiceGroupNameNotFound', 'NotFound')) {
       throw "Could not read Service Group '$ServiceGroupId' (Azure CLI exit code $groupExitCode). Details:`n$groupOutput"
     }
     $ServiceGroupDisplayName = "AMLAB - $ResourceGroup"
@@ -207,17 +226,18 @@ $sgBody = @{
 } | ConvertTo-Json -Depth 6 -Compress
 
 $sgBodyFile = New-TemporaryFile
-Set-Content -Path $sgBodyFile -Value $sgBody -Encoding UTF8
 
 try {
-  az rest --method put --url $sgUrl --body "@$sgBodyFile" --only-show-errors 2>$null | Out-Null
-} catch {
-  Remove-Item $sgBodyFile -Force -ErrorAction SilentlyContinue
-  throw "Failed to PUT service group. Hint: ensure 'Microsoft.Management' is registered and that you have permissions at the tenant root. Inner: $($_.Exception.Message)"
+  Set-Content -LiteralPath $sgBodyFile -Value $sgBody -Encoding UTF8
+  $response = az rest --method put --url $sgUrl --body "@$sgBodyFile" --only-show-errors 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to PUT service group at '$sgUrl' (Azure CLI exit code $LASTEXITCODE). Details:`n$response"
+  }
+} finally {
+  Remove-Item -LiteralPath $sgBodyFile -Force
 }
-Remove-Item $sgBodyFile -Force -ErrorAction SilentlyContinue
 
-Wait-ForProvisioning -Url $sgUrl -What "Service group" -TimeoutSeconds 300 | Out-Null
+Wait-ForProvisioning -Url $sgUrl -What "Service group" -TimeoutSeconds 300 -RetryServiceGroupReadAuthorization | Out-Null
 Write-Info "Service group created."
 
 # --- 2. Service Group Member: lab RG -------------------------------------------
@@ -225,20 +245,21 @@ Write-Step "Attaching $ResourceGroup as a member of $ServiceGroupId"
 
 $sgmBody = @{
   properties = @{
-    targetId = "providers/Microsoft.Management/serviceGroups/$ServiceGroupId"
+    targetId = "/providers/Microsoft.Management/serviceGroups/$ServiceGroupId"
   }
 } | ConvertTo-Json -Depth 6 -Compress
 
 $sgmBodyFile = New-TemporaryFile
-Set-Content -Path $sgmBodyFile -Value $sgmBody -Encoding UTF8
 
 try {
-  az rest --method put --url $sgmUrl --body "@$sgmBodyFile" --only-show-errors 2>$null | Out-Null
-} catch {
-  Remove-Item $sgmBodyFile -Force -ErrorAction SilentlyContinue
-  throw "Failed to PUT service group member relationship. Inner: $($_.Exception.Message)"
+  Set-Content -LiteralPath $sgmBodyFile -Value $sgmBody -Encoding UTF8
+  $response = az rest --method put --url $sgmUrl --body "@$sgmBodyFile" --only-show-errors 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to PUT service group member relationship at '$sgmUrl' (Azure CLI exit code $LASTEXITCODE). Details:`n$response"
+  }
+} finally {
+  Remove-Item -LiteralPath $sgmBodyFile -Force
 }
-Remove-Item $sgmBodyFile -Force -ErrorAction SilentlyContinue
 
 Wait-ForProvisioning -Url $sgmUrl -What "Member relationship" -TimeoutSeconds 300 | Out-Null
 Write-Info "Member attached."

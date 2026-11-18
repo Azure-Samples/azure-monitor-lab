@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": { "isEnabled": true, "excludedTypes": "Request" }
+    }
+  },
+  "extensions": {
+    "serviceBus": {
+      "maxConcurrentCalls": 1,
+      "prefetchCount": 0,
+      "autoCompleteMessages": true,
+      "maxAutoLockRenewalDuration": "00:02:00"
+    }
+  }
+}

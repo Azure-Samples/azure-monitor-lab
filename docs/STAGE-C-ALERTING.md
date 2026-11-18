@@ -14,9 +14,9 @@
 | AMBA baseline | Azure Monitor Baseline Alerts rule set | The Microsoft-published "minimum viable monitoring" rule pack applied to VMs, web app, AKS, and App Service plan. |
 | Health alerts | `health-alerts.bicep` | Service Health + Resource Health subscription-scope alerts. Demonstrates platform-impact alerting (planned maintenance, outages). |
 | Alert processing rules | `apr-amlab-maintenance-window`, `apr-amlab-suppress-low-sev`, and conditional `apr-amlab-vm-auto-shutdown` | Remove alert actions during weekly maintenance, optionally for Sev3/Sev4, and for enabled lab VMs during their 23:00-07:00 CET/CEST shutdown window. The current rules do not add or group action groups. |
-| VMSS | `vmss-amlab` (Standard_B1s, with predictive autoscale) | Tied into the alerting story — autoscale events surface in `AzureActivity` and become demo material in Stage D. |
+| VMSS | `vmss-amlab` (`vmssSize`, with predictive autoscale) | Tied into the alerting story — autoscale events surface in `AzureActivity` and become demo material in Stage D. |
 
-> Cross-stage references: `law-amlab-central`, `appi-amlab`, `aks-amlab`, web app, app plan, both VMs are all `existing` references.
+> Cross-stage references: `law-amlab-central`, `appi-amlab-<suffix>`, `aks-amlab`, web app, app plan, both VMs are all `existing` references.
 
 ## 2) Speaker notes
 

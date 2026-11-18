@@ -3,6 +3,8 @@ param(
   [Parameter(Mandatory)] [string] $ResourceGroup,
   [Parameter(Mandatory)] [string] $SubscriptionId,
   [Parameter(Mandatory)] [string] $OutputPath,
+  [string] $WebAppName,
+  [string] $CustomerWebAppName,
   [string] $CentralLawName,
   [switch] $EnableInfrastructureHealth,
   [switch] $EnableFoundryPlayground,
@@ -14,6 +16,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
 if ($EnableInfrastructureHealth -and -not $TenantId) { throw 'Infrastructure health requires the intended tenant ID.' }
 if ($EnableSreAssistant -and (-not $TenantId -or -not $SreMcpExecutable -or -not $SreModelEndpoint -or -not $SreModelDeployment)) {
   throw 'SRE MCP assistant requires a tenant ID, MCP executable, model endpoint, and model deployment.'
@@ -27,11 +30,25 @@ if ($SreModelEndpoint) {
   }
 }
 $inventoryJson = az resource list --subscription $SubscriptionId --resource-group $ResourceGroup `
-  --query '[].{id:id,name:name,type:type}' --output json
+  --query '[].{id:id,name:name,type:type,tags:tags}' --output json
 if ($LASTEXITCODE -ne 0) { throw 'Unable to discover monitoring resources for the web console.' }
 $resources = @($inventoryJson | ConvertFrom-Json)
-$appInsights = $resources | Where-Object { $_.type -ieq 'Microsoft.Insights/components' } |
-  Sort-Object { $_.name.Length }, name | Select-Object -First 1
+$apps = @($resources | Where-Object { $_.type -ieq 'Microsoft.Web/sites' })
+$appName = if ($WebAppName) {
+  $match = @($apps | Where-Object name -ceq $WebAppName)
+  if ($match.Count -ne 1) { throw 'The configured Control Center Web App was not uniquely found in this resource group.' }
+  $WebAppName
+} elseif ($apps.Count -eq 1) {
+  $apps[0].name
+} else {
+  $null
+}
+$components = @($resources | Where-Object type -ieq 'Microsoft.Insights/components')
+$appInsights = $null
+if ($components.Count -gt 0 -or $appName) {
+  $componentName = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $appName -Components $components
+  $appInsights = $components | Where-Object name -ceq $componentName
+}
 $workspaces = @($resources | Where-Object { $_.type -ieq 'Microsoft.OperationalInsights/workspaces' })
 $workspace = if ($CentralLawName) {
   $workspaces | Where-Object { $_.name -eq $CentralLawName } | Select-Object -First 1
@@ -39,7 +56,7 @@ $workspace = if ($CentralLawName) {
   $workspaces | Where-Object { $_.name -like '*central*' } | Select-Object -First 1
 }
 $grafana = $resources | Where-Object { $_.type -ieq 'Microsoft.Dashboard/grafana' } | Select-Object -First 1
-$links = [ordered]@{ ApplicationInsights = $null; Logs = $null; Workbook = $null; Grafana = $null }
+$links = [ordered]@{ ApplicationInsights = $null; Logs = $null; Workbook = $null; Grafana = $null; CustomerApplication = $null }
 if ($appInsights) { $links.ApplicationInsights = "https://portal.azure.com/#resource$($appInsights.id)/overview" }
 if ($workspace) { $links.Logs = "https://portal.azure.com/#resource$($workspace.id)/logs" }
 
@@ -73,7 +90,16 @@ if ($grafana) {
 $sreAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.App/agents' })
 $observabilityAgents = @($resources | Where-Object { $_.type -ieq 'Microsoft.Monitor/observabilityAgents' })
 $projects = @($resources | Where-Object { $_.type -ieq 'Microsoft.CognitiveServices/accounts/projects' })
-$apps = @($resources | Where-Object { $_.type -ieq 'Microsoft.Web/sites' })
+$customerAppName = if ($CustomerWebAppName) { $CustomerWebAppName } elseif ($WebAppName) { "$WebAppName-customer" } else { $null }
+if ($customerAppName) {
+  $customerHost = az webapp show --subscription $SubscriptionId --resource-group $ResourceGroup --name $customerAppName `
+    --query defaultHostName --output tsv --only-show-errors
+  if ($LASTEXITCODE -eq 0 -and $customerHost) {
+    $links.CustomerApplication = "https://$customerHost/"
+  } elseif ($CustomerWebAppName) {
+    throw "The configured customer Web App '$customerAppName' could not be resolved."
+  }
+}
 $links.SreAgent = $null
 $links.ObservabilityAgent = $null
 $links.Foundry = $null
@@ -109,11 +135,30 @@ if ($projects.Count -eq 1) {
 } elseif ($projects.Count -gt 1) {
   Write-Warning 'Multiple Foundry projects found. Configure LabConsole:Foundry:ProjectEndpoint explicitly.'
 }
-$appName = if ($apps.Count -eq 1) { $apps[0].name } else { $null }
 if ($EnableSreAssistant -and $sreAgents.Count -ne 1) { throw 'SRE MCP assistant requires exactly one discovered agent.' }
+$customerWorkerName = ''
+$links.CustomerHealthModel = $null
+if ($CustomerWebAppName -and @($apps | Where-Object name -like 'func-*-orders').Count) {
+  $dependency = az deployment group show --subscription $SubscriptionId --resource-group $ResourceGroup --name customer-dependencies `
+    --query properties.outputs.customerDependencies.value --output json --only-show-errors | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve customer dependency targets for the fault menu.' }
+  $expectedWorkerId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Web/sites/$($dependency.workerName)"
+  if ($dependency.enabled -eq $true -and $dependency.workerId -ieq $expectedWorkerId -and
+      @($apps | Where-Object id -ieq $expectedWorkerId).Count -eq 1) {
+    $customerWorkerName = $dependency.workerName
+    $model = @($resources | Where-Object { $_.type -ieq 'Microsoft.CloudHealth/healthmodels' -and $_.name -ceq 'hm-amlab-customer' })
+    if ($model.Count -eq 1) {
+      $member = az rest --subscription $SubscriptionId --method get --url "https://management.azure.com$($model[0].id)/entities/customer-webapp?api-version=2026-11-01" `
+        --query properties.signalGroups.azureResource.azureResourceId --output tsv --only-show-errors
+      $expectedCustomerId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Web/sites/$CustomerWebAppName"
+      if ($LASTEXITCODE -ne 0 -or $member -ine $expectedCustomerId) { throw 'Customer Health Model membership could not be verified for this exact application.' }
+      $links.CustomerHealthModel = "https://portal.azure.com/#resource$($model[0].id)/overview"
+    }
+  } else { throw 'Customer dependency outputs do not match the discovered exact worker target.' }
+}
 @{ LabConsole = @{
   Links = $links; ResourceGroup = $ResourceGroup; AppService = $appName
-  Operations = @{ Enabled = $false; SubscriptionId = $SubscriptionId; TenantId = $TenantId }
+  Operations = @{ Enabled = $false; SubscriptionId = $SubscriptionId; TenantId = $TenantId; CustomerWorkerName = $customerWorkerName; CustomerDependenciesEnabled = $false }
   Health = @{
     Enabled = [bool]$EnableInfrastructureHealth; SubscriptionId = $SubscriptionId; TenantId = $TenantId
     CentralWorkspaceResourceId = $(if ($workspace) { $workspace.id } else { $null })

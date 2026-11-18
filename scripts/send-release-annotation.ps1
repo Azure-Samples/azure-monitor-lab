@@ -19,6 +19,12 @@
 .PARAMETER Name
   Annotation display name.
 
+.PARAMETER WebAppName
+  Exact Control Center Web App name (app-<suffix>); resolves appi-<suffix>.
+
+.PARAMETER AppInsightsName
+  Explicit non-customer component name. Must agree with WebAppName when supplied.
+
 .EXAMPLE
   ./scripts/send-release-annotation.ps1 -Name "v1.2 hotfix"
   ./scripts/send-release-annotation.ps1 -Name "Lab broken intentionally" -Category Incident
@@ -27,7 +33,9 @@
 param(
   [string] $ResourceGroup = 'rg-azure-monitor-lab',
   [string] $Name          = "release-$(Get-Date -Format yyyyMMdd-HHmmss)",
-  [string] $Category      = 'Deployment'
+  [string] $Category      = 'Deployment',
+  [string] $WebAppName    = $env:LAB_WEB_APP_NAME,
+  [string] $AppInsightsName
 )
 $ErrorActionPreference = 'Stop'
 
@@ -37,8 +45,8 @@ if (Test-Path $targetFile) {
   az account set --subscription $target.expectedSubscriptionId | Out-Null
 }
 
-$appi = az resource list -g $ResourceGroup --resource-type 'Microsoft.Insights/components' --query '[0].name' -o tsv
-if (-not $appi) { throw "App Insights not found in $ResourceGroup" }
+. (Join-Path $PSScriptRoot 'app-insights-target.ps1')
+$appi = Resolve-LabAppInsightsName -ResourceGroup $ResourceGroup -WebAppName $WebAppName -AppInsightsName $AppInsightsName
 
 $subId = az account show --query id -o tsv
 $annotationId = [guid]::NewGuid().ToString()

@@ -54,6 +54,32 @@ contributing:
   pull request against it, describing the change and how you validated it. Do not
   target `main` directly.
 
+## Deployment rehearsal agents (VS Code)
+
+Select one of these workspace agents in VS Code Chat to test deployment paths
+other than the scripted one-shot:
+
+- **[Lab Portal Deployment Test](agents/lab-portal-deployment-test.agent.md)**:
+  exercises the actual Deploy to Azure wizard and PowerShell Cloud Shell
+  completion. Requires browser automation tools enabled in the chat session;
+  otherwise it requests manual assistance and records the unverified UI steps.
+  The README button tests published `main`, not unpublished checkout changes.
+- **[Lab Staged Deployment Test](agents/lab-staged-deployment-test.agent.md)**:
+  rehearses progressive Bicep or Terraform stages, per-stage previews,
+  completion scripts, and acceptance checks. Bicep is the recommended starting
+  route; optional integrations require explicit selection.
+
+Start with "Prepare a test plan only; do not deploy." For a live rehearsal,
+specify the deployment route and selected stages/features, then confirm a fresh
+test resource group and prefix separate from your existing lab. Both agents
+require approval for provisioning, permission-changing completion steps, and
+cleanup; neither substitutes `scripts/deploy.ps1` for the path under test.
+They report evidence and incomplete checks rather than treating infrastructure
+success as an end-to-end pass. These are guided, potentially billable live tests,
+not deterministic CI checks, and agent instructions do not replace tool approval
+or Azure permissions. No model or machine-specific MCP configuration is required
+by the agent files.
+
 ## Branch promotion
 
 The release route is `dev -> integration -> main`. Feature branches also target

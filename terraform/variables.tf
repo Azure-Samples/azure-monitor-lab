@@ -7,6 +7,10 @@ variable "resource_group_name" {
 }
 
 variable "location" { type = string }
+variable "app_service_location" {
+  type    = string
+  default = "westeurope"
+}
 variable "alert_email" { type = string }
 variable "vm_admin_password" {
   type      = string
@@ -25,7 +29,7 @@ variable "owner_tag" {
 
 variable "daily_cap_gb" {
   type    = number
-  default = 1
+  default = 3
 }
 
 variable "enable_law_replication" {
@@ -62,17 +66,22 @@ variable "enable_vm_otel_metrics" {
 
 variable "vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_EC2as_v5"
 }
 
 variable "aks_node_vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_EC4as_v5"
+}
+
+variable "vmss_size" {
+  type    = string
+  default = "Standard_EC2as_v5"
 }
 
 variable "aks_node_count" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "grafana_admin_object_id" {
@@ -122,10 +131,75 @@ variable "enable_stage_ai" {
   default = false
 }
 
+variable "enable_stage_fabric" {
+  type        = bool
+  default     = false
+  description = "Deploy the optional Microsoft Fabric F2 capacity in swedencentral. Indicative PAYG retail cost while active: about $0.36/hour, $8.64/day, or $262.80/month."
+}
+
+variable "fabric_admin_email" {
+  type        = string
+  default     = ""
+  description = "Microsoft Entra user UPN that administers the Fabric capacity. Must be a user in the deployment tenant."
+
+  validation {
+    condition     = !var.enable_stage_fabric || can(regex("^[^@\\s]+@[^@\\s]+$", var.fabric_admin_email))
+    error_message = "fabric_admin_email must be a Microsoft Entra user UPN in the deployment tenant when enable_stage_fabric is true."
+  }
+}
+
 variable "enable_stage_sre_agent" {
   type        = bool
   default     = false
   description = "Deploy the optional preview Azure SRE Agent stage. The agent is hard pinned to swedencentral and can incur billable usage."
+}
+
+variable "enable_slot_failure_scenario" {
+  type        = bool
+  default     = false
+  description = "Provision the configurable Standard App Service plan and a preloaded broken slot for the opt-in SRE rollback scenario."
+}
+
+variable "enable_customer_dependencies" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "Add Entra-only SQL, Service Bus and the orders processor to the customer slot scenario. Requires stages A/B, the slot scenario, and an explicit SQL administrator. Apply also initializes SQL and publishes/verifies the worker."
+}
+
+variable "sql_entra_admin_object_id" {
+  type    = string
+  default = ""
+
+  validation {
+    condition     = var.sql_entra_admin_object_id == "" || (can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.sql_entra_admin_object_id)) && var.sql_entra_admin_object_id != "00000000-0000-0000-0000-000000000000")
+    error_message = "sql_entra_admin_object_id must be empty or a nonzero Microsoft Entra object ID in GUID format."
+  }
+}
+
+variable "sql_entra_admin_name" {
+  type    = string
+  default = ""
+}
+
+variable "sql_entra_admin_type" {
+  type    = string
+  default = "Group"
+
+  validation {
+    condition     = contains(["User", "Group", "Application"], var.sql_entra_admin_type)
+    error_message = "sql_entra_admin_type must be User, Group, or Application."
+  }
+}
+
+variable "slot_app_service_plan_sku" {
+  type    = string
+  default = "S2"
+
+  validation {
+    condition     = contains(["S1", "S2", "S3"], var.slot_app_service_plan_sku)
+    error_message = "slot_app_service_plan_sku must be S1, S2, or S3."
+  }
 }
 
 variable "ai_location" {

@@ -11,6 +11,9 @@
   the documented Managed Prometheus metrics are flowing, and prints the exact
   values needed to create the sample SLIs in the Azure portal.
 
+  The lab's unique id-sli-<prefix> identity determines the matching
+  amw-<prefix> workspace, including deployments without a local config.
+
   The script is idempotent. Re-running it verifies the same prerequisites and
   reuses existing role assignments.
 
@@ -98,14 +101,24 @@ if (-not $serviceGroup -or $serviceGroup.properties.provisioningState -ne 'Succe
 Write-Info "Service group state: $($serviceGroup.properties.provisioningState)"
 
 Write-Step "Locating SLI identity and Azure Monitor Workspace in '$ResourceGroup'"
-$uami = az identity show -g $ResourceGroup -n id-sli-amlab --query '{id:id,clientId:clientId,principalId:principalId}' -o json 2>$null | ConvertFrom-Json
-if (-not $uami.id -or -not $uami.clientId -or -not $uami.principalId) {
-  throw "User-assigned identity 'id-sli-amlab' was not found or is incomplete in '$ResourceGroup'."
+$identities = @(az identity list --subscription $SubscriptionId -g $ResourceGroup `
+  --query "[?starts_with(name, 'id-sli-')]" -o json | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0) {
+  throw "Could not list SLI identities in '$ResourceGroup'."
 }
+if ($identities.Count -ne 1) {
+  throw "Expected exactly one SLI identity named 'id-sli-<prefix>' in '$ResourceGroup'; found $($identities.Count)."
+}
+$uami = $identities[0]
+if (-not $uami.id -or -not $uami.clientId -or -not $uami.principalId -or
+    $uami.name -notmatch '^id-sli-(.+)$') {
+  throw "The SLI identity in '$ResourceGroup' is incomplete or has an invalid name."
+}
+$amwName = "amw-$($Matches[1])"
 
-$amw = az resource show -g $ResourceGroup -n amw-amlab --resource-type Microsoft.Monitor/accounts -o json 2>$null | ConvertFrom-Json
-if (-not $amw.id) {
-  throw "Azure Monitor Workspace 'amw-amlab' was not found in '$ResourceGroup'."
+$amw = az resource show --subscription $SubscriptionId -g $ResourceGroup -n $amwName --resource-type Microsoft.Monitor/accounts -o json | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or -not $amw.id) {
+  throw "Azure Monitor Workspace '$amwName' was not found in '$ResourceGroup'."
 }
 Write-Info "UAMI: $($uami.id)"
 Write-Info "AMW : $($amw.id)"
@@ -113,7 +126,7 @@ Write-Info "AMW : $($amw.id)"
 Write-Step 'Ensuring SLI source and destination permissions'
 $ingestion = $amw.properties.defaultIngestionSettings
 if (-not $ingestion.dataCollectionRuleResourceId) {
-  throw "Azure Monitor Workspace 'amw-amlab' has no default ingestion DCR."
+  throw "Azure Monitor Workspace '$amwName' has no default ingestion DCR."
 }
 
 $monitoringReaderRoleId = '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
@@ -150,7 +163,7 @@ foreach ($requirement in $roleRequirements) {
 Write-Step 'Verifying Managed Prometheus source metrics'
 $queryEndpoint = $amw.properties.metrics.prometheusQueryEndpoint
 if (-not $queryEndpoint) {
-  throw "Azure Monitor Workspace 'amw-amlab' has no Prometheus query endpoint."
+  throw "Azure Monitor Workspace '$amwName' has no Prometheus query endpoint."
 }
 
 function Get-PrometheusQueryToken {

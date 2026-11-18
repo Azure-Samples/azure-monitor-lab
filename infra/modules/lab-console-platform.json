@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "11234850322725984323"
+      "templateHash": "15909413640873189571"
     }
   },
   "parameters": {
@@ -44,6 +44,34 @@
       "maxLength": 2,
       "metadata": {
         "description": "Names of the two demo VMs allowed to receive the CPU simulation Run Command. Empty when the pair is not deployed."
+      }
+    },
+    "enableSlotFailureScenario": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Allow the independent runner to trigger the opt-in broken-slot swap."
+      }
+    },
+    "customerWebAppName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Customer-facing Web App targeted by the opt-in broken-slot operation."
+      }
+    },
+    "customerWorkerName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Exact customer orders worker name. Empty disables dependency fault permissions."
+      }
+    },
+    "fabricCapacityName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Existing lab F2 capacity name. Empty disables capacity resume permissions."
       }
     }
   },
@@ -86,30 +114,32 @@
         ],
         "permissions": [
           {
+            "actions": "[concat(createArray('Microsoft.Resources/subscriptions/resourceGroups/read', 'Microsoft.Resources/subscriptions/resources/read', 'Microsoft.Compute/virtualMachines/read', 'Microsoft.Compute/virtualMachines/instanceView/read', 'Microsoft.Compute/virtualMachines/start/action', 'Microsoft.Compute/virtualMachines/deallocate/action', 'Microsoft.Compute/virtualMachineScaleSets/read', 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read', 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read', 'Microsoft.Compute/virtualMachineScaleSets/start/action', 'Microsoft.Compute/virtualMachineScaleSets/deallocate/action', 'Microsoft.ContainerService/managedClusters/read', 'Microsoft.ContainerService/managedClusters/start/action', 'Microsoft.ContainerService/managedClusters/stop/action', 'Microsoft.ContainerService/managedClusters/listClusterUserCredential/action', 'Microsoft.Web/sites/read', 'Microsoft.Web/sites/start/action', 'Microsoft.Web/sites/stop/action', 'Microsoft.Insights/components/read', 'Microsoft.Insights/components/Annotations/read', 'Microsoft.Insights/components/Annotations/write', 'Microsoft.Insights/dataCollectionRules/read', 'Microsoft.Insights/dataCollectionEndpoints/read'), createArray())]",
+            "notActions": [],
+            "dataActions": [],
+            "notDataActions": []
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[parameters('enableSlotFailureScenario')]",
+      "type": "Microsoft.Authorization/roleDefinitions",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, 'lab-console-slot-scenario-role')]",
+      "properties": {
+        "roleName": "[format('Lab Console Customer Slot Operation {0}', take(variables('suffix'), 8))]",
+        "description": "Read and swap deployment slots only on the dedicated customer Web App.",
+        "type": "CustomRole",
+        "assignableScopes": [
+          "[resourceGroup().id]"
+        ],
+        "permissions": [
+          {
             "actions": [
-              "Microsoft.Resources/subscriptions/resourceGroups/read",
-              "Microsoft.Resources/subscriptions/resources/read",
-              "Microsoft.Compute/virtualMachines/read",
-              "Microsoft.Compute/virtualMachines/instanceView/read",
-              "Microsoft.Compute/virtualMachines/start/action",
-              "Microsoft.Compute/virtualMachines/deallocate/action",
-              "Microsoft.Compute/virtualMachineScaleSets/read",
-              "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
-              "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/instanceView/read",
-              "Microsoft.Compute/virtualMachineScaleSets/start/action",
-              "Microsoft.Compute/virtualMachineScaleSets/deallocate/action",
-              "Microsoft.ContainerService/managedClusters/read",
-              "Microsoft.ContainerService/managedClusters/start/action",
-              "Microsoft.ContainerService/managedClusters/stop/action",
-              "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
               "Microsoft.Web/sites/read",
-              "Microsoft.Web/sites/start/action",
-              "Microsoft.Web/sites/stop/action",
-              "Microsoft.Insights/components/read",
-              "Microsoft.Insights/components/Annotations/read",
-              "Microsoft.Insights/components/Annotations/write",
-              "Microsoft.Insights/dataCollectionRules/read",
-              "Microsoft.Insights/dataCollectionEndpoints/read"
+              "Microsoft.Web/sites/slots/read",
+              "Microsoft.Web/sites/slots/slotsswap/action"
             ],
             "notActions": [],
             "dataActions": [],
@@ -117,6 +147,83 @@
           }
         ]
       }
+    },
+    {
+      "condition": "[parameters('enableSlotFailureScenario')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+      "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role')), 'customer-webapp-scope')]",
+      "properties": {
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role'))]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]",
+        "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
+      "type": "Microsoft.Authorization/roleDefinitions",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, 'lab-console-customer-fault-role')]",
+      "properties": {
+        "roleName": "[format('Lab Console Customer Fault Settings {0}', take(variables('suffix'), 8))]",
+        "description": "App-setting updates and restarts on only the dedicated customer app and orders worker. App settings cannot be property-scoped by Azure RBAC.",
+        "type": "CustomRole",
+        "assignableScopes": [
+          "[resourceGroup().id]"
+        ],
+        "permissions": [
+          {
+            "actions": [
+              "Microsoft.Web/sites/config/list/action",
+              "Microsoft.Web/sites/config/write",
+              "Microsoft.Web/sites/restart/action",
+              "Microsoft.Web/sites/slots/config/list/action",
+              "Microsoft.Web/sites/slots/config/write",
+              "Microsoft.Web/sites/slots/restart/action"
+            ],
+            "notActions": [],
+            "dataActions": [],
+            "notDataActions": []
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+      "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), variables('identityName'), 'customer-fault-settings')]",
+      "properties": {
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+        "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWorkerName'))]",
+      "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWorkerName')), variables('identityName'), 'customer-fault-settings')]",
+      "properties": {
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
+        "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
+      ]
     },
     {
       "type": "Microsoft.Authorization/roleDefinitions",
@@ -6999,6 +7106,95 @@
                 "principalId": "[parameters('principalId')]",
                 "principalType": "ServicePrincipal"
               }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'console-runner-identity')]"
+      ]
+    },
+    {
+      "condition": "[not(empty(parameters('fabricCapacityName')))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "console-runner-fabric-access",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "capacityName": {
+            "value": "[parameters('fabricCapacityName')]"
+          },
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "2914668496453868903"
+            }
+          },
+          "parameters": {
+            "capacityName": {
+              "type": "string",
+              "minLength": 3,
+              "metadata": {
+                "description": "Existing lab F2 capacity name."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Lab Operations runner managed identity principal ID."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceGroup().id, 'lab-console-fabric-resume-role')]",
+              "properties": {
+                "roleName": "[format('Lab Console Fabric Resume {0}', take(uniqueString(resourceGroup().id), 8))]",
+                "description": "Read and resume the lab Fabric capacity; assigned only on that capacity.",
+                "type": "CustomRole",
+                "assignableScopes": [
+                  "[resourceGroup().id]"
+                ],
+                "permissions": [
+                  {
+                    "actions": [
+                      "Microsoft.Fabric/capacities/read",
+                      "Microsoft.Fabric/capacities/resume/action"
+                    ],
+                    "notActions": [],
+                    "dataActions": [],
+                    "notDataActions": []
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Fabric/capacities/{0}', parameters('capacityName'))]",
+              "name": "[guid(resourceId('Microsoft.Fabric/capacities', parameters('capacityName')), parameters('principalId'), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role')))]",
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]"
+              ]
             }
           ]
         }

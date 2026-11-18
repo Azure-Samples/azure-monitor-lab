@@ -44,6 +44,15 @@ $iconPaths = @{
   # Azure Portal resource icon, pinned to the portal-icon catalog revision.
   obs      = 'https://raw.githubusercontent.com/maskati/azure-icons/9ced4c629a4edfd2a31946e320ed0c309381787e/svg/Microsoft_Azure_Monitoring_Alerts/ObservabilityAgent.svg'
   copilot  = 'local:github/GitHubCopilotCLI.png'
+  fabric   = 'local:azure/Fabric.png'
+  eventstream = 'local:azure/Eventstream.svg'
+  customerApp = 'local:azure/Customer_App_Service.svg'
+  servicebus = 'local:azure/Customer_Service_Bus.svg'
+  function = 'local:azure/Customer_Function_App.svg'
+  sql = 'local:azure/Customer_SQL_Database.svg'
+  # Fabric item icons from FabricTools/fabric-icons at 49d61539de036c5b17ab8cd20f59835286476f52.
+  eventhouse = 'local:azure/Fabric_Eventhouse.svg'
+  dashboard = 'local:azure/Fabric_Real_Time_Dashboard.svg'
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -85,6 +94,8 @@ $nodes = [ordered]@{
   APP   = @{ col = 'WL';   i = 3; lines = @('.NET 8 App Service','Control Center + telemetry'); icons = @('app') }
   NET   = @{ col = 'WL';   i = 4; lines = @('VNet / NSG','Connection Monitor'); icons = @('net') }
   FDRY  = @{ col = 'WL';   i = 5; lines = @('GenAI · Foundry + agents','chat/embed/router · optional'); icons = @('foundry','agents','router') }
+  CUSTOMER = @{ col = 'WL'; i = 6; height = 110; lines = @('Customer application','App Service · Service Bus · Function · SQL'); icons = @('customerApp','servicebus','function','sql') }
+  FAB   = @{ col = 'WL'; top = 900; lines = @('Fabric F2 capacity','swedencentral · opt-in / billable'); icons = @('fabric') }
 
   AMA   = @{ col = 'COL';  i = 0; lines = @('Azure Monitor Agent','DCRs · DCE'); icons = @('ama') }
   OTEL  = @{ col = 'COL';  i = 1; lines = @('OpenTelemetry','Standalone VM metrics via AMA'); icons = @('otel') }
@@ -110,6 +121,11 @@ $nodes = [ordered]@{
   SENT  = @{ col = 'USE';  i = 6; lines = @('Microsoft Sentinel');               icons = @('sent') }
   HEALTH = @{ col = 'USE'; i = 7; lines = @('Health Models','workload health');  icons = @('health') }
   COPILOT = @{ col = 'USE'; i = 8; lines = @('GitHub Copilot CLI','guided investigation'); icons = @('copilot') }
+
+  EVSTR = @{ col = 'COL'; top = 1180; lines = @('Fabric Eventstream','Event Hubs source'); icons = @('eventstream') }
+  EH = @{ col = 'DATA'; top = 1180; lines = @('Eventhouse / KQL database','streamed and mirrored analytics'); icons = @('eventhouse') }
+  RTD = @{ col = 'USE'; top = 1180; lines = @('Real-Time Dashboard','guided portal setup'); icons = @('dashboard') }
+  DELTA = @{ col = 'COL'; top = 1310; lines = @('Mirrored Azure Monitor','Delta Lake · read-only shortcuts'); icons = @('fabric') }
 }
 
 # --- edges (source -> target) ---------------------------------------------------------
@@ -117,21 +133,22 @@ $edges = @(
   @('VM','AMA'), @('VMSS','AMA'), @('AKS','AMA'), @('NET','FLOW'),
   @('AMA','LAW'), @('AMA','AMW'), @('AMA','OTEL'), @('OTEL','AMW'), @('FLOW','PLAT'), @('POL','LAW'), @('LAW','QUERY'), @('AI','LAWAI'), @('PLAT','LAW'),
   @('LAW','WB'), @('LAWAI','WB'), @('AMW','GRAF'), @('LAW','AG'), @('AI','AG'), @('AI','OBS'), @('AG','OBS'), @('OAMW','OBS'), @('AG','SRE'), @('AG','LOGIC'), @('LAW','SENT'), @('LAW','HEALTH'), @('LAW','COPILOT'),
-  @('ACR','JOB')
+  @('ACR','JOB'), @('CUSTOMER','AI'), @('PLAT','EVSTR'), @('EVSTR','EH'), @('EH','RTD')
 )
 
 # --- geometry -------------------------------------------------------------------------
-$W = 1500; $H = 1100
+$W = 1500; $H = 1470
 $grpY = 130; $grpH = 940
 $cellH = 82; $cellStep = 100; $firstTop = 168
-function NodeTop($n) { $firstTop + ($n.i * $cellStep) }
+function NodeTop($n) { if ($n.ContainsKey('top')) { $n.top } else { $firstTop + ($n.i * $cellStep) } }
+function NodeHeight($n) { if ($n.ContainsKey('height')) { $n.height } else { $cellH } }
 function ColOf($n)   { $cols[$n.col] }
 function Esc($s)     { $s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' }
 
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 $W $H' font-family='Segoe UI, Helvetica, Arial, sans-serif' role='img' aria-labelledby='architecture-title architecture-description'>")
 [void]$sb.AppendLine("<title id='architecture-title'>Azure Monitor Lab architecture</title>")
-[void]$sb.AppendLine("<desc id='architecture-description'>Workloads, telemetry collection, dashboards, and response. Azure Monitor Agent sends standalone VM OpenTelemetry metrics to the Azure Monitor workspace alongside classic Log Analytics monitoring. Application Insights and alerts feed Azure Copilot Observability Agent, which stores correlated issues in a dedicated Azure Monitor workspace. GitHub Copilot CLI consumes central monitoring context for guided investigations. Azure Container Registry supplies a digest-pinned image to the Container Apps Job used for approved lab operations.</desc>")
+[void]$sb.AppendLine("<desc id='architecture-description'>Azure Monitor retains operational logs, metrics, and traces from VMs, AKS, the Control Center, and the customer application (App Service, Service Bus, Function App, SQL Database). OpenTelemetry VM metrics, Observability Agent issues, SRE Agent, and Copilot CLI share this operational monitoring architecture. ACR supplies the approved Container Apps Job image. Fabric F2 capacity is an Azure resource; outside the resource group, Eventstream consumes the diagnostic Event Hub into Eventhouse and KQL for a guided Real-Time Dashboard. Azure Monitor mirroring (preview) also exposes central Log Analytics Delta Lake tables through read-only OneLake shortcuts in Fabric. Data stays in Azure Monitor storage; no copy is created in Fabric.</desc>")
 [void]$sb.AppendLine("<rect x='0' y='0' width='$W' height='$H' rx='18' fill='#F1F3F8'/>")
 [void]$sb.AppendLine("<text x='$($W/2)' y='50' fill='#2D4770' font-size='32' font-weight='600' text-anchor='middle'>Azure Monitor Lab</text>")
 [void]$sb.AppendLine("<text x='$($W/2)' y='77' fill='#52627A' font-size='14' text-anchor='middle'>rg-azure-monitor-lab · northeurope</text>")
@@ -141,7 +158,15 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("<filter id='card-shadow' x='-15%' y='-25%' width='130%' height='160%'><feDropShadow dx='0' dy='4' stdDeviation='5' flood-color='#203553' flood-opacity='0.13'/></filter>")
 [void]$sb.AppendLine("<marker id='arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='#71859C'/></marker>")
 [void]$sb.AppendLine("</defs>")
-[void]$sb.AppendLine("<rect x='14' y='116' width='$($W-28)' height='$($H-130)' rx='20' fill='#FAFBFD' stroke='#FFFFFF' stroke-width='2'/>")
+[void]$sb.AppendLine("<rect id='azure-resource-group-boundary' x='14' y='116' width='$($W-28)' height='970' rx='20' fill='#FAFBFD' stroke='#FFFFFF' stroke-width='2'/>")
+[void]$sb.AppendLine("<rect id='fabric-workspace-boundary' x='30' y='1110' width='1440' height='340' rx='20' fill='#E8F2F2' stroke='#0F7774' stroke-dasharray='8 6'/>")
+[void]$sb.AppendLine("<text id='fabric-workspace-title' x='54' y='1144' fill='#2D4770' font-size='18' font-weight='600'>Microsoft Fabric workspace · tenant-scoped items</text>")
+[void]$sb.AppendLine("<text x='54' y='1165' fill='#52627A' font-size='13'>Outside the Azure resource group</text>")
+[void]$sb.AppendLine("<text x='54' y='1198' fill='#52627A' font-size='13'>Hosted on F2 capacity</text>")
+[void]$sb.AppendLine("<text x='54' y='1220' fill='#52627A' font-size='13'>Suspend when idle</text>")
+[void]$sb.AppendLine("<text x='54' y='1338' fill='#2D4770' font-size='16' font-weight='600'>Mirroring (preview)</text>")
+[void]$sb.AppendLine("<text x='54' y='1362' fill='#52627A' font-size='13'>Central Log Analytics tables</text>")
+[void]$sb.AppendLine("<text id='fabric-mirroring-storage-note' x='404' y='1422' fill='#52627A' font-size='13'>OneLake shortcuts reference Azure Monitor Delta storage · no data copy · guided portal setup</text>")
 
 # group boxes
 foreach ($key in $cols.Keys) {
@@ -152,10 +177,10 @@ foreach ($key in $cols.Keys) {
 }
 
 # edges first (under nodes)
-function AnchorRight($n) { $c = ColOf $n; @(($c.x + $c.w - 12), ((NodeTop $n) + $cellH/2)) }
-function AnchorLeft($n)  { $c = ColOf $n; @(($c.x + 12), ((NodeTop $n) + $cellH/2)) }
+function AnchorRight($n) { $c = ColOf $n; @(($c.x + $c.w - 12), ((NodeTop $n) + (NodeHeight $n)/2)) }
+function AnchorLeft($n)  { $c = ColOf $n; @(($c.x + 12), ((NodeTop $n) + (NodeHeight $n)/2)) }
 function AnchorTop($n)   { $c = ColOf $n; @(($c.x + $c.w/2), (NodeTop $n)) }
-function AnchorBottom($n){ $c = ColOf $n; @(($c.x + $c.w/2), ((NodeTop $n) + $cellH)) }
+function AnchorBottom($n){ $c = ColOf $n; @(($c.x + $c.w/2), ((NodeTop $n) + (NodeHeight $n))) }
 
 $lineStyle = "stroke='#71859C' marker-end='url(#arrow)'"
 foreach ($e in $edges) {
@@ -171,13 +196,25 @@ foreach ($e in $edges) {
   }
 }
 
+[void]$sb.AppendLine("<path id='edge-LAW-DELTA' d='M 742,209 L 710,209 L 710,1351 L 668,1351' fill='none' stroke='#0F7774' stroke-width='2' stroke-dasharray='7 5' marker-end='url(#arrow)'><title>Azure Monitor mirroring (preview): central Log Analytics Delta tables exposed through read-only OneLake shortcuts, without copying data</title></path>")
+[void]$sb.AppendLine("<path id='edge-DELTA-EH' d='M 530,1392 L 530,1405 L 905,1405 L 905,1262' fill='none' stroke='#0F7774' stroke-width='2' stroke-dasharray='7 5' marker-end='url(#arrow)'><title>Eventhouse KQL access to mirrored Azure Monitor tables</title></path>")
+
 # nodes
 foreach ($id in $nodes.Keys) {
   $n = $nodes[$id]; $c = ColOf $n; $top = NodeTop $n
   [void]$sb.AppendLine("<g id='node-$id'>")
-  [void]$sb.AppendLine("<rect x='$($c.x+12)' y='$top' width='$($c.w-24)' height='$cellH' rx='14' fill='#FFFFFF' filter='url(#card-shadow)'/>")
+  [void]$sb.AppendLine("<rect x='$($c.x+12)' y='$top' width='$($c.w-24)' height='$(NodeHeight $n)' rx='14' fill='#FFFFFF' filter='url(#card-shadow)'/>")
   $ic = $n.icons
-  if ($ic.Count -eq 1) {
+  if ($id -eq 'CUSTOMER') {
+    $labels = @('App Service','Azure Service Bus','Function App','SQL Database')
+    for ($i = 0; $i -lt $ic.Count; $i++) {
+      [void]$sb.AppendLine("<image x='$($c.x+24+50*$i)' y='$($top+12)' width='28' height='28' aria-label='$($labels[$i])' href='$($dataUri[$ic[$i]])'/>")
+    }
+    [void]$sb.AppendLine("<text x='$($c.x+24)' y='$($top+63)' fill='#182B45' font-size='14' font-weight='600'>$(Esc $n.lines[0])</text>")
+    [void]$sb.AppendLine("<text x='$($c.x+24)' y='$($top+84)' fill='#52627A' font-size='12'>$(Esc $n.lines[1])</text>")
+    [void]$sb.AppendLine('</g>')
+    continue
+  } elseif ($ic.Count -eq 1) {
     [void]$sb.AppendLine("<image x='$($c.x+24)' y='$($top+19)' width='44' height='44' href='$($dataUri[$ic[0]])'/>")
     $lx = $c.x + 80
   } else {

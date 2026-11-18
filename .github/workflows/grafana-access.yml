@@ -7,6 +7,7 @@ on:
       - 'infra/**'
       - 'terraform/**'
       - 'scripts/sync-config.ps1'
+      - 'scripts/lab-config.ps1'
       - 'scripts/tests/grafana-*.Tests.ps1'
       - 'lab.config.json.example'
       - 'README.md'

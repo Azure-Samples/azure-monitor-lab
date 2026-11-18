@@ -6,6 +6,38 @@ This guide shows how to deploy the lab in controlled stages so you can enable sc
 
 The repository has dedicated [stage templates](../infra/stages) for the core lab and optional add-ons. Bicep supports the preview Observability Agent stage; Terraform does not because that provisioning path is not supported by the preview. [The one-shot script](../scripts/deploy.ps1) continues to use [the full-lab template](../infra/main.bicep); it is a separate deployment path, not a foundation-only deployment.
 
+### Feature coverage and remaining differences
+
+The stages reuse the one-shot deployment's service modules. Stage A includes the
+`Perf_Hourly_CL` summary destination table; Stage B completion creates its hourly
+summary rule, and failure stops completion. Stage C includes the same dynamic VM
+CPU alert as the one-shot route, scoped only to enabled VMs. These changes do not
+repair an existing staged lab until its affected stages/completion are rerun.
+
+| Service/scenario | Staged Bicep coverage and required follow-through |
+|---|---|
+| Core services and scenarios | A-E plus Stage B/E completion; deploying ARM resources alone is not scenario acceptance. |
+| Customer SQL, Service Bus and orders processor | Opt-in Stage B plus its completion; requires the customer slot scenario and explicit SQL Entra administrator. Stage E adds the separate customer Health Model. |
+| AI, SRE Agent and Fabric | Separate opt-in stages and their documented setup/validation. Refresh an existing Control Center after adding integrations. |
+| Observability Agent | Supported by optional Stage 70, subject to preview regions, registration and RBAC. Investigations are separate, billable actions. |
+| Cafe app and native health models | Optional [Stage 80](STAGE-HEALTH-MODEL-DEMO.md), after A/B/C/E. Completion publishes the Cafe, connects `hm-lab-cafe` and `hm-amlab-flows`, verifies a stored order and waits for request/dependency telemetry. Hosting defaults to France Central; models use Sweden Central. |
+
+There is no known intentional one-shot service exclusion in staged Bicep, but it
+is not an unattended equivalent of `deploy.ps1`: run each selected stage and its
+completion explicitly. Optional toggles alone do not execute stages. For an
+existing Cafe, preserve its hosting region and any approved existing reader-role
+assignment through `healthModelDemoCafeLocation` and
+`healthModelDemoCafeMonitoringReaderAssignmentName` in the private config
+(`advancedConfiguration.other` in grouped configs).
+
+Some scenarios cannot be fully automated by either route: preview SLIs need the
+portal handoff; Fabric tenant settings, licensing, workspace monitoring and
+Operations Agent authoring can need manual steps. Model/SKU quota, preview access,
+Entra permissions and actual telemetry must be checked in the target environment.
+AI traffic, alert delivery tests, investigations and fault injection are separate
+actions, not evidence supplied by infrastructure success. No static parity test
+certifies live regional availability or every scenario end to end.
+
 ## 2) Guardrails (must-do)
 
 1. Select and verify the expected subscription and tenant before every write. The helper below does this before preview and again before deployment.
@@ -26,8 +58,10 @@ For workshop planning and customer expectation-setting, use:
 - [STAGE-D-SECURITY-POSTURE.md](STAGE-D-SECURITY-POSTURE.md)
 - [STAGE-E-OPTIONAL-ADVANCED.md](STAGE-E-OPTIONAL-ADVANCED.md)
 - [STAGE-AI.md](STAGE-AI.md)
+- [STAGE-FABRIC.md](STAGE-FABRIC.md)
 - [STAGE-SRE-AGENT.md](STAGE-SRE-AGENT.md)
 - [STAGE-OBSERVABILITY-AGENT.md](STAGE-OBSERVABILITY-AGENT.md)
+- [STAGE-HEALTH-MODEL-DEMO.md](STAGE-HEALTH-MODEL-DEMO.md) - optional Café and lab user-flow models after stages A, B, C and E.
 
 ## 3) Stage model (recommended)
 
@@ -41,6 +75,12 @@ Deploy in this order.
 6. Stage AI - Optional Microsoft Foundry GenAI workload (off by default)
 7. Stage SRE Agent - Optional Azure SRE Agent evaluation (off by default)
 8. Stage Observability Agent - Optional autonomous alert correlation and agentic-application investigation (off by default)
+9. Stage Fabric - Optional Real-Time Intelligence workload (off by default)
+10. Stage 80 - Optional Cafe and lab user-flow Health Models (off by default; requires A/B/C/E)
+
+The optional stages below have their own deployment commands; they are not
+deployed by Stage E or by setting a config toggle alone. Deploy AI/Fabric before
+Stage E if their optional health tiers are selected, or rerun Stage E afterward.
 
 ## 4) Stage details (scenarios + deployed services)
 
@@ -55,7 +95,9 @@ Use this as the workshop script: each stage adds a bounded set of capabilities a
 | Stage E - Optional advanced/security add-ons | Layer advanced SOC and reliability preview capabilities. | 43, 44, 45, 46 | Optional Sentinel onboarding + analytics rule, Heartbeat data export, Managed Prometheus rule group, availability test, workload health model, SLI identity prerequisites, and optional platform-logs/metrics-export DCRs. Completion configures the Service Group and verifies SLI prerequisites; preview SLIs remain a portal step. |
 | Stage AI - Optional GenAI workload | Add a Microsoft Foundry workload emitting token/trace/cost telemetry, with AI FinOps observability. Off by default (billable models, region-limited). | - | Foundry account + project in swedencentral by default, four model deployments (gpt-5-mini, text-embedding-3-small, gpt-5.4, model-router), App Insights connection, token alerts, AI FinOps query pack + workbook. Stage E can add the AI health tier after AI is deployed; a standalone AI health model is separately opt-in. Agent setup starts a finite background traffic batch unless skipped. |
 | Stage SRE Agent - Optional incident investigation | Add Azure SRE Agent investigation and Review-mode response workflows. Off by default (preview and billable). | 54, 55, 56, 57, 58 | Azure SRE Agent hard pinned to swedencentral, system-assigned and user-assigned managed identities, Azure Monitor, Application Insights, and Log Analytics connectors, resource-group reader roles, and subscription-scope Monitoring Contributor. |
-| Stage Observability Agent - Optional autonomous operations | Correlate agentic-application alerts, create issues, investigate failures, and compare broken/fixed trace evidence. Off by default (preview; investigations consume Azure Agent Credits). | 61, 62, 63, 64, 65, 66, 67 | Azure Copilot Observability Agent and a dedicated Azure Monitor workspace in a supported region, one monitored Application Insights resource, system-assigned identity, Issue Contributor on the workspace, and subscription-scope Monitoring Reader. |
+| Stage Observability Agent - Optional autonomous operations | Correlate agentic-application alerts, create issues, investigate failures, and compare broken/fixed trace evidence. Off by default (preview; investigations consume Azure Agent Credits). | 61, 62, 63, 64, 65, 66, 67 | Azure Copilot Observability Agent and a dedicated Azure Monitor workspace in a supported region, one monitored Application Insights resource, system-assigned identity, Issue Contributor on the workspace, and Monitoring Reader directly on the monitored Application Insights resource. |
+| Stage Fabric | Stream the lab Event Hub feed into Real-Time Intelligence. | See [Fabric scenarios](STAGE-FABRIC.md) | F2 capacity in Sweden Central; setup creates the workspace, Eventstream, Eventhouse and dashboard. Tenant settings/licensing and some authoring remain manual. |
+| Stage 80 - Health Model Demo | Observe the Cafe and end-to-end lab user flows. | 81 | Dedicated Node.js Cafe, Standard S1 App Service plan, private Storage, monitoring and availability tests; `hm-lab-cafe`, `hm-amlab-flows`, and model-scoped Control Center permissions. Completion publishes the app and verifies orders and telemetry. |
 
 ### Stage dependency chain
 
@@ -64,9 +106,11 @@ Use this as the workshop script: each stage adds a bounded set of capabilities a
 3. Stage C depends on Stage B resources for alert scopes.
 4. Stage D depends on Stage A ingestion and Stage C action routing.
 5. Stage E depends on A, B, and C. Its AI health tier additionally requires Stage AI to have been deployed.
-6. Stage AI depends only on Stage A (it connects to `appi-amlab`); deploy it any time after Stage A.
+6. Stage AI depends only on Stage A (it connects to `appi-amlab-<suffix>`); deploy it any time after Stage A.
 7. Stage SRE Agent depends only on Stage A (Application Insights and central LAW); deploy it any time after Stage A.
 8. Stage Observability Agent depends only on Stage A (Application Insights); deploy it any time after Stage A. Its Control Center scenario runner additionally requires Stage B.
+9. Stage Fabric depends on Stage A's Event Hub feed. Deploy it before Stage E to include its optional health tier, or rerun Stage E afterward.
+10. Stage 80 depends on A/B/C/E, including Stage E's console availability test. It is separate from Stage E completion.
 
 The Control Center requires Stage B. Its Foundry Playground additionally requires AI; its SRE MCP Assistant requires both AI and SRE. An A+AI or A+SRE lab is valid without a Web App. Portal investigators and response plans are separate scenarios, not prerequisites for the MCP assistant.
 
@@ -80,14 +124,29 @@ The Control Center requires Stage B. Its Foundry Playground additionally require
 6. Stage AI done: Foundry model deployments exist, App Insights receives AI telemetry, and the AI FinOps queries return data after `setup-ai.ps1` runs.
 7. Stage SRE Agent done: the agent is in `swedencentral`, all three connectors are configured, and identity-specific RBAC validation passes.
 8. Stage Observability Agent done: the agent and dedicated workspace share a supported region, Application Insights is monitored, automatic issue creation is enabled, investigation mode matches the explicit selection, and least-privilege RBAC validation passes.
+9. Stage Fabric done: capacity and tenant-scoped items exist, and the Eventstream ingests the Stage A Event Hub feed.
+10. Stage 80 done: completion publishes the Cafe, stores and retrieves an order, verifies actual request/dependency telemetry, and connects both models in Control Center > Health Model.
 
 ## 5) Practical deployment commands (stage-by-stage)
 
 Run these examples from the repository root in the same PowerShell 7 session. Each call previews one dedicated stage and asks for confirmation before deployment. Raw Bicep is infrastructure-only until the documented completion step succeeds.
 
+Deployment examples use `--only-show-errors` to hide CLI/Bicep warnings and upgrade notices while preserving what-if previews and errors. Standalone Bicep builds and CI validation still show diagnostics.
+
+### Clone the repository
+
+Clone the published `main` branch and enter the repository before continuing. If you already have a checkout, use its repository root instead.
+
+```powershell
+git clone --branch main https://github.com/Azure-Samples/azure-monitor-lab.git
+Set-Location azure-monitor-lab
+```
+
 ### Step 0 - Bootstrap inputs (recommended)
 
 Create a private config from [the example](../lab.config.json.example), fill in the subscription, tenant, resource group, prefix, region, notification address, and VM credentials, then generate the local inputs. Do not overwrite an existing config:
+
+Use `basicConfiguration` for subscription-specific values and `advancedConfiguration` for customization, including `naming.namePrefix` and `stageToggles`. Legacy flat configs remain supported; see [config layout](REFERENCE.md#config-layout-and-compatibility).
 
 ```powershell
 if (-not (Test-Path ./lab.config.json)) { Copy-Item ./lab.config.json.example ./lab.config.json }
@@ -99,7 +158,8 @@ After editing the config, run:
 ./scripts/sync-config.ps1
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-$config = Get-Content ./lab.config.json -Raw | ConvertFrom-Json
+. ./scripts/lab-config.ps1
+$config = Read-LabConfig -Path ./lab.config.json
 $sub = [guid]$config.subscriptionId
 $tenant = [guid]$config.tenantId
 $rg = $config.resourceGroup
@@ -117,7 +177,7 @@ az group create --subscription $sub --name $rg --location $location --output non
 $stageNames = @(
    '00-foundation', '10-workloads', '20-alerting', '30-security-posture',
    '40-optional-advanced', '41-sentinel-content', '50-ai', '60-sre-agent',
-   '70-observability-agent'
+   '60-fabric', '70-observability-agent', '80-health-model-demo'
 )
 $stageParameterDirectory = Join-Path ([IO.Path]::GetTempPath()) ('azure-monitor-lab-stages-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $stageParameterDirectory
@@ -126,7 +186,16 @@ foreach ($stage in $stageNames) {
    $schema = Get-Content "./infra/stages/$stage.json" -Raw | ConvertFrom-Json -AsHashtable
    $parameters = @{}
    foreach ($name in $schema.parameters.Keys) {
+      if ($stage -eq '80-health-model-demo' -and $name -eq 'location') { continue }
       if ($sourceParameters.ContainsKey($name)) { $parameters[$name] = $sourceParameters[$name] }
+   }
+   if ($stage -eq '80-health-model-demo') {
+      if ($sourceParameters.ContainsKey('healthModelDemoCafeLocation')) {
+         $parameters.location = $sourceParameters.healthModelDemoCafeLocation
+      }
+      if ($sourceParameters.ContainsKey('healthModelDemoCafeMonitoringReaderAssignmentName')) {
+         $parameters.cafeMonitoringReaderAssignmentName = $sourceParameters.healthModelDemoCafeMonitoringReaderAssignmentName
+      }
    }
    foreach ($name in $schema.parameters.Keys) {
       if (-not $parameters.ContainsKey($name) -and -not $schema.parameters[$name].ContainsKey('defaultValue')) {
@@ -159,25 +228,62 @@ az deployment group create `
    --parameters "@$($stageParameterFiles['00-foundation'])" `
    --mode Incremental `
    --confirm-with-what-if `
-   --output none
+   --output none --only-show-errors
 ```
 
 This deploys [foundation only](../infra/stages/00-foundation.bicep). `--confirm-with-what-if` previews the changes and asks for confirmation before deployment. There is no AKS node pool or Web App in Stage A.
 
 ### Stage B deploy
 
-Classic VM Insights and additive OpenTelemetry metrics are **both enabled by default**. `enableVmOtelMetrics` defaults to `true` in central configuration (including when omitted), Stage B, and the one-shot template; the portal Workloads page defaults to **Yes**. To opt out, set `"enableVmOtelMetrics": false` **before** the input-bootstrap/sync and stage-parameter generation above, or explicitly pass `enableVmOtelMetrics=false`. Stage A and VMSS are unchanged. See [both monitoring views and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics). Setting the flag to `false` on an incremental redeployment does not remove existing OTel associations.
+Connection Monitor and flow logs require the shared regional Network Watcher.
+Use the versioned helper for Stage B. It prepares missing Network Watcher
+prerequisites, previews and confirms deployment, and uses the same narrowly scoped
+customer-slot failure recovery as `deploy.ps1`:
 
 ```powershell
+. ./scripts/staged-deploy-helpers.ps1
+Invoke-LabStage -Stage 10-workloads
+./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $false
+```
+
+Classic VM Insights and additive OpenTelemetry metrics are **both enabled by default**. `enableVmOtelMetrics` defaults to `true` in central configuration (including when omitted), Stage B, and the one-shot template; the portal Workloads page defaults to **Yes**. To opt out, set `"enableVmOtelMetrics": false` **before** the input-bootstrap/sync and stage-parameter generation above, or explicitly pass `enableVmOtelMetrics=false`. Stage A and VMSS are unchanged. See [both monitoring views and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics). Setting the flag to `false` on an incremental redeployment does not remove existing OTel associations.
+
+<details>
+<summary>Raw Azure CLI alternative (no automatic customer-slot recovery)</summary>
+
+Prepare the shared watcher before this infrastructure-only command; run completion
+only after deployment succeeds:
+
+```powershell
+. ./scripts/network-watcher.ps1
+Ensure-LabNetworkWatcher -SubscriptionId $sub -TenantId $tenant -Location $config.location -Confirm
 az deployment group create `
    --subscription $sub --resource-group $rg --name stage-10-workloads `
    --template-file ./infra/stages/10-workloads.bicep `
    --parameters "@$($stageParameterFiles['10-workloads'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $false
 ```
 
+</details>
+
 Completion publishes and verifies the App Service, initializes the Control Center and approved operator access, applies AKS workloads, and creates the summary rule. It prepares available AI agents without traffic and validates any deployed SRE Agent. Stage E is explicitly off here because it has not been deployed yet. For noninteractive setup, pass approved user IDs through `-ConsoleOperatorObjectIds`; otherwise existing operators or the signed-in user are used.
+
+When `enableCustomerDependencies=true`, completion automatically proceeds to
+initialize the SQL schema, seed products and least-privilege users through a
+temporary private App Service tunnel, publish the orders worker, and verify
+readiness. Run as the configured SQL Entra administrator with .NET 8 SDK and Python.
+Missing `paramiko` is installed automatically in a temporary virtual environment;
+Python venv support and package-index access are required for that setup. System
+Python is unchanged, and the environment is cleaned up on success or failure.
+To request an interactive `yes` prompt instead, pass
+`-ApproveCustomerDependencies:$false` to the completion wrapper. Use
+`-CustomerDependencyDeploymentName stage-10-workloads` to select this deployment
+explicitly; otherwise the wrapper discovers the latest successful deployment for
+the exact customer app and validates its enabled context. Declined approval or
+failed readiness stops completion rather than leaving a successful-looking,
+uninitialized catalogue. SQL public access and firewall rules remain unchanged.
+See [customer backend lifecycle](../scripts/README.md#opt-in-customer-dependencies).
 
 ### Stage C deploy
 
@@ -186,7 +292,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-20-alerting `
    --template-file ./infra/stages/20-alerting.bicep `
    --parameters "@$($stageParameterFiles['20-alerting'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ```
 
 This stage requires the VMSS administrator password and notification email from the private inputs, even when the optional standalone VMs are disabled.
@@ -205,7 +311,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-30-security-posture `
    --template-file ./infra/stages/30-security-posture.bicep `
    --parameters "@$($stageParameterFiles['30-security-posture'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ```
 
 The security template reuses the Stage A LAW and Stage C action group. It does not deploy workloads or enable a SIEM.
@@ -217,12 +323,12 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-40-optional-advanced `
    --template-file ./infra/stages/40-optional-advanced.bicep `
    --parameters "@$($stageParameterFiles['40-optional-advanced'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 az deployment group create `
    --subscription $sub --resource-group $rg --name stage-41-sentinel-content `
    --template-file ./infra/stages/41-sentinel-content.bicep `
    --parameters "@$($stageParameterFiles['41-sentinel-content'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $true
 ```
 
@@ -231,6 +337,8 @@ If Stage 40 already succeeded with Sentinel enabled, resume at Stage 41, then ru
 Stage E's `enableAi` value follows `stages.enableStageAI` from the central config; enable it only when Stage AI already exists. Sentinel onboarding and the optional DCRs follow the supplied parameters or stage defaults; review the preview and billing implications. Run `41-sentinel-content` only when Sentinel is enabled. Completion configures the Service Group and verifies SLI prerequisites. Create the preview SLIs in the portal using the printed handoff.
 
 Sentinel uses two deployments because its analytics-rule provider cannot preview a rule until the workspace is already onboarded. Stage E first creates the onboarding state, then `41-sentinel-content` previews and creates the dependent demo rule with normal provider validation.
+
+**Stage E does not deploy the Cafe.** Continue to [Stage 80](#stage-80-health-model-demo-deploy-optional) below to add it. The completion script only auto-detects and publishes the Cafe after Stage 80 infrastructure exists.
 
 ### Stage AI deploy (optional)
 
@@ -241,7 +349,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-50-ai `
    --template-file ./infra/stages/50-ai.bicep `
    --parameters "@$($stageParameterFiles['50-ai'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1
 if ($webApp) {
@@ -252,9 +360,30 @@ if ($webApp) {
 
 The refresh uses [the existing app deployment helper](../scripts/deploy-webapp.ps1), which configures console access and verifies the new publication without reapplying AKS workloads. Its bootstrap prepares agents with `-SkipTraffic`. The final [AI setup](../scripts/setup-ai.ps1) reuses those agents and always starts a finite background batch, default 150 conversations. Add `-SkipTraffic` there to prepare agents without model traffic. The [Cloud Shell AI wrapper](../scripts/setup-ai-cloud-shell.ps1) offers the same background behavior with core ARM discovery.
 
-Without Stage B, the refresh is skipped and the standalone AI scenario still works. Adding Stage B later initializes its console normally. To add the AI tier to an existing Stage E health model, set `stages.enableStageAI` to `true` in `lab.config.json`, rerun the bootstrap block, then rerun the native Stage 40 command above. Do not deploy Stage E solely for an A+AI lab.
+Without Stage B, the refresh is skipped and the standalone AI scenario still works. Adding Stage B later initializes its console normally. To add the AI tier to an existing Stage E health model, set `advancedConfiguration.stageToggles.enableStageAI` to `true` in `lab.config.json` (`stageToggles.enableStageAI` in legacy flat configs), rerun the bootstrap block, then rerun the native Stage 40 command above. Do not deploy Stage E solely for an A+AI lab.
 
 The worker prints its PID and log/status paths. Keep the deployment host and Azure CLI sign-in available until it finishes; Cloud Shell/CI termination can stop it. Startup is not evidence of successful model responses. See [Stage AI traffic behavior](STAGE-AI.md#6-enable--run).
+
+### Stage Fabric deploy (optional)
+
+Stage Fabric is off by default. It creates a billable F2 capacity in `swedencentral`; set `fabricAdminEmail` to a tenant user UPN before `sync-config.ps1` and project its stage parameters with the other stages.
+
+For the optional Fabric Health Model tier, deploy this stage before Stage E or rerun Stage E with `enableFabric=true` after capacity creation.
+
+```powershell
+az deployment group create `
+   --subscription $sub --resource-group $rg --name stage-60-fabric `
+   --template-file ./infra/stages/60-fabric.bicep `
+   --parameters "@$($stageParameterFiles['60-fabric'])" `
+   --confirm-with-what-if --only-show-errors
+./scripts/setup-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
+
+Follow the [Fabric checklist](STAGE-FABRIC.md#after-deployps1-checklist) for any connection fallback, ingestion verification, and the guided Real-Time Dashboard. Suspend the capacity when idle:
+
+```powershell
+./scripts/suspend-fabric.ps1 -SubscriptionId $sub -ResourceGroup $rg
+```
 
 ### Stage SRE Agent deploy (optional)
 
@@ -265,7 +394,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-60-sre-agent `
    --template-file ./infra/stages/60-sre-agent.bicep `
    --parameters "@$($stageParameterFiles['60-sre-agent'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/setup-sre-agent.ps1 -SubscriptionId $sub -ResourceGroup $rg
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1
@@ -287,7 +416,7 @@ az deployment group create `
    --subscription $sub --resource-group $rg --name stage-70-observability-agent `
    --template-file ./infra/stages/70-observability-agent.bicep `
    --parameters "@$($stageParameterFiles['70-observability-agent'])" `
-   --mode Incremental --confirm-with-what-if --output none
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
 ./scripts/setup-observability-agent.ps1 -SubscriptionId $sub -ResourceGroup $rg
 $apps = az webapp list --subscription $sub --resource-group $rg -o json | ConvertFrom-Json
 $webApp = $apps | Where-Object { $_.name -like "app-$prefix-*" } | Select-Object -First 1
@@ -297,6 +426,69 @@ if ($webApp) {
 ```
 
 An A+Observability Agent deployment can correlate and investigate Application Insights signals without a Web App. Stage B adds the Control Center's deterministic broken/fixed scenario runner. Follow [Stage Observability Agent](STAGE-OBSERVABILITY-AGENT.md) for supported regions, cost and privacy boundaries, validation, and the demo workflow.
+
+### Stage 80 Health Model Demo deploy (optional)
+
+Run after stages A, B, C and E, using the same bootstrap subscription, tenant and
+resource group. This is the explicit step that adds the Cafe; Stage E alone does
+not create it. The subscription needs `Microsoft.CloudHealth` registration and
+preview access, and the deployer needs resource-write, custom-role/assignment
+permissions and query access to the Cafe workspace.
+
+The Cafe uses a billable **Standard S1** plan in **France Central** by default;
+check that region's Standard quota/capacity separately from the core lab. Both
+models use **Sweden Central**. The bootstrap deliberately does not inherit the
+core lab's `location` for this stage. When adopting an existing Cafe, set
+`healthModelDemoCafeLocation` and any existing
+`healthModelDemoCafeMonitoringReaderAssignmentName` in the private config before
+rerunning sync; do not try to move existing resources in place.
+
+Use the reloadable helper below. It reads the current Stage 80 schema, creates
+its own private parameter file, previews the deployment and requires confirmation.
+It does not depend on `$stageParameterFiles`, so it also works when continuing a
+session bootstrapped before Stage 80 was added. If config values changed, run
+`./scripts/sync-config.ps1` before loading the generated parameters.
+
+```powershell
+$sourceParameters = (Get-Content ./infra/main.parameters.json -Raw | ConvertFrom-Json -AsHashtable).parameters
+. ./scripts/staged-deploy-helpers.ps1
+Invoke-LabStage -Stage 80-health-model-demo
+./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $sourceParameters.namePrefix.value -EnableStageE $true -EnableStageHealthModelDemo $true
+```
+
+<details>
+<summary>Raw Azure CLI alternative (requires the current Step 0 bootstrap)</summary>
+
+Run this instead of the helper, not in addition to it. An older session can lack
+the Stage 80 entry; a fresh session or deleted temporary files require rerunning
+Step 0 too. An empty entry expands the parameter argument to just `@`, which Azure
+CLI rejects with `Unable to parse parameter: @`.
+
+```powershell
+if (-not $stageParameterFiles -or
+    [string]::IsNullOrWhiteSpace($stageParameterFiles['80-health-model-demo']) -or
+    -not (Test-Path -LiteralPath $stageParameterFiles['80-health-model-demo'] -PathType Leaf)) {
+   throw 'Stage 80 parameter file is missing. Use the helper above or rerun the Step 0 bootstrap.'
+}
+az deployment group create `
+   --subscription $sub --resource-group $rg --name stage-80-health-model-demo `
+   --template-file ./infra/stages/80-health-model-demo.bicep `
+   --parameters "@$($stageParameterFiles['80-health-model-demo'])" `
+   --mode Incremental --confirm-with-what-if --output none --only-show-errors
+./scripts/post-staged-deploy.ps1 -SubscriptionId $sub -ResourceGroup $rg -NamePrefix $prefix -EnableStageE $true -EnableStageHealthModelDemo $true
+```
+
+</details>
+
+Completion publishes the Cafe, connects `hm-lab-cafe` and `hm-amlab-flows` to the
+Control Center, stores/retrieves an ordinary order, and waits for actual
+`AppRequests` and `AppDependencies` records (allow up to ten minutes). Open
+**Control Center > Health Model** and select **Lab user flows** or **Cafe tutorial**.
+No fault injection runs during deployment. See [Stage 80](STAGE-HEALTH-MODEL-DEMO.md)
+for publication-only repair and the scenario 81 walkthrough.
+
+Omitting this stage later does not delete it or stop billing. Use the lab teardown
+for cleanup; stopping the app does not stop App Service plan or retained-data costs.
 
 After the final stage in the current session, remove the temporary parameter files:
 
@@ -313,7 +505,7 @@ The stage templates resolve prior-stage resources using the resource group and s
 After each stage:
 1. Inspect the deployment named `stage-<template-stem>`, for example `stage-00-foundation`, in the selected resource group.
 2. Verify expected resources exist.
-3. Run at least one saved query relevant to that stage.
+3. [Find and run at least one saved query](DEMO-SCENARIOS.md#saved-queries) relevant to that stage. Numbered queries live on the central workspace; Application Insights and AI queries require selecting the corresponding query pack in **Logs → Queries → ellipsis (`...`) → Select query packs** (or **Select query packs** / **0 selected** in Queries hub).
 4. For security stage, run:
 
 ```kql
@@ -338,38 +530,17 @@ az account show --query "{name:name,id:id,tenantId:tenantId}" -o table
 ./scripts/teardown.ps1 -ResourceGroup $rg -Yes
 ```
 
-`teardown.ps1` validates the subscription guardrail, disables LAW replication, removes nested DCR associations and other monitoring dependencies, removes the tenant-scoped SLI and Service Group artifacts, and then deletes the resource group. This works for both staged Bicep and one-shot Bicep deployments.
+`teardown.ps1` validates the subscription guardrail, disables LAW replication, removes nested DCR associations and other monitoring dependencies, removes the tenant-scoped SLI and Service Group artifacts, and then deletes the resource group. This works for both staged Bicep and one-shot Bicep deployments. Normal Azure soft-delete recovery is preserved, including with `-Yes`. To release reserved names through **irreversible data deletion**, explicitly add `-PurgeSoftDeletedResources`. See [permanent cleanup safeguards and permissions](../scripts/README.md#permanent-cleanup-for-same-name-redeployment).
 
 ### Step 2 - Clean up artifacts that live outside the RG
 
 A few resources are subscription-scoped or live in `NetworkWatcherRG` and survive RG deletion.
 
-1. Soft-deleted Log Analytics workspaces (14-day grace period; names stay reserved):
+1. Log Analytics workspaces, Key Vaults and Foundry/Cognitive Services accounts can retain soft-deleted data and reserved names after normal teardown. To permanently clean up only the exact lab and approved auxiliary groups, run `./scripts/teardown.ps1 -ResourceGroup $rg -PurgeSoftDeletedResources`, including after a previous direct group deletion. Deleted workspaces are recovered (temporarily recreating their original group if needed), then permanently deleted. Key Vault purge protection cannot be bypassed.
 
-```powershell
-# Keep the filter in PowerShell. Windows Azure CLI can strip quoted JMESPath
-# expressions before az receives them, producing "] was unexpected at this time."
-$deletedLaw = az monitor log-analytics workspace list-deleted-workspaces --subscription $sub -o json | ConvertFrom-Json
-$deletedLaw | Where-Object { $_.name -like '*amlab*' } | Format-Table
-# Permanent purge if needed:
-# az rest --method delete --url "https://management.azure.com/subscriptions/$sub/providers/Microsoft.OperationalInsights/locations/northeurope/deletedWorkspaces/<name>?api-version=2023-09-01"
-```
+2. Application Insights components are removed through ordinary resource-group deletion. Their workspace-backed data follows the Log Analytics cleanup above; there is no separate component purge step here.
 
-2. Soft-deleted Application Insights components (also 14-day grace):
-
-```powershell
-$deletedAppInsights = az monitor app-insights component list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedAppInsights | Where-Object { $_.name -like '*amlab*' } | Format-Table
-```
-
-3. Soft-deleted Key Vault (7-day retention, `enablePurgeProtection: null` so it can be purged). Key Vault names are deterministic (`kv-${namePrefix}-${take(suffix,5)}` from `resourceGroup().id`), so redeploying to the **same RG name** before the vault is purged fails with `VaultAlreadyExists`:
-
-```powershell
-$deletedVaults = az keyvault list-deleted --subscription $sub -o json | ConvertFrom-Json
-$deletedVaults | Where-Object { $_.name -like 'kv-amlab-*' } | Format-Table name, @{n='location';e={$_.properties.location}}
-# Purge before redeploying to the same RG name:
-# az keyvault purge --name <vaultName> --subscription $sub
-```
+3. Wait for asynchronous resource-group deletion to finish before redeploying to the same name. With the purge switch, the wrapper verifies permanent cleanup of the three resource types above; otherwise their recovery/name reservations can remain. Normal Azure deletion and DNS propagation can still take time.
 
 4. NSG/VNet flow logs in `NetworkWatcherRG` (Stage B creates them outside the lab RG):
 

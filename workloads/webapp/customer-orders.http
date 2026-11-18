@@ -1,0 +1,28 @@
+@baseUrl = http://localhost:5000
+
+### Feature mode (always available)
+GET {{baseUrl}}/api/customer/dependencies
+
+### SQL catalogue (requires the opt-in backend)
+GET {{baseUrl}}/api/customer/products
+
+### Durable order; retry with the SAME ID if dispatch fails
+POST {{baseUrl}}/api/customer/orders
+Content-Type: application/json
+
+{
+  "id": "9dc7009a-8460-4dd4-87bb-dc19b18298b2",
+  "productId": "monitoring-starter"
+}
+
+### Processing status; accepted/queued is not fulfilled
+GET {{baseUrl}}/api/customer/orders/9dc7009a-8460-4dd4-87bb-dc19b18298b2
+
+### Invalid idempotency identifier
+POST {{baseUrl}}/api/customer/orders
+Content-Type: application/json
+
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "productId": "monitoring-starter"
+}

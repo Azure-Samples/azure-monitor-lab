@@ -21,25 +21,44 @@ alert_email         = "your.alias@example.com"
 vm_admin_password   = "<STRONG-PASSWORD>"
 grafana_admin_object_id = ""
 
+# Optional customer SQL/Service Bus/orders processor; requires stages A/B and the slot scenario.
+# Apply initializes the Entra-only database and publishes/verifies the worker using the configured SQL administrator.
+enable_slot_failure_scenario = false
+enable_customer_dependencies = false
+sql_entra_admin_object_id    = ""
+sql_entra_admin_name         = ""
+sql_entra_admin_type         = "Group"
+slot_app_service_plan_sku   = "S2"
+
 # Default-on Stage B VM metrics; classic VM Insights stays on. Not applied to VMSS.
 # Setting false after enabling does not delete existing OTel DCR associations;
 # follow the targeted opt-out in docs/STAGE-B-WORKLOADS.md.
 enable_vm_otel_metrics = true
 
 # Stage toggles - enable one at a time the first time through, then flip the
-# next one and re-run plan/apply. Each new stage adds exactly one
-# azapi_resource.stage_* to the plan.
-enable_stage_a = true   # Foundation (LAW, DCR, AMW, Grafana, App Insights, workbooks)
-enable_stage_b = false  # Workloads (App Service, AKS, VMs, VMSS, Connection Monitor)
-enable_stage_c = false  # Alerting (metric/log/health alerts, action groups, AMBA, Prom rules)
-enable_stage_d = false  # Security posture (Sentinel, custom logs, exfil early warning)
-enable_stage_e = false  # Optional advanced (auto-mitigation Logic App, availability test, etc.)
+# next one and re-run plan/apply. Keep prerequisite stages enabled.
+enable_stage_a = true   # Foundation (LAW, DCR, AMW, App Insights, workbooks, summary table)
+enable_stage_b = false  # Workloads (App Service, AKS, VMs, Grafana, Connection Monitor)
+enable_stage_c = false  # Alerting (dynamic CPU, metric/log/health alerts, AMBA, VMSS, auto-mitigation)
+enable_stage_d = false  # Security posture (LAW RBAC, control-plane drift, exfil early warning)
+enable_stage_e = false  # Optional advanced (Sentinel/content, Prom rules, availability, health/SLI)
+
+# Optional Microsoft Fabric stage - deploys an F2 capacity pinned to swedencentral.
+# Off by default because the capacity bills while active. Indicative PAYG retail price:
+# about $0.36/hour, $8.64/day, or $262.80/month. Actual pricing varies; OneLake storage
+# and other meters can add cost. Apply runs Fabric setup automatically; suspend
+# the capacity when the demo is idle. Setup defaults to keyless streaming, both LAW
+# mirrors and their dashboards, plus daily 20:00 UTC suspension. Review the source
+# RBAC grants and tenant preview prerequisites in docs/STAGE-FABRIC.md first.
+enable_stage_fabric = false
+fabric_admin_email  = "admin@example.com" # replace with your tenant's user UPN, not an external alert alias
 
 # Optional AI stage - Microsoft Foundry GenAI workload (account, project, chat/embed/
 # optimize/model-router deployments) + App Insights connection + token metric alerts.
 # Pinned to swedencentral (ai_location) independent of `location`; depends on Stage A.
 # Off by default: it deploys billable AI models and needs region-confirmed model versions.
-# After apply, run scripts/setup-ai.ps1 to create the demo agents and simulate traffic.
+# With Stage B, apply prepares agents without traffic. Standalone AI requires setup.
+# Run scripts/setup-ai.ps1 separately only for standalone setup or optional finite traffic.
 enable_stage_ai      = false            # AI (Foundry + models + token alerts)
 ai_location          = "swedencentral"  # region for the Foundry account + models
 router_model_version = "2025-08-07"     # VERIFY: az cognitiveservices account list-models
@@ -49,6 +68,14 @@ router_model_version = "2025-08-07"     # VERIFY: az cognitiveservices account l
 # Off by default because active usage is billable and always-on billing can begin
 # after an eligible trial. The deploying identity needs subscription role-assignment permission.
 enable_stage_sre_agent = false
+
+# Optional Cafe + native user-flow health models. Requires stages A, B, C and E.
+# Stage E owns test-<name_prefix>-app, the flow model's console availability source.
+# Existing standalone Cafe deployments must retain their workload region.
+enable_stage_health_model_demo = false
+health_model_demo_cafe_location = "francecentral"
+# Optional: reuse an existing RG Monitoring Reader assignment instead of the default resource-scoped grants.
+health_model_demo_cafe_monitoring_reader_assignment_name = ""
 
 # Optional preview/GA telemetry features (part of Stage E). Off by default because
 # the DCR and the central LAW must be in the same region and the platform-logs DCR

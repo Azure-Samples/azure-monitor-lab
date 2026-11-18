@@ -129,6 +129,24 @@ var alertActivityQuery = '''AzureActivity
 | take 25
 '''
 
+var fabricCapacityHealthQuery = replace('''resources
+| where type =~ "microsoft.fabric/capacities"
+| where resourceGroup =~ "__RESOURCE_GROUP__"
+| extend CapacityState = tostring(properties.state), ProvisioningState = tostring(properties.provisioningState)
+| extend Status = case(
+  ProvisioningState !~ "Succeeded", "🔴",
+  CapacityState =~ "Active", "🟢",
+  CapacityState in~ ("Paused", "Suspended"), "🟠",
+  "⚪")
+| project Status,
+      ResourceType = "Microsoft Fabric F2",
+      Capacity = name,
+      State = CapacityState,
+      Provisioning = ProvisioningState,
+      Region = location,
+          SKU = tostring(sku.name)
+''', '__RESOURCE_GROUP__', resourceGroup().name)
+
 var dataIngestionQuery = '''Usage
 | summarize IngestedMB = round(sum(Quantity), 2) by DataType
 | where IngestedMB > 0.01
@@ -400,6 +418,31 @@ var workbookContent = {
       }
       customWidth: '50'
       name: 'dataIngestion'
+    }
+    // ── Fabric Real-Time Intelligence Health ───────────────────
+    {
+      type: 1
+      content: {
+        json: '---\n## Microsoft Fabric Real-Time Intelligence Health\n\nThe capacity is discovered dynamically. This section is empty when Stage Fabric is disabled. Eventstream item and data-flow health remain available in the Fabric workspace.'
+      }
+      name: 'fabricHealthHeader'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: fabricCapacityHealthQuery
+        size: 1
+        title: 'Fabric F2 Capacity Health'
+        queryType: 1
+        resourceType: 'microsoft.resourcegraph/resources'
+        visualization: 'table'
+        gridSettings: {
+          rowLimit: 10
+          filter: true
+        }
+      }
+      name: 'fabricCapacityHealth'
     }
     // ── Detail Panels ───────────────────────────────────────────
     {

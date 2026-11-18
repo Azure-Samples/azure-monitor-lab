@@ -10,6 +10,8 @@
     <InternalsVisibleTo Include="AmlabHello.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../customer-orders/CustomerOrders.csproj" />
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
     <PackageReference Include="Azure.AI.Agents.Persistent" Version="1.1.0" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.Monitor.Query.Logs" Version="1.0.0" />

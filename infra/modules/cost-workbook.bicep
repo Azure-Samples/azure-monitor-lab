@@ -15,7 +15,7 @@ param location string
 param centralLawId string
 
 @description('Configured daily ingestion cap (GB) for the central LAW. Set to -1 when disabled.')
-param dailyCapGb int = 1
+param dailyCapGb int = 3
 
 @description('Resource tags.')
 param tags object = {}
