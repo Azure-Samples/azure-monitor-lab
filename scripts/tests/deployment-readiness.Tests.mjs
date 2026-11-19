@@ -102,7 +102,7 @@ const ui = readJson('infra/createUiDefinition.json');
 const stages = ui.parameters.steps.find((step) => step.name === 'stages').elements;
 const quota = stages.find((element) => element.name === 'observabilityAgentQuota');
 const inventory = stages.find((element) => element.name === 'observabilityAgentInventory');
-const subscriptionId = '/subscriptions/11111111-1111-1111-1111-111111111111';
+const subscriptionId = '/subscriptions/00000000-0000-0000-0000-000000000000';
 
 // Evaluate the checked-in expressions with the documented CreateUiDefinition functions.
 function evaluate(expression, enabled, response, statusText = '') {
