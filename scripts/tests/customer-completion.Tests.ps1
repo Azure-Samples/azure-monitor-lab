@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $root = Join-Path $source ('.artifacts\customer-completion-test-' + [guid]::NewGuid().ToString('N'))
 $scripts = Join-Path $root 'scripts'
+$nativePowerShell = Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
 $sub = [guid]'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 $tenant = [guid]'11111111-aaaa-bbbb-cccc-dddddddddddd'
 $base = "/subscriptions/$sub/resourceGroups/test-rg/providers"
@@ -27,6 +28,8 @@ function Reset-Fixture {
   $fixture.PythonEnvironment = $null
   $fixture.IsolatedPython = $null
   $fixture.MissingParamiko = $false
+  $fixture.NativePythonProbe = $false
+  $fixture.ExpectedNativePreference = $null
 }
 function Assert-True([bool] $Condition, [string] $Message) {
   if (-not $Condition) { throw $Message }
@@ -40,11 +43,17 @@ function Read-Host { $fixture.Prompts++; return $fixture.Reply }
 function Start-Sleep { }
 function python {
   if ($args[0] -eq '-m' -and $args[1] -eq 'venv') {
+    if ($fixture.NativePythonProbe) {
+      Assert-True ($PSNativeCommandUseErrorActionPreference -eq $fixture.ExpectedNativePreference) 'Environment creation must retain the caller native-command error preference.'
+    }
     $fixture.Events.Add('python-venv')
     $fixture.PythonEnvironment = $args[2]
     New-Item -ItemType Directory -Path $args[2] -Force | Out-Null
     $fixture.IsolatedPython = Join-Path $args[2] $(if ($IsWindows) { 'Scripts\python.exe' } else { 'bin/python' })
     Set-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)" -Value {
+      if ($fixture.NativePythonProbe) {
+        Assert-True ($PSNativeCommandUseErrorActionPreference -eq $fixture.ExpectedNativePreference) 'Installation and verification must retain the caller native-command error preference.'
+      }
       if ($args[0] -eq '-m') {
         Assert-True (($args -join ' ') -eq '-m pip install --disable-pip-version-check --no-input paramiko') 'Install only the SSH dependency, noninteractively, in the isolated environment.'
         $fixture.Events.Add('python-install')
@@ -59,7 +68,11 @@ function python {
     return
   }
   Assert-True (($args -join ' ') -eq '-c import paramiko') 'Prerequisite check must not request or print tokens.'
-  $global:LASTEXITCODE = if ($fixture.MissingParamiko -or $fixture.Failure -like 'python*') { 1 } else { 0 }
+  $probeExitCode = if ($fixture.MissingParamiko -or $fixture.Failure -like 'python*') { 1 } else { 0 }
+  if ($fixture.NativePythonProbe) {
+    & $nativePowerShell -NoLogo -NoProfile -NonInteractive -Command "exit $probeExitCode"
+  }
+  $global:LASTEXITCODE = $probeExitCode
 }
 function Start-Job {
   param($ScriptBlock, $ArgumentList)
@@ -225,6 +238,44 @@ if ($fixture.Failure -eq 'sql') { throw 'simulated SQL failure' }
   Reset-Fixture
   & $complete @common -CustomerWebAppName app-test-customer -DeploymentName explicit -ApproveCustomerDependencies
   Assert-True (@($fixture.Calls | Where-Object { $_ -like 'deployment group list*' }).Count -eq 0) 'An explicit deployment must not be replaced by discovery.'
+
+  $previousNativePreference = $PSNativeCommandUseErrorActionPreference
+  try {
+    foreach ($nativePreference in @($true, $false)) {
+      $PSNativeCommandUseErrorActionPreference = $nativePreference
+      foreach ($missing in @($false, $true)) {
+        Reset-Fixture
+        $fixture.NativePythonProbe = $true
+        $fixture.ExpectedNativePreference = $nativePreference
+        $fixture.MissingParamiko = $missing
+        & $complete @common -CustomerWebAppName app-test-customer
+        Assert-True ($PSNativeCommandUseErrorActionPreference -eq $nativePreference) 'Completion must preserve the caller native-command error preference.'
+        Assert-True ($fixture.Events.Contains('python-install') -eq $missing) 'A real nonzero native probe must install missing Paramiko; an available dependency must be reused.'
+        Assert-True ($fixture.Events.Contains('bootstrap') -and $fixture.Events.Contains('upload')) 'Both dependency paths must complete SQL initialization and worker publication.'
+        if ($missing) {
+          Assert-True (-not (Test-Path -LiteralPath $fixture.PythonEnvironment)) 'Strict native-command handling must retain isolated environment cleanup.'
+          Remove-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)"
+        }
+      }
+      foreach ($case in @(
+        @{ Failure = 'python-venv'; Message = 'Install Python venv support' },
+        @{ Failure = 'python-install'; Message = 'Could not install paramiko' },
+        @{ Failure = 'python-verify'; Message = 'verification failed after installation' }
+      )) {
+        Reset-Fixture
+        $fixture.NativePythonProbe = $true
+        $fixture.ExpectedNativePreference = $nativePreference
+        $fixture.Failure = $case.Failure
+        Assert-Throws { & $complete @common -CustomerWebAppName app-test-customer } $case.Message
+        Assert-True ($PSNativeCommandUseErrorActionPreference -eq $nativePreference) 'Dependency failure must preserve the caller native-command error preference.'
+        Assert-True (-not $fixture.Events.Contains('tunnel-start') -and -not $fixture.Events.Contains('publish')) 'Dependency failure must stop before tunnel startup or worker publication.'
+        Assert-True (-not (Test-Path -LiteralPath $fixture.PythonEnvironment)) 'Dependency failure must remove its isolated environment.'
+        Remove-Item -LiteralPath "Function:global:$($fixture.IsolatedPython)"
+      }
+    }
+  } finally {
+    $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+  }
 
   foreach ($case in @(
     @{ Failure = 'python-venv'; Message = 'Install Python venv support'; Started = $false },

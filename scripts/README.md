@@ -179,7 +179,10 @@ available. Completion reuses `paramiko` if already installed; otherwise it creat
 a temporary virtual environment and installs it automatically before opening any
 tunnel. This requires Python venv/pip support and package-index access. The
 environment is removed on success or failure; system Python packages and PATH
-are unchanged. Completion opens an authenticated customer App Service SSH
+are unchanged. Missing dependencies are handled even when
+`$PSNativeCommandUseErrorActionPreference` is enabled; environment creation,
+package installation and subsequent steps retain the caller's native-command
+error handling. Completion opens an authenticated customer App Service SSH
 tunnel on an allocated loopback port, verifies an SSH response, and closes its
 owned tunnel after SQL initialization or on failure. It does not change public
 network access or firewall rules. Default approval does not grant administrator

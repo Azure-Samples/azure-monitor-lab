@@ -44,8 +44,15 @@ try {
     foreach ($tool in @('dotnet', 'python')) {
       if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Customer backend completion requires $tool." }
     }
-    python -c "import paramiko" 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+    try {
+      $PSNativeCommandUseErrorActionPreference = $false
+      python -c "import paramiko" 2>$null
+      $paramikoExitCode = $LASTEXITCODE
+    } finally {
+      $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
+    }
+    if ($paramikoExitCode -ne 0) {
       $pythonEnvironment = Join-Path $PSScriptRoot ('..\.artifacts\customer-python-' + [guid]::NewGuid().ToString('N'))
       Write-Host 'Preparing an isolated Python environment for the customer SQL tunnel; system Python packages remain unchanged.'
       python -m venv $pythonEnvironment
