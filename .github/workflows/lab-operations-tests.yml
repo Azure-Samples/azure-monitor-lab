@@ -77,6 +77,7 @@ on:
       - 'scripts/tests/customer-journey-outcome.Tests.mjs'
       - 'scripts/tests/entra-cleanup.Tests.ps1'
       - 'scripts/tests/compiled-templates.Tests.ps1'
+      - 'scripts/tests/deployment-readiness.Tests.mjs'
       - 'scripts/tests/customer-appinsights.Tests.ps1'
       - 'scripts/tests/vm-otel-metrics.Tests.ps1'
       - 'scripts/tests/vm-otel-config.Tests.ps1'
@@ -112,6 +113,7 @@ on:
       - 'infra/modules/appservice*'
       - 'infra/modules/observability-agent*'
       - 'infra/modules/vm-*.bicep'
+      - 'infra/modules/data-export.bicep'
       - 'infra/modules/*health-model*.bicep'
       - 'infra/createUiDefinition.json'
       - 'infra/main.*'
@@ -223,7 +225,7 @@ jobs:
           terraform_version: '1.15.8'
           terraform_wrapper: false
       - name: Install the pinned Bicep compiler
-        run: az bicep install --version v0.37.4
+        run: az bicep install --version v0.49.2
       - name: Verify generated templates and Grafana access
         shell: pwsh
         run: |
@@ -234,6 +236,8 @@ jobs:
           ./scripts/tests/grafana-config.Tests.ps1
           ./scripts/tests/vm-otel-metrics.Tests.ps1
           ./scripts/tests/vm-otel-config.Tests.ps1
+      - name: Verify native recovery and portal agent quota validation
+        run: node --test scripts/tests/deployment-readiness.Tests.mjs
       - name: Validate console completion with mocked Azure providers
         working-directory: terraform
         run: |

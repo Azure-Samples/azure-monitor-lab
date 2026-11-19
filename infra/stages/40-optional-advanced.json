@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "7101184410221159395"
+      "version": "0.49.2.45890",
+      "templateHash": "13979560563050525455"
     }
   },
   "parameters": {
@@ -111,7 +111,7 @@
     {
       "condition": "[parameters('enableSentinel')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sentinel",
       "properties": {
         "expressionEvaluationOptions": {
@@ -138,8 +138,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "13989588199989823254"
+              "version": "0.49.2.45890",
+              "templateHash": "1513851471114926778"
             }
           },
           "parameters": {
@@ -189,7 +189,7 @@
             {
               "type": "Microsoft.SecurityInsights/onboardingStates",
               "apiVersion": "2024-09-01",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workspaceName'))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
               "name": "default",
               "properties": {},
               "dependsOn": [
@@ -208,7 +208,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "data-export",
       "properties": {
         "expressionEvaluationOptions": {
@@ -233,12 +233,13 @@
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
           "contentVersion": "1.0.0.0",
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14552688936156756826"
+              "version": "0.49.2.45890",
+              "templateHash": "7280216171388681316"
             }
           },
           "parameters": {
@@ -270,8 +271,22 @@
               }
             }
           },
-          "resources": [
-            {
+          "resources": {
+            "law": {
+              "existing": true,
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('workspaceName')]"
+            },
+            "exportRule": {
+              "@options": {
+                "retryOn": [
+                  [
+                    "ResourceNotFound"
+                  ],
+                  30
+                ]
+              },
               "type": "Microsoft.OperationalInsights/workspaces/dataExports",
               "apiVersion": "2023-09-01",
               "name": "[format('{0}/{1}', parameters('workspaceName'), parameters('name'))]",
@@ -283,7 +298,7 @@
                 "enable": true
               }
             }
-          ],
+          },
           "outputs": {
             "id": {
               "type": "string",
@@ -299,7 +314,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "prometheus-rules",
       "properties": {
         "expressionEvaluationOptions": {
@@ -332,8 +347,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "231953381752664213"
+              "version": "0.49.2.45890",
+              "templateHash": "15527626980679046160"
             }
           },
           "parameters": {
@@ -469,7 +484,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "availability-test",
       "properties": {
         "expressionEvaluationOptions": {
@@ -502,8 +517,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2744902256941642038"
+              "version": "0.49.2.45890",
+              "templateHash": "14587220164027251498"
             }
           },
           "parameters": {
@@ -643,7 +658,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "agent-task-availability-test",
       "properties": {
         "expressionEvaluationOptions": {
@@ -676,8 +691,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2744902256941642038"
+              "version": "0.49.2.45890",
+              "templateHash": "14587220164027251498"
             }
           },
           "parameters": {
@@ -817,7 +832,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "health-model",
       "properties": {
         "expressionEvaluationOptions": {
@@ -876,8 +891,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "7749650999989788037"
+              "version": "0.49.2.45890",
+              "templateHash": "787546017250925883"
             }
           },
           "functions": [
@@ -2370,7 +2385,7 @@
     {
       "condition": "[parameters('enableCustomerDependencies')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "customer-health-model",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2415,8 +2430,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "5962604355043039655"
+              "version": "0.49.2.45890",
+              "templateHash": "13208003401378711302"
             }
           },
           "parameters": {
@@ -2586,7 +2601,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('customerWebAppId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -2600,7 +2615,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/serverfarms/{0}', last(split(parameters('customerAppServicePlanId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -2614,7 +2629,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Sql/servers/{0}/databases/{1}', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1])]",
+              "scope": "[resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1])]",
               "name": "[guid(resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1]), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -2628,7 +2643,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.ServiceBus/namespaces/{0}', last(split(parameters('customerServiceBusId'), '/')))]",
+              "scope": "[resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -2642,7 +2657,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('customerWorkerId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -2656,7 +2671,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', last(split(parameters('customerWorkerStorageId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -2670,7 +2685,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', last(split(parameters('customerCentralLawId'), '/')))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('logReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('logReader'))]",
@@ -2817,7 +2832,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sli-identity",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2844,8 +2859,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "10173493696332454138"
+              "version": "0.49.2.45890",
+              "templateHash": "4141173706170781568"
             }
           },
           "parameters": {
@@ -2889,7 +2904,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Monitor/accounts/{0}', variables('amwName'))]",
+              "scope": "[resourceId('Microsoft.Monitor/accounts', variables('amwName'))]",
               "name": "[guid(resourceId('Microsoft.Monitor/accounts', variables('amwName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('uamiName')), '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
@@ -2903,7 +2918,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Monitor/accounts/{0}', variables('amwName'))]",
+              "scope": "[resourceId('Microsoft.Monitor/accounts', variables('amwName'))]",
               "name": "[guid(resourceId('Microsoft.Monitor/accounts', variables('amwName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('uamiName')), '3913510d-42f4-4e42-8a64-420c390055eb')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]",
@@ -2943,7 +2958,7 @@
     {
       "condition": "[parameters('enablePlatformLogsDcr')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "platform-logs-dcr",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2973,8 +2988,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "11452206091059677665"
+              "version": "0.49.2.45890",
+              "templateHash": "13339908627639847552"
             }
           },
           "parameters": {
@@ -3064,7 +3079,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2024-03-11",
-              "scope": "[format('Microsoft.Dashboard/grafana/{0}', parameters('grafanaName'))]",
+              "scope": "[resourceId('Microsoft.Dashboard/grafana', parameters('grafanaName'))]",
               "name": "[parameters('associationName')]",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('name'))]",
@@ -3091,7 +3106,7 @@
     {
       "condition": "[parameters('enableMetricsExportDcr')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "metrics-export-dcr",
       "properties": {
         "expressionEvaluationOptions": {
@@ -3121,8 +3136,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2101187004850280446"
+              "version": "0.49.2.45890",
+              "templateHash": "5567194779647896244"
             }
           },
           "parameters": {
@@ -3212,7 +3227,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2024-03-11",
-              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
               "name": "[parameters('associationName')]",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('name'))]",
@@ -3240,11 +3255,11 @@
   "outputs": {
     "customerHealthModelName": {
       "type": "string",
-      "value": "[if(parameters('enableCustomerDependencies'), reference(resourceId('Microsoft.Resources/deployments', 'customer-health-model'), '2022-09-01').outputs.healthModelName.value, '')]"
+      "value": "[if(parameters('enableCustomerDependencies'), reference(resourceId('Microsoft.Resources/deployments', 'customer-health-model'), '2025-04-01').outputs.healthModelName.value, '')]"
     },
     "customerHealthModelId": {
       "type": "string",
-      "value": "[if(parameters('enableCustomerDependencies'), reference(resourceId('Microsoft.Resources/deployments', 'customer-health-model'), '2022-09-01').outputs.healthModelId.value, '')]"
+      "value": "[if(parameters('enableCustomerDependencies'), reference(resourceId('Microsoft.Resources/deployments', 'customer-health-model'), '2025-04-01').outputs.healthModelId.value, '')]"
     }
   }
 }

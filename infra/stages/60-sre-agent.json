@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "9155403824455234065"
+      "version": "0.49.2.45890",
+      "templateHash": "4664703703431531779"
     }
   },
   "parameters": {
@@ -48,7 +48,7 @@
   "resources": [
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sre-agent",
       "properties": {
         "expressionEvaluationOptions": {
@@ -88,8 +88,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8063992401361578688"
+              "version": "0.49.2.45890",
+              "templateHash": "4504597741730298847"
             }
           },
           "parameters": {
@@ -234,7 +234,7 @@
               "condition": "[parameters('enableSlotFailureScenario')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('slotWebAppId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback')))]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))]",
@@ -340,7 +340,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.App/agents/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.App/agents', parameters('name'))]",
               "name": "[guid(resourceId('Microsoft.App/agents', parameters('name')), deployer().objectId, 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
@@ -353,7 +353,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.App/agents/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.App/agents', parameters('name'))]",
               "name": "[guid(resourceId('Microsoft.App/agents', parameters('name')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
@@ -455,7 +455,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sre-agent-subscription-rbac",
       "subscriptionId": "[subscription().subscriptionId]",
       "location": "[resourceGroup().location]",
@@ -466,7 +466,7 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.systemPrincipalId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.systemPrincipalId.value]"
           }
         },
         "template": {
@@ -475,8 +475,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "15532746267839740985"
+              "version": "0.49.2.45890",
+              "templateHash": "3968292909846189432"
             }
           },
           "parameters": {
@@ -509,15 +509,15 @@
   "outputs": {
     "sreAgentName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.name.value]"
     },
     "sreAgentEndpoint": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.endpoint.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.endpoint.value]"
     },
     "sreAgentPortalUrl": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.portalUrl.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.portalUrl.value]"
     }
   }
 }

@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "6973975992656012733"
+      "version": "0.49.2.45890",
+      "templateHash": "2222774868453025843"
     }
   },
   "parameters": {
@@ -370,70 +370,8 @@
       }
     },
     {
-      "type": "Microsoft.Insights/dataCollectionRules",
-      "apiVersion": "2023-03-11",
-      "name": "[variables('dcrVmInsightsName')]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('commonTags')]",
-      "kind": "Linux",
-      "properties": {
-        "dataSources": {
-          "performanceCounters": [
-            {
-              "name": "VMInsightsPerfCounters",
-              "streams": [
-                "Microsoft-InsightsMetrics"
-              ],
-              "samplingFrequencyInSeconds": 60,
-              "counterSpecifiers": [
-                "\\VmInsights\\DetailedMetrics"
-              ]
-            }
-          ],
-          "extensions": [
-            {
-              "name": "DependencyAgentDataSource",
-              "streams": [
-                "Microsoft-ServiceMap"
-              ],
-              "extensionName": "DependencyAgent"
-            }
-          ]
-        },
-        "destinations": {
-          "logAnalytics": [
-            {
-              "workspaceResourceId": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]",
-              "name": "centralLaw"
-            }
-          ]
-        },
-        "dataFlows": [
-          {
-            "streams": [
-              "Microsoft-InsightsMetrics"
-            ],
-            "destinations": [
-              "centralLaw"
-            ]
-          },
-          {
-            "streams": [
-              "Microsoft-ServiceMap"
-            ],
-            "destinations": [
-              "centralLaw"
-            ]
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'law-central')]"
-      ]
-    },
-    {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "law-central",
       "properties": {
         "expressionEvaluationOptions": {
@@ -472,8 +410,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9496364909992977379"
+              "version": "0.49.2.45890",
+              "templateHash": "12920772623927365175"
             }
           },
           "parameters": {
@@ -589,7 +527,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "law-appinsights",
       "properties": {
         "expressionEvaluationOptions": {
@@ -616,8 +554,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9496364909992977379"
+              "version": "0.49.2.45890",
+              "templateHash": "12920772623927365175"
             }
           },
           "parameters": {
@@ -733,7 +671,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "appi",
       "properties": {
         "expressionEvaluationOptions": {
@@ -748,7 +686,7 @@
             "value": "[parameters('location')]"
           },
           "workspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -760,8 +698,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "4105218306251594533"
+              "version": "0.49.2.45890",
+              "templateHash": "13842842613853023804"
             }
           },
           "parameters": {
@@ -839,7 +777,7 @@
     {
       "condition": "[parameters('enableSlotFailureScenario')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "appi-customer",
       "properties": {
         "expressionEvaluationOptions": {
@@ -854,7 +792,7 @@
             "value": "[parameters('location')]"
           },
           "workspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[union(variables('commonTags'), createObject('amlab-component', 'customer-web-app'))]"
@@ -866,8 +804,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "4105218306251594533"
+              "version": "0.49.2.45890",
+              "templateHash": "13842842613853023804"
             }
           },
           "parameters": {
@@ -944,7 +882,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "appinsights-observability",
       "properties": {
         "expressionEvaluationOptions": {
@@ -959,9 +897,9 @@
             "value": "[parameters('namePrefix')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
-          "customerAppInsightsId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2022-09-01').outputs.id.value), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value))]",
+          "customerAppInsightsId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2025-04-01').outputs.id.value), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -972,8 +910,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "17421047562906600699"
+              "version": "0.49.2.45890",
+              "templateHash": "1009143358358888967"
             }
           },
           "parameters": {
@@ -1163,7 +1101,7 @@
     {
       "condition": "[parameters('enableObservabilityAgent')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "observability-agent",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1181,7 +1119,7 @@
             "value": "[parameters('observabilityAgentLocation')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
           "issueCreationInstructions": {
             "value": "[parameters('observabilityAgentInstructions')]"
@@ -1199,8 +1137,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9707001849426355645"
+              "version": "0.49.2.45890",
+              "templateHash": "7401621698700930377"
             }
           },
           "parameters": {
@@ -1305,7 +1243,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Monitor/accounts/{0}', parameters('monitoringAccountName'))]",
+              "scope": "[resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName'))]",
               "name": "[guid(resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName')), resourceId('Microsoft.Monitor/observabilityAgents', parameters('name')), variables('issueContributorRoleId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('issueContributorRoleId'))]",
@@ -1367,7 +1305,7 @@
     {
       "condition": "[parameters('enableObservabilityAgent')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "observability-agent-resource-rbac",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1376,7 +1314,7 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.principalId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.principalId.value]"
           },
           "appInsightsName": {
             "value": "[variables('appInsightsName')]"
@@ -1388,8 +1326,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "3367133538840439263"
+              "version": "0.49.2.45890",
+              "templateHash": "4102828174005959417"
             }
           },
           "parameters": {
@@ -1413,7 +1351,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Insights/components/{0}', parameters('appInsightsName'))]",
+              "scope": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
               "name": "[guid(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), parameters('principalId'), variables('monitoringReaderRoleId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReaderRoleId'))]",
@@ -1431,7 +1369,7 @@
     {
       "condition": "[parameters('enableSreAgent')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sre-agent",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1443,21 +1381,21 @@
             "value": "[variables('sreAgentName')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
           "appInsightsAppId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.appId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.appId.value]"
           },
           "appInsightsConnectionString": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.connectionString.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.connectionString.value]"
           },
           "logAnalyticsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "managedResourceGroupId": {
             "value": "[resourceGroup().id]"
           },
-          "slotWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppId.value), createObject('value', ''))]",
+          "slotWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.webAppId.value), createObject('value', ''))]",
           "enableSlotFailureScenario": {
             "value": "[parameters('enableSlotFailureScenario')]"
           },
@@ -1471,8 +1409,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8063992401361578688"
+              "version": "0.49.2.45890",
+              "templateHash": "4504597741730298847"
             }
           },
           "parameters": {
@@ -1617,7 +1555,7 @@
               "condition": "[parameters('enableSlotFailureScenario')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('slotWebAppId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback')))]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'sre-agent-slot-rollback'))]",
@@ -1723,7 +1661,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.App/agents/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.App/agents', parameters('name'))]",
               "name": "[guid(resourceId('Microsoft.App/agents', parameters('name')), deployer().objectId, 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
@@ -1736,7 +1674,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.App/agents/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.App/agents', parameters('name'))]",
               "name": "[guid(resourceId('Microsoft.App/agents', parameters('name')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', parameters('name'))), 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'e79298df-d852-4c6d-84f9-5d13249d1e55')]",
@@ -1844,7 +1782,7 @@
     {
       "condition": "[parameters('enableSreAgent')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sre-agent-subscription-rbac",
       "subscriptionId": "[subscription().subscriptionId]",
       "location": "[resourceGroup().location]",
@@ -1855,7 +1793,7 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.systemPrincipalId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.systemPrincipalId.value]"
           }
         },
         "template": {
@@ -1864,8 +1802,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "15532746267839740985"
+              "version": "0.49.2.45890",
+              "templateHash": "3968292909846189432"
             }
           },
           "parameters": {
@@ -1896,7 +1834,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "amw",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1920,8 +1858,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8759512149156288841"
+              "version": "0.49.2.45890",
+              "templateHash": "10730211500627151816"
             }
           },
           "parameters": {
@@ -1974,7 +1912,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "network",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2001,8 +1939,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14688512643480330215"
+              "version": "0.49.2.45890",
+              "templateHash": "12835386191965053588"
             }
           },
           "parameters": {
@@ -2136,7 +2074,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "storage-account",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2151,7 +2089,7 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -2163,8 +2101,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8258136283443655457"
+              "version": "0.49.2.45890",
+              "templateHash": "15128125316862585915"
             }
           },
           "parameters": {
@@ -2250,7 +2188,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('name'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -2272,7 +2210,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}/blobServices/{1}', parameters('name'), 'default')]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('name'), 'default')]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -2324,7 +2262,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "app-diag-storage",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2339,7 +2277,7 @@
             "value": "[parameters('appServiceLocation')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -2351,8 +2289,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8258136283443655457"
+              "version": "0.49.2.45890",
+              "templateHash": "15128125316862585915"
             }
           },
           "parameters": {
@@ -2438,7 +2376,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('name'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -2460,7 +2398,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}/blobServices/{1}', parameters('name'), 'default')]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('name'), 'default')]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -2512,7 +2450,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "eventhub",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2527,7 +2465,7 @@
             "value": "[parameters('appServiceLocation')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -2539,8 +2477,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "13427846610720516459"
+              "version": "0.49.2.45890",
+              "templateHash": "6773036411485590407"
             }
           },
           "parameters": {
@@ -2629,7 +2567,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.EventHub/namespaces/{0}', parameters('namespaceName'))]",
+              "scope": "[resourceId('Microsoft.EventHub/namespaces', parameters('namespaceName'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -2681,7 +2619,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "keyvault",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2696,7 +2634,7 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -2708,8 +2646,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2064074590174087386"
+              "version": "0.49.2.45890",
+              "templateHash": "8822344894018527913"
             }
           },
           "parameters": {
@@ -2785,7 +2723,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('name'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -2833,7 +2771,149 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
+      "name": "vm-insights-dcr",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('dcrVmInsightsName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "centralLawId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
+          },
+          "tags": {
+            "value": "[variables('commonTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.49.2.45890",
+              "templateHash": "5115814056315907238"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Classic VM Insights data collection rule name."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Region."
+              }
+            },
+            "centralLawId": {
+              "type": "string",
+              "metadata": {
+                "description": "Destination Log Analytics workspace resource ID."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags."
+              }
+            }
+          },
+          "resources": {
+            "dcr": {
+              "@options": {
+                "retryOn": [
+                  [
+                    "InvalidPayload"
+                  ],
+                  30
+                ]
+              },
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2023-03-11",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "Linux",
+              "properties": {
+                "dataSources": {
+                  "performanceCounters": [
+                    {
+                      "name": "VMInsightsPerfCounters",
+                      "streams": [
+                        "Microsoft-InsightsMetrics"
+                      ],
+                      "samplingFrequencyInSeconds": 60,
+                      "counterSpecifiers": [
+                        "\\VmInsights\\DetailedMetrics"
+                      ]
+                    }
+                  ],
+                  "extensions": [
+                    {
+                      "name": "DependencyAgentDataSource",
+                      "streams": [
+                        "Microsoft-ServiceMap"
+                      ],
+                      "extensionName": "DependencyAgent"
+                    }
+                  ]
+                },
+                "destinations": {
+                  "logAnalytics": [
+                    {
+                      "workspaceResourceId": "[parameters('centralLawId')]",
+                      "name": "centralLaw"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "Microsoft-InsightsMetrics"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ]
+                  },
+                  {
+                    "streams": [
+                      "Microsoft-ServiceMap"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('name'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'law-central')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
       "name": "workspace-transforms",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2848,10 +2928,10 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "centralLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -2863,8 +2943,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "13822448701205026503"
+              "version": "0.49.2.45890",
+              "templateHash": "9833008702036604993"
             }
           },
           "parameters": {
@@ -2933,7 +3013,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('centralLawName'))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('centralLawName'))]",
               "name": "microsoft-default",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('name'))]",
@@ -2963,7 +3043,7 @@
     {
       "condition": "[variables('deployVmOtelMetrics')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vm-otel-metrics",
       "properties": {
         "expressionEvaluationOptions": {
@@ -2978,7 +3058,7 @@
             "value": "[parameters('location')]"
           },
           "monitoringAccountId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -2990,8 +3070,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9334971952597745250"
+              "version": "0.49.2.45890",
+              "templateHash": "4142520911080488523"
             }
           },
           "parameters": {
@@ -3089,7 +3169,7 @@
     {
       "condition": "[parameters('deployLinuxVm')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vm-linux",
       "properties": {
         "expressionEvaluationOptions": {
@@ -3113,12 +3193,12 @@
             "value": "[parameters('vmAdminPassword')]"
           },
           "subnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2022-09-01').outputs.workloadSubnetId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.workloadSubnetId.value]"
           },
           "dcrId": {
-            "value": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vm-insights-dcr'), '2025-04-01').outputs.id.value]"
           },
-          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2022-09-01').outputs.id.value), createObject('value', ''))]",
+          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2025-04-01').outputs.id.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -3129,8 +3209,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14744096280615074103"
+              "version": "0.49.2.45890",
+              "templateHash": "3811074151468356496"
             }
           },
           "parameters": {
@@ -3306,7 +3386,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vminsights-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('dcrId')]",
@@ -3321,7 +3401,7 @@
               "condition": "[not(empty(parameters('otelDcrId')))]",
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vm-otel-metrics-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('otelDcrId')]",
@@ -3350,7 +3430,7 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-insights-dcr')]",
         "[resourceId('Microsoft.Resources/deployments', 'network')]",
         "[resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics')]"
       ]
@@ -3358,7 +3438,7 @@
     {
       "condition": "[parameters('deployWindowsVm')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vm-windows",
       "properties": {
         "expressionEvaluationOptions": {
@@ -3382,12 +3462,12 @@
             "value": "[parameters('vmAdminPassword')]"
           },
           "subnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2022-09-01').outputs.workloadSubnetId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.workloadSubnetId.value]"
           },
           "dcrId": {
-            "value": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vm-insights-dcr'), '2025-04-01').outputs.id.value]"
           },
-          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2022-09-01').outputs.id.value), createObject('value', ''))]",
+          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2025-04-01').outputs.id.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -3398,8 +3478,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14683978266823128703"
+              "version": "0.49.2.45890",
+              "templateHash": "4314995037895854890"
             }
           },
           "parameters": {
@@ -3596,7 +3676,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vminsights-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('dcrId')]",
@@ -3611,7 +3691,7 @@
               "condition": "[not(empty(parameters('otelDcrId')))]",
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vm-otel-metrics-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('otelDcrId')]",
@@ -3640,14 +3720,14 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]",
+        "[resourceId('Microsoft.Resources/deployments', 'vm-insights-dcr')]",
         "[resourceId('Microsoft.Resources/deployments', 'network')]",
         "[resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics')]"
       ]
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "aks",
       "properties": {
         "expressionEvaluationOptions": {
@@ -3671,10 +3751,10 @@
             "value": "[parameters('aksNodeCount')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "azureMonitorWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
           },
           "dataCollectionEndpointId": {
             "value": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName'))]"
@@ -3692,8 +3772,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "913029475329877512"
+              "version": "0.49.2.45890",
+              "templateHash": "17126391944104132009"
             }
           },
           "parameters": {
@@ -3825,7 +3905,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -3896,7 +3976,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]",
               "name": "ContainerInsightsExtension",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', format('MSCI-{0}-{1}', replace(parameters('location'), ' ', ''), parameters('name')))]",
@@ -3950,7 +4030,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]",
               "name": "prometheus-association",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrPrometheusName'))]",
@@ -3986,7 +4066,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "grafana",
       "properties": {
         "expressionEvaluationOptions": {
@@ -4004,7 +4084,7 @@
             "value": "[parameters('location')]"
           },
           "azureMonitorWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -4016,8 +4096,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8848555372212880413"
+              "version": "0.49.2.45890",
+              "templateHash": "15088401511147848079"
             }
           },
           "parameters": {
@@ -4099,7 +4179,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Dashboard/grafana/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.Dashboard/grafana', parameters('name'))]",
               "name": "[guid(resourceId('Microsoft.Dashboard/grafana', parameters('name')), variables('adminPrincipalId'), '22926164-76b3-42b3-bc55-97df8dab3e41')]",
               "properties": {
                 "principalId": "[variables('adminPrincipalId')]",
@@ -4132,7 +4212,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "appservice",
       "properties": {
         "expressionEvaluationOptions": {
@@ -4150,22 +4230,22 @@
             "value": "[parameters('appServiceLocation')]"
           },
           "appInsightsConnectionString": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.connectionString.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.connectionString.value]"
           },
           "appInsightsInstrumentationKey": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.instrumentationKey.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.instrumentationKey.value]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "diagStorageAccountId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'app-diag-storage'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'app-diag-storage'), '2025-04-01').outputs.id.value]"
           },
           "diagEventHubAuthRuleId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'eventhub'), '2022-09-01').outputs.sendRuleId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'eventhub'), '2025-04-01').outputs.sendRuleId.value]"
           },
           "diagEventHubName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'eventhub'), '2022-09-01').outputs.hubName.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'eventhub'), '2025-04-01').outputs.hubName.value]"
           },
           "enableSlotFailureScenario": {
             "value": "[parameters('enableSlotFailureScenario')]"
@@ -4183,8 +4263,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8114531582421984343"
+              "version": "0.49.2.45890",
+              "templateHash": "16911908290625892862"
             }
           },
           "parameters": {
@@ -4318,7 +4398,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -4343,7 +4423,7 @@
               "condition": "[not(empty(parameters('diagStorageAccountId')))]",
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "archive-to-blob",
               "properties": {
                 "storageAccountId": "[parameters('diagStorageAccountId')]",
@@ -4368,7 +4448,7 @@
               "condition": "[not(empty(parameters('diagEventHubAuthRuleId')))]",
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "stream-to-eventhub",
               "properties": {
                 "eventHubAuthorizationRuleId": "[parameters('diagEventHubAuthRuleId')]",
@@ -4392,7 +4472,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "app-settings",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -4434,8 +4514,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5145608396194603445"
+                      "version": "0.49.2.45890",
+                      "templateHash": "8554871092470843977"
                     }
                   },
                   "parameters": {
@@ -4503,7 +4583,7 @@
     {
       "condition": "[and(parameters('enableCustomerDependencies'), parameters('enableSlotFailureScenario'))]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "customer-dependencies",
       "properties": {
         "expressionEvaluationOptions": {
@@ -4521,7 +4601,7 @@
             "value": "[parameters('appServiceLocation')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "appInsightsName": {
             "value": "[variables('appInsightsName')]"
@@ -4546,8 +4626,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2505586097067260553"
+              "version": "0.49.2.45890",
+              "templateHash": "1335516791979128825"
             }
           },
           "parameters": {
@@ -4645,7 +4725,7 @@
             "sqlDiagnostics": {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Sql/servers/{0}/databases/{1}', variables('sqlName'), 'customer-orders')]",
+              "scope": "[resourceId('Microsoft.Sql/servers/databases', variables('sqlName'), 'customer-orders')]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -4684,7 +4764,7 @@
             },
             "customerIdentity": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-dependency-identity",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -5219,7 +5299,7 @@
             },
             "workerIdentity": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "orders-processor-identity",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -5754,7 +5834,7 @@
             },
             "network": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-dependency-network",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -7581,7 +7661,7 @@
             },
             "sqlDns": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-sql-dns",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -10953,7 +11033,7 @@
             },
             "sqlEndpoint": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-sql-private-endpoint",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -11620,7 +11700,7 @@
             },
             "bus": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-orders-bus",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -17482,7 +17562,7 @@
             },
             "storage": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "orders-processor-storage",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -25919,7 +25999,7 @@
                 "count": "[length(variables('storageSubresources'))]"
               },
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('customer-storage-{0}-dns', variables('storageSubresources')[copyIndex()])]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -29295,7 +29375,7 @@
                 "count": "[length(variables('storageSubresources'))]"
               },
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('customer-storage-{0}-private-endpoint', variables('storageSubresources')[copyIndex()])]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -29962,7 +30042,7 @@
             },
             "processor": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-orders-processor",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -30018,8 +30098,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "6986302758928060909"
+                      "version": "0.49.2.45890",
+                      "templateHash": "10228049171845863697"
                     }
                   },
                   "parameters": {
@@ -30068,7 +30148,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Insights/components/{0}', parameters('appInsightsName'))]",
+                      "scope": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
                       "name": "[guid(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), parameters('identityId'), '3913510d-42f4-4e42-8a64-420c390055eb')]",
                       "properties": {
                         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]",
@@ -30140,7 +30220,7 @@
                     {
                       "type": "Microsoft.Insights/diagnosticSettings",
                       "apiVersion": "2021-05-01-preview",
-                      "scope": "[format('Microsoft.Web/sites/{0}', parameters('name'))]",
+                      "scope": "[resourceId('Microsoft.Web/sites', parameters('name'))]",
                       "name": "send-to-central-law",
                       "properties": {
                         "workspaceId": "[parameters('centralLawId')]",
@@ -30299,7 +30379,7 @@
     {
       "condition": "[parameters('enableSlotFailureScenario')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "customer-webapp",
       "properties": {
         "expressionEvaluationOptions": {
@@ -30314,20 +30394,20 @@
             "value": "[parameters('appServiceLocation')]"
           },
           "serverFarmResourceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.planId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.planId.value]"
           },
           "appInsightsConnectionString": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2022-09-01').outputs.connectionString.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2025-04-01').outputs.connectionString.value]"
           },
           "appInsightsInstrumentationKey": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2022-09-01').outputs.instrumentationKey.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi-customer'), '2025-04-01').outputs.instrumentationKey.value]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
-          "customerIdentityId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.customerIdentityId.value), createObject('value', ''))]",
-          "customerSubnetId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.customerSubnetId.value), createObject('value', ''))]",
-          "customerDependencySettings": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.customerSettings.value), createObject('value', createObject('CustomerDependencies__Enabled', 'false')))]",
+          "customerIdentityId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.customerIdentityId.value), createObject('value', ''))]",
+          "customerSubnetId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.customerSubnetId.value), createObject('value', ''))]",
+          "customerDependencySettings": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.customerSettings.value), createObject('value', createObject('CustomerDependencies__Enabled', 'false')))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -30338,8 +30418,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14116149934811644844"
+              "version": "0.49.2.45890",
+              "templateHash": "2365788227651347260"
             }
           },
           "parameters": {
@@ -30405,7 +30485,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -30428,7 +30508,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-web-app",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -45273,7 +45353,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-web-app-settings",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -45282,7 +45362,7 @@
                 "mode": "Incremental",
                 "parameters": {
                   "webAppName": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.name.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.name.value]"
                   },
                   "appSettings": {
                     "value": "[union(createObject('APPLICATIONINSIGHTS_CONNECTION_STRING', parameters('appInsightsConnectionString'), 'APPINSIGHTS_INSTRUMENTATIONKEY', parameters('appInsightsInstrumentationKey'), 'ApplicationInsightsAgent_EXTENSION_VERSION', '~3', 'XDT_MicrosoftApplicationInsights_Mode', 'recommended', 'XDT_MicrosoftApplicationInsights_PreemptSdk', '1', 'InstrumentationEngine_EXTENSION_VERSION', 'disabled', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'false', 'LabConsole__CustomerAppMode', 'true', 'LabConsole__SlotScenarioEnabled', 'true', 'LabConsole__ForceOutage', 'false', 'WEBSITE_SWAP_WARMUP_PING_PATH', '/api/slot-warmup', 'WEBSITE_SWAP_WARMUP_PING_STATUSES', '200'), parameters('customerDependencySettings'))]"
@@ -45294,8 +45374,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "12497422678682809962"
+                      "version": "0.49.2.45890",
+                      "templateHash": "8027322779059564306"
                     }
                   },
                   "parameters": {
@@ -45315,7 +45395,7 @@
                   "resources": [
                     {
                       "type": "Microsoft.Resources/deployments",
-                      "apiVersion": "2022-09-01",
+                      "apiVersion": "2025-04-01",
                       "name": "merge-app-settings",
                       "properties": {
                         "expressionEvaluationOptions": {
@@ -45339,8 +45419,8 @@
                           "metadata": {
                             "_generator": {
                               "name": "bicep",
-                              "version": "0.37.4.10188",
-                              "templateHash": "5145608396194603445"
+                              "version": "0.49.2.45890",
+                              "templateHash": "8554871092470843977"
                             }
                           },
                           "parameters": {
@@ -45383,7 +45463,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-broken-slot",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -52482,15 +52562,15 @@
           "outputs": {
             "webAppId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.resourceId.value]"
             },
             "webAppName": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.name.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.name.value]"
             },
             "defaultHost": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.defaultHostname.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.defaultHostname.value]"
             }
           }
         }
@@ -52504,7 +52584,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "lab-console-platform",
       "properties": {
         "expressionEvaluationOptions": {
@@ -52513,24 +52593,24 @@
         "mode": "Incremental",
         "parameters": {
           "webAppName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppName.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppName.value]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
-          "fabricCapacityName": "[if(parameters('enableFabric'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.name.value), createObject('value', ''))]",
+          "fabricCapacityName": "[if(parameters('enableFabric'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2025-04-01').outputs.name.value), createObject('value', ''))]",
           "location": {
             "value": "[parameters('appServiceLocation')]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
           },
-          "cpuVmNames": "[if(and(parameters('deployLinuxVm'), parameters('deployWindowsVm')), createObject('value', createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmName.value, reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmName.value)), createObject('value', createArray()))]",
+          "cpuVmNames": "[if(and(parameters('deployLinuxVm'), parameters('deployWindowsVm')), createObject('value', createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmName.value, reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmName.value)), createObject('value', createArray()))]",
           "enableSlotFailureScenario": {
             "value": "[parameters('enableSlotFailureScenario')]"
           },
-          "customerWebAppName": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppName.value), createObject('value', ''))]",
-          "customerWorkerName": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.workerName.value), createObject('value', ''))]"
+          "customerWebAppName": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.webAppName.value), createObject('value', ''))]",
+          "customerWorkerName": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.workerName.value), createObject('value', ''))]"
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -52538,8 +52618,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "15909413640873189571"
+              "version": "0.49.2.45890",
+              "templateHash": "4647249262983396298"
             }
           },
           "parameters": {
@@ -52620,7 +52700,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.App/managedEnvironments/{0}', variables('environmentName'))]",
+              "scope": "[resourceId('Microsoft.App/managedEnvironments', variables('environmentName'))]",
               "name": "console-runner-logs",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -52686,11 +52766,11 @@
               "condition": "[parameters('enableSlotFailureScenario')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('customerWebAppName'))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role')), 'customer-webapp-scope')]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -52731,11 +52811,11 @@
               "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('customerWebAppName'))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), variables('identityName'), 'customer-fault-settings')]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -52747,11 +52827,11 @@
               "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWorkerName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('customerWorkerName'))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWorkerName')), variables('identityName'), 'customer-fault-settings')]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -52789,11 +52869,11 @@
               },
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('cpuVmNames')[copyIndex()])]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('cpuVmNames')[copyIndex()])]",
               "name": "[guid(resourceId('Microsoft.Compute/virtualMachines', parameters('cpuVmNames')[copyIndex()]), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-cpu-run-command-role')))]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-cpu-run-command-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -52803,7 +52883,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-identity",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -53338,7 +53418,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-registry",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -53380,7 +53460,7 @@
                     "value": [
                       {
                         "roleDefinitionIdOrName": "AcrPull",
-                        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                         "principalType": "ServicePrincipal"
                       }
                     ]
@@ -57206,7 +57286,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-environment",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -59493,7 +59573,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-access",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -59505,7 +59585,7 @@
                     "value": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-runner-role'))]"
                   },
                   "principalId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
                   }
                 },
                 "template": {
@@ -59514,8 +59594,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5665340490566376816"
+                      "version": "0.49.2.45890",
+                      "templateHash": "15578287379822125990"
                     }
                   },
                   "parameters": {
@@ -59547,7 +59627,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-health-reader",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -59568,8 +59648,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5665340490566376816"
+                      "version": "0.49.2.45890",
+                      "templateHash": "15578287379822125990"
                     }
                   },
                   "parameters": {
@@ -59597,7 +59677,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-reader",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -59609,7 +59689,7 @@
                     "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]"
                   },
                   "principalId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
                   }
                 },
                 "template": {
@@ -59618,8 +59698,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5665340490566376816"
+                      "version": "0.49.2.45890",
+                      "templateHash": "15578287379822125990"
                     }
                   },
                   "parameters": {
@@ -59651,7 +59731,7 @@
             {
               "condition": "[not(empty(parameters('fabricCapacityName')))]",
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-fabric-access",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -59663,7 +59743,7 @@
                     "value": "[parameters('fabricCapacityName')]"
                   },
                   "principalId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
                   }
                 },
                 "template": {
@@ -59672,8 +59752,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "2914668496453868903"
+                      "version": "0.49.2.45890",
+                      "templateHash": "7675838191455789964"
                     }
                   },
                   "parameters": {
@@ -59719,7 +59799,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Fabric/capacities/{0}', parameters('capacityName'))]",
+                      "scope": "[resourceId('Microsoft.Fabric/capacities', parameters('capacityName'))]",
                       "name": "[guid(resourceId('Microsoft.Fabric/capacities', parameters('capacityName')), parameters('principalId'), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role')))]",
                       "properties": {
                         "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]",
@@ -59741,23 +59821,23 @@
           "outputs": {
             "registryName": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2022-09-01').outputs.name.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2025-04-01').outputs.name.value]"
             },
             "registryId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2025-04-01').outputs.resourceId.value]"
             },
             "environmentId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-environment'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-environment'), '2025-04-01').outputs.resourceId.value]"
             },
             "runnerIdentityId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.resourceId.value]"
             },
             "runnerPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
             },
             "jobName": {
               "type": "string",
@@ -59778,7 +59858,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "automitigation",
       "properties": {
         "expressionEvaluationOptions": {
@@ -59792,8 +59872,8 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
-          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
+          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
+          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -59804,8 +59884,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "17890678230181324105"
+              "version": "0.49.2.45890",
+              "templateHash": "14407500194181125410"
             }
           },
           "parameters": {
@@ -60007,7 +60087,7 @@
               "condition": "[not(empty(parameters('linuxVmId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', last(split(parameters('linuxVmId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', last(split(parameters('linuxVmId'), '/')))]",
               "name": "[guid(parameters('linuxVmId'), resourceId('Microsoft.Logic/workflows', parameters('name')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName'))))]",
               "properties": {
                 "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
@@ -60023,7 +60103,7 @@
               "condition": "[not(empty(parameters('windowsVmId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', last(split(parameters('windowsVmId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', last(split(parameters('windowsVmId'), '/')))]",
               "name": "[guid(parameters('windowsVmId'), resourceId('Microsoft.Logic/workflows', parameters('name')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, variables('vmStartRoleName'))))]",
               "properties": {
                 "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]",
@@ -60059,7 +60139,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "actiongroup",
       "properties": {
         "expressionEvaluationOptions": {
@@ -60074,7 +60154,7 @@
             "value": "[parameters('alertEmail')]"
           },
           "webhookUrl": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'automitigation'), '2022-09-01').outputs.callbackUrl.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'automitigation'), '2025-04-01').outputs.callbackUrl.value]"
           },
           "siemWebhookUrl": {
             "value": "[parameters('siemWebhookUrl')]"
@@ -60089,8 +60169,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "7239962435507003194"
+              "version": "0.49.2.45890",
+              "templateHash": "16538734976454043780"
             }
           },
           "parameters": {
@@ -60161,7 +60241,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "alerts",
       "properties": {
         "expressionEvaluationOptions": {
@@ -60173,23 +60253,23 @@
             "value": "[parameters('location')]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "aksId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2025-04-01').outputs.id.value]"
           },
           "webAppId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppId.value]"
           },
-          "customerWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppId.value), createObject('value', ''))]",
+          "customerWebAppId": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.webAppId.value), createObject('value', ''))]",
           "webAppRegion": {
             "value": "[parameters('appServiceLocation')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
-          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
-          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
+          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
+          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -60200,8 +60280,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "1152640100182684224"
+              "version": "0.49.2.45890",
+              "templateHash": "15223008770923836926"
             }
           },
           "parameters": {
@@ -60590,7 +60670,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "amba",
       "properties": {
         "expressionEvaluationOptions": {
@@ -60602,19 +60682,19 @@
             "value": "[parameters('location')]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "vmIds": {
-            "value": "[filter(createArray(if(parameters('deployLinuxVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value, ''), if(parameters('deployWindowsVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value, '')), lambda('id', not(empty(lambdaVariables('id')))))]"
+            "value": "[filter(createArray(if(parameters('deployLinuxVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value, ''), if(parameters('deployWindowsVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value, '')), lambda('id', not(empty(lambdaVariables('id')))))]"
           },
           "webAppId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppId.value]"
           },
           "aksId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2025-04-01').outputs.id.value]"
           },
           "appPlanId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.planId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.planId.value]"
           },
           "webAppRegion": {
             "value": "[parameters('appServiceLocation')]"
@@ -60629,8 +60709,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "16571993248590435054"
+              "version": "0.49.2.45890",
+              "templateHash": "4240055172304602522"
             }
           },
           "parameters": {
@@ -61052,7 +61132,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "health-alerts",
       "properties": {
         "expressionEvaluationOptions": {
@@ -61061,7 +61141,7 @@
         "mode": "Incremental",
         "parameters": {
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -61073,8 +61153,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "4004965451071112259"
+              "version": "0.49.2.45890",
+              "templateHash": "18296090894184243616"
             }
           },
           "parameters": {
@@ -61172,7 +61252,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "policy-diagnostics",
       "properties": {
         "expressionEvaluationOptions": {
@@ -61181,7 +61261,7 @@
         "mode": "Incremental",
         "parameters": {
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           }
         },
         "template": {
@@ -61190,8 +61270,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "17644930876565706887"
+              "version": "0.49.2.45890",
+              "templateHash": "4283094213788451836"
             }
           },
           "parameters": {
@@ -61302,7 +61382,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "saved-queries",
       "properties": {
         "expressionEvaluationOptions": {
@@ -61311,10 +61391,10 @@
         "mode": "Incremental",
         "parameters": {
           "centralLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "appInsightsLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.name.value]"
           }
         },
         "template": {
@@ -61323,8 +61403,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2700006178681996112"
+              "version": "0.49.2.45890",
+              "templateHash": "3365959346851828683"
             }
           },
           "parameters": {
@@ -61522,7 +61602,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "workbook",
       "properties": {
         "expressionEvaluationOptions": {
@@ -61537,10 +61617,10 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "appInsightsLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.name.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -61552,8 +61632,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9277295640901288810"
+              "version": "0.49.2.45890",
+              "templateHash": "14176808247918997337"
             }
           },
           "parameters": {
@@ -61975,7 +62055,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vmss",
       "properties": {
         "expressionEvaluationOptions": {
@@ -61999,7 +62079,7 @@
             "value": "[parameters('vmAdminPassword')]"
           },
           "subnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2022-09-01').outputs.workloadSubnetId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.workloadSubnetId.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -62011,8 +62091,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "7667011808131489377"
+              "version": "0.49.2.45890",
+              "templateHash": "1284699466214610727"
             }
           },
           "parameters": {
@@ -62180,7 +62260,7 @@
     {
       "condition": "[or(parameters('deployLinuxVm'), parameters('deployWindowsVm'))]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vm-cpu-dynamic-alert",
       "properties": {
         "expressionEvaluationOptions": {
@@ -62192,10 +62272,10 @@
             "value": "[parameters('location')]"
           },
           "vmIds": {
-            "value": "[filter(createArray(if(parameters('deployLinuxVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value, ''), if(parameters('deployWindowsVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value, '')), lambda('id', not(empty(lambdaVariables('id')))))]"
+            "value": "[filter(createArray(if(parameters('deployLinuxVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value, ''), if(parameters('deployWindowsVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value, '')), lambda('id', not(empty(lambdaVariables('id')))))]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -62207,8 +62287,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "1470801410026989743"
+              "version": "0.49.2.45890",
+              "templateHash": "9916512968639868911"
             }
           },
           "parameters": {
@@ -62282,7 +62362,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "availability-test",
       "properties": {
         "expressionEvaluationOptions": {
@@ -62297,13 +62377,13 @@
             "value": "[parameters('location')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
           "testUrl": {
-            "value": "[format('https://{0}/', reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.defaultHost.value)]"
+            "value": "[format('https://{0}/', reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.defaultHost.value)]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -62315,8 +62395,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2744902256941642038"
+              "version": "0.49.2.45890",
+              "templateHash": "14587220164027251498"
             }
           },
           "parameters": {
@@ -62461,7 +62541,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "agent-task-availability-test",
       "properties": {
         "expressionEvaluationOptions": {
@@ -62476,13 +62556,13 @@
             "value": "[parameters('location')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
           "testUrl": {
-            "value": "[format('https://{0}/api/agent-task-availability', reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.defaultHost.value)]"
+            "value": "[format('https://{0}/api/agent-task-availability', reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.defaultHost.value)]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -62494,8 +62574,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2744902256941642038"
+              "version": "0.49.2.45890",
+              "templateHash": "14587220164027251498"
             }
           },
           "parameters": {
@@ -62640,7 +62720,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "alert-processing-rules",
       "properties": {
         "expressionEvaluationOptions": {
@@ -62652,10 +62732,10 @@
             "value": "[parameters('namePrefix')]"
           },
           "primaryActionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "vmIds": {
-            "value": "[filter(createArray(if(parameters('deployLinuxVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value, ''), if(parameters('deployWindowsVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value, '')), lambda('id', not(empty(lambdaVariables('id')))))]"
+            "value": "[filter(createArray(if(parameters('deployLinuxVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value, ''), if(parameters('deployWindowsVm'), reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value, '')), lambda('id', not(empty(lambdaVariables('id')))))]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -62667,8 +62747,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "1152571597193598490"
+              "version": "0.49.2.45890",
+              "templateHash": "16176505219584773539"
             }
           },
           "parameters": {
@@ -62834,7 +62914,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "custom-logs",
       "properties": {
         "expressionEvaluationOptions": {
@@ -62849,10 +62929,10 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "centralLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -62864,8 +62944,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "13977932200121899644"
+              "version": "0.49.2.45890",
+              "templateHash": "14617415180067521806"
             }
           },
           "parameters": {
@@ -63085,7 +63165,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "kql-functions",
       "properties": {
         "expressionEvaluationOptions": {
@@ -63094,10 +63174,10 @@
         "mode": "Incremental",
         "parameters": {
           "centralLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "appInsightsLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.name.value]"
           }
         },
         "template": {
@@ -63106,8 +63186,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2374855197336449984"
+              "version": "0.49.2.45890",
+              "templateHash": "8417347969909841290"
             }
           },
           "parameters": {
@@ -63177,7 +63257,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "summary-rules",
       "properties": {
         "expressionEvaluationOptions": {
@@ -63186,10 +63266,10 @@
         "mode": "Incremental",
         "parameters": {
           "centralLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "location": {
             "value": "[parameters('location')]"
@@ -63204,8 +63284,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8210817863758867681"
+              "version": "0.49.2.45890",
+              "templateHash": "16419706793144254756"
             }
           },
           "parameters": {
@@ -63300,7 +63380,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "law-rbac",
       "properties": {
         "expressionEvaluationOptions": {
@@ -63309,10 +63389,10 @@
         "mode": "Incremental",
         "parameters": {
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "centralLawName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "location": {
             "value": "[parameters('location')]"
@@ -63327,8 +63407,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8545516125681944633"
+              "version": "0.49.2.45890",
+              "templateHash": "6905046746898757741"
             }
           },
           "parameters": {
@@ -63389,7 +63469,7 @@
               "condition": "[not(empty(parameters('workspaceReaderPrincipalId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('centralLawName'))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('centralLawName'))]",
               "name": "[guid(parameters('centralLawId'), variables('logAnalyticsReaderRoleId'), parameters('workspaceReaderPrincipalId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('logAnalyticsReaderRoleId'))]",
@@ -63427,7 +63507,7 @@
               "condition": "[not(empty(parameters('tableReaderPrincipalId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('centralLawName'))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('centralLawName'))]",
               "name": "[guid(parameters('centralLawId'), 'granular-table-reader', parameters('tableReaderPrincipalId'))]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'amlab-granular-log-reader'))]",
@@ -63444,7 +63524,7 @@
               "condition": "[not(empty(parameters('rowFilteredPrincipalId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('centralLawName'))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('centralLawName'))]",
               "name": "[guid(parameters('centralLawId'), 'granular-row-filtered', parameters('rowFilteredPrincipalId'))]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'amlab-granular-log-reader'))]",
@@ -63476,7 +63556,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "security-posture-alerts",
       "properties": {
         "expressionEvaluationOptions": {
@@ -63488,10 +63568,10 @@
             "value": "[parameters('location')]"
           },
           "workspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -63503,8 +63583,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "15529012368281587446"
+              "version": "0.49.2.45890",
+              "templateHash": "16491842872986032215"
             }
           },
           "parameters": {
@@ -63657,7 +63737,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "connection-monitor",
       "resourceGroup": "NetworkWatcherRG",
       "properties": {
@@ -63670,12 +63750,12 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
-          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
-          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
+          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
+          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
           "appServiceHost": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.defaultHost.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.defaultHost.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -63687,8 +63767,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "1762279408233800432"
+              "version": "0.49.2.45890",
+              "templateHash": "16208097139000923358"
             }
           },
           "parameters": {
@@ -63798,7 +63878,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "flow-logs",
       "resourceGroup": "NetworkWatcherRG",
       "properties": {
@@ -63814,22 +63894,22 @@
             "value": "[parameters('location')]"
           },
           "targetVnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2022-09-01').outputs.vnetId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.vnetId.value]"
           },
           "networkWatcherId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2022-09-01').outputs.networkWatcherId.value]"
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2025-04-01').outputs.networkWatcherId.value]"
           },
           "storageAccountId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2025-04-01').outputs.id.value]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "centralLawRegion": {
             "value": "[parameters('location')]"
           },
           "centralLawCustomerId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.customerId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.customerId.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -63841,8 +63921,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "6945808001549553726"
+              "version": "0.49.2.45890",
+              "templateHash": "8501672132830296067"
             }
           },
           "parameters": {
@@ -63961,7 +64041,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "data-export",
       "properties": {
         "expressionEvaluationOptions": {
@@ -63973,10 +64053,10 @@
             "value": "[format('dx-{0}-heartbeat', parameters('namePrefix'))]"
           },
           "workspaceName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "storageAccountId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2025-04-01').outputs.id.value]"
           },
           "tables": {
             "value": [
@@ -63986,12 +64066,13 @@
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
           "contentVersion": "1.0.0.0",
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14552688936156756826"
+              "version": "0.49.2.45890",
+              "templateHash": "7280216171388681316"
             }
           },
           "parameters": {
@@ -64023,8 +64104,22 @@
               }
             }
           },
-          "resources": [
-            {
+          "resources": {
+            "law": {
+              "existing": true,
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('workspaceName')]"
+            },
+            "exportRule": {
+              "@options": {
+                "retryOn": [
+                  [
+                    "ResourceNotFound"
+                  ],
+                  30
+                ]
+              },
               "type": "Microsoft.OperationalInsights/workspaces/dataExports",
               "apiVersion": "2023-09-01",
               "name": "[format('{0}/{1}', parameters('workspaceName'), parameters('name'))]",
@@ -64036,7 +64131,7 @@
                 "enable": true
               }
             }
-          ],
+          },
           "outputs": {
             "id": {
               "type": "string",
@@ -64057,7 +64152,7 @@
     {
       "condition": "[parameters('enablePlatformLogsDcr')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "platform-logs-dcr",
       "properties": {
         "expressionEvaluationOptions": {
@@ -64072,10 +64167,10 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "grafanaName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'grafana'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'grafana'), '2025-04-01').outputs.name.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -64087,8 +64182,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "11452206091059677665"
+              "version": "0.49.2.45890",
+              "templateHash": "13339908627639847552"
             }
           },
           "parameters": {
@@ -64178,7 +64273,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2024-03-11",
-              "scope": "[format('Microsoft.Dashboard/grafana/{0}', parameters('grafanaName'))]",
+              "scope": "[resourceId('Microsoft.Dashboard/grafana', parameters('grafanaName'))]",
               "name": "[parameters('associationName')]",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('name'))]",
@@ -64209,7 +64304,7 @@
     {
       "condition": "[parameters('enableMetricsExportDcr')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "metrics-export-dcr",
       "properties": {
         "expressionEvaluationOptions": {
@@ -64224,7 +64319,7 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "keyVaultName": {
             "value": "[variables('keyVaultName')]"
@@ -64239,8 +64334,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2101187004850280446"
+              "version": "0.49.2.45890",
+              "templateHash": "5567194779647896244"
             }
           },
           "parameters": {
@@ -64330,7 +64425,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2024-03-11",
-              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
               "name": "[parameters('associationName')]",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('name'))]",
@@ -64361,7 +64456,7 @@
     {
       "condition": "[parameters('enableSentinel')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sentinel",
       "properties": {
         "expressionEvaluationOptions": {
@@ -64370,10 +64465,10 @@
         "mode": "Incremental",
         "parameters": {
           "workspaceName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
           },
           "workspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "location": {
             "value": "[parameters('location')]"
@@ -64389,8 +64484,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "432815792027783898"
+              "version": "0.49.2.45890",
+              "templateHash": "17356663792720241281"
             }
           },
           "parameters": {
@@ -64423,7 +64518,7 @@
           "resources": {
             "onboarding": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('onboarding-{0}', uniqueString('onboarding', deployment().name))]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -64450,8 +64545,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "13989588199989823254"
+                      "version": "0.49.2.45890",
+                      "templateHash": "1513851471114926778"
                     }
                   },
                   "parameters": {
@@ -64501,7 +64596,7 @@
                     {
                       "type": "Microsoft.SecurityInsights/onboardingStates",
                       "apiVersion": "2024-09-01",
-                      "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workspaceName'))]",
+                      "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
                       "name": "default",
                       "properties": {},
                       "dependsOn": [
@@ -64520,7 +64615,7 @@
             },
             "analyticsRule": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('analyticsRule-{0}', uniqueString('analyticsRule', deployment().name))]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -64538,8 +64633,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "17387801086550536407"
+                      "version": "0.49.2.45890",
+                      "templateHash": "13067564144907751225"
                     }
                   },
                   "parameters": {
@@ -64554,7 +64649,7 @@
                     {
                       "type": "Microsoft.SecurityInsights/alertRules",
                       "apiVersion": "2024-09-01",
-                      "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workspaceName'))]",
+                      "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
                       "name": "0a1b2c3d-amlab-rg-delete-alert",
                       "kind": "Scheduled",
                       "properties": {
@@ -64641,7 +64736,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "prom-rules",
       "properties": {
         "expressionEvaluationOptions": {
@@ -64656,13 +64751,13 @@
             "value": "[parameters('location')]"
           },
           "azureMonitorWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
           },
           "aksClusterId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2025-04-01').outputs.id.value]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -64674,8 +64769,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "231953381752664213"
+              "version": "0.49.2.45890",
+              "templateHash": "15527626980679046160"
             }
           },
           "parameters": {
@@ -64816,7 +64911,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "cost-workbook",
       "properties": {
         "expressionEvaluationOptions": {
@@ -64831,7 +64926,7 @@
             "value": "[parameters('location')]"
           },
           "centralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "dailyCapGb": {
             "value": "[parameters('dailyCapGb')]"
@@ -64846,8 +64941,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "13632335284258159914"
+              "version": "0.49.2.45890",
+              "templateHash": "13191580257433608855"
             }
           },
           "parameters": {
@@ -65002,7 +65097,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "health-model",
       "properties": {
         "expressionEvaluationOptions": {
@@ -65020,39 +65115,39 @@
             "value": "[variables('commonTags')]"
           },
           "webAppId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppId.value]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
           "aksId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2025-04-01').outputs.id.value]"
           },
-          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
-          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
+          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
+          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
           "vmssId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2022-09-01').outputs.vmssId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2025-04-01').outputs.vmssId.value]"
           },
           "keyVaultId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault'), '2025-04-01').outputs.id.value]"
           },
           "storageAccountId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2025-04-01').outputs.id.value]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "enableAi": {
             "value": "[parameters('enableAi')]"
           },
-          "foundryAccountId": "[if(parameters('enableAi'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.accountId.value), createObject('value', ''))]",
+          "foundryAccountId": "[if(parameters('enableAi'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.accountId.value), createObject('value', ''))]",
           "appInsightsLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.id.value]"
           },
           "enableFabric": {
             "value": "[parameters('enableFabric')]"
           },
-          "fabricCapacityId": "[if(parameters('enableFabric'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2022-09-01').outputs.id.value), createObject('value', ''))]"
+          "fabricCapacityId": "[if(parameters('enableFabric'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'fabric-capacity'), '2025-04-01').outputs.id.value), createObject('value', ''))]"
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -65061,8 +65156,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "7749650999989788037"
+              "version": "0.49.2.45890",
+              "templateHash": "787546017250925883"
             }
           },
           "functions": [
@@ -66569,7 +66664,7 @@
     {
       "condition": "[parameters('enableHealthModelDemo')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "health-model-demo",
       "properties": {
         "expressionEvaluationOptions": {
@@ -66581,31 +66676,31 @@
             "value": "[parameters('healthModelDemoCafeLocation')]"
           },
           "webAppId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppId.value]"
           },
           "appInsightsWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.id.value]"
           },
           "centralWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "monitorWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
           },
           "aksId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2025-04-01').outputs.id.value]"
           },
           "vmssId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2022-09-01').outputs.vmssId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2025-04-01').outputs.vmssId.value]"
           },
           "availabilityTestName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'availability-test'), '2022-09-01').outputs.testName.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'availability-test'), '2025-04-01').outputs.testName.value]"
           },
           "vmIds": {
-            "value": "[concat(if(parameters('deployLinuxVm'), createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value), createArray()), if(parameters('deployWindowsVm'), createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value), createArray()))]"
+            "value": "[concat(if(parameters('deployLinuxVm'), createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value), createArray()), if(parameters('deployWindowsVm'), createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value), createArray()))]"
           },
           "actionGroupId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'actiongroup'), '2025-04-01').outputs.id.value]"
           },
           "cafeMonitoringReaderAssignmentName": {
             "value": "[parameters('healthModelDemoCafeMonitoringReaderAssignmentName')]"
@@ -66620,8 +66715,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "12564971963329501058"
+              "version": "0.49.2.45890",
+              "templateHash": "8925103604582138103"
             }
           },
           "parameters": {
@@ -66710,7 +66805,7 @@
           "resources": [
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "health-model-demo-cafe-workload",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -66734,8 +66829,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "11350620209401038776"
+                      "version": "0.49.2.45890",
+                      "templateHash": "18310756885116888337"
                     }
                   },
                   "parameters": {
@@ -67071,7 +67166,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageName'))]",
+                      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
                       "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('webAppName')), variables('blobContributorRoleId'))]",
                       "properties": {
                         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('blobContributorRoleId'))]",
@@ -67086,7 +67181,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageName'))]",
+                      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
                       "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('webAppName')), variables('queueSenderRoleId'))]",
                       "properties": {
                         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('queueSenderRoleId'))]",
@@ -67211,7 +67306,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "health-model-demo-flows",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -67263,8 +67358,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "7844248295468021012"
+                      "version": "0.49.2.45890",
+                      "templateHash": "14134639591959947840"
                     }
                   },
                   "functions": [
@@ -68217,7 +68312,7 @@
                     },
                     "monitoringReader": {
                       "type": "Microsoft.Resources/deployments",
-                      "apiVersion": "2022-09-01",
+                      "apiVersion": "2025-04-01",
                       "name": "[format('{0}-monitoring-reader', parameters('healthModelName'))]",
                       "properties": {
                         "expressionEvaluationOptions": {
@@ -68238,8 +68333,8 @@
                           "metadata": {
                             "_generator": {
                               "name": "bicep",
-                              "version": "0.37.4.10188",
-                              "templateHash": "5665340490566376816"
+                              "version": "0.49.2.45890",
+                              "templateHash": "15578287379822125990"
                             }
                           },
                           "parameters": {
@@ -68270,7 +68365,7 @@
                     },
                     "monitoringDataReader": {
                       "type": "Microsoft.Resources/deployments",
-                      "apiVersion": "2022-09-01",
+                      "apiVersion": "2025-04-01",
                       "name": "[format('{0}-amw-reader', parameters('healthModelName'))]",
                       "properties": {
                         "expressionEvaluationOptions": {
@@ -68294,8 +68389,8 @@
                           "metadata": {
                             "_generator": {
                               "name": "bicep",
-                              "version": "0.37.4.10188",
-                              "templateHash": "12804070414532032208"
+                              "version": "0.49.2.45890",
+                              "templateHash": "3997274073349549790"
                             }
                           },
                           "parameters": {
@@ -68313,7 +68408,7 @@
                             {
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.Monitor/accounts/{0}', parameters('monitorWorkspaceName'))]",
+                              "scope": "[resourceId('Microsoft.Monitor/accounts', parameters('monitorWorkspaceName'))]",
                               "name": "[guid(resourceId('Microsoft.Monitor/accounts', parameters('monitorWorkspaceName')), parameters('principalId'), parameters('roleDefinitionId'))]",
                               "properties": {
                                 "roleDefinitionId": "[parameters('roleDefinitionId')]",
@@ -68330,7 +68425,7 @@
                     },
                     "consoleReporter": {
                       "type": "Microsoft.Resources/deployments",
-                      "apiVersion": "2022-09-01",
+                      "apiVersion": "2025-04-01",
                       "name": "[format('{0}-console-reporter', parameters('healthModelName'))]",
                       "properties": {
                         "expressionEvaluationOptions": {
@@ -68354,8 +68449,8 @@
                           "metadata": {
                             "_generator": {
                               "name": "bicep",
-                              "version": "0.37.4.10188",
-                              "templateHash": "3210358924528756385"
+                              "version": "0.49.2.45890",
+                              "templateHash": "8896880884112877774"
                             }
                           },
                           "parameters": {
@@ -68373,7 +68468,7 @@
                             {
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.CloudHealth/healthmodels/{0}', parameters('healthModelName'))]",
+                              "scope": "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]",
                               "name": "[guid(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), parameters('principalId'), parameters('roleDefinitionId'))]",
                               "properties": {
                                 "roleDefinitionId": "[parameters('roleDefinitionId')]",
@@ -68410,7 +68505,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "health-model-demo-cafe",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -68425,13 +68520,13 @@
                     "value": "[parameters('healthModelLocation')]"
                   },
                   "webAppId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.webAppId.value]"
                   },
                   "storageId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.storageAccountId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.storageAccountId.value]"
                   },
                   "workspaceId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.logAnalyticsWorkspaceId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.logAnalyticsWorkspaceId.value]"
                   },
                   "actionGroupId": {
                     "value": "[parameters('actionGroupId')]"
@@ -68440,7 +68535,7 @@
                     "value": "[parameters('webAppId')]"
                   },
                   "reporterRoleDefinitionId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-flows'), '2022-09-01').outputs.reporterRoleDefinitionId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-flows'), '2025-04-01').outputs.reporterRoleDefinitionId.value]"
                   },
                   "monitoringReaderAssignmentName": {
                     "value": "[parameters('cafeMonitoringReaderAssignmentName')]"
@@ -68456,8 +68551,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "9002074081658173157"
+                      "version": "0.49.2.45890",
+                      "templateHash": "2257971178348785991"
                     }
                   },
                   "functions": [
@@ -69233,7 +69328,7 @@
                     },
                     "reader": {
                       "type": "Microsoft.Resources/deployments",
-                      "apiVersion": "2022-09-01",
+                      "apiVersion": "2025-04-01",
                       "name": "[format('{0}-monitoring-reader', parameters('healthModelName'))]",
                       "properties": {
                         "expressionEvaluationOptions": {
@@ -69263,8 +69358,8 @@
                           "metadata": {
                             "_generator": {
                               "name": "bicep",
-                              "version": "0.37.4.10188",
-                              "templateHash": "6225522080980377547"
+                              "version": "0.49.2.45890",
+                              "templateHash": "3546180830430253102"
                             }
                           },
                           "parameters": {
@@ -69304,7 +69399,7 @@
                               "condition": "[empty(parameters('assignmentName'))]",
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('webAppId'), '/')))]",
+                              "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('webAppId'), '/')))]",
                               "name": "[guid(parameters('webAppId'), parameters('principalId'), variables('roleId'))]",
                               "properties": {
                                 "principalId": "[parameters('principalId')]",
@@ -69316,7 +69411,7 @@
                               "condition": "[empty(parameters('assignmentName'))]",
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', last(split(parameters('storageId'), '/')))]",
+                              "scope": "[resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('storageId'), '/')))]",
                               "name": "[guid(parameters('storageId'), parameters('principalId'), variables('roleId'))]",
                               "properties": {
                                 "principalId": "[parameters('principalId')]",
@@ -69328,7 +69423,7 @@
                               "condition": "[empty(parameters('assignmentName'))]",
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', last(split(parameters('workspaceId'), '/')))]",
+                              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('workspaceId'), '/')))]",
                               "name": "[guid(parameters('workspaceId'), parameters('principalId'), variables('roleId'))]",
                               "properties": {
                                 "principalId": "[parameters('principalId')]",
@@ -69345,7 +69440,7 @@
                     },
                     "reporter": {
                       "type": "Microsoft.Resources/deployments",
-                      "apiVersion": "2022-09-01",
+                      "apiVersion": "2025-04-01",
                       "name": "[format('{0}-console-reporter', parameters('healthModelName'))]",
                       "properties": {
                         "expressionEvaluationOptions": {
@@ -69369,8 +69464,8 @@
                           "metadata": {
                             "_generator": {
                               "name": "bicep",
-                              "version": "0.37.4.10188",
-                              "templateHash": "3210358924528756385"
+                              "version": "0.49.2.45890",
+                              "templateHash": "8896880884112877774"
                             }
                           },
                           "parameters": {
@@ -69388,7 +69483,7 @@
                             {
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.CloudHealth/healthmodels/{0}', parameters('healthModelName'))]",
+                              "scope": "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]",
                               "name": "[guid(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), parameters('principalId'), parameters('roleDefinitionId'))]",
                               "properties": {
                                 "roleDefinitionId": "[parameters('roleDefinitionId')]",
@@ -69422,11 +69517,11 @@
           "outputs": {
             "healthModelDemoCafeWebAppName": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppName.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.webAppName.value]"
             },
             "healthModelDemoCafeWebAppUrl": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppUrl.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.webAppUrl.value]"
             },
             "healthModelDemoCafeModelName": {
               "type": "string",
@@ -69455,7 +69550,7 @@
     {
       "condition": "[and(parameters('enableCustomerDependencies'), parameters('enableSlotFailureScenario'))]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "customer-health-model",
       "properties": {
         "expressionEvaluationOptions": {
@@ -69470,25 +69565,25 @@
             "value": "swedencentral"
           },
           "customerWebAppId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.webAppId.value]"
           },
           "customerAppServicePlanId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.planId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.planId.value]"
           },
           "customerSqlDatabaseId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.sqlDatabaseId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.sqlDatabaseId.value]"
           },
           "customerServiceBusId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.serviceBusNamespaceId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.serviceBusNamespaceId.value]"
           },
           "customerWorkerId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.workerId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.workerId.value]"
           },
           "customerWorkerStorageId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.workerStorageId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.workerStorageId.value]"
           },
           "customerCentralLawId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -69500,8 +69595,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "5962604355043039655"
+              "version": "0.49.2.45890",
+              "templateHash": "13208003401378711302"
             }
           },
           "parameters": {
@@ -69671,7 +69766,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('customerWebAppId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWebAppId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -69685,7 +69780,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/serverfarms/{0}', last(split(parameters('customerAppServicePlanId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/serverfarms', last(split(parameters('customerAppServicePlanId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -69699,7 +69794,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Sql/servers/{0}/databases/{1}', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1])]",
+              "scope": "[resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1])]",
               "name": "[guid(resourceId('Microsoft.Sql/servers/databases', split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[0], split(format('{0}/{1}', split(parameters('customerSqlDatabaseId'), '/')[8], last(split(parameters('customerSqlDatabaseId'), '/'))), '/')[1]), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -69713,7 +69808,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.ServiceBus/namespaces/{0}', last(split(parameters('customerServiceBusId'), '/')))]",
+              "scope": "[resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.ServiceBus/namespaces', last(split(parameters('customerServiceBusId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -69727,7 +69822,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('customerWorkerId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', last(split(parameters('customerWorkerId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -69741,7 +69836,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', last(split(parameters('customerWorkerStorageId'), '/')))]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('customerWorkerStorageId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('monitoringReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReader'))]",
@@ -69755,7 +69850,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', last(split(parameters('customerCentralLawId'), '/')))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/')))]",
               "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('customerCentralLawId'), '/'))), resourceId('Microsoft.CloudHealth/healthmodels', variables('modelName')), variables('logReader'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('logReader'))]",
@@ -69908,7 +70003,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "sli-identity",
       "properties": {
         "expressionEvaluationOptions": {
@@ -69926,7 +70021,7 @@
             "value": "[variables('commonTags')]"
           },
           "azureMonitorWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
           }
         },
         "template": {
@@ -69935,8 +70030,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "10173493696332454138"
+              "version": "0.49.2.45890",
+              "templateHash": "4141173706170781568"
             }
           },
           "parameters": {
@@ -69980,7 +70075,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Monitor/accounts/{0}', variables('amwName'))]",
+              "scope": "[resourceId('Microsoft.Monitor/accounts', variables('amwName'))]",
               "name": "[guid(resourceId('Microsoft.Monitor/accounts', variables('amwName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('uamiName')), '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '43d0d8ad-25c7-4714-9337-8ba259a9fe05')]",
@@ -69994,7 +70089,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Monitor/accounts/{0}', variables('amwName'))]",
+              "scope": "[resourceId('Microsoft.Monitor/accounts', variables('amwName'))]",
               "name": "[guid(resourceId('Microsoft.Monitor/accounts', variables('amwName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('uamiName')), '3913510d-42f4-4e42-8a64-420c390055eb')]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]",
@@ -70037,7 +70132,7 @@
     {
       "condition": "[parameters('enableAi')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "foundry",
       "properties": {
         "expressionEvaluationOptions": {
@@ -70052,10 +70147,10 @@
             "value": "[parameters('namePrefix')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
           "appInsightsConnectionString": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.connectionString.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.connectionString.value]"
           },
           "routerModelVersion": {
             "value": "[parameters('routerModelVersion')]"
@@ -70073,8 +70168,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8025420704039908569"
+              "version": "0.49.2.45890",
+              "templateHash": "4066705253057742440"
             }
           },
           "parameters": {
@@ -70252,7 +70347,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.CognitiveServices/accounts/{0}/projects/{1}', variables('accountName'), variables('projectName'))]",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName'))]",
               "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), deployer().objectId, variables('foundryUserRole'))]",
               "properties": {
                 "principalId": "[deployer().objectId]",
@@ -70265,7 +70360,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.CognitiveServices/accounts/{0}', variables('accountName'))]",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts', variables('accountName'))]",
               "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('accountName')), resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), variables('foundryUserRole'))]",
               "properties": {
                 "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), '2025-06-01', 'full').identity.principalId]",
@@ -70522,7 +70617,7 @@
     {
       "condition": "[parameters('enableAi')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "ai-observability",
       "properties": {
         "expressionEvaluationOptions": {
@@ -70534,7 +70629,7 @@
             "value": "[variables('aiLocation')]"
           },
           "appInsightsId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -70546,8 +70641,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "3133693993182153179"
+              "version": "0.49.2.45890",
+              "templateHash": "15919890140431938436"
             }
           },
           "parameters": {
@@ -70728,7 +70823,7 @@
     {
       "condition": "[parameters('enableFabric')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "fabric-capacity",
       "properties": {
         "expressionEvaluationOptions": {
@@ -70757,8 +70852,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "3083415661103607337"
+              "version": "0.49.2.45890",
+              "templateHash": "13836615718976423778"
             }
           },
           "parameters": {
@@ -70845,15 +70940,15 @@
   "outputs": {
     "centralLawId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.id.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.id.value]"
     },
     "centralLawName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-central'), '2025-04-01').outputs.name.value]"
     },
     "appInsightsLawName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-appinsights'), '2025-04-01').outputs.name.value]"
     },
     "appInsightsName": {
       "type": "string",
@@ -70861,11 +70956,11 @@
     },
     "appInsightsConnString": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2022-09-01').outputs.connectionString.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appi'), '2025-04-01').outputs.connectionString.value]"
     },
     "aksName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2025-04-01').outputs.name.value]"
     },
     "webAppName": {
       "type": "string",
@@ -70873,35 +70968,35 @@
     },
     "webAppDefaultHost": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.defaultHost.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.defaultHost.value]"
     },
     "customerWebAppName": {
       "type": "string",
-      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppName.value, '')]"
+      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.webAppName.value, '')]"
     },
     "customerWebAppDefaultHost": {
       "type": "string",
-      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.defaultHost.value, '')]"
+      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.defaultHost.value, '')]"
     },
     "grafanaEndpoint": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'grafana'), '2022-09-01').outputs.endpoint.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'grafana'), '2025-04-01').outputs.endpoint.value]"
     },
     "workbookId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'workbook'), '2022-09-01').outputs.id.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'workbook'), '2025-04-01').outputs.id.value]"
     },
     "appInsightsInvestigationWorkbookId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2022-09-01').outputs.workbookId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2025-04-01').outputs.workbookId.value]"
     },
     "appInsightsUsageWorkbookId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2022-09-01').outputs.usageWorkbookId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2025-04-01').outputs.usageWorkbookId.value]"
     },
     "appInsightsQueryPackName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2022-09-01').outputs.queryPackName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appinsights-observability'), '2025-04-01').outputs.queryPackName.value]"
     },
     "linuxVmNameOut": {
       "type": "string",
@@ -70913,11 +71008,11 @@
     },
     "autoMitigationLogicAppName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'automitigation'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'automitigation'), '2025-04-01').outputs.name.value]"
     },
     "workspaceTransformDcrName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'workspace-transforms'), '2022-09-01').outputs.dcrName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'workspace-transforms'), '2025-04-01').outputs.dcrName.value]"
     },
     "appServiceRepoUrl": {
       "type": "string",
@@ -70925,67 +71020,67 @@
     },
     "vmssName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2022-09-01').outputs.vmssName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2025-04-01').outputs.vmssName.value]"
     },
     "vmssAutoscaleName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2022-09-01').outputs.autoscaleSettingName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vmss'), '2025-04-01').outputs.autoscaleSettingName.value]"
     },
     "availabilityTestName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'availability-test'), '2022-09-01').outputs.testName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'availability-test'), '2025-04-01').outputs.testName.value]"
     },
     "agentTaskAvailabilityTestName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'agent-task-availability-test'), '2022-09-01').outputs.testName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'agent-task-availability-test'), '2025-04-01').outputs.testName.value]"
     },
     "maintenanceRuleName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'alert-processing-rules'), '2022-09-01').outputs.maintenanceRuleName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'alert-processing-rules'), '2025-04-01').outputs.maintenanceRuleName.value]"
     },
     "customLogsDceEndpoint": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'custom-logs'), '2022-09-01').outputs.dceEndpoint.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'custom-logs'), '2025-04-01').outputs.dceEndpoint.value]"
     },
     "customLogsDcrImmutableId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'custom-logs'), '2022-09-01').outputs.dcrImmutableId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'custom-logs'), '2025-04-01').outputs.dcrImmutableId.value]"
     },
     "summaryTableName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'summary-rules'), '2022-09-01').outputs.tableName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'summary-rules'), '2025-04-01').outputs.tableName.value]"
     },
     "rbacSummary": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-rbac'), '2022-09-01').outputs.rbacSummary.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law-rbac'), '2025-04-01').outputs.rbacSummary.value]"
     },
     "networkWatcherId": {
       "type": "string",
-      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2022-09-01').outputs.networkWatcherId.value]"
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2025-04-01').outputs.networkWatcherId.value]"
     },
     "connectionMonitorName": {
       "type": "string",
-      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2022-09-01').outputs.connectionMonitorName.value]"
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2025-04-01').outputs.connectionMonitorName.value]"
     },
     "flowLogName": {
       "type": "string",
-      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'flow-logs'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'flow-logs'), '2025-04-01').outputs.name.value]"
     },
     "storageAccountName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-account'), '2025-04-01').outputs.name.value]"
     },
     "eventHubNamespaceName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'eventhub'), '2022-09-01').outputs.namespaceName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'eventhub'), '2025-04-01').outputs.namespaceName.value]"
     },
     "keyVaultName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault'), '2025-04-01').outputs.name.value]"
     },
     "dataExportRuleName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'data-export'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'data-export'), '2025-04-01').outputs.name.value]"
     },
     "sentinelEnabled": {
       "type": "bool",
@@ -70993,23 +71088,23 @@
     },
     "prometheusRuleGroupName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'prom-rules'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'prom-rules'), '2025-04-01').outputs.name.value]"
     },
     "costWorkbookId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'cost-workbook'), '2022-09-01').outputs.id.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'cost-workbook'), '2025-04-01').outputs.id.value]"
     },
     "healthModelName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model'), '2022-09-01').outputs.healthModelName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model'), '2025-04-01').outputs.healthModelName.value]"
     },
     "healthModelId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model'), '2022-09-01').outputs.healthModelId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model'), '2025-04-01').outputs.healthModelId.value]"
     },
     "healthModelPrincipalId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model'), '2022-09-01').outputs.healthModelPrincipalId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model'), '2025-04-01').outputs.healthModelPrincipalId.value]"
     },
     "aiEnabled": {
       "type": "bool",
@@ -71017,19 +71112,19 @@
     },
     "aiFoundryAccountName": {
       "type": "string",
-      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.accountName.value, '')]"
+      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.accountName.value, '')]"
     },
     "aiProjectEndpoint": {
       "type": "string",
-      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.projectEndpoint.value, '')]"
+      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.projectEndpoint.value, '')]"
     },
     "aiChatDeployment": {
       "type": "string",
-      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.chatDeployment.value, '')]"
+      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.chatDeployment.value, '')]"
     },
     "aiRouterDeployment": {
       "type": "string",
-      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.routerDeployment.value, '')]"
+      "value": "[if(parameters('enableAi'), reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.routerDeployment.value, '')]"
     },
     "sreAgentEnabled": {
       "type": "bool",
@@ -71037,15 +71132,15 @@
     },
     "sreAgentName": {
       "type": "string",
-      "value": "[if(parameters('enableSreAgent'), reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.name.value, '')]"
+      "value": "[if(parameters('enableSreAgent'), reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.name.value, '')]"
     },
     "sreAgentEndpoint": {
       "type": "string",
-      "value": "[if(parameters('enableSreAgent'), reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.endpoint.value, '')]"
+      "value": "[if(parameters('enableSreAgent'), reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.endpoint.value, '')]"
     },
     "sreAgentPortalUrl": {
       "type": "string",
-      "value": "[if(parameters('enableSreAgent'), reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2022-09-01').outputs.portalUrl.value, '')]"
+      "value": "[if(parameters('enableSreAgent'), reference(resourceId('Microsoft.Resources/deployments', 'sre-agent'), '2025-04-01').outputs.portalUrl.value, '')]"
     },
     "observabilityAgentEnabled": {
       "type": "bool",
@@ -71053,19 +71148,19 @@
     },
     "observabilityAgentName": {
       "type": "string",
-      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.name.value, '')]"
+      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.name.value, '')]"
     },
     "observabilityAgentId": {
       "type": "string",
-      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.id.value, '')]"
+      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.id.value, '')]"
     },
     "observabilityAgentPortalUrl": {
       "type": "string",
-      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.portalUrl.value, '')]"
+      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.portalUrl.value, '')]"
     },
     "observabilityAgentMonitoringAccountName": {
       "type": "string",
-      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.monitoringAccountName.value, '')]"
+      "value": "[if(parameters('enableObservabilityAgent'), reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.monitoringAccountName.value, '')]"
     },
     "observabilityAgentAutomaticInvestigationEnabled": {
       "type": "bool",
@@ -71073,31 +71168,31 @@
     },
     "nightlyMaintenanceRuleName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'alert-processing-rules'), '2022-09-01').outputs.nightlyMaintenanceRuleName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'alert-processing-rules'), '2025-04-01').outputs.nightlyMaintenanceRuleName.value]"
     },
     "sliUamiName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2022-09-01').outputs.uamiName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2025-04-01').outputs.uamiName.value]"
     },
     "sliUamiId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2022-09-01').outputs.uamiId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2025-04-01').outputs.uamiId.value]"
     },
     "sliUamiPrincipalId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2022-09-01').outputs.uamiPrincipalId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2025-04-01').outputs.uamiPrincipalId.value]"
     },
     "sliUamiClientId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2022-09-01').outputs.uamiClientId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sli-identity'), '2025-04-01').outputs.uamiClientId.value]"
     },
     "amwId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
     },
     "amwName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.name.value]"
     }
   }
 }

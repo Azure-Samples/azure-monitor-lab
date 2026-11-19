@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "17259641343265824163"
+      "version": "0.49.2.45890",
+      "templateHash": "13742315938571443366"
     }
   },
   "parameters": {
@@ -196,7 +196,7 @@
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Fabric/capacities/{0}', parameters('capacityName'))]",
+      "scope": "[resourceId('Microsoft.Fabric/capacities', parameters('capacityName'))]",
       "name": "[guid(resourceId('Microsoft.Fabric/capacities', parameters('capacityName')), resourceId('Microsoft.Logic/workflows', format('{0}-auto-suspend', parameters('capacityName'))), resourceId('Microsoft.Authorization/roleDefinitions', variables('roleName')))]",
       "properties": {
         "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', variables('roleName'))]",

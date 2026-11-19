@@ -144,9 +144,13 @@ foreach ($entry in @('main','stages\40-optional-advanced','customer-application'
   if ($entry -ne 'customer-application') {
     $baseline = git -C $root show "HEAD:infra/$($entry.Replace('\','/')).json" | Out-String | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Could not load checked-in workload model baseline.' }
-    $baselineWorkload = @($baseline.resources | Where-Object name -eq 'health-model')[0].properties.template | ConvertTo-Json -Depth 100 -Compress
-    $actualWorkload = $workloadModel[0].properties.template | ConvertTo-Json -Depth 100 -Compress
-    Assert-True ($actualWorkload -ceq $baselineWorkload) 'Compiled existing workload Health Model must remain exactly unchanged.'
+    $baselineWorkload = @($baseline.resources | Where-Object name -eq 'health-model')[0].properties.template
+    $actualWorkload = $workloadModel[0].properties.template
+    # Compiler provenance is checked separately by compiled-template parity.
+    $baselineWorkload.metadata.PSObject.Properties.Remove('_generator')
+    $actualWorkload.metadata.PSObject.Properties.Remove('_generator')
+    Assert-True (($actualWorkload | ConvertTo-Json -Depth 100 -Compress) -ceq
+      ($baselineWorkload | ConvertTo-Json -Depth 100 -Compress)) 'Compiled existing workload Health Model must remain exactly unchanged apart from compiler provenance.'
   }
 }
 $bootstrap = Get-CustomerSqlBootstrap -CustomerClientId '11111111-2222-3333-4444-555555555555' -WorkerClientId '66666666-7777-8888-9999-aaaaaaaaaaaa'

@@ -96,14 +96,21 @@ Assert-Demo ($cafe.resources.reporter.properties.parameters.principalId.value -m
 Assert-Demo ($cafe.resources.reporter.properties.parameters.roleDefinitionId.value -eq "[parameters('reporterRoleDefinitionId')]" -and $flow.resources.reporterRole.name -eq "[guid(resourceGroup().id, 'health-model-reporter')]") 'Both models must share the existing RG-owned reporter role.'
 $reader = $cafe.resources.reader.properties.template
 $readerAssignments = @($reader.resources | Where-Object type -eq 'Microsoft.Authorization/roleAssignments')
-Assert-Demo ($readerAssignments.Count -eq 4 -and @($readerAssignments | Where-Object { $_.condition -eq "[empty(parameters('assignmentName'))]" -and $_.scope -match '(Microsoft.Web/sites|Microsoft.Storage/storageAccounts|Microsoft.OperationalInsights/workspaces)/' }).Count -eq 3) 'Default Cafe readers must use three exact resource scopes, avoiding standalone CLI RG-assignment conflicts.'
+$readerScopes = @(
+  "[resourceId('Microsoft.Web/sites', last(split(parameters('webAppId'), '/')))]"
+  "[resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('storageId'), '/')))]"
+  "[resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('workspaceId'), '/')))]"
+)
+$defaultReaders = @($readerAssignments | Where-Object condition -eq "[empty(parameters('assignmentName'))]")
+Assert-Demo ($readerAssignments.Count -eq 4 -and $defaultReaders.Count -eq 3 -and
+  -not (Compare-Object $readerScopes @($defaultReaders.scope))) 'Default Cafe readers must use three exact resource scopes, avoiding standalone CLI RG-assignment conflicts.'
 Assert-Demo (@($readerAssignments | Where-Object { $_.name -eq "[parameters('assignmentName')]" -and $_.condition -eq "[not(empty(parameters('assignmentName')))]" }).Count -eq 1) 'An explicitly provided existing RG reader assignment GUID must be adopted without renaming it.'
 $role = $flow.resources.reporterRole
 Assert-Demo ($role.properties.assignableScopes.Count -eq 1 -and $role.properties.assignableScopes[0] -eq '[resourceGroup().id]' -and $role.properties.permissions[0].actions.Count -eq 5) 'Reporter role must have one exact RG assignable scope and five read/report actions.'
 foreach ($template in $cafe, $flow) {
   $assignment = if ($template -eq $cafe) { $template.resources.reporter } else { $template.resources.consoleReporter }
   $assignmentResource = @($assignment.properties.template.resources | Where-Object type -eq 'Microsoft.Authorization/roleAssignments')[0]
-  Assert-Demo ($assignmentResource.scope -match 'Microsoft.CloudHealth/healthmodels/') 'Reporter assignment must be model-scoped.'
+  Assert-Demo ($assignmentResource.scope -ceq "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]") 'Reporter assignment must be model-scoped.'
 }
 $site = @($workload.resources | Where-Object type -eq 'Microsoft.Web/sites')[0]
 $settings = $site.properties.siteConfig.appSettings

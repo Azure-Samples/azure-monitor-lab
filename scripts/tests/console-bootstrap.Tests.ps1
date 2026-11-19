@@ -63,7 +63,7 @@ $cpuRole = @($platformTemplate.resources | Where-Object {
   })
 if ($cpuRole.Count -ne 1 -or @($cpuRole[0].properties.permissions.actions).Count -ne 1) { throw 'CPU guest execution requires a separate, narrowly scoped role.' }
 $cpuAssignments = @($platformTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -like '*lab-console-cpu-run-command-role*' })
-if ($cpuAssignments.Count -ne 1 -or $cpuAssignments[0].scope -notmatch 'Microsoft.Compute/virtualMachines/' -or $cpuAssignments[0].copy.count -cne "[length(parameters('cpuVmNames'))]" -or $cpuAssignments[0].properties.principalType -ne 'ServicePrincipal') { throw 'CPU role assignments must target only the selected individual VMs.' }
+if ($cpuAssignments.Count -ne 1 -or $cpuAssignments[0].scope -cne "[resourceId('Microsoft.Compute/virtualMachines', parameters('cpuVmNames')[copyIndex()])]" -or $cpuAssignments[0].copy.count -cne "[length(parameters('cpuVmNames'))]" -or $cpuAssignments[0].properties.principalType -ne 'ServicePrincipal') { throw 'CPU role assignments must target only the selected individual VMs.' }
 if ($platformTemplate.parameters.cpuVmNames.maxLength -ne 2 -or @($platformTemplate.parameters.cpuVmNames.defaultValue).Count -ne 0) { throw 'CPU execution access must default to no VM and allow at most the demo pair.' }
 $fabricModule = @($platformTemplate.resources | Where-Object name -eq 'console-runner-fabric-access')
 $fabricRole = @($fabricModule.properties.template.resources | Where-Object type -eq 'Microsoft.Authorization/roleDefinitions')
@@ -74,7 +74,7 @@ if ($fabricModule.Count -ne 1 -or $platformTemplate.parameters.fabricCapacityNam
     $fabricRole.Count -ne 1 -or $fabricActions.Count -ne 2 -or
     $fabricActions -notcontains 'Microsoft.Fabric/capacities/read' -or
     $fabricActions -notcontains 'Microsoft.Fabric/capacities/resume/action' -or
-    $fabricAssignment.Count -ne 1 -or $fabricAssignment[0].scope -notmatch 'Microsoft.Fabric/capacities/' -or
+    $fabricAssignment.Count -ne 1 -or $fabricAssignment[0].scope -cne "[resourceId('Microsoft.Fabric/capacities', parameters('capacityName'))]" -or
     $fabricAssignment[0].properties.principalType -ne 'ServicePrincipal' -or $runnerActions -match 'Microsoft.Fabric') {
   throw 'Fabric resume must be opt-in and assigned only on the exact capacity, never through the resource-group runner role.'
 }
