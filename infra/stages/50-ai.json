@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "1449932342281197772"
+      "version": "0.49.2.45890",
+      "templateHash": "4030156782737238297"
     }
   },
   "parameters": {
@@ -73,7 +73,7 @@
   "resources": [
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "foundry",
       "properties": {
         "expressionEvaluationOptions": {
@@ -109,8 +109,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8025420704039908569"
+              "version": "0.49.2.45890",
+              "templateHash": "4066705253057742440"
             }
           },
           "parameters": {
@@ -288,7 +288,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.CognitiveServices/accounts/{0}/projects/{1}', variables('accountName'), variables('projectName'))]",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName'))]",
               "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), deployer().objectId, variables('foundryUserRole'))]",
               "properties": {
                 "principalId": "[deployer().objectId]",
@@ -301,7 +301,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.CognitiveServices/accounts/{0}', variables('accountName'))]",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts', variables('accountName'))]",
               "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('accountName')), resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), variables('foundryUserRole'))]",
               "properties": {
                 "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName')), '2025-06-01', 'full').identity.principalId]",
@@ -555,7 +555,7 @@
     {
       "condition": "[parameters('enableObservability')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "ai-observability",
       "properties": {
         "expressionEvaluationOptions": {
@@ -579,8 +579,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "3133693993182153179"
+              "version": "0.49.2.45890",
+              "templateHash": "15919890140431938436"
             }
           },
           "parameters": {
@@ -758,7 +758,7 @@
     {
       "condition": "[parameters('enableHealthModel')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "ai-healthmodel",
       "properties": {
         "expressionEvaluationOptions": {
@@ -789,8 +789,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "4835891901111066692"
+              "version": "0.49.2.45890",
+              "templateHash": "6979813461111660155"
             }
           },
           "functions": [
@@ -1396,23 +1396,23 @@
   "outputs": {
     "foundryAccountName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.accountName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.accountName.value]"
     },
     "foundryProjectName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.projectName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.projectName.value]"
     },
     "projectEndpoint": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.projectEndpoint.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.projectEndpoint.value]"
     },
     "chatDeployment": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.chatDeployment.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.chatDeployment.value]"
     },
     "routerDeployment": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2022-09-01').outputs.routerDeployment.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry'), '2025-04-01').outputs.routerDeployment.value]"
     },
     "appInsightsName": {
       "type": "string",

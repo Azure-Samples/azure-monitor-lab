@@ -29,6 +29,8 @@ resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: workspaceName
 }
 
+// ARM completion of the workspace does not guarantee its export backend is active yet.
+@retryOn(['ResourceNotFound'], 30)
 resource exportRule 'Microsoft.OperationalInsights/workspaces/dataExports@2023-09-01' = {
   parent: law
   name: name

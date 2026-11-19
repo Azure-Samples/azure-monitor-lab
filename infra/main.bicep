@@ -399,49 +399,15 @@ module keyVault 'modules/keyvault.bicep' = {
 
 // ---------------------------------------------------------------------------------
 // Data Collection Rule for VM Insights (Performance + Map data) -> central LAW
-// Depends on the VMInsights solution being installed on the LAW first.
+// Waits for the LAW module, then retries transient output-table activation failures.
 // ---------------------------------------------------------------------------------
-resource dcrVmInsights 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
-  name: dcrVmInsightsName
-  location: location
-  tags: commonTags
-  kind: 'Linux'
-  properties: {
-    dataSources: {
-      performanceCounters: [
-        {
-          name: 'VMInsightsPerfCounters'
-          streams: [ 'Microsoft-InsightsMetrics' ]
-          samplingFrequencyInSeconds: 60
-          counterSpecifiers: [ '\\VmInsights\\DetailedMetrics' ]
-        }
-      ]
-      extensions: [
-        {
-          name: 'DependencyAgentDataSource'
-          streams: [ 'Microsoft-ServiceMap' ]
-          extensionName: 'DependencyAgent'
-        }
-      ]
-    }
-    destinations: {
-      logAnalytics: [
-        {
-          workspaceResourceId: lawCentral.outputs.id
-          name: 'centralLaw'
-        }
-      ]
-    }
-    dataFlows: [
-      {
-        streams: [ 'Microsoft-InsightsMetrics' ]
-        destinations: [ 'centralLaw' ]
-      }
-      {
-        streams: [ 'Microsoft-ServiceMap' ]
-        destinations: [ 'centralLaw' ]
-      }
-    ]
+module dcrVmInsights 'modules/vm-insights-dcr.bicep' = {
+  name: 'vm-insights-dcr'
+  params: {
+    name: dcrVmInsightsName
+    location: location
+    centralLawId: lawCentral.outputs.id
+    tags: commonTags
   }
 }
 
@@ -483,7 +449,7 @@ module vmLinux 'modules/vm-linux.bicep' = if (deployLinuxVm) {
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
-    dcrId: dcrVmInsights.id
+    dcrId: dcrVmInsights.outputs.id
     otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }
@@ -501,7 +467,7 @@ module vmWindows 'modules/vm-windows.bicep' = if (deployWindowsVm) {
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
-    dcrId: dcrVmInsights.id
+    dcrId: dcrVmInsights.outputs.id
     otelDcrId: deployVmOtelMetrics ? vmOtelMetrics!.outputs.id : ''
     tags: commonTags
   }

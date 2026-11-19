@@ -13,7 +13,7 @@ $expectedMetrics = @(
   'system.network.dropped', 'system.network.errors', 'system.uptime'
 )
 $enableExpression = "[and(parameters('enableVmOtelMetrics'), or(parameters('deployLinuxVm'), parameters('deployWindowsVm')))]"
-$otelIdExpression = "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2022-09-01').outputs.id.value), createObject('value', ''))]"
+$otelIdExpression = "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2025-04-01').outputs.id.value), createObject('value', ''))]"
 
 foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
   $template = Get-Content -LiteralPath (Join-Path $RepoRoot $path) -Raw | ConvertFrom-Json -AsHashtable
@@ -28,7 +28,7 @@ foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
   Assert-Contract ($module.properties.parameters.name.value -ceq "[format('dcr-{0}-vm-otel', parameters('namePrefix'))]") "$path must use a stable per-lab DCR name."
   Assert-Contract ($module.properties.parameters.location.value -ceq "[parameters('location')]") "$path must co-locate the OTel DCR with the existing workspace."
   $expectedAccount = if ($path -eq 'infra/main.json') {
-    "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2022-09-01').outputs.id.value]"
+    "[reference(resourceId('Microsoft.Resources/deployments', 'amw'), '2025-04-01').outputs.id.value]"
   } else {
     "[resourceId('Microsoft.Monitor/accounts', variables('amwName'))]"
   }
@@ -58,8 +58,13 @@ foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
     $vmModule = $vmModules[0]
     $vmFlag = if ($os -eq 'linux') { 'deployLinuxVm' } else { 'deployWindowsVm' }
     Assert-Contract ($vmModule.condition -ceq "[parameters('$vmFlag')]") "$path must still honor $vmFlag independently of metrics."
+    $classicIdExpression = if ($path -eq 'infra/main.json') {
+      "[reference(resourceId('Microsoft.Resources/deployments', 'vm-insights-dcr'), '2025-04-01').outputs.id.value]"
+    } else {
+      "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]"
+    }
     Assert-Contract ($vmModule.properties.parameters.otelDcrId -ceq $otelIdExpression -and
-      $vmModule.properties.parameters.dcrId.value -ceq "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]") "$path must add the optional DCR without replacing classic collection."
+      $vmModule.properties.parameters.dcrId.value -ceq $classicIdExpression) "$path must add the optional DCR without replacing classic collection."
     $vmTemplate = $vmModule.properties.template
     Assert-Contract ($vmTemplate.parameters.otelDcrId.defaultValue -ceq '') "$path $os VM must support existing callers without OTel."
     $classic = @($vmTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Insights/dataCollectionRuleAssociations' -and $_.name -eq 'vminsights-association' })
@@ -68,7 +73,7 @@ foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
     $otel = @($vmTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Insights/dataCollectionRuleAssociations' -and $_.name -eq 'vm-otel-metrics-association' })
     Assert-Contract ($otel.Count -eq 1 -and $otel[0].condition -ceq "[not(empty(parameters('otelDcrId')))]" -and
       $otel[0].properties.dataCollectionRuleId -ceq "[parameters('otelDcrId')]" -and
-      $otel[0].scope -ceq "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]") "$path $os VM must conditionally associate only its own OTel DCR."
+      $otel[0].scope -ceq "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]") "$path $os VM must conditionally associate only its own OTel DCR."
     $amaType = if ($os -eq 'linux') { 'AzureMonitorLinuxAgent' } else { 'AzureMonitorWindowsAgent' }
     $agents = @($vmTemplate.resources | Where-Object { $_.type -eq 'Microsoft.Compute/virtualMachines/extensions' -and $_.properties.type -eq $amaType })
     Assert-Contract ($agents.Count -eq 1 -and $agents[0].properties.autoUpgradeMinorVersion -eq $true -and
@@ -84,7 +89,10 @@ foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
 
 foreach ($path in @('infra/main.json', 'infra/stages/00-foundation.json')) {
   $template = Get-Content -LiteralPath (Join-Path $RepoRoot $path) -Raw | ConvertFrom-Json -AsHashtable
-  $classic = @($template.resources | Where-Object { $_.type -eq 'Microsoft.Insights/dataCollectionRules' -and $_.name -eq "[variables('dcrVmInsightsName')]" })
+  $classicModule = @($template.resources | Where-Object name -eq 'vm-insights-dcr')
+  Assert-Contract ($classicModule.Count -eq 1 -and -not $classicModule[0].ContainsKey('condition') -and
+    $classicModule[0].properties.parameters.name.value -ceq "[variables('dcrVmInsightsName')]") "$path must preserve the stable classic DCR name and unconditional deployment."
+  $classic = @($classicModule[0].properties.template.resources.Values | Where-Object type -eq 'Microsoft.Insights/dataCollectionRules')
   Assert-Contract ($classic.Count -eq 1 -and -not $classic[0].ContainsKey('condition')) "$path must retain the classic DCR regardless of the OTel option."
   $counter = $classic[0].properties.dataSources.performanceCounters[0]
   Assert-Contract (($counter.streams -join ',') -ceq 'Microsoft-InsightsMetrics' -and

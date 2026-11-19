@@ -381,6 +381,14 @@
             "toolTip": "Deploys the preview Azure Copilot Observability Agent, a dedicated Azure Monitor workspace, autonomous alert correlation, and least-privilege RBAC. Chat and deep investigations consume Azure Agent Credits."
           },
           {
+            "name": "observabilityAgentInventory",
+            "type": "Microsoft.Solutions.ArmApiControl",
+            "request": {
+              "method": "GET",
+              "path": "[concat(subscription().id, '/providers/Microsoft.Monitor/observabilityAgents?api-version=2026-05-01-preview')]"
+            }
+          },
+          {
             "name": "observabilityAgentLocation",
             "type": "Microsoft.Common.DropDown",
             "label": "Observability Agent region",
@@ -400,6 +408,27 @@
                 { "label": "West Europe", "value": "westeurope" }
               ],
               "required": true
+            }
+          },
+          {
+            "name": "observabilityAgentQuota",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Observability Agent quota check (automatic)",
+            "defaultValue": "[if(and(equals(string(take(coalesce(steps('stages').observabilityAgentInventory.value, parse('{}')), 0)), '[]'), empty(coalesce(steps('stages').observabilityAgentInventory.nextLink, '')), empty(coalesce(steps('stages').observabilityAgentInventory.error, parse('{}')))), concat(string(length(coalesce(steps('stages').observabilityAgentInventory.value, parse('[]')))), ' / 5 agents in subscription'), 'Subscription inventory unavailable or incomplete')]",
+            "visible": "[equals(steps('stages').enableObservabilityAgent, true)]",
+            "toolTip": "This status comes from a read-only subscription query. Validation uses the API response, not this field's text. No existing agent is deleted or reused automatically.",
+            "constraints": {
+              "required": true,
+              "validations": [
+                {
+                  "isValid": "[if(equals(steps('stages').enableObservabilityAgent, true), and(equals(string(take(coalesce(steps('stages').observabilityAgentInventory.value, parse('{}')), 0)), '[]'), empty(coalesce(steps('stages').observabilityAgentInventory.nextLink, '')), empty(coalesce(steps('stages').observabilityAgentInventory.error, parse('{}')))), true)]",
+                  "message": "Could not verify the complete Observability Agent inventory. Check subscription read access and provider registration, then reopen this deployment, or disable this optional stage. An unavailable or paginated response is not treated as spare quota."
+                },
+                {
+                  "isValid": "[if(equals(steps('stages').enableObservabilityAgent, true), less(length(coalesce(steps('stages').observabilityAgentInventory.value, parse('[]'))), 5), true)]",
+                  "message": "The preview allows at most five Observability Agents per subscription. Disable this optional stage or explicitly remove an unneeded agent before deploying. This conservative portal check also blocks updates at the limit; the scripted path is available for existing-lab updates."
+                }
+              ]
             }
           },
           {

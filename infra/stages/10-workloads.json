@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "14277453413565758868"
+      "version": "0.49.2.45890",
+      "templateHash": "8989466934191295109"
     }
   },
   "parameters": {
@@ -173,7 +173,7 @@
     {
       "condition": "[variables('deployVmOtelMetrics')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vm-otel-metrics",
       "properties": {
         "expressionEvaluationOptions": {
@@ -200,8 +200,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9334971952597745250"
+              "version": "0.49.2.45890",
+              "templateHash": "4142520911080488523"
             }
           },
           "parameters": {
@@ -296,7 +296,7 @@
     {
       "condition": "[parameters('deployLinuxVm')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vm-linux",
       "properties": {
         "expressionEvaluationOptions": {
@@ -325,7 +325,7 @@
           "dcrId": {
             "value": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]"
           },
-          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2022-09-01').outputs.id.value), createObject('value', ''))]",
+          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2025-04-01').outputs.id.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -336,8 +336,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14744096280615074103"
+              "version": "0.49.2.45890",
+              "templateHash": "3811074151468356496"
             }
           },
           "parameters": {
@@ -513,7 +513,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vminsights-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('dcrId')]",
@@ -528,7 +528,7 @@
               "condition": "[not(empty(parameters('otelDcrId')))]",
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vm-otel-metrics-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('otelDcrId')]",
@@ -563,7 +563,7 @@
     {
       "condition": "[parameters('deployWindowsVm')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "vm-windows",
       "properties": {
         "expressionEvaluationOptions": {
@@ -592,7 +592,7 @@
           "dcrId": {
             "value": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrVmInsightsName'))]"
           },
-          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2022-09-01').outputs.id.value), createObject('value', ''))]",
+          "otelDcrId": "[if(variables('deployVmOtelMetrics'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-otel-metrics'), '2025-04-01').outputs.id.value), createObject('value', ''))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -603,8 +603,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14683978266823128703"
+              "version": "0.49.2.45890",
+              "templateHash": "4314995037895854890"
             }
           },
           "parameters": {
@@ -801,7 +801,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vminsights-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('dcrId')]",
@@ -816,7 +816,7 @@
               "condition": "[not(empty(parameters('otelDcrId')))]",
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmName'))]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]",
               "name": "vm-otel-metrics-association",
               "properties": {
                 "dataCollectionRuleId": "[parameters('otelDcrId')]",
@@ -850,7 +850,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "aks",
       "properties": {
         "expressionEvaluationOptions": {
@@ -895,8 +895,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "913029475329877512"
+              "version": "0.49.2.45890",
+              "templateHash": "17126391944104132009"
             }
           },
           "parameters": {
@@ -1028,7 +1028,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -1099,7 +1099,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]",
               "name": "ContainerInsightsExtension",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', format('MSCI-{0}-{1}', replace(parameters('location'), ' ', ''), parameters('name')))]",
@@ -1153,7 +1153,7 @@
             {
               "type": "Microsoft.Insights/dataCollectionRuleAssociations",
               "apiVersion": "2023-03-11",
-              "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]",
               "name": "prometheus-association",
               "properties": {
                 "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrPrometheusName'))]",
@@ -1184,7 +1184,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "grafana",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1214,8 +1214,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8848555372212880413"
+              "version": "0.49.2.45890",
+              "templateHash": "15088401511147848079"
             }
           },
           "parameters": {
@@ -1297,7 +1297,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Dashboard/grafana/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.Dashboard/grafana', parameters('name'))]",
               "name": "[guid(resourceId('Microsoft.Dashboard/grafana', parameters('name')), variables('adminPrincipalId'), '22926164-76b3-42b3-bc55-97df8dab3e41')]",
               "properties": {
                 "principalId": "[variables('adminPrincipalId')]",
@@ -1327,7 +1327,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "app-diag-storage",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1354,8 +1354,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8258136283443655457"
+              "version": "0.49.2.45890",
+              "templateHash": "15128125316862585915"
             }
           },
           "parameters": {
@@ -1441,7 +1441,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('name'))]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('name'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -1463,7 +1463,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}/blobServices/{1}', parameters('name'), 'default')]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('name'), 'default')]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -1512,7 +1512,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "appservice",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1539,7 +1539,7 @@
             "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('lawCentralName'))]"
           },
           "diagStorageAccountId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'app-diag-storage'), '2022-09-01').outputs.id.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'app-diag-storage'), '2025-04-01').outputs.id.value]"
           },
           "diagEventHubAuthRuleId": {
             "value": "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', variables('eventHubNsName'), 'RootManageSharedAccessKey')]"
@@ -1563,8 +1563,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "8114531582421984343"
+              "version": "0.49.2.45890",
+              "templateHash": "16911908290625892862"
             }
           },
           "parameters": {
@@ -1698,7 +1698,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -1723,7 +1723,7 @@
               "condition": "[not(empty(parameters('diagStorageAccountId')))]",
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "archive-to-blob",
               "properties": {
                 "storageAccountId": "[parameters('diagStorageAccountId')]",
@@ -1748,7 +1748,7 @@
               "condition": "[not(empty(parameters('diagEventHubAuthRuleId')))]",
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "stream-to-eventhub",
               "properties": {
                 "eventHubAuthorizationRuleId": "[parameters('diagEventHubAuthRuleId')]",
@@ -1772,7 +1772,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "app-settings",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -1814,8 +1814,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5145608396194603445"
+                      "version": "0.49.2.45890",
+                      "templateHash": "8554871092470843977"
                     }
                   },
                   "parameters": {
@@ -1880,7 +1880,7 @@
     {
       "condition": "[and(parameters('enableCustomerDependencies'), parameters('enableSlotFailureScenario'))]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "customer-dependencies",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1923,8 +1923,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "2505586097067260553"
+              "version": "0.49.2.45890",
+              "templateHash": "1335516791979128825"
             }
           },
           "parameters": {
@@ -2022,7 +2022,7 @@
             "sqlDiagnostics": {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Sql/servers/{0}/databases/{1}', variables('sqlName'), 'customer-orders')]",
+              "scope": "[resourceId('Microsoft.Sql/servers/databases', variables('sqlName'), 'customer-orders')]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -2061,7 +2061,7 @@
             },
             "customerIdentity": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-dependency-identity",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -2596,7 +2596,7 @@
             },
             "workerIdentity": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "orders-processor-identity",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -3131,7 +3131,7 @@
             },
             "network": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-dependency-network",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -4958,7 +4958,7 @@
             },
             "sqlDns": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-sql-dns",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -8330,7 +8330,7 @@
             },
             "sqlEndpoint": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-sql-private-endpoint",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -8997,7 +8997,7 @@
             },
             "bus": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-orders-bus",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -14859,7 +14859,7 @@
             },
             "storage": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "orders-processor-storage",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -23296,7 +23296,7 @@
                 "count": "[length(variables('storageSubresources'))]"
               },
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('customer-storage-{0}-dns', variables('storageSubresources')[copyIndex()])]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -26672,7 +26672,7 @@
                 "count": "[length(variables('storageSubresources'))]"
               },
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('customer-storage-{0}-private-endpoint', variables('storageSubresources')[copyIndex()])]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -27339,7 +27339,7 @@
             },
             "processor": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-orders-processor",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -27395,8 +27395,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "6986302758928060909"
+                      "version": "0.49.2.45890",
+                      "templateHash": "10228049171845863697"
                     }
                   },
                   "parameters": {
@@ -27445,7 +27445,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Insights/components/{0}', parameters('appInsightsName'))]",
+                      "scope": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
                       "name": "[guid(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), parameters('identityId'), '3913510d-42f4-4e42-8a64-420c390055eb')]",
                       "properties": {
                         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]",
@@ -27517,7 +27517,7 @@
                     {
                       "type": "Microsoft.Insights/diagnosticSettings",
                       "apiVersion": "2021-05-01-preview",
-                      "scope": "[format('Microsoft.Web/sites/{0}', parameters('name'))]",
+                      "scope": "[resourceId('Microsoft.Web/sites', parameters('name'))]",
                       "name": "send-to-central-law",
                       "properties": {
                         "workspaceId": "[parameters('centralLawId')]",
@@ -27672,7 +27672,7 @@
     {
       "condition": "[parameters('enableSlotFailureScenario')]",
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "customer-webapp",
       "properties": {
         "expressionEvaluationOptions": {
@@ -27687,7 +27687,7 @@
             "value": "[parameters('appServiceLocation')]"
           },
           "serverFarmResourceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.planId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.planId.value]"
           },
           "appInsightsConnectionString": {
             "value": "[reference(resourceId('Microsoft.Insights/components', variables('customerAppInsightsName')), '2020-02-02').ConnectionString]"
@@ -27698,9 +27698,9 @@
           "centralLawId": {
             "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('lawCentralName'))]"
           },
-          "customerIdentityId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.customerIdentityId.value), createObject('value', ''))]",
-          "customerSubnetId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.customerSubnetId.value), createObject('value', ''))]",
-          "customerDependencySettings": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.customerSettings.value), createObject('value', createObject('CustomerDependencies__Enabled', 'false')))]",
+          "customerIdentityId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.customerIdentityId.value), createObject('value', ''))]",
+          "customerSubnetId": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.customerSubnetId.value), createObject('value', ''))]",
+          "customerDependencySettings": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.customerSettings.value), createObject('value', createObject('CustomerDependencies__Enabled', 'false')))]",
           "tags": {
             "value": "[variables('commonTags')]"
           }
@@ -27711,8 +27711,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "14116149934811644844"
+              "version": "0.49.2.45890",
+              "templateHash": "2365788227651347260"
             }
           },
           "parameters": {
@@ -27778,7 +27778,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('webAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]",
               "name": "send-to-central-law",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -27801,7 +27801,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-web-app",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -42646,7 +42646,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-web-app-settings",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -42655,7 +42655,7 @@
                 "mode": "Incremental",
                 "parameters": {
                   "webAppName": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.name.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.name.value]"
                   },
                   "appSettings": {
                     "value": "[union(createObject('APPLICATIONINSIGHTS_CONNECTION_STRING', parameters('appInsightsConnectionString'), 'APPINSIGHTS_INSTRUMENTATIONKEY', parameters('appInsightsInstrumentationKey'), 'ApplicationInsightsAgent_EXTENSION_VERSION', '~3', 'XDT_MicrosoftApplicationInsights_Mode', 'recommended', 'XDT_MicrosoftApplicationInsights_PreemptSdk', '1', 'InstrumentationEngine_EXTENSION_VERSION', 'disabled', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'false', 'LabConsole__CustomerAppMode', 'true', 'LabConsole__SlotScenarioEnabled', 'true', 'LabConsole__ForceOutage', 'false', 'WEBSITE_SWAP_WARMUP_PING_PATH', '/api/slot-warmup', 'WEBSITE_SWAP_WARMUP_PING_STATUSES', '200'), parameters('customerDependencySettings'))]"
@@ -42667,8 +42667,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "12497422678682809962"
+                      "version": "0.49.2.45890",
+                      "templateHash": "8027322779059564306"
                     }
                   },
                   "parameters": {
@@ -42688,7 +42688,7 @@
                   "resources": [
                     {
                       "type": "Microsoft.Resources/deployments",
-                      "apiVersion": "2022-09-01",
+                      "apiVersion": "2025-04-01",
                       "name": "merge-app-settings",
                       "properties": {
                         "expressionEvaluationOptions": {
@@ -42712,8 +42712,8 @@
                           "metadata": {
                             "_generator": {
                               "name": "bicep",
-                              "version": "0.37.4.10188",
-                              "templateHash": "5145608396194603445"
+                              "version": "0.49.2.45890",
+                              "templateHash": "8554871092470843977"
                             }
                           },
                           "parameters": {
@@ -42756,7 +42756,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "customer-broken-slot",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -49855,15 +49855,15 @@
           "outputs": {
             "webAppId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.resourceId.value]"
             },
             "webAppName": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.name.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.name.value]"
             },
             "defaultHost": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2022-09-01').outputs.defaultHostname.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'customer-web-app'), '2025-04-01').outputs.defaultHostname.value]"
             }
           }
         }
@@ -49875,7 +49875,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "lab-console-platform",
       "properties": {
         "expressionEvaluationOptions": {
@@ -49884,7 +49884,7 @@
         "mode": "Incremental",
         "parameters": {
           "webAppName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppName.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppName.value]"
           },
           "centralLawId": {
             "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('lawCentralName'))]"
@@ -49895,12 +49895,12 @@
           "tags": {
             "value": "[variables('commonTags')]"
           },
-          "cpuVmNames": "[if(and(parameters('deployLinuxVm'), parameters('deployWindowsVm')), createObject('value', createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmName.value, reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmName.value)), createObject('value', createArray()))]",
+          "cpuVmNames": "[if(and(parameters('deployLinuxVm'), parameters('deployWindowsVm')), createObject('value', createArray(reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmName.value, reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmName.value)), createObject('value', createArray()))]",
           "enableSlotFailureScenario": {
             "value": "[parameters('enableSlotFailureScenario')]"
           },
-          "customerWebAppName": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppName.value), createObject('value', ''))]",
-          "customerWorkerName": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.workerName.value), createObject('value', ''))]"
+          "customerWebAppName": "[if(parameters('enableSlotFailureScenario'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.webAppName.value), createObject('value', ''))]",
+          "customerWorkerName": "[if(parameters('enableCustomerDependencies'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.workerName.value), createObject('value', ''))]"
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -49908,8 +49908,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "15909413640873189571"
+              "version": "0.49.2.45890",
+              "templateHash": "4647249262983396298"
             }
           },
           "parameters": {
@@ -49990,7 +49990,7 @@
             {
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
-              "scope": "[format('Microsoft.App/managedEnvironments/{0}', variables('environmentName'))]",
+              "scope": "[resourceId('Microsoft.App/managedEnvironments', variables('environmentName'))]",
               "name": "console-runner-logs",
               "properties": {
                 "workspaceId": "[parameters('centralLawId')]",
@@ -50056,11 +50056,11 @@
               "condition": "[parameters('enableSlotFailureScenario')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('customerWebAppName'))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role')), 'customer-webapp-scope')]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-slot-scenario-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -50101,11 +50101,11 @@
               "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWebAppName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('customerWebAppName'))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWebAppName')), variables('identityName'), 'customer-fault-settings')]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -50117,11 +50117,11 @@
               "condition": "[and(parameters('enableSlotFailureScenario'), not(empty(parameters('customerWorkerName'))))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Web/sites/{0}', parameters('customerWorkerName'))]",
+              "scope": "[resourceId('Microsoft.Web/sites', parameters('customerWorkerName'))]",
               "name": "[guid(resourceId('Microsoft.Web/sites', parameters('customerWorkerName')), variables('identityName'), 'customer-fault-settings')]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-customer-fault-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -50159,11 +50159,11 @@
               },
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('cpuVmNames')[copyIndex()])]",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('cpuVmNames')[copyIndex()])]",
               "name": "[guid(resourceId('Microsoft.Compute/virtualMachines', parameters('cpuVmNames')[copyIndex()]), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName')), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-cpu-run-command-role')))]",
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-cpu-run-command-role'))]",
-                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                 "principalType": "ServicePrincipal"
               },
               "dependsOn": [
@@ -50173,7 +50173,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-identity",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -50708,7 +50708,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-registry",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -50750,7 +50750,7 @@
                     "value": [
                       {
                         "roleDefinitionIdOrName": "AcrPull",
-                        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]",
+                        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]",
                         "principalType": "ServicePrincipal"
                       }
                     ]
@@ -54576,7 +54576,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-environment",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -56863,7 +56863,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-access",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -56875,7 +56875,7 @@
                     "value": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-runner-role'))]"
                   },
                   "principalId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
                   }
                 },
                 "template": {
@@ -56884,8 +56884,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5665340490566376816"
+                      "version": "0.49.2.45890",
+                      "templateHash": "15578287379822125990"
                     }
                   },
                   "parameters": {
@@ -56917,7 +56917,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-health-reader",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -56938,8 +56938,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5665340490566376816"
+                      "version": "0.49.2.45890",
+                      "templateHash": "15578287379822125990"
                     }
                   },
                   "parameters": {
@@ -56967,7 +56967,7 @@
             },
             {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-reader",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -56979,7 +56979,7 @@
                     "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]"
                   },
                   "principalId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
                   }
                 },
                 "template": {
@@ -56988,8 +56988,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5665340490566376816"
+                      "version": "0.49.2.45890",
+                      "templateHash": "15578287379822125990"
                     }
                   },
                   "parameters": {
@@ -57021,7 +57021,7 @@
             {
               "condition": "[not(empty(parameters('fabricCapacityName')))]",
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "console-runner-fabric-access",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -57033,7 +57033,7 @@
                     "value": "[parameters('fabricCapacityName')]"
                   },
                   "principalId": {
-                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+                    "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
                   }
                 },
                 "template": {
@@ -57042,8 +57042,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "2914668496453868903"
+                      "version": "0.49.2.45890",
+                      "templateHash": "7675838191455789964"
                     }
                   },
                   "parameters": {
@@ -57089,7 +57089,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Fabric/capacities/{0}', parameters('capacityName'))]",
+                      "scope": "[resourceId('Microsoft.Fabric/capacities', parameters('capacityName'))]",
                       "name": "[guid(resourceId('Microsoft.Fabric/capacities', parameters('capacityName')), parameters('principalId'), resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role')))]",
                       "properties": {
                         "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'lab-console-fabric-resume-role'))]",
@@ -57111,23 +57111,23 @@
           "outputs": {
             "registryName": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2022-09-01').outputs.name.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2025-04-01').outputs.name.value]"
             },
             "registryId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-registry'), '2025-04-01').outputs.resourceId.value]"
             },
             "environmentId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-environment'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-environment'), '2025-04-01').outputs.resourceId.value]"
             },
             "runnerIdentityId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.resourceId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.resourceId.value]"
             },
             "runnerPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2022-09-01').outputs.principalId.value]"
+              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'console-runner-identity'), '2025-04-01').outputs.principalId.value]"
             },
             "jobName": {
               "type": "string",
@@ -57146,7 +57146,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "custom-logs",
       "properties": {
         "expressionEvaluationOptions": {
@@ -57176,8 +57176,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "13977932200121899644"
+              "version": "0.49.2.45890",
+              "templateHash": "14617415180067521806"
             }
           },
           "parameters": {
@@ -57394,7 +57394,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "connection-monitor",
       "subscriptionId": "[subscription().subscriptionId]",
       "resourceGroup": "NetworkWatcherRG",
@@ -57410,10 +57410,10 @@
           "centralLawId": {
             "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('lawCentralName'))]"
           },
-          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
-          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2022-09-01').outputs.vmId.value), createObject('value', ''))]",
+          "linuxVmId": "[if(parameters('deployLinuxVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-linux'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
+          "windowsVmId": "[if(parameters('deployWindowsVm'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'vm-windows'), '2025-04-01').outputs.vmId.value), createObject('value', ''))]",
           "appServiceHost": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.defaultHost.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.defaultHost.value]"
           },
           "tags": {
             "value": "[variables('commonTags')]"
@@ -57425,8 +57425,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "1762279408233800432"
+              "version": "0.49.2.45890",
+              "templateHash": "16208097139000923358"
             }
           },
           "parameters": {
@@ -57535,7 +57535,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "flow-logs",
       "subscriptionId": "[subscription().subscriptionId]",
       "resourceGroup": "NetworkWatcherRG",
@@ -57555,7 +57555,7 @@
             "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
           },
           "networkWatcherId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2022-09-01').outputs.networkWatcherId.value]"
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, 'NetworkWatcherRG'), 'Microsoft.Resources/deployments', 'connection-monitor'), '2025-04-01').outputs.networkWatcherId.value]"
           },
           "storageAccountId": {
             "value": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
@@ -57582,8 +57582,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "6945808001549553726"
+              "version": "0.49.2.45890",
+              "templateHash": "8501672132830296067"
             }
           },
           "parameters": {
@@ -57701,15 +57701,15 @@
   "outputs": {
     "webAppName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2022-09-01').outputs.webAppName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppName.value]"
     },
     "customerWebAppName": {
       "type": "string",
-      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.webAppName.value, '')]"
+      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.webAppName.value, '')]"
     },
     "customerWebAppDefaultHost": {
       "type": "string",
-      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2022-09-01').outputs.defaultHost.value, '')]"
+      "value": "[if(parameters('enableSlotFailureScenario'), reference(resourceId('Microsoft.Resources/deployments', 'customer-webapp'), '2025-04-01').outputs.defaultHost.value, '')]"
     },
     "customerAppInsightsName": {
       "type": "string",
@@ -57717,7 +57717,7 @@
     },
     "customerDependencies": {
       "type": "object",
-      "value": "[if(and(parameters('enableCustomerDependencies'), parameters('enableSlotFailureScenario')), reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2022-09-01').outputs.customerDependencies.value, createObject('enabled', false()))]"
+      "value": "[if(and(parameters('enableCustomerDependencies'), parameters('enableSlotFailureScenario')), reference(resourceId('Microsoft.Resources/deployments', 'customer-dependencies'), '2025-04-01').outputs.customerDependencies.value, createObject('enabled', false()))]"
     }
   }
 }

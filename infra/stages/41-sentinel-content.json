@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "995592362134426719"
+      "version": "0.49.2.45890",
+      "templateHash": "7311856126080093894"
     }
   },
   "parameters": {
@@ -27,7 +27,7 @@
   "resources": {
     "analyticsRule": {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "[format('analyticsRule-{0}', uniqueString('analyticsRule', deployment().name))]",
       "properties": {
         "expressionEvaluationOptions": {
@@ -45,8 +45,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "17387801086550536407"
+              "version": "0.49.2.45890",
+              "templateHash": "13067564144907751225"
             }
           },
           "parameters": {
@@ -61,7 +61,7 @@
             {
               "type": "Microsoft.SecurityInsights/alertRules",
               "apiVersion": "2024-09-01",
-              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workspaceName'))]",
+              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
               "name": "0a1b2c3d-amlab-rg-delete-alert",
               "kind": "Scheduled",
               "properties": {

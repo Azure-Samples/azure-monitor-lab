@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "11147986490623002836"
+      "version": "0.49.2.45890",
+      "templateHash": "4104700801124687928"
     }
   },
   "parameters": {
@@ -74,7 +74,7 @@
   "resources": [
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "observability-agent",
       "properties": {
         "expressionEvaluationOptions": {
@@ -110,8 +110,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9707001849426355645"
+              "version": "0.49.2.45890",
+              "templateHash": "7401621698700930377"
             }
           },
           "parameters": {
@@ -216,7 +216,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Monitor/accounts/{0}', parameters('monitoringAccountName'))]",
+              "scope": "[resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName'))]",
               "name": "[guid(resourceId('Microsoft.Monitor/accounts', parameters('monitoringAccountName')), resourceId('Microsoft.Monitor/observabilityAgents', parameters('name')), variables('issueContributorRoleId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('issueContributorRoleId'))]",
@@ -274,7 +274,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "observability-agent-resource-rbac",
       "properties": {
         "expressionEvaluationOptions": {
@@ -283,7 +283,7 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.principalId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.principalId.value]"
           },
           "appInsightsName": {
             "value": "[variables('appInsightsName')]"
@@ -295,8 +295,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "3367133538840439263"
+              "version": "0.49.2.45890",
+              "templateHash": "4102828174005959417"
             }
           },
           "parameters": {
@@ -320,7 +320,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Insights/components/{0}', parameters('appInsightsName'))]",
+              "scope": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
               "name": "[guid(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), parameters('principalId'), variables('monitoringReaderRoleId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringReaderRoleId'))]",
@@ -339,19 +339,19 @@
   "outputs": {
     "observabilityAgentName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.name.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.name.value]"
     },
     "observabilityAgentId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.id.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.id.value]"
     },
     "observabilityAgentPortalUrl": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.portalUrl.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.portalUrl.value]"
     },
     "observabilityAgentMonitoringAccountName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2022-09-01').outputs.monitoringAccountName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability-agent'), '2025-04-01').outputs.monitoringAccountName.value]"
     },
     "automaticInvestigationEnabled": {
       "type": "bool",

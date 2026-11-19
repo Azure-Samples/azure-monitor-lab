@@ -182,7 +182,7 @@ Folder layout:
 
 If you change anything under `infra/stages/*.bicep`, recompile the JSON templates that Terraform consumes:
 
-Use the pinned Bicep version `0.37.4` and preserve LF line endings in embedded
+Use the pinned Bicep version `0.49.2` (required for native resource retries) and preserve LF line endings in embedded
 KQL/workbook inputs, as specified by `.gitattributes`. `loadTextContent` embeds
 those bytes in ARM JSON, so stale CRLF working copies can produce template drift
 even when query behavior is unchanged. After regeneration, run

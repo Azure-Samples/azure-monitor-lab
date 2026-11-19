@@ -52,8 +52,13 @@ foreach ($moduleName in @('sre-agent', 'lab-console-platform')) {
   $slotAssignments = @($module.properties.template.resources | Where-Object {
     $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'slot-rollback|slot-scenario-role'
   })
+  $expectedSlotScope = if ($moduleName -eq 'sre-agent') {
+    "[resourceId('Microsoft.Web/sites', last(split(parameters('slotWebAppId'), '/')))]"
+  } else {
+    "[resourceId('Microsoft.Web/sites', parameters('customerWebAppName'))]"
+  }
   if ($module.Count -ne 1 -or $slotAssignments.Count -ne 1 -or
-      $slotAssignments[0].scope -notmatch 'Microsoft\.Web/sites/' -or
+      $slotAssignments[0].scope -cne $expectedSlotScope -or
       $slotAssignments[0].condition -notmatch 'enableSlotFailureScenario') {
     throw "The compiled $moduleName slot role assignment must be conditional and scoped to the customer Web App, never the resource group."
   }
@@ -62,8 +67,13 @@ Write-Output 'PASS: compiled customer slot role assignments retain their Web App
 $platform = @($mainTemplate.resources | Where-Object name -eq 'lab-console-platform')[0].properties.template
 $faultRoles = @($platform.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleDefinitions' -and $_.properties.roleName -match 'Customer Fault Settings' })
 $faultAssignments = @($platform.resources | Where-Object { $_.type -eq 'Microsoft.Authorization/roleAssignments' -and $_.properties.roleDefinitionId -match 'customer-fault-role' })
+$expectedFaultScopes = @(
+  "[resourceId('Microsoft.Web/sites', parameters('customerWebAppName'))]"
+  "[resourceId('Microsoft.Web/sites', parameters('customerWorkerName'))]"
+)
 if ($faultRoles.Count -ne 1 -or $faultAssignments.Count -ne 2 -or
-    @($faultAssignments | Where-Object { $_.scope -notmatch "Microsoft.Web/sites/.+customer(WebApp|Worker)Name" -or $_.condition -notmatch 'customerWorkerName' }).Count -ne 0 -or
+    (Compare-Object $expectedFaultScopes @($faultAssignments.scope)) -or
+    @($faultAssignments | Where-Object { $_.condition -notmatch 'customerWorkerName' }).Count -ne 0 -or
     @($faultRoles[0].properties.permissions.actions | Where-Object { $_ -notmatch '^Microsoft.Web/sites/(slots/)?(config/(list/action|write)|restart/action)$' }).Count -ne 0) {
   throw 'Customer fault permissions must be conditional and scoped only to the exact customer app and worker, not the resource group or Control Center.'
 }
@@ -146,7 +156,7 @@ if (-not $BicepExecutable) {
   $BicepExecutable = Join-Path $HOME ".azure/bin/$binary"
 }
 $version = & $BicepExecutable --version
-if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Bicep CLI version 0\.37\.4\b') { throw 'Compile templates with Bicep 0.37.4 to match the checked-in artifacts.' }
+if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Bicep CLI version 0\.49\.2\b') { throw 'Compile templates with Bicep 0.49.2 to match the checked-in artifacts, including native resource retries.' }
 $temporary = Join-Path $source ('.artifacts\amlab-template-check-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary
 try {

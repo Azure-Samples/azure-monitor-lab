@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.37.4.10188",
-      "templateHash": "12564971963329501058"
+      "version": "0.49.2.45890",
+      "templateHash": "8925103604582138103"
     }
   },
   "parameters": {
@@ -94,7 +94,7 @@
   "resources": [
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "health-model-demo-cafe-workload",
       "properties": {
         "expressionEvaluationOptions": {
@@ -118,8 +118,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "11350620209401038776"
+              "version": "0.49.2.45890",
+              "templateHash": "18310756885116888337"
             }
           },
           "parameters": {
@@ -455,7 +455,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageName'))]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
               "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('webAppName')), variables('blobContributorRoleId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('blobContributorRoleId'))]",
@@ -470,7 +470,7 @@
             {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageName'))]",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
               "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('webAppName')), variables('queueSenderRoleId'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('queueSenderRoleId'))]",
@@ -595,7 +595,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "health-model-demo-flows",
       "properties": {
         "expressionEvaluationOptions": {
@@ -647,8 +647,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "7844248295468021012"
+              "version": "0.49.2.45890",
+              "templateHash": "14134639591959947840"
             }
           },
           "functions": [
@@ -1601,7 +1601,7 @@
             },
             "monitoringReader": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('{0}-monitoring-reader', parameters('healthModelName'))]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -1622,8 +1622,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "5665340490566376816"
+                      "version": "0.49.2.45890",
+                      "templateHash": "15578287379822125990"
                     }
                   },
                   "parameters": {
@@ -1654,7 +1654,7 @@
             },
             "monitoringDataReader": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('{0}-amw-reader', parameters('healthModelName'))]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -1678,8 +1678,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "12804070414532032208"
+                      "version": "0.49.2.45890",
+                      "templateHash": "3997274073349549790"
                     }
                   },
                   "parameters": {
@@ -1697,7 +1697,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Monitor/accounts/{0}', parameters('monitorWorkspaceName'))]",
+                      "scope": "[resourceId('Microsoft.Monitor/accounts', parameters('monitorWorkspaceName'))]",
                       "name": "[guid(resourceId('Microsoft.Monitor/accounts', parameters('monitorWorkspaceName')), parameters('principalId'), parameters('roleDefinitionId'))]",
                       "properties": {
                         "roleDefinitionId": "[parameters('roleDefinitionId')]",
@@ -1714,7 +1714,7 @@
             },
             "consoleReporter": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('{0}-console-reporter', parameters('healthModelName'))]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -1738,8 +1738,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "3210358924528756385"
+                      "version": "0.49.2.45890",
+                      "templateHash": "8896880884112877774"
                     }
                   },
                   "parameters": {
@@ -1757,7 +1757,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.CloudHealth/healthmodels/{0}', parameters('healthModelName'))]",
+                      "scope": "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]",
                       "name": "[guid(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), parameters('principalId'), parameters('roleDefinitionId'))]",
                       "properties": {
                         "roleDefinitionId": "[parameters('roleDefinitionId')]",
@@ -1794,7 +1794,7 @@
     },
     {
       "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
+      "apiVersion": "2025-04-01",
       "name": "health-model-demo-cafe",
       "properties": {
         "expressionEvaluationOptions": {
@@ -1809,13 +1809,13 @@
             "value": "[parameters('healthModelLocation')]"
           },
           "webAppId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.webAppId.value]"
           },
           "storageId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.storageAccountId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.storageAccountId.value]"
           },
           "workspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.logAnalyticsWorkspaceId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.logAnalyticsWorkspaceId.value]"
           },
           "actionGroupId": {
             "value": "[parameters('actionGroupId')]"
@@ -1824,7 +1824,7 @@
             "value": "[parameters('webAppId')]"
           },
           "reporterRoleDefinitionId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-flows'), '2022-09-01').outputs.reporterRoleDefinitionId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-flows'), '2025-04-01').outputs.reporterRoleDefinitionId.value]"
           },
           "monitoringReaderAssignmentName": {
             "value": "[parameters('cafeMonitoringReaderAssignmentName')]"
@@ -1840,8 +1840,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "9002074081658173157"
+              "version": "0.49.2.45890",
+              "templateHash": "2257971178348785991"
             }
           },
           "functions": [
@@ -2617,7 +2617,7 @@
             },
             "reader": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('{0}-monitoring-reader', parameters('healthModelName'))]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -2647,8 +2647,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "6225522080980377547"
+                      "version": "0.49.2.45890",
+                      "templateHash": "3546180830430253102"
                     }
                   },
                   "parameters": {
@@ -2688,7 +2688,7 @@
                       "condition": "[empty(parameters('assignmentName'))]",
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Web/sites/{0}', last(split(parameters('webAppId'), '/')))]",
+                      "scope": "[resourceId('Microsoft.Web/sites', last(split(parameters('webAppId'), '/')))]",
                       "name": "[guid(parameters('webAppId'), parameters('principalId'), variables('roleId'))]",
                       "properties": {
                         "principalId": "[parameters('principalId')]",
@@ -2700,7 +2700,7 @@
                       "condition": "[empty(parameters('assignmentName'))]",
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', last(split(parameters('storageId'), '/')))]",
+                      "scope": "[resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('storageId'), '/')))]",
                       "name": "[guid(parameters('storageId'), parameters('principalId'), variables('roleId'))]",
                       "properties": {
                         "principalId": "[parameters('principalId')]",
@@ -2712,7 +2712,7 @@
                       "condition": "[empty(parameters('assignmentName'))]",
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', last(split(parameters('workspaceId'), '/')))]",
+                      "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('workspaceId'), '/')))]",
                       "name": "[guid(parameters('workspaceId'), parameters('principalId'), variables('roleId'))]",
                       "properties": {
                         "principalId": "[parameters('principalId')]",
@@ -2729,7 +2729,7 @@
             },
             "reporter": {
               "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2022-09-01",
+              "apiVersion": "2025-04-01",
               "name": "[format('{0}-console-reporter', parameters('healthModelName'))]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -2753,8 +2753,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.37.4.10188",
-                      "templateHash": "3210358924528756385"
+                      "version": "0.49.2.45890",
+                      "templateHash": "8896880884112877774"
                     }
                   },
                   "parameters": {
@@ -2772,7 +2772,7 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.CloudHealth/healthmodels/{0}', parameters('healthModelName'))]",
+                      "scope": "[resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName'))]",
                       "name": "[guid(resourceId('Microsoft.CloudHealth/healthmodels', parameters('healthModelName')), parameters('principalId'), parameters('roleDefinitionId'))]",
                       "properties": {
                         "roleDefinitionId": "[parameters('roleDefinitionId')]",
@@ -2806,11 +2806,11 @@
   "outputs": {
     "healthModelDemoCafeWebAppName": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.webAppName.value]"
     },
     "healthModelDemoCafeWebAppUrl": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2022-09-01').outputs.webAppUrl.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'health-model-demo-cafe-workload'), '2025-04-01').outputs.webAppUrl.value]"
     },
     "healthModelDemoCafeModelName": {
       "type": "string",

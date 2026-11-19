@@ -484,7 +484,9 @@ use the guarded lab `teardown.ps1` when the lab is no longer needed.
 Offline checks (mocked Azure/SQL calls; no Azure writes):
 `pwsh -NoProfile -File scripts\tests\customer-dependencies.Tests.ps1` and
 `pwsh -NoProfile -File scripts\tests\customer-dependency-config.Tests.ps1`.
-Compiled-template parity uses the repository's pinned Bicep 0.37.4.
+Compiled-template parity uses the repository's pinned Bicep 0.49.2, including native
+resource retries. Offline recovery/quota contracts run with
+`node --test scripts/tests/deployment-readiness.Tests.mjs`; they do not deploy to Azure.
 
 Publication runs `dotnet publish` against the original repository Web App project,
 preserving `..\customer-orders\CustomerOrders.csproj`; package preparation works on
