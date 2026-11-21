@@ -136,6 +136,10 @@ Tenant settings are never changed by deployment. A Fabric administrator can use 
 
 Fabric item creation is asynchronous and can be slower on F2. The setup script waits up to 30 minutes by default, honors the service `Retry-After` header, and prints operation IDs and progress. Override the ceiling with `-MaxOperationMinutes <5-120>`. If a caller times out, the Fabric operation can still finish; rerun the same command safely and the script will reuse every item that already exists.
 
+For Azure Monitor mirroring, Cloud Shell and the other setup paths also wait automatically for workspace-identity source authorization to propagate. The actual scope and table discovery requests retry the specific source-catalog 403 containing `GET v1/config` and `Caller is not allowed to query this workspace` every 30 seconds, for up to 15 minutes per source workspace. HTTP request time, pagination and retry sleeps share that deadline, and each retry displays progress. Setup continues in the same run as soon as access becomes effective, without recreating completed resources or changing permissions.
+
+Other discovery errors fail immediately. A source that remains unauthorized fails explicitly with the last service error; verify its workspace identity, source role and tenant prerequisites. This authorization wait is separate from asynchronous item provisioning and telemetry ingestion checks: accessible source metadata alone does not verify healthy data flow.
+
 ## Staged Bicep deployment
 
 ```powershell

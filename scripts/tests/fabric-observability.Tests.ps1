@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility
 $source = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 . (Join-Path $source 'scripts/fabric-observability.ps1')
 . (Join-Path $source 'scripts/fabric-connections.ps1')
@@ -37,8 +38,8 @@ function Reset-Fixture {
   $fixture.Dashboard = $null
   $fixture.Mirror = $null
   $fixture.Connections = @(
-    @{ id = $connectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$customerId;https://api.loganalytics.io/iceberg" } },
-    @{ id = $appConnectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$appCustomerId;https://api.loganalytics.io/iceberg" } }
+    @{ id = $connectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$customerId;https://api.loganalytics.io/iceberg" }; credentialDetails = @{ credentialType = 'WorkspaceIdentity' } },
+    @{ id = $appConnectionId; connectionDetails = @{ type = 'AzureMonitorMirroredCatalog'; path = "$appCustomerId;https://api.loganalytics.io/iceberg" }; credentialDetails = @{ credentialType = 'WorkspaceIdentity' } }
   )
   $fixture.Scopes = @(@{ name = '(root)'; fullyQualifiedScope = @(); isSelectable = 'Selectable'; children = @(
     @{ name = 'dbo'; fullyQualifiedScope = @('dbo'); isSelectable = 'NotSelectable' }
@@ -61,6 +62,16 @@ function Reset-Fixture {
   $fixture.Agents = @()
   $fixture.MonitoringState = 'Disabled'
   $fixture.Definitions = @{}
+  $fixture.Now = [datetime]::new(2026, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)
+  $fixture.SleepSeconds = [Collections.Generic.List[int]]::new()
+  $fixture.SourceFailures = 0
+  $fixture.SourceFailureConnectionId = $connectionId
+  $fixture.SourceFailureCollection = 'scopes'
+  $fixture.SourceFailureStatus = [Net.HttpStatusCode]::Forbidden
+  $fixture.SourceFailureCode = 'InvalidInput'
+  $fixture.SourceFailureMessage = 'Authentication to the source catalog failed: REST API error: GET v1/config returned 403 Forbidden. Caller is not allowed to query this workspace.. Verify the connection credentials are valid and have not expired, then try again.'
+  $fixture.ScopeRequestSeconds = 0
+  $fixture.ScopeContinuation = $null
 }
 function az {
   if ($fixture.FullSetup) {
@@ -94,11 +105,38 @@ function az {
   $global:LASTEXITCODE = $(if ($fixture.TokenFailure) { 1 } else { 0 })
   if (-not $fixture.TokenFailure) { 'offline-kusto-test' }
 }
-function Start-Sleep { param($Seconds); $fixture.Delays++ }
+function Get-Date { param([switch] $AsUTC); return $fixture.Now }
+function Start-Sleep {
+  param($Seconds)
+  $fixture.Delays++
+  $fixture.SleepSeconds.Add($Seconds)
+  $fixture.Now = $fixture.Now.AddSeconds($Seconds)
+}
 function Invoke-RestMethod {
-  param($Method, $Uri, $Headers, $ContentType, $Body, $ResponseHeadersVariable, $StatusCodeVariable)
-  $fixture.Requests.Add(@{ Method = $Method; Uri = $Uri; Body = $Body })
+  param($Method, $Uri, $Headers, $ContentType, $Body, $ResponseHeadersVariable, $StatusCodeVariable, $TimeoutSec, $OperationTimeoutSeconds)
+  $fixture.Requests.Add(@{ Method = $Method; Uri = $Uri; Body = $Body; TimeoutSec = $TimeoutSec; OperationTimeoutSeconds = $OperationTimeoutSeconds })
   if ($fixture.HttpFailure) { throw 'HTTP 403 access denied.' }
+  if ($Method -eq 'Get' -and $Uri -like '*/catalogmirroring/scopes?*') {
+    $seconds = $fixture.ScopeRequestSeconds
+    if ($TimeoutSec -and $seconds -gt $TimeoutSec) {
+      $fixture.Now = $fixture.Now.AddSeconds($TimeoutSec)
+      throw [TimeoutException]::new('Synthetic source request timeout.')
+    }
+    $fixture.Now = $fixture.Now.AddSeconds($seconds)
+  }
+  if ($Method -eq 'Get' -and $fixture.SourceFailures -gt 0 -and
+      $Uri -like "*/catalogmirroring/$($fixture.SourceFailureCollection)?*" -and
+      $Uri -like "*connectionId=$($fixture.SourceFailureConnectionId)*") {
+    $fixture.SourceFailures--
+    $response = [Net.Http.HttpResponseMessage]::new($fixture.SourceFailureStatus)
+    $response.RequestMessage = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Get, $Uri)
+    $exception = [Microsoft.PowerShell.Commands.HttpResponseException]::new("HTTP $([int]$fixture.SourceFailureStatus) source failure.", $response)
+    $record = [Management.Automation.ErrorRecord]::new($exception, 'FabricSourceAuthorization', [Management.Automation.ErrorCategory]::PermissionDenied, $null)
+    $record.ErrorDetails = [Management.Automation.ErrorDetails]::new((@{
+      errorCode = $fixture.SourceFailureCode; message = $fixture.SourceFailureMessage; isRetriable = $false
+    } | ConvertTo-Json -Compress))
+    throw $record
+  }
   if ($fixture.FeatureFailures -and $Method -eq 'Get' -and
       ($Uri -like '*/monitoringItems' -or $Uri -like '*/operationsAgents')) {
     $response = [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::Forbidden)
@@ -163,7 +201,9 @@ function Invoke-RestMethod {
       '*/eventstreams/*/topology' { return $fixture.Topology }
       '*/connections' { return @{ value = $fixture.Connections; continuationUri = $fixture.Continuation } }
       '*/connections?page=2' { return @{ value = $fixture.MoreConnections } }
-      '*/catalogmirroring/scopes?*' { return @{ value = $fixture.Scopes } }
+      '*/catalogmirroring/scopes?*' {
+        return @{ value = $fixture.Scopes; continuationUri = $(if ($Uri -notlike '*page=2*') { $fixture.ScopeContinuation }) }
+      }
       '*/catalogmirroring/tables?*' {
         if ($Uri -notmatch '&scope=dbo') { throw 'Table discovery must use the leaf namespace, not an empty selectable root.' }
         if ($Uri -like "*connectionId=$appConnectionId*") {
@@ -367,6 +407,83 @@ foreach ($applicationInsights in @($true, $false)) {
 }
 Write-Output 'PASS: mirrored dashboards retain supported visuals, sampling and bindings; Application Insights shares six KPIs and limits each page to four queries without overlapping tiles.'
 
+foreach ($collection in @('scopes', 'tables')) {
+  Reset-Fixture
+  $fixture.SourceFailures = 18
+  $fixture.SourceFailureCollection = $collection
+  $output = @(Test-Mirror 3>&1)
+  $warnings = @($output | Where-Object { $_ -is [Management.Automation.WarningRecord] })
+  $results = @($output | Where-Object { $_ -isnot [Management.Automation.WarningRecord] })
+  if ($results.Count -ne 1 -or $results[0].Status -ne 'Pending' -or
+      $fixture.Delays -ne 18 -or ($fixture.SleepSeconds | Measure-Object -Sum).Sum -ne 540) {
+    throw 'Source authorization must recover automatically after a nine-minute propagation delay without declaring data flow healthy.'
+  }
+  if ($warnings.Count -ne 18 -or @($warnings | Where-Object { $_.Message -notlike '*source authorization*30 seconds*' }).Count) {
+    throw 'Every source authorization retry must display its reason and next wait.'
+  }
+  if (@($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and $_.Uri -like '*/mirroredCatalogs' }).Count -ne 1) {
+    throw 'Authorization retries must create the mirror only once, after source discovery succeeds.'
+  }
+}
+Reset-Fixture
+$fixture.SourceFailures = [int]::MaxValue
+Assert-Failure { Test-Mirror 3>$null } '*source authorization*deadline*GET v1/config returned 403*'
+if ($fixture.Delays -ne 30 -or ($fixture.SleepSeconds | Measure-Object -Sum).Sum -ne 900 -or
+    @($fixture.Requests | Where-Object Method -ne Get).Count -or $fixture.Mirror) {
+  throw 'Persistent source denial must stop at the 15-minute deadline without creating or changing any item.'
+}
+foreach ($requestSeconds in @(20, 31)) {
+  Reset-Fixture
+  $fixture.SourceFailures = [int]::MaxValue
+  $fixture.ScopeRequestSeconds = $requestSeconds
+  Assert-Failure { Test-Mirror 3>$null } '*source authorization*deadline*'
+  if ($fixture.Now -ne [datetime]::new(2026, 1, 1, 0, 15, 0, [DateTimeKind]::Utc) -or
+      ($requestSeconds -eq 31 -and $fixture.SleepSeconds[-1] -ne 15)) {
+    throw 'The 15-minute budget must include API request time and cap the final sleep by the remaining budget.'
+  }
+}
+Reset-Fixture
+$fixture.SourceFailures = 29
+if ((Test-Mirror 3>$null).Status -ne 'Pending') { throw 'Source authorization within the budget must allow mirroring to continue.' }
+$tableRequests = @($fixture.Requests | Where-Object Uri -like '*/catalogmirroring/tables?*')
+if ($tableRequests.Count -ne 1 -or $tableRequests[0].TimeoutSec -ne 30) {
+  throw 'Scope and table discovery must share one 15-minute source authorization deadline.'
+}
+foreach ($case in @(
+  @{ Status = [Net.HttpStatusCode]::Unauthorized },
+  @{ Status = [Net.HttpStatusCode]::BadRequest },
+  @{ Code = 'InsufficientPrivileges' },
+  @{ Message = 'Fabric workspace access is forbidden.' },
+  @{ CredentialType = 'OAuth2' },
+  @{ CredentialType = 'ServicePrincipal' },
+  @{ CredentialType = $null }
+)) {
+  Reset-Fixture
+  $fixture.SourceFailures = 1
+  if ($case.ContainsKey('Status')) { $fixture.SourceFailureStatus = $case.Status }
+  if ($case.ContainsKey('Code')) { $fixture.SourceFailureCode = $case.Code }
+  if ($case.ContainsKey('Message')) { $fixture.SourceFailureMessage = $case.Message }
+  if ($case.ContainsKey('CredentialType')) { $fixture.Connections[0].credentialDetails.credentialType = $case.CredentialType }
+  Assert-Failure { Test-Mirror } '*source failure*'
+  if ($fixture.Delays -or $fixture.Mirror) { throw 'Other HTTP errors, permanent Fabric denials and non-workspace-identity credentials must not be retried.' }
+}
+Reset-Fixture
+$fixture.ScopeRequestSeconds = 30
+$fixture.ScopeContinuation = "$fabricApi/workspaces/workspace/catalogmirroring/scopes?page=2"
+Assert-Failure {
+  Get-FabricApiCollection -Path "workspaces/workspace/catalogmirroring/scopes?connectionId=$connectionId" -DeadlineUtc $fixture.Now.AddSeconds(45)
+} '*source request timeout*'
+$requests = @($fixture.Requests | Where-Object Uri -like '*/catalogmirroring/scopes?*')
+if ($requests.Count -ne 2 -or $requests[0].TimeoutSec -ne 45 -or $requests[1].TimeoutSec -ne 15 -or
+    $fixture.Now -ne [datetime]::new(2026, 1, 1, 0, 0, 45, [DateTimeKind]::Utc)) {
+  throw 'Paginated source requests must share the same deadline and cap each HTTP timeout by the remaining budget.'
+}
+if ((Get-Command Microsoft.PowerShell.Utility\Invoke-RestMethod).Parameters.ContainsKey('OperationTimeoutSeconds') -and
+    ($requests[0].OperationTimeoutSeconds -ne 45 -or $requests[1].OperationTimeoutSeconds -ne 15)) {
+  throw 'PowerShell response-read timeouts must also be capped by the remaining source authorization budget.'
+}
+Write-Output 'PASS: source authorization recovers after nine minutes, stops at 15 minutes including HTTP time, preserves permanent errors and credentials, and bounds pagination.'
+
 Reset-Fixture
 1..2 | ForEach-Object { if ((Test-Mirror).Status -ne 'Pending') { throw 'Created mirror is not proof of data availability.' } }
 $mirrorPosts = @($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and $_.Uri -like '*/mirroredCatalogs' })
@@ -423,11 +540,16 @@ Write-Output 'PASS: preview mirroring uses explicit mounts, reuses items and rep
 
 Reset-Fixture
 $fixture.FullSetup = $true
-& (Join-Path $source 'scripts/setup-fabric.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' `
+$fixture.SourceFailures = 18
+$fixture.SourceFailureConnectionId = $appConnectionId
+& (Join-Path $source 'scripts/setup-fabric-cloud-shell.ps1') -SubscriptionId '00000000-0000-0000-0000-000000000000' `
   -ResourceGroup rg-fabric-test -WorkspaceName 'Azure Monitor Demo Lab' -SkipEventstreamConnection -EnableMirroring:$true -MirrorConnectionId $connectionId -MirrorTables AzureActivity, Perf `
   -AppInsightsMirrorConnectionId $appConnectionId -AppInsightsMirrorTables AppRequests,AppDependencies,AppExceptions,AppTraces -EnableAutoSuspend:$false -VerificationTimeoutSeconds 1
 if ($fixture.Dashboards.Count -ne 3 -or $fixture.Mirrors.Count -ne 2 -or $fixture.Samples.Count -ne 4) {
   throw 'Full setup must wire dashboard, synthetic correlation and configured mirroring without manual helper calls.'
+}
+if ($fixture.Delays -ne 18 -or $fixture.SourceFailures -ne 0) {
+  throw 'Cloud Shell must resume Application Insights mirroring in the same run after source authorization propagates.'
 }
 if ($fixture.MonitoringItems.Count -or $fixture.MonitoringState -ne 'Disabled' -or $fixture.Agents.Count -or
     @($fixture.Requests | Where-Object { $_.Method -eq 'Post' -and

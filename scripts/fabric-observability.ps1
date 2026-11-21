@@ -234,14 +234,62 @@ LabSampleEvents
 }
 
 function Get-FabricApiCollection {
-  param([Parameter(Mandatory)] [string] $Path)
+  param(
+    [Parameter(Mandatory)] [string] $Path,
+    [datetime] $DeadlineUtc,
+    [switch] $WaitForSourceAuthorization
+  )
+  $hasDeadline = $PSBoundParameters.ContainsKey('DeadlineUtc')
+  if ($WaitForSourceAuthorization -and -not $hasDeadline) { throw 'A source authorization wait requires a deadline.' }
   $next = "$fabricApi/$Path"
   $visited = [Collections.Generic.HashSet[string]]::new()
+  $authorizationFailure = $null
+  $attempt = 0
   while ($next) {
     if (-not $visited.Add($next)) { throw 'Fabric returned a repeated continuation URL.' }
     $uri = [uri]$next
     if ($uri.Scheme -ne 'https' -or $uri.Host -ne 'api.fabric.microsoft.com') { throw 'Unexpected Fabric continuation URL.' }
-    $response = Invoke-RestMethod -Method Get -Uri $next -Headers $script:fabricHeaders
+    do {
+      $request = @{ Method = 'Get'; Uri = $next; Headers = $script:fabricHeaders }
+      if ($hasDeadline) {
+        $remaining = [int][Math]::Floor(($DeadlineUtc - (Get-Date -AsUTC)).TotalSeconds)
+        if ($remaining -le 0) {
+          if ($authorizationFailure) {
+            throw [TimeoutException]::new(
+              "Azure Monitor source authorization did not become ready before the 15-minute deadline. Verify the workspace identity's source role and tenant prerequisites. Last error: $(Get-FabricErrorDetail -ErrorRecord $authorizationFailure)",
+              $authorizationFailure.Exception)
+          }
+          throw [TimeoutException]::new("Fabric collection '$($uri.AbsolutePath)' exceeded its request deadline.")
+        }
+        $request.TimeoutSec = [Math]::Min(60, $remaining)
+        if ((Get-Command Microsoft.PowerShell.Utility\Invoke-RestMethod).Parameters.ContainsKey('OperationTimeoutSeconds')) {
+          $request.OperationTimeoutSeconds = $request.TimeoutSec
+        }
+      }
+      $attempt++
+      try {
+        $response = Invoke-RestMethod @request
+        if ($authorizationFailure) { Write-Host 'Azure Monitor source authorization is ready; continuing mirroring.' }
+        $authorizationFailure = $null
+        break
+      } catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+        # Fabric reports this source 403 as non-retriable even while a new Azure role is propagating.
+        if (-not $WaitForSourceAuthorization -or
+            $_.Exception.Response.StatusCode -ne [Net.HttpStatusCode]::Forbidden -or
+            -not $_.ErrorDetails -or
+            $_.ErrorDetails.Message -notmatch '"errorCode"\s*:\s*"InvalidInput"' -or
+            $_.ErrorDetails.Message -notmatch 'GET v1/config returned 403 Forbidden\.\s*Caller is not allowed to query this workspace\.') {
+          throw
+        }
+        $authorizationFailure = $_
+        $remaining = [int][Math]::Floor(($DeadlineUtc - (Get-Date -AsUTC)).TotalSeconds)
+        if ($remaining -gt 0) {
+          $delay = [Math]::Min(30, $remaining)
+          Write-Warning "Waiting for Azure Monitor source authorization (attempt $attempt): retrying in $delay seconds; $remaining seconds remain."
+          Start-Sleep -Seconds $delay
+        }
+      }
+    } while ($true)
     $response.value
     if ($response.continuationToken -and -not $response.continuationUri) {
       throw 'Fabric returned a continuation token without a continuation URI.'
@@ -302,7 +350,11 @@ function Initialize-FabricMirror {
   }
   $connectionIdValue = $connection[0].id
   $discoveryPath = "workspaces/$WorkspaceId/catalogmirroring"
-  $nodes = @(Get-FabricApiCollection -Path "$discoveryPath/scopes?beta=true&connectionId=$connectionIdValue&recursive=true")
+  $discoveryOptions = @{
+    DeadlineUtc = (Get-Date -AsUTC).AddMinutes(15)
+    WaitForSourceAuthorization = $connection[0].credentialDetails.credentialType -eq 'WorkspaceIdentity'
+  }
+  $nodes = @(Get-FabricApiCollection -Path "$discoveryPath/scopes?beta=true&connectionId=$connectionIdValue&recursive=true" @discoveryOptions)
   $scopes = @(Get-FabricSelectableScope -Nodes $nodes)
   if ($Scope.Count) {
     $selected = @($scopes | Where-Object { (ConvertTo-Json -InputObject @($_.fullyQualifiedScope) -Compress) -ceq (ConvertTo-Json -InputObject $Scope -Compress) })
@@ -318,7 +370,7 @@ function Initialize-FabricMirror {
   $leaves = @(Get-FabricLeafScope -Nodes @($selected[0]))
   $available = @(foreach ($leaf in $leaves) {
     $scopeQuery = (@($leaf.fullyQualifiedScope | ForEach-Object { 'scope=' + [uri]::EscapeDataString($_) }) -join '&')
-    Get-FabricApiCollection -Path "$discoveryPath/tables?beta=true&connectionId=$connectionIdValue&$scopeQuery"
+    Get-FabricApiCollection -Path "$discoveryPath/tables?beta=true&connectionId=$connectionIdValue&$scopeQuery" @discoveryOptions
   })
   $mounts = @()
   foreach ($tableName in $Tables) {

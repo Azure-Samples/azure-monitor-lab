@@ -135,6 +135,14 @@ The deploying identity must be able to deploy resources, create custom roles and
 
 The subscription/region must support Basic Container Registry, ACR Tasks, and a Consumption Container Apps environment. Some free-credit subscriptions restrict ACR Tasks. Required policy, permission, capacity, build, or agent-creation failures stop deployment rather than silently leaving disabled controls. Newly assigned permissions and telemetry can take time to propagate; infrastructure success is not proof that telemetry has arrived.
 
+The runner image uses HTTPS for Ubuntu package feeds, retries package downloads, and fails explicitly if any package index cannot be refreshed. If completion stops during `runner image build`, inspect the registry and run ID printed by ACR:
+
+```powershell
+az acr task logs --registry <registry-name> --run-id <run-id> --subscription <subscription-id>
+```
+
+Connection failures to Ubuntu package feeds are build-worker dependency-download failures, not App Service quota or Control Center sign-in errors. Fix the reported build failure before rerunning completion; an infrastructure deployment marked successful does not mean the runner image was built.
+
 ### Included Configuration
 
 1. Single-tenant App Service Authentication and provider/backend operator allowlists, retaining anonymous demo traffic endpoints. The sign-in credential is transferred in memory to protected App Service settings. Redeployment renews a missing, expired, or near-expiry credential; no scheduled renewal service is installed.
