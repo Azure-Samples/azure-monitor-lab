@@ -124,8 +124,19 @@ foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.p
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
 }
 $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Raw
-if ($runnerDockerfile -notmatch 'Acquire::Retries=5' -or $runnerDockerfile -notmatch '(?s)rm -rf /var/lib/apt/lists/\*.+apt-get -o Acquire::Retries=5 update') {
+if ($runnerDockerfile -notmatch 'Acquire::Retries=5' -or $runnerDockerfile -notmatch '(?s)rm -rf /var/lib/apt/lists/\*.+apt-get -o Acquire::Retries=5 -o APT::Update::Error-Mode=any update') {
   throw 'Runner package installation must retry downloads and refresh a stale APT index.'
+}
+$sourceSetup = $runnerDockerfile.Substring(0, $runnerDockerfile.IndexOf('apt-get', [StringComparison]::Ordinal))
+foreach ($mirror in @('archive.ubuntu.com', 'security.ubuntu.com')) {
+  if (-not $sourceSetup.Contains("s|http://$mirror/ubuntu|https://$mirror/ubuntu|g", [StringComparison]::Ordinal) -or
+      $sourceSetup -notmatch '/etc/apt/sources\.list') {
+    throw 'Runner Ubuntu package feeds must use HTTPS before the first APT update.'
+  }
+}
+$aptUpdates = [regex]::Matches($runnerDockerfile, 'apt-get[^\r\n]*\bupdate\b')
+if (-not $aptUpdates.Count -or @($aptUpdates | Where-Object { $_.Value -notmatch 'APT::Update::Error-Mode=any' }).Count) {
+  throw 'Every runner APT update must fail explicitly when any package index cannot be refreshed.'
 }
 if ($runnerDockerfile -notmatch 'playwright install --with-deps chromium' -or $runnerDockerfile -notmatch 'workloads/webapp/scripts' -or
     $runnerDockerfile -notmatch 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright' -or $runnerDockerfile -notmatch 'chmod -R a\+rX /ms-playwright') {
