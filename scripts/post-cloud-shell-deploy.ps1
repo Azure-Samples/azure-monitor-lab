@@ -5,7 +5,12 @@
 .DESCRIPTION
   Signs in to the selected tenant, pins and verifies the selected subscription, discovers the portal-deployed lab
   resources, resolves Application Insights through the core ARM CLI surface, and
-  runs the same workload, Health Model, SLI, Fabric, SRE, and Observability Agent helpers used by deploy.ps1.
+  runs the same workload, AI, Health Model, SLI, Fabric, SRE, and Observability Agent helpers used by deploy.ps1.
+
+.PARAMETER EnableStageAI
+  Start a finite background batch of 150 AI conversations after workload publication.
+  When omitted, detect the deployed Foundry project. Model usage is billable.
+  Explicit false skips traffic without disabling the deployed AI stage.
 
 .PARAMETER EnableStageFabric
   Complete Fabric setup when true. When omitted, detect the deployed capacity.
@@ -48,6 +53,7 @@ param(
   [guid[]] $ConsoleOperatorObjectIds,
   [string] $CustomerDependencyDeploymentName,
   [switch] $ApproveCustomerDependencies = $true,
+  [bool] $EnableStageAI = $false,
   [bool] $EnableStageSreAgent = $false,
   [bool] $EnableStageObservabilityAgent = $false,
   [bool] $EnableStageFabric = $false,
@@ -79,6 +85,9 @@ Write-Info "Name prefix: $NamePrefix"
 Write-Step "Discovering portal deployment resources"
 $resources = @(az resource list --subscription $active.id -g $ResourceGroup -o json | ConvertFrom-Json)
 if ($LASTEXITCODE -ne 0) { throw 'Portal resource discovery failed.' }
+if (-not $PSBoundParameters.ContainsKey('EnableStageAI')) {
+  $EnableStageAI = @($resources | Where-Object { $_.type -ieq 'Microsoft.CognitiveServices/accounts/projects' }).Count -gt 0
+}
 if (-not $PSBoundParameters.ContainsKey('EnableStageSreAgent')) {
   $EnableStageSreAgent = @($resources | Where-Object { $_.type -ieq 'Microsoft.App/agents' }).Count -gt 0
 }
@@ -152,6 +161,12 @@ Write-Step "Running App Service and AKS post-deployment setup"
   -CentralLawName $centralLaw.name `
   -AppInsightsConnectionString $appInsightsConnectionString `
   -ConsoleOperatorObjectIds $ConsoleOperatorObjectIds
+
+if ($EnableStageAI) {
+  Write-Step 'Starting AI demo traffic in the background (150 conversations; billable model usage)'
+  & (Join-Path $PSScriptRoot 'setup-ai-cloud-shell.ps1') `
+    -SubscriptionId $active.id -ResourceGroup $ResourceGroup -NamePrefix $NamePrefix
+}
 
 Write-Step "Provisioning service group and health model prerequisites"
 & (Join-Path $PSScriptRoot 'setup-health-model.ps1') -ResourceGroup $ResourceGroup

@@ -58,7 +58,7 @@ These features are deployed only when selected in the portal or enabled in the d
 | [Metrics Export DCR](DEMO-SCENARIOS.md#s52) | Nothing when `enableMetricsExportDcr` was enabled successfully. If it was disabled, enable the flag and redeploy before using the scenario. |
 | [LAW replication](DEMO-SCENARIOS.md#s41) | Allow replication to become active when it was enabled. If disabled, enable it and provide a secondary region before redeploying. |
 | [SIEM webhook](DEMO-SCENARIOS.md#s38) | Nothing when a valid `siemWebhookUrl` was supplied. Otherwise provide the external endpoint and redeploy before demonstrating fan-out. |
-| [AI FinOps](DEMO-SCENARIOS.md#s53) | Allow generated telemetry to arrive after the applicable AI setup script completes. Skip this scenario when the AI stage was not enabled. |
+| [AI FinOps](DEMO-SCENARIOS.md#s53) | One-shot and Cloud Shell completion start a finite background batch of 150 conversations by default when AI is enabled. Keep the deployment host and sign-in available until the batch finishes, then allow telemetry to arrive. Model usage is billable. Cloud Shell supports `-EnableStageAI:$false` to skip traffic; use `./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix` for another batch. Skip this scenario when AI was not enabled. |
 
 ## Optional demo data preparation
 
