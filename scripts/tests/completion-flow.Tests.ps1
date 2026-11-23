@@ -8,9 +8,10 @@ Copy-Item -LiteralPath (Join-Path $source 'post-cloud-shell-deploy.ps1') -Destin
 $fixture = @{
   Subscription = '11111111-1111-1111-1111-111111111111'; Tenant = '22222222-2222-2222-2222-222222222222'
   Calls = [Collections.Generic.List[string]]::new(); Failure = ''; SliError = ''; FabricParameters = $null
+  AiResources = $true
 }
 $helpers = @(
-  'setup-activity-log', 'post-deploy', 'setup-health-model', 'setup-slis',
+  'setup-activity-log', 'post-deploy', 'setup-ai-cloud-shell', 'setup-health-model', 'setup-slis',
   'setup-fabric', 'setup-sre-agent', 'setup-observability-agent', 'cleanup-legacy-rbac', 'setup-health-model-demo'
 )
 foreach ($helper in $helpers) {
@@ -18,9 +19,14 @@ foreach ($helper in $helpers) {
 param($SubscriptionId, $TenantId, $ResourceGroup, $NamePrefix, $WorkspaceName,
   $WebAppName, $AksName, $WebAppHost, $CustomerWebAppName, $CustomerDependencyDeploymentName,
   $ApproveCustomerDependencies, $CentralLawName, $AppInsightsConnectionString, $ConsoleOperatorObjectIds,
-  [switch] $ObservabilityAgent)
+  [switch] $ObservabilityAgent, [switch] $SkipTraffic)
 $name = [IO.Path]::GetFileNameWithoutExtension($PSCommandPath)
 $fixture.Calls.Add($name)
+if ($name -eq 'setup-ai-cloud-shell' -and (
+    $SubscriptionId -ne $fixture.Subscription -or $ResourceGroup -ne 'test-rg' -or
+    $NamePrefix -ne 'custom' -or $PSBoundParameters.ContainsKey('SkipTraffic'))) {
+  throw 'Automatic AI traffic must preserve the verified target and prefix without skipping traffic.'
+}
 if ($fixture.Failure -eq $name) { throw "$name failed." }
 if ($name -eq 'setup-slis' -and $fixture.SliError) { throw $fixture.SliError }
 if ($name -eq 'setup-fabric') { $fixture.FabricParameters = $PSBoundParameters }
@@ -33,7 +39,7 @@ function az {
     'account set' { }
     'account show' { return @{ id = $fixture.Subscription; tenantId = $fixture.Tenant } | ConvertTo-Json }
     'resource list' {
-      return ConvertTo-Json -InputObject @(
+      $resources = @(
         @{ type = 'Microsoft.Web/sites'; name = 'app-custom-test' },
         @{ type = 'Microsoft.ContainerService/managedClusters'; name = 'aks-custom' },
         @{ type = 'Microsoft.OperationalInsights/workspaces'; name = 'law-custom-central-test' },
@@ -43,6 +49,10 @@ function az {
         @{ type = 'Microsoft.Monitor/observabilityAgents'; name = 'obstest' },
         @{ type = 'Microsoft.CloudHealth/healthmodels'; name = 'hm-lab-cafe' }
       )
+      if ($fixture.AiResources) {
+        $resources += @{ type = 'Microsoft.CognitiveServices/accounts/projects'; name = 'aicustomtest/custom-ai-proj' }
+      }
+      return ConvertTo-Json -InputObject $resources
     }
     'resource show' { return 'offline-app-insights-connection' }
     default { throw "Unexpected Azure call: $args" }
@@ -68,9 +78,23 @@ try {
   if ($messages -notlike '*source metrics verified: True*' -or $messages -notlike '*Manual SLI step still required*') {
     throw 'Successful automated verification must still expose manual preview SLI steps.'
   }
+  foreach ($selection in @(
+    @{ Resources = $false; Options = @{}; Enabled = $false },
+    @{ Resources = $true; Options = @{}; Enabled = $true },
+    @{ Resources = $true; Options = @{ EnableStageAI = $false }; Enabled = $false },
+    @{ Resources = $false; Options = @{ EnableStageAI = $true }; Enabled = $true }
+  )) {
+    $fixture.AiResources = $selection.Resources
+    $null = Invoke-Completion -Options $selection.Options
+    $expectedCalls = @($helpers | Where-Object { $_ -ne 'setup-ai-cloud-shell' -or $selection.Enabled })
+    if (($fixture.Calls -join ',') -ne ($expectedCalls -join ',')) {
+      throw 'Cloud Shell must start AI traffic only when deployed or explicitly enabled, respecting an explicit opt-out.'
+    }
+  }
+  $fixture.AiResources = $true
   $null = Invoke-Completion -Options @{ FabricWorkspaceName = 'unique-lab' }
   if ($fixture.FabricParameters.WorkspaceName -ne 'unique-lab') { throw 'Cloud Shell must hand off the explicit workspace override.' }
-  foreach ($helper in @('post-deploy', 'setup-health-model', 'setup-fabric')) {
+  foreach ($helper in @('post-deploy', 'setup-ai-cloud-shell', 'setup-health-model', 'setup-fabric')) {
     $fixture.Failure = $helper
     $messages = Invoke-Completion -ExpectedFailure "$helper failed."
     $expectedCalls = $helpers[0..([Array]::IndexOf($helpers, $helper))]
@@ -110,6 +134,7 @@ try {
     throw 'Local Fabric failures must be rethrown, not followed by a successful completion message.'
   }
   Write-Output 'PASS: Cloud Shell invokes all discovered stages in order, honors workspace handoff and fails closed at failed helpers. No cloud calls.'
+  Write-Output 'PASS: Cloud Shell starts discovered AI traffic after workload publication, preserves the target/prefix, honors explicit selection and surfaces startup failures.'
   Write-Output 'PASS: only the known Prometheus audience limitation continues with explicit outstanding verification; local workload/service-group order and Fabric failure propagation are preserved.'
 } finally {
   Remove-Item -LiteralPath $root -Recurse -Force

@@ -120,13 +120,13 @@ if ([string]::IsNullOrWhiteSpace($namePrefix)) { $namePrefix = 'amlab' }
 ./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
 ```
 
-The wrapper detects deployed optional integrations, including Fabric, and reports any remaining manual actions. If the Cloud Shell session expires, rerun this block to reopen the clone and restore your deployment variables.
+The wrapper detects deployed optional integrations, including AI and Fabric, and reports any remaining manual actions. When the AI stage is deployed, it automatically starts a finite batch of 150 AI conversations in the background after workload publication. These are billable model calls. The script prints the process ID and log/status paths; keep Cloud Shell and its sign-in available until the batch finishes. Add `-EnableStageAI:$false` to skip automatic AI traffic. If the Cloud Shell session expires, rerun this block to reopen the clone and restore your deployment variables.
 
 Fabric completion defaults to a workspace specific to the subscription and resource group, not a shared tenant-wide display name. To override it, add `-FabricWorkspaceName '<unique-lab-workspace>'` to the wrapper and use that same override for teardown. Local configuration and safe legacy-workspace reuse are described in [Fabric workspace isolation](docs/STAGE-FABRIC.md#workspace-isolation-and-configuration).
 
 **Already partially completed?** Do not redeploy infrastructure or blindly rerun the wrapper if workload publication and private SQL initialization succeeded. Resume at the failed helper and complete the remaining stages using [partial-completion recovery](docs/POST-DEPLOYMENT.md#recovery-after-partial-completion). An accepted service-group write can temporarily return not-found or a read-authorization error; the helper now polls within a bounded deadline without assuming a permanent permission deficiency. This is separate from Cloud Shell's possible Prometheus token-audience limitation.
 
-If you enabled the optional AI stage and want to generate AI telemetry, run this next from the same Cloud Shell session. Skip it when AI is disabled:
+If you already completed setup before automatic AI traffic was available, or want another batch of fresh AI telemetry, run this from the same Cloud Shell session. It is not needed after the wrapper starts traffic successfully. Skip it when AI is disabled:
 
 ```powershell
 ./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
