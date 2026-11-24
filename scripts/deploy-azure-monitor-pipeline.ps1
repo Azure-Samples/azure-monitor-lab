@@ -152,7 +152,8 @@ if ($EnableCombined) {
     $tableId = "$CentralLawId/tables/$tableName"
     $table = Read-Az @('resource','show','--ids',$tableId,'--subscription',$SubscriptionId,'-o','json') "Stage90 table $tableName"
     $columns = @($table.properties.schema.columns)
-    if ($table.id -ine $tableId -or $table.type -ine 'Microsoft.OperationalInsights/workspaces/tables' -or
+    if ($table.id -ine $tableId -or
+        ($table.type -and $table.type -ine 'Microsoft.OperationalInsights/workspaces/tables') -or
         $table.properties.plan -ine 'Analytics' -or $table.properties.schema.name -cne $tableName -or
         $columns.Count -ne $requiredColumns.Count) {
       throw "Stage90 table $tableName is absent, not Analytics, or has the wrong schema."

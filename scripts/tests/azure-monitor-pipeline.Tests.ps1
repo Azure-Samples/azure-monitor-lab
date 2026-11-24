@@ -97,6 +97,7 @@ $global:edgePartialDcr = $false
 $global:edgeMissingTable = ''
 $global:edgeWrongPlan = ''
 $global:edgeWrongSchema = ''
+$global:edgeForeignTableType = ''
 $global:edgeForeignDcr = ''
 $global:edgeRemoteModes = [Collections.Generic.List[string]]::new()
 function global:az {
@@ -131,9 +132,10 @@ function global:az {
         $columns = @('TimeGenerated','RunId','EventId','SampleSetId','Severity','NormalizedSeverity','Workload','Message','SyntheticUser') |
           ForEach-Object { @{name=$_;type=$(if ($_ -eq 'TimeGenerated') {'datetime'} else {'string'})} }
         if ($global:edgeWrongSchema -eq $tableName) { $columns[0].type = 'string' }
-        $response = @{ id="$lawId/tables/$tableName"; type='Microsoft.OperationalInsights/workspaces/tables'
+        $response = @{ id="$lawId/tables/$tableName"
           properties=@{plan=$(if ($global:edgeWrongPlan -eq $tableName) {'Auxiliary'} else {'Analytics'})
             schema=@{name=$tableName;columns=$columns}} }
+        if ($global:edgeForeignTableType -eq $tableName) { $response.type = 'Microsoft.OperationalInsights/workspaces' }
       } else {
         $response = @{ id = $lawId; location = $region; type = 'Microsoft.OperationalInsights/workspaces' }
       }
@@ -303,6 +305,9 @@ try {
     $global:edgeWrongSchema = $tableName
     Assert-Fails { & $scriptPath @parameters -Enable @combined } 'wrong schema'
     $global:edgeWrongSchema = ''
+    $global:edgeForeignTableType = $tableName
+    Assert-Fails { & $scriptPath @parameters -Enable @combined } 'wrong schema'
+    $global:edgeForeignTableType = ''
   }
   if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
     throw 'Bad Stage90 table entered a mutable stage.'
