@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.49.2.45890",
-      "templateHash": "14499074580241983700"
+      "templateHash": "13968348204041899395"
     }
   },
   "parameters": {
@@ -3112,7 +3112,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.49.2.45890",
-              "templateHash": "15727763376073086440"
+              "templateHash": "8721633147226110064"
             }
           },
           "parameters": {
@@ -3452,7 +3452,6 @@
               "name": "[format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
-              "kind": "Direct",
               "properties": {
                 "dataCollectionEndpointId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
                 "directDataSources": {

@@ -56,6 +56,7 @@ if ($roles.Count -ne 4 -or @($roles | Where-Object { $_.scope -notmatch 'Microso
   throw 'Optional sender roles must be DCR-scoped, including the native OTLP DCR.'
 }
 if ($native[0].condition -ne "[parameters('enableNativeOtlp')]" -or
+    $native[0].PSObject.Properties.Name -contains 'kind' -or
     $native[0].properties.dataCollectionEndpointId -ne $module.outputs.dceId.value -or
     $native[0].properties.directDataSources.otelLogs[0].streams[0] -cne 'Microsoft-OTel-Logs' -or
     $native[0].properties.directDataSources.otelLogs[0].enrichWithResourceAttributes[0] -ne '*' -or

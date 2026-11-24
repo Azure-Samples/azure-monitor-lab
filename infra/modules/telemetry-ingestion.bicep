@@ -211,13 +211,12 @@ resource tiered 'Microsoft.Insights/dataCollectionRules@2023-03-11' = if (enable
   dependsOn: [operational, verbose]
 }
 
-// Direct ingestion uses the built-in OTelLogs schema; no custom stream declaration or
-// transform is allowed to discard OTLP log or resource attributes.
+// Native OTLP directDataSources cannot be used with kind 'Direct' (Log Ingestion API).
+// Use the DCE-backed OTLP rule shape without a kind, as in the published OTLP template.
 resource nativeOtlp 'Microsoft.Insights/dataCollectionRules@2024-03-11' = if (enableNativeOtlp) {
   name: 'dcr-${namePrefix}-telemetry-ingestion-otlp'
   location: location
   tags: tags
-  kind: 'Direct'
   properties: {
     dataCollectionEndpointId: dce.id
     directDataSources: {
