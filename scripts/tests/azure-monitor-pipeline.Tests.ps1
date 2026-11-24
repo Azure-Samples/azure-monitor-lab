@@ -100,6 +100,7 @@ $global:edgeWrongSchema = ''
 $global:edgeForeignTableType = ''
 $global:edgeForeignDcr = ''
 $global:edgeRemoteModes = [Collections.Generic.List[string]]::new()
+$global:edgeRegisteredProviders = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 function global:az {
   $parts = @($args | ForEach-Object { [string]$_ })
   $key = ($parts -join ' ')
@@ -149,9 +150,19 @@ function global:az {
         'Microsoft.Insights' { 'dataCollectionRules' }
         default { 'unused' }
       }
-      $response = @{ registrationState = $(if ($global:edgeFailure -eq 'provider' -and $ns -eq 'Microsoft.Kubernetes') { 'NotRegistered' } else { 'Registered' })
+      $response = @{ registrationState = $(if ($ns -in @('Microsoft.Kubernetes','Microsoft.ExtendedLocation') -and
+        -not $global:edgeRegisteredProviders.Contains($ns)) { 'NotRegistered' } else { 'Registered' })
         resourceTypes = @(@{ resourceType = $type; locations = @('North Europe') },
           @{resourceType='dataCollectionRuleAssociations';locations=@('North Europe')}) }; break
+    }
+    '^provider register ' {
+      if ($parts -notcontains '--subscription' -or $parts -notcontains $sub -or
+          $parts -notcontains '--wait' -or $parts -notcontains '--only-show-errors') {
+        throw 'Arc provider registration must be subscription-pinned and awaited.'
+      }
+      if ($global:edgeFailure -eq 'provider') { $global:LASTEXITCODE = 1; return }
+      [void]$global:edgeRegisteredProviders.Add($parts[[array]::IndexOf($parts,'--namespace')+1])
+      return
     }
     '^extension show --name k8s-extension ' { $response = @{name='k8s-extension'}; break }
     '^k8s-extension extension-types list-by-location ' {
@@ -281,12 +292,16 @@ try {
   }
   $global:edgeFailure = ''
   $global:edgeFailure = 'provider'
-  Assert-Fails { & $scriptPath @parameters -Enable } 'not registered'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'Registration of Microsoft.Kubernetes failed'
   if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
     throw 'Provider denial entered a mutable stage.'
   }
   $global:edgeFailure = 'role'
   Assert-Fails { & $scriptPath @parameters -Enable } 'Arc Onboarding'
+  if ($global:edgeRegisteredProviders.Count -ne 2 -or
+      @($global:edgeCalls | Where-Object { $_ -match '^provider register ' }).Count -ne 3) {
+    throw 'Arc providers were not registered once after the denied attempt.'
+  }
   $global:edgeFailure = 'permission'
   Assert-Fails { & $scriptPath @parameters -Enable } 'runCommands/write'
   $global:edgeFailure = ''
@@ -346,7 +361,8 @@ try {
   $global:edgeCalls.Clear()
   $result = & $scriptPath @parameters -Enable
   if ($result.LiveIngestion -notmatch 'NOT VERIFIED' -or
-      @($global:edgeCalls | Where-Object { $_ -match '^deployment group create ' }).Count -ne 2) {
+      @($global:edgeCalls | Where-Object { $_ -match '^deployment group create ' }).Count -ne 2 -or
+      @($global:edgeCalls | Where-Object { $_ -match '^provider register ' }).Count) {
     throw 'Fresh bootstrap did not finish in accepted/not-live-verified state.'
   }
   $global:edgeCalls.Clear()

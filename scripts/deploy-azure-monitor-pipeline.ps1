@@ -70,7 +70,13 @@ function Assert-Permission {
 function Assert-Provider {
   param([string] $Namespace, [string] $Type)
   $provider = Read-Az @('provider','show','--namespace',$Namespace,'--subscription',$SubscriptionId,'-o','json') "Provider $Namespace"
-  if ($provider.registrationState -ne 'Registered') { throw "$Namespace is not registered." }
+  if ($provider.registrationState -ne 'Registered') {
+    Write-Host "Registering $Namespace for the Azure Monitor pipeline opt-in..."
+    & az provider register --namespace $Namespace --subscription $SubscriptionId --wait --only-show-errors --output none
+    if ($LASTEXITCODE -ne 0) { throw "Registration of $Namespace failed; check subscription provider-registration permissions." }
+    $provider = Read-Az @('provider','show','--namespace',$Namespace,'--subscription',$SubscriptionId,'-o','json') "Provider $Namespace after registration"
+    if ($provider.registrationState -ne 'Registered') { throw "$Namespace is not registered after the registration request." }
+  }
   if ($Type) {
     $resource = @($provider.resourceTypes | Where-Object resourceType -EQ $Type)
     if ($resource.Count -ne 1 -or
