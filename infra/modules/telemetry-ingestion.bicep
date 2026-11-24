@@ -81,7 +81,6 @@ resource verbose 'Microsoft.OperationalInsights/workspaces/tables@2025-07-01' = 
       name: 'TelemetryIngestionVerbose_CL'
       columns: outputColumns
     }
-    retentionInDays: 30
     totalRetentionInDays: 30
   }
 }

@@ -53,8 +53,10 @@ if (($tables | Where-Object { $_.properties.plan -eq 'Auxiliary' }).Count -ne 1 
 }
 $auxiliaryTable = @($tables | Where-Object { $_.properties.plan -eq 'Auxiliary' })
 if ($auxiliaryTable[0].apiVersion -ne '2025-07-01' -or
-    $auxiliaryTable[0].condition -ne "[parameters('enableAuxiliary')]") {
-  throw 'The optional Auxiliary table must use an API version that supports its table plan.'
+    $auxiliaryTable[0].condition -ne "[parameters('enableAuxiliary')]" -or
+    $auxiliaryTable[0].properties.PSObject.Properties.Name -contains 'retentionInDays' -or
+    $auxiliaryTable[0].properties.totalRetentionInDays -ne 30) {
+  throw 'The optional Auxiliary table must use a supported API and total retention without Analytics retention.'
 }
 $roles = @($module.resources | Where-Object type -eq 'Microsoft.Authorization/roleAssignments')
 if ($roles.Count -ne 4 -or @($roles | Where-Object { $_.scope -notmatch 'Microsoft.Insights/dataCollectionRules' }).Count -gt 0) {
