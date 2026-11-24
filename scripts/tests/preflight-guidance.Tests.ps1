@@ -114,9 +114,21 @@ if ($result.Text.Contains('Cafe App Service')) { throw 'Disabled Cafe demo must 
 Assert-Contains $result 'Standard tier in westeurope'
 $result = Invoke-Preflight (New-Scenario) @{ RequireAzureMonitorPipelineCapacity = $true }
 if (-not $result.Failed) { throw 'The pipeline opt-in must reject the 2-vCPU default Linux VM.' }
-Assert-Contains $result 'changing vmSize in the main deployment can resize/restart both lab VMs'
+Assert-Contains $result 'Set linuxVmSize'
 $result = Invoke-Preflight (New-Scenario) @{ RequireAzureMonitorPipelineCapacity = $true; VmSize = 'Standard_EC4as_v5' }
 if ($result.Failed) { throw "A compatible explicitly selected VM should pass the pipeline sizing check.`n$($result.Text)" }
+$result = Invoke-Preflight (New-Scenario) @{
+  RequireAzureMonitorPipelineCapacity = $true
+  LinuxVmSize = 'Standard_D4as_v5'
+  WindowsVmSize = 'Standard_B2als_v2'
+}
+if ($result.Failed) { throw "A 4-vCPU Linux VM and smaller Windows VM should pass independently.`n$($result.Text)" }
+$result = Invoke-Preflight (New-Scenario) @{
+  RequireAzureMonitorPipelineCapacity = $true
+  LinuxVmSize = 'Standard_B2als_v2'
+  WindowsVmSize = 'Standard_EC4as_v5'
+}
+if (-not $result.Failed) { throw 'A large Windows VM must not satisfy the Linux K3s minimum.' }
 
 $scenario = New-Scenario
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Basic' }
@@ -145,7 +157,7 @@ foreach ($sku in $scenario.Skus[0..1]) {
 }
 $result = Invoke-Preflight $scenario
 if (-not $result.Failed) { throw 'Location-restricted SKUs must block deployment.' }
-foreach ($text in @("vmSize='Standard_B2als_v2'", "aksNodeVmSize='Standard_D4as_v5'", "vmssSize='Standard_B2als_v2'", 'Standard_EC2as_v5 : 2 vCPUs', 'Standard_EC4as_v5 : 4 vCPUs', 'More quota may not remove the restriction', 'Nothing was changed automatically', 'confidential compute and may cost more', 'not a combined reservation')) {
+foreach ($text in @("linuxVmSize='Standard_B2als_v2'", "windowsVmSize='Standard_B2als_v2'", "aksNodeVmSize='Standard_D4as_v5'", "vmssSize='Standard_B2als_v2'", 'Standard_EC2as_v5 : 2 vCPUs', 'Standard_EC4as_v5 : 4 vCPUs', 'More quota may not remove the restriction', 'Nothing was changed automatically', 'confidential compute and may cost more', 'not a combined reservation')) {
   Assert-Contains $result $text
 }
 $aksCandidates = [regex]::Match($result.Text, '(?s)aksNodeVmSize=.*?(?=vmssSize=)').Value

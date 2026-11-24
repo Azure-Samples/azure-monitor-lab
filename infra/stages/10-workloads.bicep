@@ -27,8 +27,14 @@ param deployLinuxVm bool = true
 @description('Collect default OpenTelemetry guest metrics in the Azure Monitor workspace for the demo VMs, alongside classic VM Insights. Does not apply to VM Scale Sets.')
 param enableVmOtelMetrics bool = true
 
-@description('VM size.')
+@description('Legacy shared VM size; used when OS-specific sizes are not supplied.')
 param vmSize string = 'Standard_EC2as_v5'
+
+@description('Linux VM size override. Leave empty to use vmSize.')
+param linuxVmSize string = ''
+
+@description('Windows VM size override. Leave empty to use vmSize.')
+param windowsVmSize string = ''
 
 @description('AKS node VM size.')
 param aksNodeVmSize string = 'Standard_EC4as_v5'
@@ -142,7 +148,7 @@ module vmLinux '../modules/vm-linux.bicep' = if (deployLinuxVm) {
   params: {
     vmName: linuxVmName
     location: location
-    vmSize: vmSize
+    vmSize: empty(linuxVmSize) ? vmSize : linuxVmSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId
@@ -157,7 +163,7 @@ module vmWindows '../modules/vm-windows.bicep' = if (deployWindowsVm) {
   params: {
     vmName: windowsVmName
     location: location
-    vmSize: vmSize
+    vmSize: empty(windowsVmSize) ? vmSize : windowsVmSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: workloadSubnetId

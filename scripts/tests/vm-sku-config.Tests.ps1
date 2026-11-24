@@ -17,6 +17,8 @@ $config = @{
   appServiceLocation = 'uksouth'
   namePrefix = 'test'
   vmSize = 'Standard_EC2as_v5'
+  linuxVmSize = 'Standard_D4as_v5'
+  windowsVmSize = 'Standard_EC2as_v5'
   aksNodeVmSize = 'Standard_EC2as_v5'
   vmssSize = 'Standard_EC2as_v5'
 }
@@ -30,6 +32,10 @@ try {
     if ($bicep.parameters.$name.value -ne 'Standard_EC2as_v5') {
       throw "Bicep parameter '$name' did not preserve the configured SKU."
     }
+    if ($bicep.parameters.linuxVmSize.value -ne 'Standard_D4as_v5' -or
+        $bicep.parameters.windowsVmSize.value -ne 'Standard_EC2as_v5') {
+      throw 'Bicep sync must keep the Linux and Windows VM sizes independent.'
+    }
     if ($bicep.parameters.appServiceLocation.value -ne 'uksouth') {
       throw 'Bicep appServiceLocation did not preserve the configured region.'
     }
@@ -40,6 +46,10 @@ try {
     if ($terraform -notmatch "(?m)^$name\s*=\s*`"Standard_EC2as_v5`"\r?$") {
       throw "Terraform variable '$name' did not preserve the configured SKU."
     }
+    if ($terraform -notmatch '(?m)^linux_vm_size\s*=\s*"Standard_D4as_v5"\r?$' -or
+        $terraform -notmatch '(?m)^windows_vm_size\s*=\s*"Standard_EC2as_v5"\r?$') {
+      throw 'Terraform sync must keep the Linux and Windows VM sizes independent.'
+    }
     if ($terraform -notmatch '(?m)^app_service_location\s*=\s*"uksouth"\r?$') {
       throw 'Terraform app_service_location did not preserve the configured region.'
     }
@@ -48,6 +58,8 @@ try {
   $example = Read-LabConfig -Path (Join-Path $repoRoot 'lab.config.json.example')
   $exampleSizes = @{
     vmSize = 'Standard_EC2as_v5'
+    linuxVmSize = 'Standard_EC2as_v5'
+    windowsVmSize = 'Standard_EC2as_v5'
     aksNodeVmSize = 'Standard_EC4as_v5'
     vmssSize = 'Standard_EC2as_v5'
   }
@@ -69,6 +81,8 @@ try {
 
   $ui = Get-Content -LiteralPath (Join-Path $repoRoot 'infra\createUiDefinition.json') -Raw | ConvertFrom-Json
   $computeDefaults = $exampleSizes.Clone()
+  $computeDefaults.Remove('linuxVmSize')
+  $computeDefaults.Remove('windowsVmSize')
   $computeDefaults.aksNodeCount = 2
   foreach ($name in $computeDefaults.Keys) {
     $control = @($ui.parameters.steps | Where-Object name -eq 'workloads').elements | Where-Object name -eq $name
@@ -82,12 +96,24 @@ try {
       }
     }
   }
-  foreach ($name in @('vmSize', 'aksNodeVmSize', 'vmssSize', 'aksNodeCount')) { $config.Remove($name) }
+  foreach ($name in @('vmSize', 'linuxVmSize', 'windowsVmSize', 'aksNodeVmSize', 'vmssSize', 'aksNodeCount')) { $config.Remove($name) }
   $config | ConvertTo-Json | Set-Content -LiteralPath $configPath
   & $helper -ConfigPath $configPath
   $defaults = Get-Content -LiteralPath (Join-Path $root 'infra\main.parameters.json') -Raw | ConvertFrom-Json
   foreach ($name in $computeDefaults.Keys) {
     if ($defaults.parameters.$name.value -ne $computeDefaults[$name]) { throw "Config sync fallback '$name' must match public deployment defaults." }
+  }
+  if ($defaults.parameters.linuxVmSize.value -ne $exampleSizes.vmSize -or
+      $defaults.parameters.windowsVmSize.value -ne $exampleSizes.vmSize) {
+    throw 'Absent OS-specific sizes must fall back to the shared VM size during config sync.'
+  }
+  $config.vmSize = 'Standard_D4as_v5'
+  $config | ConvertTo-Json | Set-Content -LiteralPath $configPath
+  & $helper -ConfigPath $configPath
+  $legacy = Get-Content -LiteralPath (Join-Path $root 'infra\main.parameters.json') -Raw | ConvertFrom-Json
+  if ($legacy.parameters.linuxVmSize.value -ne $config.vmSize -or
+      $legacy.parameters.windowsVmSize.value -ne $config.vmSize) {
+    throw 'Existing vmSize-only configurations must still size both VMs.'
   }
   $preflightAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'scripts/preflight-check.ps1'), [ref]$null, [ref]$null)
   $deployDefaults = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/deploy.ps1') -Raw
@@ -120,6 +146,19 @@ try {
   $deploy = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\deploy.ps1') -Raw
   foreach ($argument in @('-VmSize $pfVmSize', '-AksNodeVmSize $pfAksNodeVmSize', '-VmssSize $pfVmssSize')) {
     if (-not $deploy.Contains($argument)) { throw "Deployment pre-flight is missing '$argument'." }
+  }
+  foreach ($argument in @('-LinuxVmSize $pfLinuxVmSize', '-WindowsVmSize $pfWindowsVmSize')) {
+    if (-not $deploy.Contains($argument)) { throw "Deployment pre-flight is missing '$argument'." }
+  }
+  foreach ($relative in @('infra/main.json', 'infra/stages/10-workloads.json')) {
+    $compiled = Get-Content -LiteralPath (Join-Path $repoRoot $relative) -Raw | ConvertFrom-Json
+    foreach ($os in @('linux', 'windows')) {
+      $vm = @($compiled.resources | Where-Object { $_.type -eq 'Microsoft.Resources/deployments' -and $_.name -eq "vm-$os" })
+      $size = [string]$vm[0].properties.parameters.vmSize
+      if ($vm.Count -ne 1 -or $size -notmatch "${os}VmSize" -or $size -notmatch "parameters\('vmSize'\)") {
+        throw "$relative must route the $os size independently with a legacy vmSize fallback."
+      }
+    }
   }
   if (-not $deploy.Contains('-AppServiceLocation $pfAppServiceLocation')) {
     throw 'Deployment pre-flight is missing the configured App Service region.'

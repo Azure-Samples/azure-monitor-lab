@@ -68,8 +68,14 @@ param enableVmOtelMetrics bool = true
 @description('Daily ingestion cap (GB) on each of the central and Application Insights Log Analytics workspaces. Set to -1 to disable.')
 param dailyCapGb int = 3
 
-@description('VM size (kept small for a demo lab).')
+@description('Legacy shared VM size; used when OS-specific sizes are not supplied.')
 param vmSize string = 'Standard_EC2as_v5'
+
+@description('Linux VM size override. Leave empty to use vmSize.')
+param linuxVmSize string = ''
+
+@description('Windows VM size override. Leave empty to use vmSize.')
+param windowsVmSize string = ''
 
 @description('AKS node VM size.')
 param aksNodeVmSize string = 'Standard_EC4as_v5'
@@ -477,7 +483,7 @@ module vmLinux 'modules/vm-linux.bicep' = if (deployLinuxVm) {
   params: {
     vmName: linuxVmName
     location: location
-    vmSize: vmSize
+    vmSize: empty(linuxVmSize) ? vmSize : linuxVmSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId
@@ -495,7 +501,7 @@ module vmWindows 'modules/vm-windows.bicep' = if (deployWindowsVm) {
   params: {
     vmName: windowsVmName
     location: location
-    vmSize: vmSize
+    vmSize: empty(windowsVmSize) ? vmSize : windowsVmSize
     adminUsername: vmAdminUsername
     adminPassword: vmAdminPassword
     subnetId: network.outputs.workloadSubnetId

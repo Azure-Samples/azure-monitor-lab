@@ -69,6 +69,18 @@ variable "vm_size" {
   default = "Standard_EC2as_v5"
 }
 
+variable "linux_vm_size" {
+  type        = string
+  default     = ""
+  description = "Linux VM override; empty uses vm_size."
+}
+
+variable "windows_vm_size" {
+  type        = string
+  default     = ""
+  description = "Windows VM override; empty uses vm_size."
+}
+
 variable "aks_node_vm_size" {
   type    = string
   default = "Standard_EC4as_v5"

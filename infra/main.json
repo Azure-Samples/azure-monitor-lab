@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.49.2.45890",
-      "templateHash": "8420171548986234948"
+      "templateHash": "14026241653434603043"
     }
   },
   "parameters": {
@@ -132,7 +132,21 @@
       "type": "string",
       "defaultValue": "Standard_EC2as_v5",
       "metadata": {
-        "description": "VM size (kept small for a demo lab)."
+        "description": "Legacy shared VM size; used when OS-specific sizes are not supplied."
+      }
+    },
+    "linuxVmSize": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Linux VM size override. Leave empty to use vmSize."
+      }
+    },
+    "windowsVmSize": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Windows VM size override. Leave empty to use vmSize."
       }
     },
     "aksNodeVmSize": {
@@ -3789,9 +3803,7 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "vmSize": {
-            "value": "[parameters('vmSize')]"
-          },
+          "vmSize": "[if(empty(parameters('linuxVmSize')), createObject('value', parameters('vmSize')), createObject('value', parameters('linuxVmSize')))]",
           "adminUsername": {
             "value": "[parameters('vmAdminUsername')]"
           },
@@ -4058,9 +4070,7 @@
           "location": {
             "value": "[parameters('location')]"
           },
-          "vmSize": {
-            "value": "[parameters('vmSize')]"
-          },
+          "vmSize": "[if(empty(parameters('windowsVmSize')), createObject('value', parameters('vmSize')), createObject('value', parameters('windowsVmSize')))]",
           "adminUsername": {
             "value": "[parameters('vmAdminUsername')]"
           },

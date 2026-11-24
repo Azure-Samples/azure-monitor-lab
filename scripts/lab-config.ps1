@@ -7,7 +7,7 @@ function Get-LabConfigGroups {
     )
     naming = @('namePrefix')
     compute = @(
-      'vmSize', 'vmssSize', 'aksNodeVmSize', 'aksNodeCount',
+      'vmSize', 'linuxVmSize', 'windowsVmSize', 'vmssSize', 'aksNodeVmSize', 'aksNodeCount',
       'deployWindowsVm', 'deployLinuxVm', '_computeSizingDocs'
     )
     monitoring = @(

@@ -248,6 +248,8 @@ Invoke-LabStage -Stage 10-workloads
 
 Classic VM Insights and additive OpenTelemetry metrics are **both enabled by default**. `enableVmOtelMetrics` defaults to `true` in central configuration (including when omitted), Stage B, and the one-shot template; the portal Workloads page defaults to **Yes**. To opt out, set `"enableVmOtelMetrics": false` **before** the input-bootstrap/sync and stage-parameter generation above, or explicitly pass `enableVmOtelMetrics=false`. Stage A and VMSS are unchanged. See [both monitoring views and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics). Setting the flag to `false` on an incremental redeployment does not remove existing OTel associations.
 
+Stage B and one-shot Bicep accept separate `linuxVmSize` and `windowsVmSize` parameters. Each defaults to an empty override, preserving the legacy shared `vmSize` when omitted. Set only `linuxVmSize` to a compatible 4-vCPU/16-GiB SKU for the optional K3s pipeline; Windows need not be resized.
+
 <details>
 <summary>Raw Azure CLI alternative (no automatic customer-slot recovery)</summary>
 

@@ -14,6 +14,8 @@
     "enableVmOtelMetrics": { "value": true },
     "dailyCapGb": { "value": 1 },
     "vmSize": { "value": "Standard_EC2as_v5" },
+    "linuxVmSize": { "value": "Standard_EC2as_v5" },
+    "windowsVmSize": { "value": "Standard_EC2as_v5" },
     "aksNodeVmSize": { "value": "Standard_EC4as_v5" },
     "vmssSize": { "value": "Standard_EC2as_v5" },
     "aksNodeCount": { "value": 2 },

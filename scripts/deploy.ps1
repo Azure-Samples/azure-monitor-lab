@@ -62,6 +62,8 @@ $pfAksNodeCount    = 2
 $pfDeployWindowsVm = $true
 $pfDeployLinuxVm   = $true
 $pfVmSize          = 'Standard_EC2as_v5'
+$pfLinuxVmSize     = $pfVmSize
+$pfWindowsVmSize   = $pfVmSize
 $pfAksNodeVmSize   = 'Standard_EC4as_v5'
 $pfVmssSize        = 'Standard_EC2as_v5'
 $pfAppServiceLocation = 'westeurope'
@@ -98,6 +100,8 @@ if (Test-Path $labConfigPath) {
   if ($null -ne $labCfg.deployWindowsVm) { $pfDeployWindowsVm = [bool]$labCfg.deployWindowsVm }
   if ($null -ne $labCfg.deployLinuxVm)   { $pfDeployLinuxVm   = [bool]$labCfg.deployLinuxVm }
   if (-not [string]::IsNullOrWhiteSpace($labCfg.vmSize))        { $pfVmSize = [string]$labCfg.vmSize }
+  $pfLinuxVmSize = if (-not [string]::IsNullOrWhiteSpace($labCfg.linuxVmSize)) { [string]$labCfg.linuxVmSize } else { $pfVmSize }
+  $pfWindowsVmSize = if (-not [string]::IsNullOrWhiteSpace($labCfg.windowsVmSize)) { [string]$labCfg.windowsVmSize } else { $pfVmSize }
   if (-not [string]::IsNullOrWhiteSpace($labCfg.aksNodeVmSize)) { $pfAksNodeVmSize = [string]$labCfg.aksNodeVmSize }
   if (-not [string]::IsNullOrWhiteSpace($labCfg.vmssSize))      { $pfVmssSize = [string]$labCfg.vmssSize }
   if (-not [string]::IsNullOrWhiteSpace($labCfg.appServiceLocation)) { $pfAppServiceLocation = [string]$labCfg.appServiceLocation }
@@ -141,6 +145,9 @@ az account show --query "{name:name, id:id, tenantId:tenantId, user:user.name}" 
 
 # 0b. Pre-flight availability + quota check — fail in ~15s instead of 20min in.
 $deploymentInputs = Get-Content -LiteralPath $ParametersFile -Raw | ConvertFrom-Json
+$pfVmSize = if ($deploymentInputs.parameters.vmSize.value) { [string]$deploymentInputs.parameters.vmSize.value } else { $pfVmSize }
+$pfLinuxVmSize = if ($deploymentInputs.parameters.linuxVmSize.value) { [string]$deploymentInputs.parameters.linuxVmSize.value } else { $pfVmSize }
+$pfWindowsVmSize = if ($deploymentInputs.parameters.windowsVmSize.value) { [string]$deploymentInputs.parameters.windowsVmSize.value } else { $pfVmSize }
 $pfCustomerDependencies = $deploymentInputs.parameters.enableCustomerDependencies.value -eq $true
 if ($pfCustomerDependencies) {
   $sqlAdmin = [guid]::Empty
@@ -164,6 +171,8 @@ if ($SkipPreflight) {
   $preflight = Join-Path $PSScriptRoot 'preflight-check.ps1'
   & $preflight -Location $Location `
                -VmSize $pfVmSize `
+               -LinuxVmSize $pfLinuxVmSize `
+               -WindowsVmSize $pfWindowsVmSize `
                -AksNodeVmSize $pfAksNodeVmSize `
                -VmssSize $pfVmssSize `
                -RequireAzureMonitorPipelineCapacity:$enableAzureMonitorPipeline `

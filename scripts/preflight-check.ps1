@@ -26,7 +26,13 @@
   Target region (e.g. swedencentral). Required.
 
 .PARAMETER VmSize
-  SKU for the Linux + Windows demo VMs. Defaults to the Bicep default (Standard_EC2as_v5).
+  Legacy shared SKU for the Linux and Windows demo VMs. Defaults to Standard_EC2as_v5.
+
+.PARAMETER LinuxVmSize
+  Optional Linux VM override. Empty uses VmSize.
+
+.PARAMETER WindowsVmSize
+  Optional Windows VM override. Empty uses VmSize.
 
 .PARAMETER AksNodeVmSize
   SKU for the AKS node pool. Defaults to the Bicep default (Standard_EC4as_v5).
@@ -74,6 +80,8 @@ param(
   [Parameter(Mandatory)]
   [string] $Location,
   [string] $VmSize          = 'Standard_EC2as_v5',
+  [string] $LinuxVmSize     = '',
+  [string] $WindowsVmSize   = '',
   [string] $AksNodeVmSize   = 'Standard_EC4as_v5',
   [int]    $AksNodeCount    = 2,
   [string] $VmssSize        = 'Standard_EC2as_v5',
@@ -92,6 +100,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$effectiveLinuxVmSize = if ([string]::IsNullOrWhiteSpace($LinuxVmSize)) { $VmSize } else { $LinuxVmSize }
+$effectiveWindowsVmSize = if ([string]::IsNullOrWhiteSpace($WindowsVmSize)) { $VmSize } else { $WindowsVmSize }
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 
@@ -163,8 +173,8 @@ function Add-VmDemand($size, $count) {
   if ($count -le 0 -or [string]::IsNullOrWhiteSpace($size)) { return }
   if ($vmDemand.ContainsKey($size)) { $vmDemand[$size] += $count } else { $vmDemand[$size] = $count }
 }
-if ($DeployLinuxVm)   { Add-VmDemand $VmSize 1 }
-if ($DeployWindowsVm) { Add-VmDemand $VmSize 1 }
+if ($DeployLinuxVm)   { Add-VmDemand $effectiveLinuxVmSize 1 }
+if ($DeployWindowsVm) { Add-VmDemand $effectiveWindowsVmSize 1 }
 Add-VmDemand $AksNodeVmSize $AksNodeCount
 Add-VmDemand $VmssSize 1   # predictive-autoscale VMSS, always 1 instance
 
@@ -182,11 +192,11 @@ foreach ($s in $skus) { $skuBySize[$s.name] = $s }
 $computeGuidanceNeeded = $false
 
 if ($RequireAzureMonitorPipelineCapacity) {
-  $pipelineSku = $skuBySize[$VmSize]
+  $pipelineSku = $skuBySize[$effectiveLinuxVmSize]
   $pipelineCpus = if ($pipelineSku) { [int](($pipelineSku.capabilities | Where-Object name -eq 'vCPUs' | Select-Object -First 1).value) } else { 0 }
   $pipelineMemory = if ($pipelineSku) { [double](($pipelineSku.capabilities | Where-Object name -eq 'MemoryGB' | Select-Object -First 1).value) } else { 0 }
   if (-not $DeployLinuxVm -or $pipelineCpus -lt 4 -or $pipelineMemory -lt 16) {
-    Add-Result 'Azure Monitor pipeline host' "Opt-in K3s on the existing Linux VM requires an explicitly configured VM SKU with at least 4 vCPUs and 16 GiB total memory (selected: $VmSize, $pipelineCpus vCPUs, $pipelineMemory GiB). The pipeline option does not choose a VM size; changing vmSize in the main deployment can resize/restart both lab VMs." 'FAIL'
+    Add-Result 'Azure Monitor pipeline host' "Opt-in K3s on the existing Linux VM requires an explicitly configured Linux VM SKU with at least 4 vCPUs and 16 GiB total memory (selected: $effectiveLinuxVmSize, $pipelineCpus vCPUs, $pipelineMemory GiB). Set linuxVmSize; the pipeline never resizes the VM automatically. Changing the Linux VM size can restart that VM; Windows keeps its own size." 'FAIL'
     $computeGuidanceNeeded = $true
   }
 }
@@ -305,7 +315,8 @@ if ($computeGuidanceNeeded) {
   Write-Host '   NotAvailableForSubscription: SKU eligibility is separate from quota. More quota may not remove the restriction.'
   Write-Host '   Choose an eligible size/region first; if needed, request SKU access through Azure Help + support.'
   $targets = @(
-    @{ Key = 'vmSize'; Size = $VmSize; Count = ([int]$DeployLinuxVm + [int]$DeployWindowsVm); Purpose = 'standalone Linux/Windows VMs'; Candidates = @('Standard_B2als_v2', 'Standard_B2as_v2', 'Standard_D2as_v5', 'Standard_D2s_v5', 'Standard_EC2as_v5') }
+    @{ Key = 'linuxVmSize'; Size = $effectiveLinuxVmSize; Count = [int]$DeployLinuxVm; Purpose = 'standalone Linux VM'; Candidates = $(if ($RequireAzureMonitorPipelineCapacity) { @('Standard_D4as_v5', 'Standard_D4s_v5', 'Standard_EC4as_v5') } else { @('Standard_B2als_v2', 'Standard_B2as_v2', 'Standard_D2as_v5', 'Standard_D2s_v5', 'Standard_EC2as_v5') }) }
+    @{ Key = 'windowsVmSize'; Size = $effectiveWindowsVmSize; Count = [int]$DeployWindowsVm; Purpose = 'standalone Windows VM'; Candidates = @('Standard_B2als_v2', 'Standard_B2as_v2', 'Standard_D2as_v5', 'Standard_D2s_v5', 'Standard_EC2as_v5') }
     @{ Key = 'aksNodeVmSize'; Size = $AksNodeVmSize; Count = $AksNodeCount; Purpose = 'AKS system nodes'; Candidates = @('Standard_D4as_v5', 'Standard_D4s_v5', 'Standard_F4s_v2', 'Standard_EC4as_v5') }
     @{ Key = 'vmssSize'; Size = $VmssSize; Count = 1; Purpose = 'VM scale set'; Candidates = @('Standard_B2als_v2', 'Standard_B2as_v2', 'Standard_D2as_v5', 'Standard_D2s_v5', 'Standard_EC2as_v5') }
   )
@@ -320,6 +331,7 @@ if ($computeGuidanceNeeded) {
       $memory = [double](($candidate.capabilities | Where-Object name -eq 'MemoryGB' | Select-Object -First 1).value)
       if ($cpu -le 0 -or $memory -le 0) { continue }
       if ($target.Key -eq 'aksNodeVmSize' -and ($cpu -lt 4 -or $memory -lt 4)) { continue }
+      if ($target.Key -eq 'linuxVmSize' -and $RequireAzureMonitorPipelineCapacity -and ($cpu -lt 4 -or $memory -lt 16)) { continue }
       $quota = $usageByName[$candidate.family]
       if (-not $quota -or -not $coresUsage) { continue }
       $free = [int]$quota.limit - [int]$quota.currentValue

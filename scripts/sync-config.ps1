@@ -73,6 +73,8 @@ $vmAdminUsername  = Coalesce $cfg.vmAdminUsername  'azureuser'
 $dailyCapGb       = Coalesce $cfg.dailyCapGb       3
 $aksNodeCount     = Coalesce $cfg.aksNodeCount     2
 $vmSize           = Coalesce $cfg.vmSize           'Standard_EC2as_v5'
+$linuxVmSize      = Coalesce $cfg.linuxVmSize      $vmSize
+$windowsVmSize    = Coalesce $cfg.windowsVmSize    $vmSize
 $aksNodeVmSize    = Coalesce $cfg.aksNodeVmSize    'Standard_EC4as_v5'
 $vmssSize         = Coalesce $cfg.vmssSize         'Standard_EC2as_v5'
 $appServiceLocation = Coalesce $cfg.appServiceLocation 'westeurope'
@@ -262,6 +264,8 @@ $bicepParams = [ordered]@{
     'enableVmOtelMetrics' = @{ value = $enableVmOtelMetrics }
     'dailyCapGb'      = @{ value = [int]$dailyCapGb }
     'vmSize'          = @{ value = $vmSize }
+    'linuxVmSize'     = @{ value = $linuxVmSize }
+    'windowsVmSize'   = @{ value = $windowsVmSize }
     'aksNodeVmSize'   = @{ value = $aksNodeVmSize }
     'vmssSize'        = @{ value = $vmssSize }
     'aksNodeCount'    = @{ value = [int]$aksNodeCount }
@@ -322,6 +326,8 @@ $tfLines = @(
   "vm_admin_password   = `"$(Esc $cfg.vmAdminPassword)`""
   "daily_cap_gb        = $([int]$dailyCapGb)"
   "vm_size             = `"$(Esc $vmSize)`""
+  "linux_vm_size       = `"$(Esc $linuxVmSize)`""
+  "windows_vm_size     = `"$(Esc $windowsVmSize)`""
   "aks_node_vm_size    = `"$(Esc $aksNodeVmSize)`""
   "vmss_size           = `"$(Esc $vmssSize)`""
   "aks_node_count      = $([int]$aksNodeCount)"

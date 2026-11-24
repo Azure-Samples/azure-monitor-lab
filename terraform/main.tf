@@ -102,6 +102,8 @@ resource "azapi_resource" "stage_b" {
         deployLinuxVm              = { value = var.deploy_linux_vm }
         enableVmOtelMetrics        = { value = var.enable_vm_otel_metrics }
         vmSize                     = { value = var.vm_size }
+        linuxVmSize                = { value = var.linux_vm_size }
+        windowsVmSize              = { value = var.windows_vm_size }
         aksNodeVmSize              = { value = var.aks_node_vm_size }
         aksNodeCount               = { value = var.aks_node_count }
         grafanaAdminObjectId       = { value = var.grafana_admin_object_id }

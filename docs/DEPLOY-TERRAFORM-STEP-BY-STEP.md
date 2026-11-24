@@ -241,6 +241,8 @@ notepad lab.config.json   # fill in subscriptionId, tenantId, alertEmail, vmAdmi
 
 VM OpenTelemetry metrics default to **enabled alongside classic VM Insights**. No explicit `true` is required: omitted `enableVmOtelMetrics` in central configuration and Terraform's `enable_vm_otel_metrics` both default to `true`. An explicit `false` opts out. The value is passed **only to Stage B**; Stage A and VMSS are unchanged. See [both monitoring views, costs, and targeted opt-out](STAGE-B-WORKLOADS.md#optional-vm-opentelemetry-metrics): setting `false` on an incremental redeployment does not delete already-deployed OTel associations.
 
+Stage B accepts `linux_vm_size` and `windows_vm_size` independently. Empty overrides retain the legacy `vm_size` for both. With the optional K3s pipeline, set only `linux_vm_size` to a compatible 4-vCPU/16-GiB SKU and keep `windows_vm_size` at the smaller default (or leave it empty when `vm_size` is still small).
+
 **Or hand-edit `terraform/stages.tfvars` directly** (skip `sync-config.ps1`; the file is gitignored):
 
 ```hcl
