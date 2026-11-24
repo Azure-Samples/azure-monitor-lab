@@ -72,7 +72,7 @@ resource diagnostic 'Microsoft.OperationalInsights/workspaces/tables@2022-10-01'
   }
 }
 
-resource verbose 'Microsoft.OperationalInsights/workspaces/tables@2022-10-01' = if (enableAuxiliary) {
+resource verbose 'Microsoft.OperationalInsights/workspaces/tables@2025-07-01' = if (enableAuxiliary) {
   parent: law
   name: 'TelemetryIngestionVerbose_CL'
   properties: {

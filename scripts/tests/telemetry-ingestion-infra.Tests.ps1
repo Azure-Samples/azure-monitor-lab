@@ -51,6 +51,11 @@ if (($tables | Where-Object { $_.properties.plan -eq 'Auxiliary' }).Count -ne 1 
     ($tables | Where-Object { $_.properties.plan -eq 'Analytics' }).Count -ne 2) {
   throw 'The expected plans are two Analytics and one optional Auxiliary.'
 }
+$auxiliaryTable = @($tables | Where-Object { $_.properties.plan -eq 'Auxiliary' })
+if ($auxiliaryTable[0].apiVersion -ne '2025-07-01' -or
+    $auxiliaryTable[0].condition -ne "[parameters('enableAuxiliary')]") {
+  throw 'The optional Auxiliary table must use an API version that supports its table plan.'
+}
 $roles = @($module.resources | Where-Object type -eq 'Microsoft.Authorization/roleAssignments')
 if ($roles.Count -ne 4 -or @($roles | Where-Object { $_.scope -notmatch 'Microsoft.Insights/dataCollectionRules' }).Count -gt 0) {
   throw 'Optional sender roles must be DCR-scoped, including the native OTLP DCR.'
