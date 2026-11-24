@@ -101,6 +101,7 @@ $global:edgeForeignTableType = ''
 $global:edgeForeignDcr = ''
 $global:edgeRemoteModes = [Collections.Generic.List[string]]::new()
 $global:edgeRegisteredProviders = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$global:edgeCliExtensionInstalled = $false
 function global:az {
   $parts = @($args | ForEach-Object { [string]$_ })
   $key = ($parts -join ' ')
@@ -164,7 +165,19 @@ function global:az {
       [void]$global:edgeRegisteredProviders.Add($parts[[array]::IndexOf($parts,'--namespace')+1])
       return
     }
-    '^extension show --name k8s-extension ' { $response = @{name='k8s-extension'}; break }
+    '^extension list ' { $response = $(if ($global:edgeCliExtensionInstalled) { @(@{name='k8s-extension'}) } else { @() }); break }
+    '^extension add --name k8s-extension ' {
+      if ($parts -notcontains '--yes' -or $parts -notcontains '--only-show-errors') {
+        throw 'CLI extension installation must be noninteractive.'
+      }
+      if ($global:edgeFailure -eq 'extension-install') { $global:LASTEXITCODE = 1; return }
+      $global:edgeCliExtensionInstalled = $true
+      return
+    }
+    '^extension show --name k8s-extension ' {
+      if (-not $global:edgeCliExtensionInstalled) { $global:LASTEXITCODE = 1; return }
+      $response = @{name='k8s-extension'}; break
+    }
     '^k8s-extension extension-types list-by-location ' {
       $train = $parts[[array]::IndexOf($parts,'--release-train')+1]
       $name = if ($train -eq 'preview') { 'microsoft.monitor.pipeline' } elseif ($train -eq 'stable') { 'microsoft.certmanagement' } else { throw "Unexpected train: $train" }
@@ -296,11 +309,17 @@ try {
   if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
     throw 'Provider denial entered a mutable stage.'
   }
+  $global:edgeFailure = 'extension-install'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'Installation of the k8s-extension'
+  if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
+    throw 'Failed CLI extension installation entered a mutable stage.'
+  }
   $global:edgeFailure = 'role'
   Assert-Fails { & $scriptPath @parameters -Enable } 'Arc Onboarding'
   if ($global:edgeRegisteredProviders.Count -ne 2 -or
-      @($global:edgeCalls | Where-Object { $_ -match '^provider register ' }).Count -ne 3) {
-    throw 'Arc providers were not registered once after the denied attempt.'
+      @($global:edgeCalls | Where-Object { $_ -match '^provider register ' }).Count -ne 3 -or
+      @($global:edgeCalls | Where-Object { $_ -match '^extension add ' }).Count -ne 2) {
+    throw 'Arc providers or the CLI extension were not installed once after the denied attempts.'
   }
   $global:edgeFailure = 'permission'
   Assert-Fails { & $scriptPath @parameters -Enable } 'runCommands/write'
@@ -362,7 +381,7 @@ try {
   $result = & $scriptPath @parameters -Enable
   if ($result.LiveIngestion -notmatch 'NOT VERIFIED' -or
       @($global:edgeCalls | Where-Object { $_ -match '^deployment group create ' }).Count -ne 2 -or
-      @($global:edgeCalls | Where-Object { $_ -match '^provider register ' }).Count) {
+      @($global:edgeCalls | Where-Object { $_ -match '^provider register |^extension add ' }).Count) {
     throw 'Fresh bootstrap did not finish in accepted/not-live-verified state.'
   }
   $global:edgeCalls.Clear()

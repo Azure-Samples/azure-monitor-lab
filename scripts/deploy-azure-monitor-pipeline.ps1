@@ -177,9 +177,15 @@ Assert-Provider Microsoft.KubernetesConfiguration extensions
 Assert-Provider Microsoft.ExtendedLocation ''
 Assert-Provider Microsoft.Insights dataCollectionRules
 Assert-Provider Microsoft.Insights dataCollectionRuleAssociations
+$localExtensions = @(Read-Az @('extension','list','-o','json') 'Locally installed Azure CLI extensions')
+if (@($localExtensions | Where-Object name -EQ 'k8s-extension').Count -eq 0) {
+  Write-Host 'Installing the k8s-extension Azure CLI extension for the pipeline opt-in...'
+  & az extension add --name k8s-extension --yes --only-show-errors --output none
+  if ($LASTEXITCODE -ne 0) { throw 'Installation of the k8s-extension Azure CLI extension failed; no VM changes were attempted.' }
+}
 $installedExtension = Read-Az @('extension','show','--name','k8s-extension','-o','json') 'Locally installed k8s-extension CLI'
 if ($installedExtension.name -ne 'k8s-extension') {
-  throw 'Install the k8s-extension Azure CLI extension separately before running this bootstrap.'
+  throw 'The installed k8s-extension Azure CLI extension could not be verified.'
 }
 $extensionTrains = @{ 'microsoft.certmanagement' = 'stable'; 'microsoft.monitor.pipeline' = 'preview' }
 foreach ($type in $extensionTrains.Keys) {
