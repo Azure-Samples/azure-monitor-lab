@@ -165,6 +165,12 @@ function global:az {
       [void]$global:edgeRegisteredProviders.Add($parts[[array]::IndexOf($parts,'--namespace')+1])
       return
     }
+    '^feature show ' {
+      if ($parts -notcontains '--subscription' -or $parts -notcontains $sub -or
+          $parts -notcontains 'ExtensionTypes') { throw 'Preview feature check must be subscription-pinned.' }
+      $response = @{properties=@{state=$(if ($global:edgeFailure -eq 'feature') {'NotRegistered'} else {'Registered'})}}
+      break
+    }
     '^extension list ' { $response = $(if ($global:edgeCliExtensionInstalled) { @(@{name='k8s-extension'}) } else { @() }); break }
     '^extension add --name k8s-extension ' {
       if ($parts -notcontains '--yes' -or $parts -notcontains '--only-show-errors') {
@@ -308,6 +314,11 @@ try {
   Assert-Fails { & $scriptPath @parameters -Enable } 'Registration of Microsoft.Kubernetes failed'
   if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
     throw 'Provider denial entered a mutable stage.'
+  }
+  $global:edgeFailure = 'feature'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'ExtensionTypes preview feature is NotRegistered'
+  if (@($global:edgeCalls | Where-Object { $_ -match '^extension add |^vm run-command|^deployment group create' }).Count) {
+    throw 'Missing preview feature entered CLI installation or a mutable VM stage.'
   }
   $global:edgeFailure = 'extension-install'
   Assert-Fails { & $scriptPath @parameters -Enable } 'Installation of the k8s-extension'

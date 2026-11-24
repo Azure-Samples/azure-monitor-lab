@@ -177,6 +177,11 @@ Assert-Provider Microsoft.KubernetesConfiguration extensions
 Assert-Provider Microsoft.ExtendedLocation ''
 Assert-Provider Microsoft.Insights dataCollectionRules
 Assert-Provider Microsoft.Insights dataCollectionRuleAssociations
+$extensionTypesFeature = Read-Az @('feature','show','--namespace','Microsoft.KubernetesConfiguration',
+  '--name','ExtensionTypes','--subscription',$SubscriptionId,'-o','json') 'Arc extension catalog preview feature'
+if ($extensionTypesFeature.properties.state -ne 'Registered') {
+  throw "Microsoft.KubernetesConfiguration/ExtensionTypes preview feature is $($extensionTypesFeature.properties.state), so the Arc extension catalog is unavailable. An authorized operator must register it with: az feature registration create --namespace Microsoft.KubernetesConfiguration --name ExtensionTypes --subscription $SubscriptionId. Wait until 'az feature show' reports Registered, then retry."
+}
 $localExtensions = @(Read-Az @('extension','list','-o','json') 'Locally installed Azure CLI extensions')
 if (@($localExtensions | Where-Object name -EQ 'k8s-extension').Count -eq 0) {
   Write-Host 'Installing the k8s-extension Azure CLI extension for the pipeline opt-in...'
