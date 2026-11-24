@@ -21,7 +21,7 @@ foreach ($case in @(
   if ($actual.Enabled -ne $case.Enabled -or $actual.Region -ne $case.Region -or $actual.Tier -cne 'Standard') { throw 'Deployment preflight must preserve Cafe overrides and use Standard for the core plan with or without the slot scenario.' }
 }
 $deployText = $deployAst.Extent.Text
-foreach ($argument in @('-DeployHealthModelDemo $pfDeployHealthModelDemo', '-HealthModelDemoCafeLocation $pfCafeLocation', '-AppServicePlanTier $pfAppServicePlanTier')) {
+foreach ($argument in @('-DeployHealthModelDemo $pfDeployHealthModelDemo', '-HealthModelDemoCafeLocation $pfCafeLocation', '-AppServicePlanTier $pfAppServicePlanTier', '-RequireAzureMonitorPipelineCapacity:$enableAzureMonitorPipeline')) {
   if (-not $deployText.Contains($argument)) { throw "Deployment preflight is missing '$argument'." }
 }
 Write-Host 'PASS: deployment forwards selected Cafe enablement and independent region to preflight.'
@@ -112,6 +112,11 @@ if ($result.Failed -or $result.Text.Contains('Resolving compute SKU')) { throw "
 Write-Host 'PASS: eligible sizes and sufficient combined quota preserve successful preflight.'
 if ($result.Text.Contains('Cafe App Service')) { throw 'Disabled Cafe demo must not query or report a separate plan.' }
 Assert-Contains $result 'Standard tier in westeurope'
+$result = Invoke-Preflight (New-Scenario) @{ RequireAzureMonitorPipelineCapacity = $true }
+if (-not $result.Failed) { throw 'The pipeline opt-in must reject the 2-vCPU default Linux VM.' }
+Assert-Contains $result 'changing vmSize in the main deployment can resize/restart both lab VMs'
+$result = Invoke-Preflight (New-Scenario) @{ RequireAzureMonitorPipelineCapacity = $true; VmSize = 'Standard_EC4as_v5' }
+if ($result.Failed) { throw "A compatible explicitly selected VM should pass the pipeline sizing check.`n$($result.Text)" }
 
 $scenario = New-Scenario
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Basic' }

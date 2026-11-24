@@ -12,6 +12,10 @@ data "azurerm_resource_group" "lab" {
 
   lifecycle {
     precondition {
+      condition     = !var.enable_telemetry_ingestion_auxiliary || (var.enable_stage_telemetry_ingestion && var.enable_stage_a)
+      error_message = "enable_telemetry_ingestion_auxiliary requires enable_stage_telemetry_ingestion=true and enable_stage_a=true."
+    }
+    precondition {
       condition     = !var.enable_customer_dependencies || (var.enable_stage_a && var.enable_stage_b && var.enable_slot_failure_scenario && trimspace(var.sql_entra_admin_object_id) != "" && trimspace(var.sql_entra_admin_name) != "")
       error_message = "Customer dependencies require enable_stage_a, enable_stage_b, enable_slot_failure_scenario=true and explicit sql_entra_admin_object_id/sql_entra_admin_name."
     }

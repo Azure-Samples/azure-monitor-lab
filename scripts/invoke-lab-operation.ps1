@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure', 'slot-restore', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover')] [string] $Operation = $env:OP_OPERATION,
+  [ValidateSet('start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'telemetry-ingestion', 'annotation', 'slot-failure', 'slot-restore', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover')] [string] $Operation = $env:OP_OPERATION,
   [ValidatePattern('^[a-f0-9]{32}$')] [string] $RequestId = $env:OP_REQUEST_ID,
   [guid] $SubscriptionId = $env:LAB_SUBSCRIPTION_ID,
   [guid] $TenantId = $env:LAB_TENANT_ID,
@@ -10,6 +10,8 @@ param(
   [ValidateRange(0, 100)] [int] $RepeatUsers = [int]($env:OP_REPEAT_USERS ?? '0'),
   [AllowEmptyString()] [string] $Name = $env:OP_ANNOTATION_NAME ?? '',
   [AllowEmptyString()] [string] $Category = $env:OP_ANNOTATION_CATEGORY ?? '',
+  [AllowEmptyString()] [string] $TelemetryProfile = $env:OP_TELEMETRY_PROFILE ?? '',
+  [AllowEmptyString()] [string] $TelemetryNamePrefix = $env:OP_TELEMETRY_NAME_PREFIX ?? '',
   [switch] $ValidateOnly,
   [switch] $CheckAccessOnly
 )
@@ -36,10 +38,16 @@ if ($Operation -eq 'logs') {
 if ($Operation -eq 'annotation') {
   if ($Name -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9 ._()-]{0,79}$' -or $Category -cnotin @('Deployment', 'Incident')) { throw 'Invalid release marker parameters.' }
 } elseif ($Name -or $Category) { throw 'Marker parameters are only allowed for annotations.' }
+if ($Operation -eq 'telemetry-ingestion') {
+  if ($TelemetryProfile -cnotin @('Baseline', 'Transformed', 'Tiered') -or $TelemetryNamePrefix -cnotmatch '^[a-z0-9]{3,8}$') {
+    throw 'The telemetry profile or pinned lab prefix is invalid.'
+  }
+} elseif ($TelemetryProfile -or $TelemetryNamePrefix) { throw 'Telemetry parameters are only allowed for telemetry ingestion.' }
 $scripts = @{
   start = 'start-the-lab.ps1'; stop = 'stop-the-lab.ps1'; break = 'break-the-lab.ps1'; restore = 'restore-the-lab.ps1'
   ramp = 'start-ramp.ps1'; logs = 'send-custom-logs.ps1'; annotation = 'send-release-annotation.ps1'
   usage = 'generate-usage-traffic.ps1'
+  'telemetry-ingestion' = 'send-telemetry-ingestion.ps1'
   cpu = 'simulate-high-cpu.ps1'
   'slot-failure' = 'trigger-broken-slot.ps1'
   'slot-restore' = 'rollback-broken-slot.ps1'
@@ -199,6 +207,30 @@ try {
       if ($resources.Count -ne 1) { throw 'Exactly one custom-logs DCR and endpoint are required.' }
     }
   }
+  if ($Operation -eq 'telemetry-ingestion') {
+    $runnerPhase = 'telemetry ingestion resource preflight'
+    $expectedDce = "dce-$TelemetryNamePrefix-telemetry-ingestion"
+    $dces = @(az resource list --resource-group $ResourceGroup --resource-type 'Microsoft.Insights/dataCollectionEndpoints' --output json | ConvertFrom-Json |
+      Where-Object { $_.name -ceq $expectedDce -and $_.id -ieq "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Insights/dataCollectionEndpoints/$expectedDce" })
+    if ($dces.Count -ne 1) { throw 'The exact optional telemetry ingestion endpoint is unavailable.' }
+    $dcrs = @(az resource list --resource-group $ResourceGroup --resource-type 'Microsoft.Insights/dataCollectionRules' --output json | ConvertFrom-Json)
+    $requiredSuffixes = @('', '-baseline')
+    if ($TelemetryProfile -eq 'Tiered') { $requiredSuffixes += '-tiered' }
+    foreach ($suffix in $requiredSuffixes) {
+      $name = "dcr-$TelemetryNamePrefix-telemetry-ingestion$suffix"
+      if (@($dcrs | Where-Object { $_.name -ceq $name -and $_.id -ieq "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Insights/dataCollectionRules/$name" }).Count -ne 1) {
+        throw 'The selected optional telemetry ingestion rule is unavailable.'
+      }
+    }
+    if ($TelemetryProfile -eq 'Tiered') {
+      $workspaces = @(az monitor log-analytics workspace list --resource-group $ResourceGroup --output json | ConvertFrom-Json |
+        Where-Object { $_.name -clike "law-$TelemetryNamePrefix-central-*" -and $_.id -ilike "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.OperationalInsights/workspaces/*" })
+      if ($workspaces.Count -ne 1) { throw 'The exact telemetry destination workspace is unavailable.' }
+      $tableId = "$($workspaces[0].id)/tables/TelemetryIngestionVerbose_CL"
+      $plan = az resource show --ids $tableId --api-version 2022-10-01 --query properties.plan --output tsv
+      if ($plan -cne 'Auxiliary') { throw 'The Tiered profile requires an Auxiliary verbose table.' }
+    }
+  }
   if ($Operation -eq 'usage') {
     $usageWebAppName = if ($env:LAB_CUSTOMER_WEB_APP_NAME) { $env:LAB_CUSTOMER_WEB_APP_NAME } else { $env:LAB_WEB_APP_NAME }
     $apps = @(Invoke-ReadOnlyPreflight -Phase 'customer web app discovery' -Action {
@@ -266,6 +298,12 @@ try {
       $parameters.RepeatUsers = $RepeatUsers
     }
     'logs' { $parameters.Count = $Count }
+    'telemetry-ingestion' {
+      $parameters.SubscriptionId = $SubscriptionId
+      $parameters.NamePrefix = $TelemetryNamePrefix
+      $parameters.Profile = $TelemetryProfile
+      $parameters.RunId = [guid]::ParseExact($RequestId, 'N')
+    }
     'annotation' { $parameters.Name = $Name; $parameters.Category = $Category }
     'slot-failure' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }
     'slot-restore' { $parameters.WebAppName = $env:LAB_CUSTOMER_WEB_APP_NAME }

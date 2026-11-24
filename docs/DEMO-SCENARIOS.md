@@ -4040,6 +4040,41 @@ Unlike [scenario 45](#s45), which introduces the existing resource-tier workload
 
 ---
 
+<a id="s82"></a>
+## 82 · Dedicated Logs Ingestion API baseline
+
+**Status:** optional stage and offline harness implemented; not live deployed or verified. After deploying the [telemetry-ingestion stage](STAGE-TELEMETRY-INGESTION.md), grant the sender **Monitoring Metrics Publisher** on its dedicated DCR and the verifier workspace query access. Send the synthetic, 100-event sample with `./scripts/send-telemetry-ingestion.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -Profile Baseline`. Record its fresh `RunId`, one accepted HTTP upload and separate results for both Analytics tables. Each must contain exactly event-001 through event-100; rerun with a new run ID to show that stale rows do not count. A 204 alone does not establish delivery.
+
+<a id="s83"></a>
+## 83 · Ingestion-time filtering and field transformation
+
+**Status:** optional stage and offline harness implemented; live transformation evidence pending. Run scenario 82 first, then use `-Profile Transformed` with the *same sample definitions but a new run ID*. Compare both tables: each should contain event-001 through event-050 and no Debug IDs. Check the actual transformed field values, redaction and correlation keys in both outputs, not just row counts. The scenario-owned DCR profiles do not modify the existing `SecurityAudit_CL` pipeline. Consult the [stage runbook](STAGE-TELEMETRY-INGESTION.md) for negative tests and cleanup.
+
+<a id="s84"></a>
+## 84 · One DCR, two Log Analytics tables
+
+**Status:** optional stage and independent destination checks implemented; cloud fan-out unverified. Inspect the declared JSON input stream, the two DCR data flows and their distinct output streams. A single upload under `-Profile Transformed` should produce 50 exact IDs in **each** Analytics table in the **same workspace**. Query each destination independently with `./scripts/test-telemetry-ingestion.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -Profile Transformed -RunId <guid>`. Do not present this as one DCR routing the same stream to two different workspaces or as transactional fan-out.
+
+<a id="s85"></a>
+## 85 · Native OTLP log source (conditional)
+
+**Status:** the bounded native OTLP HTTP/protobuf generator and Collector configuration have offline tests. The experimental `enableNativeOtlp` opt-in provisions a **separate** direct OTel logs DCR and installs the pinned Collector with a loopback listener on the lab Linux VM; bootstrap grants that VM's identity Monitoring Metrics Publisher only on that DCR. Run `./scripts/send-telemetry-otlp.ps1 -Mode Otlp -OutFile ./otlp-sample.pb` to inspect 100 synthetic resource/scope/record attributes offline. For a live demonstration, verify that the deployed DCR's `Microsoft-OTel-Logs` stream interoperates with the documented `.../streams/Microsoft-OTLP-Logs/otlp/v1/logs` URL, then use an approved local SSH port forward to send and query exact cloud IDs in `OTelLogs`. The JSON DCR is not an OTLP destination; offline decode and Collector startup do not establish cloud ingestion.
+
+<a id="s86"></a>
+## 86 · Analytics versus Auxiliary routing
+
+**Status:** optional tiered profile and independent `/query` versus `/search` validation implemented; live plan eligibility and cost comparison pending. After confirming the dedicated `TelemetryIngestionVerbose_CL` table really has the Auxiliary plan, use `./scripts/send-telemetry-ingestion.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -Profile Tiered`. Verify exact IDs: 50 Error/Warning in the operational Analytics table and 50 Debug in the verbose Auxiliary table. For a separate run, compare measured ingestion, retention and query usage, not a quoted universal saving. No existing table plan is toggled for this demo.
+
+<a id="s87"></a>
+## 87 · Azure Monitor pipeline edge filtering (conditional)
+
+**Status:** a separate, default-off `enableStageAzureMonitorPipeline` option now provisions single-node Arc-enabled K3s **on the existing Linux VM** and the managed Azure Monitor pipeline extension during scripted one-shot deployment; this path has **not** been run or live verified. Explicitly configure a compatible VM SKU, check Arc/preview region and permissions, then consult the [edge guide](../workloads/telemetry-ingestion/edge/README.md) before enabling it. `./scripts/setup-telemetry-ingestion-edge.ps1 -HostName <host> -SshUser <user>` remains read-only. The offline RFC5424 fixture marks event-061 through event-100 for edge removal; a live proof needs 100 generated, 40 dropped **at the edge**, 60 forwarded/cloud-observed, plus a bounded bypass comparison of 100. A cloud-only DCR filter or an offline policy check is not sufficient. Preserve the VM's existing monitoring and automatic shutdown.
+
+<a id="s88"></a>
+## 88 · Combined edge-to-cloud pipeline (conditional)
+
+**Status:** experimental structured-Syslog combined route, not live proven. With both the JSON ingestion stage and Arc pipeline opt-ins enabled, the shared private RFC5424 listener and edge filter feed scenario-specific custom-table DCRs: 50 Error/Warning IDs target Operational Analytics and 60 retained IDs target Diagnostic Analytics. This is **not** OTLP-to-custom-table transformation/fan-out or the proposed 50/10 Auxiliary combined result. Only claim this scenario after each protocol-to-edge-to-cloud-to-table boundary is verified with fresh run IDs, exact event sets, field checks and one stage-specific failure at a time. Do not silently bridge native OTLP to JSON or infer combined success from independent offline checks.
+
 ## Updated demo flow (≈50 min)
 
 | Min | Scenario |

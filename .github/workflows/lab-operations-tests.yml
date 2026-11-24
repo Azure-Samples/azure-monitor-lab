@@ -123,6 +123,7 @@ on:
       - 'docs/STAGE-AI.md'
       - 'docs/STAGE-HEALTH-MODEL-DEMO.md'
       - 'docs/STAGE-OBSERVABILITY-AGENT.md'
+      - 'docs/STAGE-TELEMETRY-INGESTION.md'
       - 'scripts/README.md'
       - 'terraform/**'
       - 'scripts/tests/lab-operations*.Tests.ps1'
@@ -134,6 +135,19 @@ on:
       - 'scripts/generate-usage-traffic.ps1'
       - 'scripts/simulate-high-cpu.ps1'
       - 'scripts/send-custom-logs.ps1'
+      - 'scripts/send-telemetry-ingestion.ps1'
+      - 'scripts/send-telemetry-otlp.ps1'
+      - 'scripts/setup-telemetry-ingestion-edge.ps1'
+      - 'scripts/deploy-azure-monitor-pipeline.ps1'
+      - 'scripts/test-telemetry-ingestion.ps1'
+      - 'scripts/telemetry-ingestion-helpers.ps1'
+      - 'scripts/tests/telemetry-ingestion.Tests.ps1'
+      - 'scripts/tests/telemetry-ingestion-infra.Tests.ps1'
+      - 'scripts/tests/telemetry-otlp-edge.Tests.ps1'
+      - 'scripts/tests/azure-monitor-pipeline.Tests.ps1'
+      - 'infra/modules/telemetry-ingestion.bicep'
+      - 'infra/stages/90-telemetry-ingestion.*'
+      - 'workloads/telemetry-ingestion/**'
       - 'scripts/send-release-annotation.ps1'
       - '.github/workflows/lab-operations*.yml'
   pull_request:
@@ -164,6 +178,10 @@ jobs:
           ./scripts/tests/preflight-guidance.Tests.ps1
           ./scripts/tests/vm-sku-config.Tests.ps1
           ./scripts/tests/lab-config.Tests.ps1
+          ./scripts/tests/telemetry-ingestion.Tests.ps1
+          ./scripts/tests/telemetry-ingestion-infra.Tests.ps1
+          ./scripts/tests/telemetry-otlp-edge.Tests.ps1
+          ./scripts/tests/azure-monitor-pipeline.Tests.ps1
           ./scripts/tests/health-model-demo.Tests.ps1
           ./scripts/tests/health-model-demo-cleanup.Tests.ps1
           ./scripts/tests/customer-completion.Tests.ps1

@@ -7,7 +7,7 @@ public sealed class LabOperationCatalogTests
     [Fact]
     public void OnlyTheApprovedScriptsAreAvailable()
     {
-        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "usage", "cpu", "logs", "annotation", "slot-failure", "slot-restore", "customer-sql-delay", "customer-worker-failure", "customer-recover" }, LabOperationCatalog.Actions.Select(action => action.Id));
+        Assert.Equal(new[] { "start", "stop", "break", "restore", "ramp", "usage", "cpu", "logs", "telemetry-ingestion", "annotation", "slot-failure", "slot-restore", "customer-sql-delay", "customer-worker-failure", "customer-recover" }, LabOperationCatalog.Actions.Select(action => action.Id));
         Assert.All(LabOperationCatalog.Actions, action => Assert.StartsWith("scripts/", action.Script));
         Assert.All(LabOperationCatalog.Actions, action => Assert.NotEmpty(action.Impact));
         foreach (var operation in new[] { "teardown", "deploy", "setup-rbac-demo", "../script.ps1", "start;whoami" })
@@ -104,6 +104,19 @@ public sealed class LabOperationCatalogTests
         Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Concurrency: 11)));
         Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("usage", Count: 5, RepeatUsers: 6)));
         Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("start", Concurrency: 2)));
+    }
+
+    [Fact]
+    public void TelemetryProfilesAreFiniteAndDoNotModifyCustomLogs()
+    {
+        Assert.Equal("Transformed", LabOperationCatalog.Validate(new("telemetry-ingestion")).Profile);
+        foreach (var profile in new[] { "Baseline", "Transformed", "Tiered" })
+            Assert.Equal(profile, LabOperationCatalog.Validate(new("telemetry-ingestion", Profile: profile)).Profile);
+        foreach (var profile in new[] { "", "baseline", "Other", "Transformed;whoami" })
+            Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("telemetry-ingestion", Profile: profile)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("telemetry-ingestion", Count: 1)));
+        Assert.Throws<ArgumentException>(() => LabOperationCatalog.Validate(new("logs", Profile: "Baseline")));
+        Assert.Equal(10, LabOperationCatalog.Validate(new("logs")).Count);
     }
 
     [Fact]

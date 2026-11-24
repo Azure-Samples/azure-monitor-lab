@@ -13,13 +13,57 @@ public sealed class LabOperationsServiceTests : IDisposable
     private readonly FakeClock clock = new();
     private LabOperationsJournal Journal => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["LabConsole:Operations:JournalPath"] = Path.Combine(directory, "state.json") }).Build());
-    private LabOperationsService Service(bool slotScenarioEnabled = false, bool customerDependenciesEnabled = false) => new(runner, Journal, clock, NullLogger<LabOperationsService>.Instance,
+    private LabOperationsService Service(bool slotScenarioEnabled = false, bool customerDependenciesEnabled = false, bool telemetryEnabled = false, string prefix = "amlab", bool tieredEnabled = false) => new(runner, Journal, clock, NullLogger<LabOperationsService>.Instance,
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["LabConsole:SlotScenarioEnabled"] = slotScenarioEnabled.ToString(),
-              ["LabConsole:Operations:CustomerDependenciesEnabled"] = customerDependenciesEnabled.ToString() }).Build());
+              ["LabConsole:Operations:CustomerDependenciesEnabled"] = customerDependenciesEnabled.ToString(),
+              ["LabConsole:Operations:TelemetryIngestionEnabled"] = telemetryEnabled.ToString(),
+              ["LabConsole:Operations:TelemetryIngestionTieredEnabled"] = tieredEnabled.ToString(),
+              ["LabConsole:Operations:TelemetryIngestionNamePrefix"] = prefix }).Build());
     private static int Status(IResult result) => (result as IStatusCodeHttpResult)?.StatusCode ?? 200;
     private static JsonElement Body(IResult result) => JsonSerializer.SerializeToElement(((IValueHttpResult)result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
     private async Task<string> Prepare(LabOperationsService service, string owner = "operator") => Body(await service.PrepareAsync(owner, new("logs", Count: 12), default)).GetProperty("proposal").GetProperty("id").GetString()!;
+
+    [Fact]
+    public async Task TelemetryIngestionRequiresExactOptInAndFrozenProfileApproval()
+    {
+        foreach (var service in new[] { Service(), Service(telemetryEnabled: true, prefix: "bad;prefix") })
+        {
+            Assert.DoesNotContain(Body(await service.CatalogAsync("operator", default)).GetProperty("actions").EnumerateArray(),
+                action => action.GetProperty("id").GetString() == "telemetry-ingestion");
+            Assert.Equal(409, Status(await service.PrepareAsync("operator", new("telemetry-ingestion"), default)));
+        }
+        var enabled = Service(telemetryEnabled: true);
+        Assert.Contains(Body(await enabled.CatalogAsync("operator", default)).GetProperty("actions").EnumerateArray(),
+            action => action.GetProperty("id").GetString() == "telemetry-ingestion");
+        Assert.Equal(new[] { "Transformed", "Baseline" }, Body(await enabled.CatalogAsync("operator", default)).GetProperty("telemetryProfiles").EnumerateArray().Select(p => p.GetString()));
+        Assert.Equal(409, Status(await enabled.PrepareAsync("operator", new("telemetry-ingestion", Profile: "Tiered"), default)));
+        Assert.Equal("Transformed", Body(await enabled.PrepareAsync("operator", new("telemetry-ingestion"), default)).GetProperty("proposal").GetProperty("parameters").GetProperty("profile").GetString());
+        var tiered = Service(telemetryEnabled: true, tieredEnabled: true);
+        Assert.Equal(new[] { "Transformed", "Baseline", "Tiered" }, Body(await tiered.CatalogAsync("operator", default)).GetProperty("telemetryProfiles").EnumerateArray().Select(p => p.GetString()));
+        var proposal = Body(await tiered.PrepareAsync("operator", new("telemetry-ingestion", Profile: "Tiered"), default)).GetProperty("proposal");
+        Assert.Equal("Tiered", proposal.GetProperty("parameters").GetProperty("profile").GetString());
+        Assert.Equal(0, runner.Dispatches);
+        Assert.Equal(202, Status(await tiered.ApproveAsync("operator", new(proposal.GetProperty("id").GetString()!, "test-rg", true), default)));
+        Assert.Equal(1, runner.Dispatches);
+    }
+
+    [Fact]
+    public async Task TieredApprovalIsRejectedWhenAuxiliaryCapabilityIsRemoved()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LabConsole:Operations:TelemetryIngestionEnabled"] = "true",
+            ["LabConsole:Operations:TelemetryIngestionTieredEnabled"] = "true",
+            ["LabConsole:Operations:TelemetryIngestionNamePrefix"] = "amlab"
+        }).Build();
+        var service = new LabOperationsService(runner, Journal, clock, NullLogger<LabOperationsService>.Instance, configuration);
+        var id = Body(await service.PrepareAsync("operator", new("telemetry-ingestion", Profile: "Tiered"), default))
+            .GetProperty("proposal").GetProperty("id").GetString()!;
+        configuration["LabConsole:Operations:TelemetryIngestionTieredEnabled"] = "false";
+        Assert.Equal(409, Status(await service.ApproveAsync("operator", new(id, "test-rg", true), default)));
+        Assert.Equal(0, runner.Dispatches);
+    }
 
     [Theory]
     [InlineData("customer-sql-delay")]

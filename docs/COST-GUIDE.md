@@ -76,6 +76,14 @@ Useful Azure Monitor variable rates from the same check include Analytics extend
 
 Classic VM Insights remains enabled, so its Log Analytics ingestion and retention charges **continue**. VM compute, disks/IPs, Grafana, AKS/Prometheus ingestion, and all other services retain their normal charges. This additional metrics path is not a migration away from logs-based billing. See [targeted opt-out](STAGE-B-WORKLOADS.md#targeted-opt-out-and-cleanup); setting the flag to `false` alone does not remove active associations during incremental redeployment.
 
+## Optional telemetry-ingestion scenarios
+
+The telemetry-ingestion stage is **off by default** and has not been live deployed as part of this implementation. If enabled, its dedicated tables, DCE/DCR and bounded sender can add Analytics and (when separately enabled and supported) Auxiliary ingestion, retention, search/query and diagnostic charges to the **existing central workspace**. A 100-record fixture is not a cost cap: repeated runs, DCR fan-out and other lab workloads consume additional billable data. Two Analytics destinations may each bill for ingested data; the tiered profile routes records to distinct tables rather than changing a table's plan after each run. Verify actual usage and current regional prices before comparing tiers.
+
+The separate native OTLP/Collector path requires a compatible ingestion endpoint and any selected Collector host. The **independent default-off Azure Monitor pipeline option** adds a single-node K3s/Arc cluster and two extensions on the existing lab Linux VM through the scripted one-shot deployment. An explicitly larger VM SKU may increase both Linux and Windows VM compute charges because the lab uses the same `vmSize` for both; changing it on an existing lab can restart both VMs. Arc/extension data, network traffic and pipeline/Syslog ingestion can add costs; the VM's existing disk, agents and shutdown schedule remain. Do not treat a stopped sender or a filtered record as evidence that all those other costs have stopped. The separate read-only edge assessment script installs nothing.
+
+See the [ingestion implementation plan](TELEMETRY-INGESTION-PLAN.md) for the status and evidence boundaries of each scenario.
+
 ## Optional AI and agent costs
 
 | Optional feature | Cost boundary |

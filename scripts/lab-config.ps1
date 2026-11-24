@@ -23,6 +23,7 @@ function Get-LabConfigGroups {
     observabilityAgent = @(
       'enableObservabilityAgentAutomaticInvestigation', 'observabilityAgentInstructions'
     )
+    telemetryIngestion = @('enableAuxiliary', 'enableNativeOtlp', 'telemetryIngestionSenderPrincipalId', '_telemetryIngestionDocs')
     safety = @('forbiddenSubscriptionIds')
     fabric = @('fabricAutomation', '_fabricAutomationDocs')
     stageToggles = @()

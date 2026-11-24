@@ -1,9 +1,9 @@
 using System.Text.RegularExpressions;
 
-public sealed record LabOperationDefinition(string Id, string Title, string Script, string Impact, bool RequiresAks, bool RequiresSlotScenario = false, bool RequiresCustomerDependencies = false);
+public sealed record LabOperationDefinition(string Id, string Title, string Script, string Impact, bool RequiresAks, bool RequiresSlotScenario = false, bool RequiresCustomerDependencies = false, bool RequiresTelemetryIngestion = false);
 public sealed record LabOperationRequest(string Operation, int? Count = null, string? Name = null, string? Category = null,
-    int? Concurrency = null, int? RepeatUsers = null);
-public sealed record LabOperationParameters(string Operation, int Count, string Name, string Category, int Concurrency = 0, int RepeatUsers = 0);
+    int? Concurrency = null, int? RepeatUsers = null, string? Profile = null);
+public sealed record LabOperationParameters(string Operation, int Count, string Name, string Category, int Concurrency = 0, int RepeatUsers = 0, string Profile = "");
 public sealed record LabOperationApproval(string ProposalId, string ResourceGroup, bool Approve);
 
 public static class LabOperationCatalog
@@ -18,6 +18,7 @@ public static class LabOperationCatalog
         new LabOperationDefinition("usage", "Generate Customer Traffic", "scripts/generate-usage-traffic.ps1", "Runs isolated Chromium users through customer pages, abandonment, support, checkout, and repeat sessions. Container Apps Job compute and Application Insights ingestion charges apply.", false),
         new LabOperationDefinition("cpu", "Simulate High CPU", "scripts/simulate-high-cpu.ps1", "Runs a self-expiring 10-minute CPU load on both running demo VMs via Run Command. Performance, CPU credits, and telemetry charges are affected.", false),
         new LabOperationDefinition("logs", "Send Custom Logs", "scripts/send-custom-logs.ps1", "Ingests sample audit events into the lab custom table. Ingested events are not undone by cancellation.", false),
+        new LabOperationDefinition("telemetry-ingestion", "Compare Telemetry Ingestion", "scripts/send-telemetry-ingestion.ps1", "Sends exactly 100 synthetic events through one selected Baseline, Transformed, or Tiered DCR and verifies both destination tables. Log Analytics ingestion and retention charges apply to data retained in each destination; the same event can be billed in both. Verification queries may incur query charges depending on workspace billing. This does not roll back ingested data.", false, RequiresTelemetryIngestion: true),
         new LabOperationDefinition("annotation", "Add Release Marker", "scripts/send-release-annotation.ps1", "Writes a deployment or incident marker to the lab Application Insights timeline.", false)
         ,new LabOperationDefinition("slot-failure", "Broken deployment slot", "scripts/trigger-broken-slot.ps1", "Swaps the preloaded broken slot into the separate customer app, causing HTTP 503. This Control Center remains available. Restore the working slot to recover; automatic SRE recovery requires a separately configured and verified recovery plan.", false, true)
         ,new LabOperationDefinition("slot-restore", "Restore working customer slot", "scripts/rollback-broken-slot.ps1", "Restores the customer app to HTTP 200 from the healthy slot. If production is already healthy and the broken slot is armed, no swap is needed. Ambiguous slot states are rejected. This Control Center remains available.", false, true)
@@ -37,6 +38,11 @@ public static class LabOperationCatalog
             throw new ArgumentException("Marker fields are only supported for release annotations.");
         if (request.Operation != "usage" && (request.Concurrency is not null || request.RepeatUsers is not null))
             throw new ArgumentException("Browser traffic parameters are only supported for customer traffic.");
+        if (request.Operation != "telemetry-ingestion" && request.Profile is not null)
+            throw new ArgumentException("Profile is only supported for telemetry ingestion.");
+        var profile = request.Operation == "telemetry-ingestion" ? request.Profile ?? "Transformed" : "";
+        if (request.Operation == "telemetry-ingestion" && profile is not ("Baseline" or "Transformed" or "Tiered"))
+            throw new ArgumentException("Choose Baseline, Transformed, or Tiered.");
         var count = request.Operation switch { "logs" => request.Count ?? 10, "usage" => request.Count ?? 24, _ => 0 };
         if (request.Operation == "logs" && count is < 1 or > 100) throw new ArgumentException("Event count must be between 1 and 100.");
         var concurrency = request.Operation == "usage" ? request.Concurrency ?? 4 : 0;
@@ -52,6 +58,6 @@ public static class LabOperationCatalog
                 throw new ArgumentException("Marker name must be 1-80 characters using letters, digits, spaces, dots, underscores, parentheses, or hyphens.");
             if (category is not ("Deployment" or "Incident")) throw new ArgumentException("Marker category must be Deployment or Incident.");
         }
-        return new(request.Operation, count, name, category, concurrency, repeatUsers);
+        return new(request.Operation, count, name, category, concurrency, repeatUsers, profile);
     }
 }

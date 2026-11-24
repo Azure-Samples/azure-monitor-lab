@@ -24,6 +24,16 @@ function Assert-Rejected([hashtable] $Changes) {
 try {
   foreach ($operation in @('start', 'break', 'restore', 'ramp', 'cpu', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover')) { & $scriptPath @parameters -Operation $operation | Out-Null }
   & $scriptPath @parameters -Operation logs -Count 100 | Out-Null
+  $env:OP_TELEMETRY_PROFILE = 'Transformed'
+  $env:OP_TELEMETRY_NAME_PREFIX = 'amlab'
+  & $scriptPath @parameters -Operation telemetry-ingestion | Out-Null
+  $env:OP_TELEMETRY_PROFILE = ''
+  $env:OP_TELEMETRY_NAME_PREFIX = ''
+  Assert-Rejected @{ Operation = 'telemetry-ingestion' }
+  Assert-Rejected @{ Operation = 'telemetry-ingestion'; TelemetryProfile = 'Other'; TelemetryNamePrefix = 'amlab' }
+  Assert-Rejected @{ Operation = 'telemetry-ingestion'; TelemetryProfile = 'Baseline'; TelemetryNamePrefix = 'bad;prefix' }
+  Assert-Rejected @{ Operation = 'telemetry-ingestion'; TelemetryProfile = 'Tiered'; TelemetryNamePrefix = 'amlab'; Count = 1 }
+  Assert-Rejected @{ Operation = 'logs'; Count = 10; TelemetryProfile = 'Baseline' }
   & $scriptPath @parameters -Operation annotation -Name 'Release 1.2 (demo)' -Category Deployment | Out-Null
   Assert-Rejected @{ Operation = 'teardown' }
   Assert-Rejected @{ ResourceGroup = 'other-rg' }

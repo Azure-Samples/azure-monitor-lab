@@ -67,6 +67,8 @@ $pfVmssSize        = 'Standard_EC2as_v5'
 $pfAppServiceLocation = 'westeurope'
 $pfDeployObservabilityAgent = $false
 $pfObservabilityAgentLocation = 'westeurope'
+$enableAzureMonitorPipeline = $false
+$enableTelemetryIngestion = $false
 
 # -------------------------------------------------------------------
 # Materialize derived files (.azure-target.json, main.parameters.json,
@@ -105,6 +107,8 @@ if (Test-Path $labConfigPath) {
   if (-not [string]::IsNullOrWhiteSpace($labCfg.observabilityAgentLocation)) {
     $pfObservabilityAgentLocation = $labCfg.observabilityAgentLocation
   }
+  $enableAzureMonitorPipeline = $labCfg.stageToggles.enableStageAzureMonitorPipeline -eq $true
+  $enableTelemetryIngestion = $labCfg.stageToggles.enableStageTelemetryIngestion -eq $true
 }
 
 # -------------------------------------------------------------------
@@ -162,6 +166,7 @@ if ($SkipPreflight) {
                -VmSize $pfVmSize `
                -AksNodeVmSize $pfAksNodeVmSize `
                -VmssSize $pfVmssSize `
+               -RequireAzureMonitorPipelineCapacity:$enableAzureMonitorPipeline `
                -AppServiceLocation $pfAppServiceLocation `
                -AksNodeCount $pfAksNodeCount `
                -DeployWindowsVm $pfDeployWindowsVm `
@@ -516,6 +521,43 @@ if ($deploymentInputs.parameters.enableHealthModelDemo.value -eq $true) {
   & (Join-Path $PSScriptRoot 'setup-health-model-demo.ps1') `
     -SubscriptionId $active.id -ResourceGroup $ResourceGroup `
     -NamePrefix $healthModelDemoNamePrefix
+}
+
+if ($enableAzureMonitorPipeline) {
+  if ([string]::IsNullOrWhiteSpace($linuxVm) -or -not $outputs.centralLawId.value) {
+    throw 'Azure Monitor pipeline requires the deployed Linux VM and central workspace. No Arc bootstrap was attempted.'
+  }
+  $pipelinePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+  Write-Step 'Azure Monitor pipeline opt-in: installing single-node K3s on the lab Linux VM and connecting it to Arc'
+  & (Join-Path $PSScriptRoot 'deploy-azure-monitor-pipeline.ps1') `
+    -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup `
+    -VmName $linuxVm -NamePrefix $pipelinePrefix -Location $Location `
+    -CentralLawId $outputs.centralLawId.value -Enable `
+    -EnableCombined:($enableAzureMonitorPipeline -and $enableTelemetryIngestion) `
+    -StageTelemetryIngestionEnabled:$enableTelemetryIngestion `
+    -StageAzureMonitorPipelineEnabled:$enableAzureMonitorPipeline
+}
+
+if ($null -ne $labCfg -and $labCfg.enableNativeOtlp -eq $true) {
+  if (-not $enableTelemetryIngestion -or [string]::IsNullOrWhiteSpace($linuxVm)) {
+    throw 'Native OTLP opt-in requires the deployed telemetry ingestion stage and Linux VM.'
+  }
+  $nativePrefix = if ($deploymentInputs.parameters.namePrefix.value) { $deploymentInputs.parameters.namePrefix.value } else { 'amlab' }
+  $nativeDcrId = "/subscriptions/$($active.id)/resourceGroups/$ResourceGroup/providers/Microsoft.Insights/dataCollectionRules/dcr-$nativePrefix-telemetry-ingestion-otlp"
+  $nativeDceId = "/subscriptions/$($active.id)/resourceGroups/$ResourceGroup/providers/Microsoft.Insights/dataCollectionEndpoints/dce-$nativePrefix-telemetry-ingestion"
+  $nativeDcr = az resource show --subscription $active.id --ids $nativeDcrId --api-version 2024-03-11 --output json | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or $nativeDcr.id -ine $nativeDcrId -or -not $nativeDcr.properties.immutableId) {
+    throw 'The opted-in native OTLP DCR could not be resolved after infrastructure deployment.'
+  }
+  $nativeDce = az resource show --subscription $active.id --ids $nativeDceId --api-version 2023-03-11 --output json | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or $nativeDce.id -ine $nativeDceId -or -not $nativeDce.properties.logsIngestion.endpoint) {
+    throw 'The opted-in native OTLP DCE endpoint could not be resolved after infrastructure deployment.'
+  }
+  Write-Step 'Native OTLP opt-in: configuring the dedicated direct DCR and VM-local Collector'
+  & (Join-Path $PSScriptRoot 'deploy-native-otlp.ps1') `
+    -SubscriptionId $active.id -TenantId $active.tenantId -ResourceGroup $ResourceGroup `
+    -VmName $linuxVm -DcrId $nativeDcrId -DcrImmutableId $nativeDcr.properties.immutableId `
+    -DceEndpoint $nativeDce.properties.logsIngestion.endpoint -Enable
 }
 
 $completionMessage = 'Lab setup complete.'

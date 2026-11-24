@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $repo = Join-Path $PSScriptRoot '..\..'
 . (Join-Path $repo 'scripts\lab-config.ps1')
-$root = Join-Path ([IO.Path]::GetTempPath()) "lab-config-test-$([guid]::NewGuid().ToString('N'))"
+$root = Join-Path $repo "scripts\tests\.lab-config-test-$([guid]::NewGuid().ToString('N'))"
 $null = New-Item -ItemType Directory -Path (Join-Path $root 'scripts'), (Join-Path $root 'infra'), (Join-Path $root 'terraform')
 foreach ($name in @('sync-config.ps1', 'lab-config.ps1', 'migrate-lab-config.ps1')) {
   Copy-Item -LiteralPath (Join-Path $repo "scripts\$name") -Destination (Join-Path $root 'scripts')
@@ -52,6 +52,13 @@ try {
       (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_stage_health_model_demo = false') {
     throw 'Health Model Demo must default off in both deployment formats.'
   }
+  if ($defaultBicep.parameters.enableTelemetryIngestion.value -ne $false -or
+      $defaultBicep.parameters.enableTelemetryIngestionAuxiliary.value -ne $false -or
+      $defaultBicep.parameters.enableTelemetryIngestionNativeOtlp.value -ne $false -or
+      $flat.stageToggles.enableStageAzureMonitorPipeline -ne $false -or
+      (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_stage_telemetry_ingestion = false') {
+    throw 'Telemetry ingestion, Auxiliary and Azure Monitor pipeline must default off.'
+  }
   $flat | Add-Member -NotePropertyName grafanaAdminObjectId -NotePropertyValue ''
   $flat | Add-Member -NotePropertyName forbiddenSubscriptionIds -NotePropertyValue @()
   $flat.fabricAutomation | Add-Member -NotePropertyName appInsightsMirrorConnectionId -NotePropertyValue ''
@@ -71,6 +78,9 @@ try {
   $flat.stageToggles.enableStageObservabilityAgent = $true
   $flat.stageToggles.enableStageFabric = $true
   $flat.stageToggles.enableStageHealthModelDemo = $true
+  $flat.stageToggles.enableStageTelemetryIngestion = $true
+  $flat.stageToggles.enableStageAzureMonitorPipeline = $true
+  $flat.enableAuxiliary = $true
   $flat.stageToggles.enableSlotFailureScenario = $true
   $flat.stageToggles.enableCustomerDependencies = $true
   $flat.sqlEntraAdminObjectId = [guid]::NewGuid().ToString()
@@ -103,6 +113,96 @@ try {
       (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_stage_health_model_demo = true') {
     throw 'Health Model Demo enablement was lost during config generation.'
   }
+  if ($enabledBicep.parameters.enableTelemetryIngestion.value -ne $true -or
+      $enabledBicep.parameters.enableTelemetryIngestionAuxiliary.value -ne $true -or
+      (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_telemetry_ingestion_auxiliary = true') {
+    throw 'Telemetry ingestion or Auxiliary opt-in was lost during config generation.'
+  }
+  $independentPipeline = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+  $independentPipeline.stageToggles.enableStageTelemetryIngestion = $false
+  $independentPipeline.enableAuxiliary = $false
+  $independentPipeline | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+  if ((Read-LabConfig -Path $configPath).stageToggles.enableStageAzureMonitorPipeline -ne $true) {
+    throw 'Azure Monitor pipeline must be independently selectable without the JSON ingestion stage.'
+  }
+  $flat | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  foreach ($setting in @('enableStageTelemetryIngestion', 'enableAuxiliary')) {
+    $invalid = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    if ($setting -eq 'enableAuxiliary') { $invalid.enableAuxiliary = 'true' } else { $invalid.stageToggles.enableStageTelemetryIngestion = 'true' }
+    $invalid | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+    try {
+      & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+      throw "Expected $setting to reject quoted booleans."
+    } catch {
+      if ($_.Exception.Message -notmatch 'must be a JSON Boolean') { throw }
+    }
+  }
+  $native = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+  $native.stageToggles.enableStageAzureMonitorPipeline = $false
+  $native.enableNativeOtlp = $true
+  $native | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+  $nativeBicep = Get-Content -LiteralPath $outputs[1] -Raw | ConvertFrom-Json
+  if ($nativeBicep.parameters.enableTelemetryIngestionNativeOtlp.value -ne $true -or
+      (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_telemetry_ingestion_native_otlp = true') {
+    throw 'Native OTLP opt-in was lost without Azure Monitor pipeline.'
+  }
+  foreach ($missing in @('enableStageTelemetryIngestion', 'enableStageA', 'enableStageB', 'deployLinuxVm')) {
+    $invalid = $native | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    if ($missing -eq 'deployLinuxVm') { $invalid.deployLinuxVm = $false }
+    else { $invalid.stageToggles.$missing = $false }
+    if ($missing -eq 'enableStageTelemetryIngestion') { $invalid.enableAuxiliary = $false }
+    if ($missing -eq 'enableStageB') { $invalid.stageToggles.enableStageHealthModelDemo = $false }
+    $invalid | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+    try {
+      & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+      throw "Native OTLP accepted missing prerequisite $missing."
+    } catch {
+      if ($_.Exception.Message -notmatch 'enableNativeOtlp requires') { throw }
+    }
+  }
+  $invalid = $native | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+  $invalid.enableNativeOtlp = 'true'
+  $invalid | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  try {
+    & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+    throw 'Native OTLP accepted a quoted Boolean.'
+  } catch {
+    if ($_.Exception.Message -notmatch 'enableNativeOtlp must be a JSON Boolean') { throw }
+  }
+  $invalid = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+  $invalid.stageToggles.enableStageTelemetryIngestion = $false
+  $invalid | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  try {
+    & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+    throw 'Auxiliary must require the JSON ingestion stage.'
+  } catch {
+    if ($_.Exception.Message -notmatch 'enableAuxiliary requires') { throw }
+  }
+  $invalid = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+  $invalid.stageToggles.enableStageAzureMonitorPipeline = 'true'
+  $invalid | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  try {
+    & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+    throw 'Pipeline opt-in accepted a quoted Boolean.'
+  } catch {
+    if ($_.Exception.Message -notmatch 'enableStageAzureMonitorPipeline must be a JSON Boolean') { throw }
+  }
+  foreach ($missing in @('enableStageB', 'deployLinuxVm')) {
+    $invalid = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    $invalid.stageToggles.enableStageHealthModelDemo = $false
+    if ($missing -eq 'deployLinuxVm') { $invalid.deployLinuxVm = $false }
+    else { $invalid.stageToggles.enableStageB = $false }
+    $invalid | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+    try {
+      & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+      throw "Pipeline opt-in accepted missing prerequisite $missing."
+    } catch {
+      if ($_.Exception.Message -notmatch 'Azure Monitor pipeline requires') { throw }
+    }
+  }
+  $flat.stageToggles.enableStageAzureMonitorPipeline = $false
   $flat | Add-Member -NotePropertyName healthModelDemoCafeLocation -NotePropertyValue 'westeurope'
   $flat | Add-Member -NotePropertyName healthModelDemoCafeMonitoringReaderAssignmentName -NotePropertyValue ([guid]::NewGuid().ToString())
   $flat | Add-Member -NotePropertyName enableSentinel -NotePropertyValue $false

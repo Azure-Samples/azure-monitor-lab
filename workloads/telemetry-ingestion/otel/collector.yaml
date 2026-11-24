@@ -1,0 +1,28 @@
+# OpenTelemetry Collector Contrib v0.148.0. Run only on an opted-in Azure VM
+# with a system-assigned identity and Monitoring Metrics Publisher on the OTLP DCR.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+processors:
+  batch:
+    send_batch_size: 100
+    timeout: 5s
+extensions:
+  azure_auth:
+    managed_identity: {}
+    scopes:
+      - https://monitor.azure.com/.default
+exporters:
+  otlphttp/azuremonitor:
+    logs_endpoint: ${env:AZURE_MONITOR_OTLP_LOGS_ENDPOINT}
+    auth:
+      authenticator: azure_auth
+service:
+  extensions: [azure_auth]
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/azuremonitor]

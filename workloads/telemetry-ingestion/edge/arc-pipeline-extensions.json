@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.49.2.45890",
+      "templateHash": "10440165827566386304"
+    }
+  },
+  "parameters": {
+    "connectedClusterName": {
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.KubernetesConfiguration/extensions",
+      "apiVersion": "2023-05-01",
+      "scope": "[resourceId('Microsoft.Kubernetes/connectedClusters', parameters('connectedClusterName'))]",
+      "name": "azure-cert-management",
+      "properties": {
+        "extensionType": "microsoft.certmanagement",
+        "autoUpgradeMinorVersion": true,
+        "releaseTrain": "stable"
+      }
+    },
+    {
+      "type": "Microsoft.KubernetesConfiguration/extensions",
+      "apiVersion": "2023-05-01",
+      "scope": "[resourceId('Microsoft.Kubernetes/connectedClusters', parameters('connectedClusterName'))]",
+      "name": "azure-monitor-pipeline",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "extensionType": "microsoft.monitor.pipeline",
+        "autoUpgradeMinorVersion": false,
+        "releaseTrain": "preview",
+        "version": "0.1.7",
+        "scope": {
+          "cluster": {
+            "releaseNamespace": "default"
+          }
+        },
+        "configurationSettings": {
+          "controllerManager.manager.env.pipelineReplicas": "1"
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.Kubernetes/connectedClusters', parameters('connectedClusterName')), 'Microsoft.KubernetesConfiguration/extensions', 'azure-cert-management')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "extensionId": {
+      "type": "string",
+      "value": "[extensionResourceId(resourceId('Microsoft.Kubernetes/connectedClusters', parameters('connectedClusterName')), 'Microsoft.KubernetesConfiguration/extensions', 'azure-monitor-pipeline')]"
+    },
+    "extensionPrincipalId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(resourceId('Microsoft.Kubernetes/connectedClusters', parameters('connectedClusterName')), 'Microsoft.KubernetesConfiguration/extensions', 'azure-monitor-pipeline'), '2023-05-01', 'full').identity.principalId]"
+    }
+  }
+}

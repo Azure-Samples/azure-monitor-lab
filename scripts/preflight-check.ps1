@@ -79,6 +79,7 @@ param(
   [string] $VmssSize        = 'Standard_EC2as_v5',
   [bool]   $DeployLinuxVm   = $true,
   [bool]   $DeployWindowsVm = $true,
+  [bool]   $RequireAzureMonitorPipelineCapacity = $false,
   [bool]   $DeployObservabilityAgent = $false,
   [string] $ObservabilityAgentLocation = 'westeurope',
   [string] $AppServiceLocation = 'westeurope',
@@ -179,6 +180,16 @@ $skus = ($skusJson -join "`n") | ConvertFrom-Json
 $skuBySize = @{}
 foreach ($s in $skus) { $skuBySize[$s.name] = $s }
 $computeGuidanceNeeded = $false
+
+if ($RequireAzureMonitorPipelineCapacity) {
+  $pipelineSku = $skuBySize[$VmSize]
+  $pipelineCpus = if ($pipelineSku) { [int](($pipelineSku.capabilities | Where-Object name -eq 'vCPUs' | Select-Object -First 1).value) } else { 0 }
+  $pipelineMemory = if ($pipelineSku) { [double](($pipelineSku.capabilities | Where-Object name -eq 'MemoryGB' | Select-Object -First 1).value) } else { 0 }
+  if (-not $DeployLinuxVm -or $pipelineCpus -lt 4 -or $pipelineMemory -lt 16) {
+    Add-Result 'Azure Monitor pipeline host' "Opt-in K3s on the existing Linux VM requires an explicitly configured VM SKU with at least 4 vCPUs and 16 GiB total memory (selected: $VmSize, $pipelineCpus vCPUs, $pipelineMemory GiB). The pipeline option does not choose a VM size; changing vmSize in the main deployment can resize/restart both lab VMs." 'FAIL'
+    $computeGuidanceNeeded = $true
+  }
+}
 
 $aksSku = $skuBySize[$AksNodeVmSize]
 if ($aksSku) {

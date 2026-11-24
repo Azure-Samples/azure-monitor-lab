@@ -46,6 +46,12 @@
       "enableObservabilityAgentAutomaticInvestigation": false,
       "observabilityAgentInstructions": "Act as the trace specialist for the lab application. Correlate alerts only when they describe the same customer impact and keep unrelated infrastructure alerts separate. Always create an issue for severity 1 or severity 2 agent task or efficiency failures and add [OPS-REVIEW] to the title. Reconstruct the Application Insights request, agent, model, handoff, and tool hierarchy; report technical, task, performance, and trace health separately. Produce an SRE handoff packet with customer impact, likely fault domain and confidence, three timestamped evidence points with sources, the smallest safe correction, rollback conditions, missing evidence, and fixed-run verification criteria. Do not claim remediation or incident closure."
     },
+    "telemetryIngestion": {
+      "enableAuxiliary": false,
+      "enableNativeOtlp": false,
+      "telemetryIngestionSenderPrincipalId": "",
+      "_telemetryIngestionDocs": "Requires stageToggles.enableStageTelemetryIngestion=true and Stage A. Auxiliary adds a separate table and tiered JSON DCR; baseline/transformed JSON DCRs are part of the stage. Experimental enableNativeOtlp adds only a separate direct OTLP logs DCR to the standard OTelLogs table. It also requires Stage B and deployLinuxVm=true even if enableStageAzureMonitorPipeline=false: no Collector is installed or configured by this flag. The output supplies the documented logs DCE endpoint and native DCR immutable ID; DCR stream Microsoft-OTel-Logs differs from documented endpoint Microsoft-OTLP-Logs. Verify live before claiming ingestion. Optional sender principal must be a managed identity/service principal object GUID and receives Monitoring Metrics Publisher scoped ONLY to scenario DCRs; empty grants no sender role. Deploy/configure an Azure-authenticated Collector separately."
+    },
     "fabric": {
       "fabricAutomation": {
         "workspaceName": "",
@@ -83,6 +89,8 @@
       "enableStageAI": false,
       "enableStageFabric": false,
       "enableStageHealthModelDemo": false,
+      "enableStageTelemetryIngestion": false,
+      "enableStageAzureMonitorPipeline": false,
       "enableStageSreAgent": false,
       "enableStageObservabilityAgent": false,
       "enableSlotFailureScenario": false,

@@ -31,6 +31,7 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
     private readonly TokenCredential credential;
     private readonly string? customerWorkerName;
     private readonly string? customerWebAppName;
+    private readonly string? telemetryNamePrefix;
 
     public ContainerJobOperations(IConfiguration configuration, IHttpClientFactory clients)
         : this(configuration, clients.CreateClient("lab-operations"), string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"))
@@ -43,6 +44,7 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
         this.credential = credential;
         customerWorkerName = configuration["LabConsole:Operations:CustomerWorkerName"];
         customerWebAppName = configuration["LabConsole:AppService"] is { Length: > 0 } appName ? appName + "-customer" : null;
+        telemetryNamePrefix = configuration["LabConsole:Operations:TelemetryIngestionNamePrefix"];
         Target = ContainerJobTarget.FromConfiguration(configuration);
         Configured = Target is not null && configuration.GetValue<bool>("LabConsole:Operations:Enabled");
     }
@@ -93,6 +95,11 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
                     { ["LAB_CUSTOMER_WEB_APP_NAME"] = customerWebAppName, ["LAB_CUSTOMER_WORKER_NAME"] = customerWorkerName })))
             throw new InvalidOperationException("The runner's exact customer dependency targets do not match the approved configuration.");
         var inputs = OperationInputs(run, false);
+        if (run.Parameters.Operation == "telemetry-ingestion")
+        {
+            if (!configurationPrefixValid(telemetryNamePrefix)) throw new InvalidOperationException("Telemetry ingestion prefix is not configured.");
+            inputs["OP_TELEMETRY_NAME_PREFIX"] = telemetryNamePrefix!;
+        }
         foreach (var entry in environment.Where(entry => inputs.ContainsKey(entry?["name"]?.GetValue<string>() ?? "")).ToArray()) environment.Remove(entry);
         foreach (var input in inputs) environment.Add(new JsonObject { ["name"] = input.Key, ["value"] = input.Value });
         using var request = await RequestAsync(HttpMethod.Post, Target!.JobResourceId + "/start", cancellationToken);
@@ -153,6 +160,7 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
         {
             "succeeded" when run.Parameters.Operation == "ramp" => "Ramp job submitted. AKS traffic continues independently for about 60 minutes.",
             "succeeded" when run.Parameters.Operation == "cpu" => "CPU simulation requests submitted to both demo VMs. Each guest load expires after 10 minutes. Verify Percentage CPU in Azure Monitor; guest execution and alert firing are not confirmed. Cancellation does not stop submitted load.",
+            "succeeded" when run.Parameters.Operation == "telemetry-ingestion" => "The 100-event synthetic ingestion run completed and both intended destination tables passed verification. Ingested data is not rolled back.",
             "succeeded" when LabOperationCatalog.IsCustomerFault(run.Parameters.Operation) => "Customer fault configuration applied. Observe the actual symptoms and telemetry; the fault persists until approved recovery. No traffic or orders were generated automatically.",
             "succeeded" when run.Parameters.Operation == "customer-recover" => "Customer fault settings reset and working slot restored. HTTP health and SQL catalogue verified. Previous order completion, dead-letter recovery, latency and Health Model signal recovery require independent verification; no messages were replayed.",
             "succeeded" => "The approved script completed. Refresh Infra Health after resource startup and telemetry settle.",
@@ -164,13 +172,17 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
             Steps = [new("Job accepted", "succeeded"), new("Run approved operation", state)] };
     }
 
-    private static bool Matches(JsonNode? execution, LabOperationRun run, bool legacyInputs)
+    private bool Matches(JsonNode? execution, LabOperationRun run, bool legacyInputs)
     {
         var containers = execution?["properties"]?["template"]?["containers"] as JsonArray;
         if (containers?.Count != 1 || containers[0]?["image"]?.GetValue<string>() != run.Target.Image) return false;
         var environment = containers[0]?["env"] as JsonArray;
-        return environment is not null && EnvironmentMatches(environment, OperationInputs(run, legacyInputs)) && EnvironmentMatches(environment, TargetEnvironment(run.Target));
+        return environment is not null && EnvironmentMatches(environment, OperationInputs(run, legacyInputs))
+            && (run.Parameters.Operation != "telemetry-ingestion" || (configurationPrefixValid(telemetryNamePrefix)
+                && EnvironmentMatches(environment, new Dictionary<string, string> { ["OP_TELEMETRY_NAME_PREFIX"] = telemetryNamePrefix! })))
+            && EnvironmentMatches(environment, TargetEnvironment(run.Target));
     }
+    private static bool configurationPrefixValid(string? value) => value is not null && Regex.IsMatch(value, "^[a-z0-9]{3,8}$");
 
     private static Dictionary<string, string> CoreOperationInputs(LabOperationRun run) => new()
     {
@@ -182,6 +194,7 @@ public sealed class ContainerJobOperations : ILabOperationsRunner
     private static Dictionary<string, string> OperationInputs(LabOperationRun run, bool legacyInputs)
     {
         var inputs = CoreOperationInputs(run);
+        if (run.Parameters.Operation == "telemetry-ingestion") inputs["OP_TELEMETRY_PROFILE"] = run.Parameters.Profile;
         if (!legacyInputs)
         {
             inputs["OP_CONCURRENCY"] = run.Parameters.Concurrency.ToString(System.Globalization.CultureInfo.InvariantCulture);

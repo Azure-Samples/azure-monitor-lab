@@ -1,0 +1,738 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.49.2.45890",
+      "templateHash": "13984605719941729465"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Must match the Stage A central workspace region."
+      }
+    },
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "amlab",
+      "minLength": 3,
+      "maxLength": 8
+    },
+    "enableAuxiliary": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Explicit opt-in to a separate Auxiliary table and tiered DCR. Verify plan availability in the chosen region before deployment."
+      }
+    },
+    "enableNativeOtlp": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Experimental native OTLP logs direct ingestion DCR; does not deploy a Collector."
+      }
+    },
+    "senderPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional managed identity/service principal object ID granted Monitoring Metrics Publisher on scenario DCRs. Empty: assign manually."
+      }
+    },
+    "centralWorkspaceId": {
+      "type": "string",
+      "defaultValue": "[resourceId('Microsoft.OperationalInsights/workspaces', format('law-{0}-central-{1}', parameters('namePrefix'), take(uniqueString(resourceGroup().id), 5)))]"
+    },
+    "centralWorkspaceName": {
+      "type": "string",
+      "defaultValue": "[format('law-{0}-central-{1}', parameters('namePrefix'), take(uniqueString(resourceGroup().id), 5))]"
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {}
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "telemetry-ingestion",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "namePrefix": {
+            "value": "[parameters('namePrefix')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "centralLawId": {
+            "value": "[parameters('centralWorkspaceId')]"
+          },
+          "centralLawName": {
+            "value": "[parameters('centralWorkspaceName')]"
+          },
+          "enableAuxiliary": {
+            "value": "[parameters('enableAuxiliary')]"
+          },
+          "enableNativeOtlp": {
+            "value": "[parameters('enableNativeOtlp')]"
+          },
+          "senderPrincipalId": {
+            "value": "[parameters('senderPrincipalId')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.49.2.45890",
+              "templateHash": "15727763376073086440"
+            }
+          },
+          "parameters": {
+            "namePrefix": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 8
+            },
+            "location": {
+              "type": "string"
+            },
+            "centralLawId": {
+              "type": "string"
+            },
+            "centralLawName": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "enableAuxiliary": {
+              "type": "bool",
+              "defaultValue": false
+            },
+            "enableNativeOtlp": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Experimental direct OTLP logs DCR only; does not install or configure a Collector."
+              }
+            },
+            "senderPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional Microsoft Entra service principal/managed identity object ID. Grants Monitoring Metrics Publisher only on these scenario DCRs; empty grants no identity."
+              }
+            }
+          },
+          "variables": {
+            "inputStream": "Custom-TelemetryIngestion",
+            "inputColumns": [
+              {
+                "name": "TimeGenerated",
+                "type": "datetime"
+              },
+              {
+                "name": "RunId",
+                "type": "string"
+              },
+              {
+                "name": "EventId",
+                "type": "string"
+              },
+              {
+                "name": "SampleSetId",
+                "type": "string"
+              },
+              {
+                "name": "Severity",
+                "type": "string"
+              },
+              {
+                "name": "Workload",
+                "type": "string"
+              },
+              {
+                "name": "Message",
+                "type": "string"
+              },
+              {
+                "name": "SyntheticUser",
+                "type": "string"
+              },
+              {
+                "name": "DebugField",
+                "type": "string"
+              }
+            ],
+            "outputColumns": [
+              {
+                "name": "TimeGenerated",
+                "type": "datetime"
+              },
+              {
+                "name": "RunId",
+                "type": "string"
+              },
+              {
+                "name": "EventId",
+                "type": "string"
+              },
+              {
+                "name": "SampleSetId",
+                "type": "string"
+              },
+              {
+                "name": "Severity",
+                "type": "string"
+              },
+              {
+                "name": "NormalizedSeverity",
+                "type": "string"
+              },
+              {
+                "name": "Workload",
+                "type": "string"
+              },
+              {
+                "name": "Message",
+                "type": "string"
+              },
+              {
+                "name": "SyntheticUser",
+                "type": "string"
+              }
+            ],
+            "projection": " | project TimeGenerated, RunId, EventId, SampleSetId, Severity, NormalizedSeverity = tolower(Severity), Workload, Message, SyntheticUser = \"[REDACTED]\"",
+            "baselineTransform": "source | project TimeGenerated, RunId, EventId, SampleSetId, Severity, NormalizedSeverity = Severity, Workload, Message, SyntheticUser",
+            "operationalTransform": "[format('source | where Severity in (\"Error\", \"Warning\"){0}', variables('projection'))]",
+            "verboseTransform": "[format('source | where Severity == \"Debug\"{0}', variables('projection'))]",
+            "publisherRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/tables",
+              "apiVersion": "2022-10-01",
+              "name": "[format('{0}/{1}', parameters('centralLawName'), 'TelemetryIngestionOperational_CL')]",
+              "properties": {
+                "plan": "Analytics",
+                "schema": {
+                  "name": "TelemetryIngestionOperational_CL",
+                  "columns": "[variables('outputColumns')]"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/tables",
+              "apiVersion": "2022-10-01",
+              "name": "[format('{0}/{1}', parameters('centralLawName'), 'TelemetryIngestionDiagnostic_CL')]",
+              "properties": {
+                "plan": "Analytics",
+                "schema": {
+                  "name": "TelemetryIngestionDiagnostic_CL",
+                  "columns": "[variables('outputColumns')]"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "condition": "[parameters('enableAuxiliary')]",
+              "type": "Microsoft.OperationalInsights/workspaces/tables",
+              "apiVersion": "2022-10-01",
+              "name": "[format('{0}/{1}', parameters('centralLawName'), 'TelemetryIngestionVerbose_CL')]",
+              "properties": {
+                "plan": "Auxiliary",
+                "schema": {
+                  "name": "TelemetryIngestionVerbose_CL",
+                  "columns": "[variables('outputColumns')]"
+                },
+                "retentionInDays": 30,
+                "totalRetentionInDays": 30
+              }
+            },
+            {
+              "type": "Microsoft.Insights/dataCollectionEndpoints",
+              "apiVersion": "2023-03-11",
+              "name": "[format('dce-{0}-telemetry-ingestion', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "networkAcls": {
+                  "publicNetworkAccess": "Enabled"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2023-03-11",
+              "name": "[format('dcr-{0}-telemetry-ingestion', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "Direct",
+              "properties": {
+                "dataCollectionEndpointId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+                "streamDeclarations": {
+                  "Custom-TelemetryIngestion": {
+                    "columns": "[variables('inputColumns')]"
+                  }
+                },
+                "destinations": {
+                  "logAnalytics": [
+                    {
+                      "workspaceResourceId": "[parameters('centralLawId')]",
+                      "name": "centralLaw"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "[variables('inputStream')]"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ],
+                    "transformKql": "[variables('operationalTransform')]",
+                    "outputStream": "Custom-TelemetryIngestionOperational_CL"
+                  },
+                  {
+                    "streams": [
+                      "[variables('inputStream')]"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ],
+                    "transformKql": "[variables('operationalTransform')]",
+                    "outputStream": "Custom-TelemetryIngestionDiagnostic_CL"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionDiagnostic_CL')]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionOperational_CL')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2023-03-11",
+              "name": "[format('dcr-{0}-telemetry-ingestion-baseline', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "Direct",
+              "properties": {
+                "dataCollectionEndpointId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+                "streamDeclarations": {
+                  "Custom-TelemetryIngestion": {
+                    "columns": "[variables('inputColumns')]"
+                  }
+                },
+                "destinations": {
+                  "logAnalytics": [
+                    {
+                      "workspaceResourceId": "[parameters('centralLawId')]",
+                      "name": "centralLaw"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "[variables('inputStream')]"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ],
+                    "transformKql": "[variables('baselineTransform')]",
+                    "outputStream": "Custom-TelemetryIngestionOperational_CL"
+                  },
+                  {
+                    "streams": [
+                      "[variables('inputStream')]"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ],
+                    "transformKql": "[variables('baselineTransform')]",
+                    "outputStream": "Custom-TelemetryIngestionDiagnostic_CL"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionDiagnostic_CL')]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionOperational_CL')]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableAuxiliary')]",
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2023-03-11",
+              "name": "[format('dcr-{0}-telemetry-ingestion-tiered', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "Direct",
+              "properties": {
+                "dataCollectionEndpointId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+                "streamDeclarations": {
+                  "Custom-TelemetryIngestion": {
+                    "columns": "[variables('inputColumns')]"
+                  }
+                },
+                "destinations": {
+                  "logAnalytics": [
+                    {
+                      "workspaceResourceId": "[parameters('centralLawId')]",
+                      "name": "centralLaw"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "[variables('inputStream')]"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ],
+                    "transformKql": "[variables('operationalTransform')]",
+                    "outputStream": "Custom-TelemetryIngestionOperational_CL"
+                  },
+                  {
+                    "streams": [
+                      "[variables('inputStream')]"
+                    ],
+                    "destinations": [
+                      "centralLaw"
+                    ],
+                    "transformKql": "[variables('verboseTransform')]",
+                    "outputStream": "Custom-TelemetryIngestionVerbose_CL"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionOperational_CL')]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionVerbose_CL')]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableNativeOtlp')]",
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2024-03-11",
+              "name": "[format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "Direct",
+              "properties": {
+                "dataCollectionEndpointId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+                "directDataSources": {
+                  "otelLogs": [
+                    {
+                      "name": "nativeOtlpLogs",
+                      "streams": [
+                        "Microsoft-OTel-Logs"
+                      ],
+                      "enrichWithResourceAttributes": [
+                        "*"
+                      ]
+                    }
+                  ]
+                },
+                "destinations": {
+                  "logAnalytics": [
+                    {
+                      "workspaceResourceId": "[parameters('centralLawId')]",
+                      "name": "nativeLogs"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "Microsoft-OTel-Logs"
+                    ],
+                    "destinations": [
+                      "nativeLogs"
+                    ]
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('senderPrincipalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion', parameters('namePrefix')))]",
+              "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion', parameters('namePrefix'))), parameters('senderPrincipalId'), variables('publisherRoleId'))]",
+              "properties": {
+                "principalId": "[parameters('senderPrincipalId')]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[variables('publisherRoleId')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('senderPrincipalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-baseline', parameters('namePrefix')))]",
+              "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-baseline', parameters('namePrefix'))), parameters('senderPrincipalId'), variables('publisherRoleId'))]",
+              "properties": {
+                "principalId": "[parameters('senderPrincipalId')]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[variables('publisherRoleId')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-baseline', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('enableAuxiliary'), not(empty(parameters('senderPrincipalId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-tiered', parameters('namePrefix')))]",
+              "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-tiered', parameters('namePrefix'))), parameters('senderPrincipalId'), variables('publisherRoleId'))]",
+              "properties": {
+                "principalId": "[parameters('senderPrincipalId')]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[variables('publisherRoleId')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-tiered', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('enableNativeOtlp'), not(empty(parameters('senderPrincipalId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix')))]",
+              "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix'))), parameters('senderPrincipalId'), variables('publisherRoleId'))]",
+              "properties": {
+                "principalId": "[parameters('senderPrincipalId')]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[variables('publisherRoleId')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "dceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix')))]"
+            },
+            "dceEndpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix'))), '2023-03-11').logsIngestion.endpoint]"
+            },
+            "inputStream": {
+              "type": "string",
+              "value": "[variables('inputStream')]"
+            },
+            "baselineDcrId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-baseline', parameters('namePrefix')))]"
+            },
+            "baselineDcrImmutableId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-baseline', parameters('namePrefix'))), '2023-03-11').immutableId]"
+            },
+            "transformedDcrId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion', parameters('namePrefix')))]"
+            },
+            "transformedDcrImmutableId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion', parameters('namePrefix'))), '2023-03-11').immutableId]"
+            },
+            "tieredDcrId": {
+              "type": "string",
+              "value": "[if(parameters('enableAuxiliary'), resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-tiered', parameters('namePrefix'))), '')]"
+            },
+            "tieredDcrImmutableId": {
+              "type": "string",
+              "value": "[if(parameters('enableAuxiliary'), reference(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-tiered', parameters('namePrefix'))), '2023-03-11').immutableId, '')]"
+            },
+            "nativeOtlpDcrId": {
+              "type": "string",
+              "value": "[if(parameters('enableNativeOtlp'), resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix'))), '')]"
+            },
+            "nativeOtlpDcrImmutableId": {
+              "type": "string",
+              "value": "[if(parameters('enableNativeOtlp'), reference(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix'))), '2024-03-11').immutableId, '')]"
+            },
+            "nativeOtlpLogsEndpoint": {
+              "type": "string",
+              "value": "[if(parameters('enableNativeOtlp'), format('{0}/datacollectionRules/{1}/streams/Microsoft-OTLP-Logs/otlp/v1/logs', reference(resourceId('Microsoft.Insights/dataCollectionEndpoints', format('dce-{0}-telemetry-ingestion', parameters('namePrefix'))), '2023-03-11').logsIngestion.endpoint, reference(resourceId('Microsoft.Insights/dataCollectionRules', format('dcr-{0}-telemetry-ingestion-otlp', parameters('namePrefix'))), '2024-03-11').immutableId), '')]"
+            },
+            "nativeOtlpReadiness": {
+              "type": "string",
+              "value": "[if(parameters('enableNativeOtlp'), 'EXPERIMENTAL: no Collector is installed or configured. Deploy an OTel Collector with Azure authentication, use the native OTLP logs endpoint and DCR-scoped sender role, and verify live ingestion and the documented OTLP/OTel stream spelling before claiming readiness.', '')]"
+            },
+            "operationalTable": {
+              "type": "string",
+              "value": "TelemetryIngestionOperational_CL"
+            },
+            "operationalTableId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionOperational_CL')]"
+            },
+            "operationalTablePlan": {
+              "type": "string",
+              "value": "Analytics"
+            },
+            "diagnosticTable": {
+              "type": "string",
+              "value": "TelemetryIngestionDiagnostic_CL"
+            },
+            "diagnosticTableId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionDiagnostic_CL')]"
+            },
+            "diagnosticTablePlan": {
+              "type": "string",
+              "value": "Analytics"
+            },
+            "verboseTable": {
+              "type": "string",
+              "value": "[if(parameters('enableAuxiliary'), 'TelemetryIngestionVerbose_CL', '')]"
+            },
+            "verboseTableId": {
+              "type": "string",
+              "value": "[if(parameters('enableAuxiliary'), resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('centralLawName'), 'TelemetryIngestionVerbose_CL'), '')]"
+            },
+            "verboseTablePlan": {
+              "type": "string",
+              "value": "[if(parameters('enableAuxiliary'), 'Auxiliary', '')]"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "dceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.dceId.value]"
+    },
+    "dceEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.dceEndpoint.value]"
+    },
+    "inputStream": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.inputStream.value]"
+    },
+    "baselineDcrId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.baselineDcrId.value]"
+    },
+    "baselineDcrImmutableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.baselineDcrImmutableId.value]"
+    },
+    "transformedDcrId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.transformedDcrId.value]"
+    },
+    "transformedDcrImmutableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.transformedDcrImmutableId.value]"
+    },
+    "tieredDcrId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.tieredDcrId.value]"
+    },
+    "tieredDcrImmutableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.tieredDcrImmutableId.value]"
+    },
+    "nativeOtlpDcrId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.nativeOtlpDcrId.value]"
+    },
+    "nativeOtlpDcrImmutableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.nativeOtlpDcrImmutableId.value]"
+    },
+    "nativeDcrId": {
+      "type": "string",
+      "value": "[if(parameters('enableNativeOtlp'), reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.nativeOtlpDcrId.value, '')]"
+    },
+    "nativeDcrImmutableId": {
+      "type": "string",
+      "value": "[if(parameters('enableNativeOtlp'), reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.nativeOtlpDcrImmutableId.value, '')]"
+    },
+    "nativeDceEndpoint": {
+      "type": "string",
+      "value": "[if(parameters('enableNativeOtlp'), reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.dceEndpoint.value, '')]"
+    },
+    "nativeOtlpLogsEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.nativeOtlpLogsEndpoint.value]"
+    },
+    "nativeOtlpReadiness": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.nativeOtlpReadiness.value]"
+    },
+    "operationalTable": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.operationalTable.value]"
+    },
+    "operationalTableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.operationalTableId.value]"
+    },
+    "operationalTablePlan": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.operationalTablePlan.value]"
+    },
+    "diagnosticTable": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.diagnosticTable.value]"
+    },
+    "diagnosticTableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.diagnosticTableId.value]"
+    },
+    "diagnosticTablePlan": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.diagnosticTablePlan.value]"
+    },
+    "verboseTable": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.verboseTable.value]"
+    },
+    "verboseTableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.verboseTableId.value]"
+    },
+    "verboseTablePlan": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'telemetry-ingestion'), '2025-04-01').outputs.verboseTablePlan.value]"
+    }
+  }
+}

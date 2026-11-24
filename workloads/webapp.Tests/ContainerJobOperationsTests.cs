@@ -15,16 +15,36 @@ public sealed class ContainerJobOperationsTests
     private static readonly string JobId = $"/subscriptions/{Subscription}/resourceGroups/test-rg/providers/Microsoft.App/jobs/test-runner";
     private const string ImagePrefix = "test.azurecr.io/lab-operations@sha256:";
 
-    private static ContainerJobOperations Client(FakeAzure handler, string enabled = "true", bool customerFaults = false) => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    private static ContainerJobOperations Client(FakeAzure handler, string enabled = "true", bool customerFaults = false, string? telemetryPrefix = null) => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["LabConsole:ResourceGroup"] = "test-rg", ["LabConsole:Operations:JobResourceId"] = JobId,
         ["LabConsole:Operations:TenantId"] = Tenant, ["LabConsole:Operations:Image"] = ImagePrefix + new string('a', 64),
         ["LabConsole:Operations:Enabled"] = enabled,
         ["LabConsole:AppService"] = customerFaults ? "test-app" : null,
-        ["LabConsole:Operations:CustomerWorkerName"] = customerFaults ? "func-test-orders" : null
+        ["LabConsole:Operations:CustomerWorkerName"] = customerFaults ? "func-test-orders" : null,
+        ["LabConsole:Operations:TelemetryIngestionNamePrefix"] = telemetryPrefix
     }).Build(), new HttpClient(handler), new FakeCredential());
 
     private static LabOperationRun Run(ContainerJobOperations client) => new(new string('b', 32), new("logs", 12, "", ""), client.Target!, DateTimeOffset.UtcNow, "dispatch_unknown", "Pending");
+
+    [Fact]
+    public async Task TelemetryDispatchPinsProfileAndPrefixAndReconcilesOnlyMatchingExecution()
+    {
+        using var transport = new FakeAzure { Operation = "telemetry-ingestion", TelemetryPrefix = "amlab" };
+        var client = Client(transport);
+        var run = Run(client) with { Parameters = LabOperationCatalog.Validate(new("telemetry-ingestion", Profile: "Tiered")) };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DispatchAsync(run, default));
+        Assert.Equal(0, transport.Starts);
+        client = Client(transport, telemetryPrefix: "amlab");
+        run = run with { Target = client.Target! };
+        await client.DispatchAsync(run, default);
+        var environment = transport.Sent!["containers"]![0]!["env"]!.AsArray();
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_TELEMETRY_PROFILE" && item["value"]!.GetValue<string>() == "Tiered");
+        Assert.Contains(environment, item => item!["name"]!.GetValue<string>() == "OP_TELEMETRY_NAME_PREFIX" && item["value"]!.GetValue<string>() == "amlab");
+        Assert.Equal("succeeded", (await client.ReadAsync(run, default)).State);
+        transport.TelemetryPrefix = "other";
+        Assert.Equal("dispatch_unknown", (await client.ReadAsync(run, default)).State);
+    }
 
     [Theory]
     [InlineData("customer-sql-delay")]
@@ -275,6 +295,7 @@ public sealed class ContainerJobOperationsTests
         public string? NextLink { get; set; }
         public bool CustomerTargets { get; set; }
         public bool WrongCustomerTarget { get; set; }
+        public string? TelemetryPrefix { get; set; }
 
         private JsonObject Template()
         {
@@ -299,6 +320,12 @@ public sealed class ContainerJobOperationsTests
                 var environment = template["containers"]![0]!["env"]!.AsArray();
                 environment.Add(new JsonObject { ["name"] = "LAB_CUSTOMER_WEB_APP_NAME", ["value"] = "test-app-customer" });
                 environment.Add(new JsonObject { ["name"] = "LAB_CUSTOMER_WORKER_NAME", ["value"] = WrongCustomerTarget ? "other-worker" : "func-test-orders" });
+            }
+            if (Operation == "telemetry-ingestion")
+            {
+                var environment = template["containers"]![0]!["env"]!.AsArray();
+                environment.Add(new JsonObject { ["name"] = "OP_TELEMETRY_PROFILE", ["value"] = "Tiered" });
+                environment.Add(new JsonObject { ["name"] = "OP_TELEMETRY_NAME_PREFIX", ["value"] = TelemetryPrefix ?? "" });
             }
             return template;
         }

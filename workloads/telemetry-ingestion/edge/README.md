@@ -1,0 +1,62 @@
+# P2 edge and combined — opt-in Arc K3s preview
+
+**Default-off:** the normal scripted deployment does not install K3s, connect Arc, or provision the pipeline. The separate `advancedConfiguration.stageToggles.enableStageAzureMonitorPipeline` opt-in in `lab.config.json` invokes `scripts/deploy-azure-monitor-pipeline.ps1` after the one-shot lab setup, on the *existing lab Linux VM*. It requires explicit owner approval, an explicitly selected VM SKU with at least four vCPUs and 16 GiB total memory, available host capacity, Arc onboarding permission, provider/region support and expected egress. It does not create another VM or modify AMA. The flag is independent of the JSON telemetry-ingestion stage; the portal and Terraform paths do not automate this VM/Arc step. No live deployment was run while implementing this path.
+
+Merge the relevant values into your existing `lab.config.json` (do not replace unrelated settings):
+
+```json
+{
+  "advancedConfiguration": {
+    "compute": { "vmSize": "Standard_EC4as_v5", "deployLinuxVm": true },
+    "stageToggles": { "enableStageB": true, "enableStageAzureMonitorPipeline": true }
+  }
+}
+```
+
+The SKU is an **example**, not a size automatically chosen by the flag; verify its availability and quota. On an existing lab, changing `vmSize` in the main deployment can resize/restart **both** lab VMs, interrupt monitoring, and increase costs. Do not opt in during another person's demo. The VM's system-assigned identity must have the scoped **Kubernetes Cluster - Azure Arc Onboarding** role on the lab resource group before the cluster connection; the deploying identity also needs VM Run Command, Arc extension, DCR, DCR association, deployment and role-assignment permissions. The opt-in installer adds Azure CLI and the `connectedk8s` extension from Microsoft, plus checksum-verified Helm and K3s binaries, to the existing VM when missing. Confirm outbound HTTPS to the Microsoft package repository, GitHub release assets, Helm downloads and Arc/pipeline endpoints; a failed prerequisite stops bootstrap rather than silently skipping Arc. Only the extension's system-assigned identity receives Monitoring Metrics Publisher on the scenario-owned dataflow DCR.
+
+Turning the flag back off **does not uninstall** K3s, disconnect the Arc cluster, delete DCRs/extensions, or undo a user-selected `vmSize` change. After a demo, review exact ownership before separately removing scenario DCR associations/role assignment/DCRs, the pipeline and certificate extensions, the scenario-owned Arc connected-cluster resource and its locally installed K3s service. Do not remove the shared lab VM, AMA, workspace, or another owner's Arc resources. Stop any port-forward; never expose the unencrypted Syslog receiver on a public endpoint.
+
+Assess the existing host without changes:
+
+```powershell
+pwsh -NoProfile -File scripts\setup-telemetry-ingestion-edge.ps1 -HostName <linux-vm-dns> -SshUser <ssh-user>
+# -OptIn acknowledges a planning decision only; even with it, the script never installs anything.
+```
+
+The read-only SSH probe checks Linux/architecture/systemd, >=4 available CPUs, >=8 GiB *available* memory, >=20 GiB root free, DNS/HTTPS, listener ports, AMA and existing K3s/Arc tools. It cannot certify Azure Arc/K3s compatibility, actual DCE egress, storage IOPS, isolation or free capacity under workload; a failed check halts planning. Before a separately approved installation, confirm supported distro/version, K3s container networking/cgroup support, cert-manager, Arc Kubernetes regional support, disk and reserved resources, firewall/egress, collector/pipeline sizing, AMA health and rollback. `azcmagent` is an informational probe for Arc **server** and is **not** a substitute for Arc-enabled Kubernetes. Do not enroll the VM/cluster, install cert-manager/K3s, change network rules or stop AMA on the basis of this script.
+
+`syslog-pipeline.arm.json` is a **preview configuration asset**: API `2025-05-11`, one `PipelineSettings` DCR, one separate pipeline dataflow DCR, two extension-scoped DCR associations, and a `Monitoring Metrics Publisher` role assignment. The scripted opt-in installs K3s, connects the cluster to Arc and uses `arc-pipeline-extensions.bicep` to add managed `microsoft.certmanagement` and `microsoft.monitor.pipeline` extensions (the pipeline is pinned to `0.1.7`, preview train, automatic minor upgrades disabled). It then deploys the Syslog ARM template. Workspace and DCR region must match and be pipeline-supported; a supported host/region and live preview contract have **not** been proven here. The template cannot be reused on an AMA DCR and is not the portal's legacy PipelineGroup model. Review the `what-if` for scenario-owned names and Azure role assignments before running any opt-in deployment.
+
+**Actual edge policy** is the named `edgeDrop` transformation on `dataSources.syslog.fixtureSyslog`: `header.SyslogFullyFormed` normalizes RFC5424, then `transform.KQL` extracts `EdgeDrop=(true|false)` from `SyslogMessage`, keeps rows where the extracted flag `!= "true"` and removes its temporary column *inside the pipeline before cloud forwarding*. The opt-in `bypassFilter=true` ARM parameter changes only the standard Syslog route to `source`; use a **separate RunId**, verify propagation, then restore `bypassFilter=false`. The sender marks exactly Debug IDs `event-061`–`event-100` as `EdgeDrop=true`; IDs 001–060 are retained. The RFC5424 header carries the timestamp, and the message includes run/event/sample/severity/workload, with `SyntheticUser` masked and `DebugField` omitted **at the sender**; this is not a pipeline redaction demonstration.
+
+The Syslog-to-`Syslog` route remains independent. When **both** `enableStageTelemetryIngestion` and `enableStageAzureMonitorPipeline` are true, an **experimental structured-Syslog combined route** additionally attaches two dataflow DCRs to the same private listener. The edge transform drops 40 marked Debug events; cloud DCR transforms project the remaining fields into the Stage 90 Operational Analytics table (50 Error/Warning IDs) and Diagnostic Analytics table (60 retained IDs). Each DCR has its own Arc association and publisher grant. The deploy script verifies both existing table schemas/plans before attaching these routes, but offline ARM acceptance cannot prove pipeline/cloud transform composition or that the two custom tables receive any records. This is not native OTLP-to-custom-table fan-out or the 50/10 Auxiliary combined variant; never claim it until exact cloud IDs have been measured.
+
+The K3s API binds to the VM's private IPv4 address so Arc pods can reach it; do not allow public ingress to Kubernetes port 6443. The receiver listens within the Kubernetes pod on 6514/TCP, without TLS. **Never expose this port via public LoadBalancer/NodePort or a remote client.** For a local-only controlled test on the host, use a ClusterIP service and `kubectl port-forward --address 127.0.0.1 -n <extension-namespace> svc/<pipeline-service> 6514:6514` after inspecting the service selector `app.kubernetes.io/instance=<extension-name>,app.kubernetes.io/name=pipeline`. Limit access via namespace network policy; if remote clients are later required, replace with [TLS/mTLS](https://learn.microsoft.com/azure/azure-monitor/data-collection/pipeline-tls) and approved gateway/network isolation before exposure. TCP transport alone **does not encrypt**.
+
+```powershell
+# Offline: no Azure/SSH/network, decodes the emitted protobuf and checks 40 drop markers.
+pwsh -NoProfile -File scripts\tests\telemetry-otlp-edge.Tests.ps1
+# Only after explicit Arc extension/DCR approval, listener isolation and port-forward:
+pwsh -NoProfile -File scripts\send-telemetry-otlp.ps1 -Mode Syslog -Profile Filtered -RunId ([guid]::NewGuid())
+# With both stages enabled and after recording the printed RunId, independently verify
+# exactly 50 Operational and 60 Diagnostic IDs:
+pwsh -NoProfile -File scripts\test-telemetry-ingestion.ps1 -SubscriptionId <sub> -ResourceGroup <rg> -Profile EdgeFanout -RunId <printed-run-guid>
+```
+
+The sender is bounded to 1–100 records; it emits UTC ISO 8601 timestamps with **six fractional digits** in the RFC5424 header. Each request prints generated count, marker count and **expected** retained count (not measured edge/cloud counts). For bypass use `-Profile Bypass` only when the deployed DCR's `bypassFilter=true`; the sender cannot inspect or change the DCR. For a higher-volume trial issue at most ten **separate** 100-record runs with fresh RunIds and explicit change approval; never start an infinite sender. Use new RunIds after every DCR profile change to prevent cross-profile contamination.
+
+Evidence: record generated/marked IDs from the sender (100/40); inspect running pipeline pods and the settings/dataflow DCR associations, role assignment and config delivery **independently**. Obtain *actual* receiver/filter/export counters from the deployed extension's supported monitoring endpoint/logs before claiming edge counts (aggregate counters do **not** prove individual IDs); identify `100 received, 40 filtered, 60 forwarded` for the isolated RunId or mark that part unverified if per-run counters are unavailable. Query cloud `Syslog` for the RunId and enumerate all IDs, not just totals:
+
+```kusto
+Syslog
+| where TimeGenerated > ago(2h)
+| where ProcessName == "telemetry-ingestion"
+| where SyslogMessage contains "RunId=<printed-run-id>"
+| extend EventId = extract(@"EventId=(event-[0-9]{3})", 1, SyslogMessage)
+| summarize Rows=count(), DistinctIds=dcount(EventId), Ids=make_set(EventId)
+```
+
+Filtered should have exactly IDs 001–060; bypass should have 001–100. Do not infer cloud success from local TCP writes, association existence, heartbeat, or accepted cloud request. To troubleshoot, check in order: VM capacity/AMA unchanged -> Arc/cert-manager/extension readiness -> settings and dataflow association + role -> private listener -> edge transform counters -> outbound network/DCE -> workspace query. A zero-row cloud query is a fault, not a successful filter test. Stop the local port-forward and restore the filtered DCR after experiments. Leave already existing VM/AMA/Arc infrastructure intact during cleanup.
+
+Sources checked 2026-11-23: [Arc DCR-based pipeline preview and associations](https://learn.microsoft.com/azure/azure-monitor/data-collection/pipeline-configure), [pinned extension and OTel/Syslog ARM examples](https://learn.microsoft.com/azure/azure-monitor/data-collection/pipeline-configure-cli), [edge KQL transformation with `header.SyslogFullyFormed`](https://learn.microsoft.com/azure/azure-monitor/data-collection/pipeline-transformations). **Offline tests do not validate the preview service's live schema or prove ingestion**; run ARM what-if and a controlled live probe only after separately approved provisioning.

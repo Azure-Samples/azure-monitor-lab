@@ -331,6 +331,33 @@
             "toolTip": "Adds a billable B1 Café app, private storage/networking, monitoring and two health models. Cloud Shell completion publishes the app and connects the Control Center. Off by default."
           },
           {
+            "name": "enableTelemetryIngestion",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable JSON telemetry ingestion (optional)",
+            "defaultValue": false,
+            "toolTip": "Creates isolated DCE, baseline/transformed DCRs and two Analytics tables. No data is sent automatically. Off by default."
+          },
+          {
+            "name": "enableTelemetryIngestionAuxiliary",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Add Auxiliary tiered JSON profile",
+            "defaultValue": false,
+            "visible": "[equals(steps('stages').enableTelemetryIngestion, true)]",
+            "toolTip": "Adds separate Auxiliary verbose table and tiered DCR. Verify table-plan support in the selected region; this does not change existing tables or DCRs."
+          },
+          {
+            "name": "telemetryIngestionSenderPrincipalId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Optional telemetry sender identity object ID",
+            "defaultValue": "",
+            "visible": "[equals(steps('stages').enableTelemetryIngestion, true)]",
+            "toolTip": "Managed identity or service principal object GUID. Grants Monitoring Metrics Publisher only on scenario DCRs. Leave blank for manual DCR-scoped assignment.",
+            "constraints": {
+              "regex": "^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "Use a service principal object GUID or leave blank."
+            }
+          },
+          {
             "name": "enableFabric",
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable Fabric stage (Real-Time Intelligence)",
@@ -580,6 +607,9 @@
       "enableAi": "[steps('stages').enableAi]",
       "enableFabric": "[steps('stages').enableFabric]",
       "enableHealthModelDemo": "[steps('stages').enableHealthModelDemo]",
+      "enableTelemetryIngestion": "[steps('stages').enableTelemetryIngestion]",
+      "enableTelemetryIngestionAuxiliary": "[and(steps('stages').enableTelemetryIngestion, steps('stages').enableTelemetryIngestionAuxiliary)]",
+      "telemetryIngestionSenderPrincipalId": "[steps('stages').telemetryIngestionSenderPrincipalId]",
       "fabricAdminEmail": "[steps('stages').fabricAdminEmail]",
       "enableSreAgent": "[steps('stages').enableSreAgent]",
       "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",

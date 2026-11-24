@@ -22,6 +22,24 @@ param namePrefix string = 'amlab'
 @description('Deploy the optional Cafe workload and Cafe/lab user-flow health models. Does not change the baseline health model.')
 param enableHealthModelDemo bool = false
 
+@description('Deploy isolated JSON Logs Ingestion API scenario. Off by default.')
+param enableTelemetryIngestion bool = false
+
+@description('Add a separate Auxiliary table and tiered DCR. Requires enableTelemetryIngestion.')
+param enableTelemetryIngestionAuxiliary bool = false
+
+@description('Experimental native OTLP logs direct ingestion DCR. Requires enableTelemetryIngestion; no Collector is deployed.')
+param enableTelemetryIngestionNativeOtlp bool = false
+
+@description('Optional managed identity/service principal object ID granted Monitoring Metrics Publisher on scenario DCRs. Empty: no grants.')
+param telemetryIngestionSenderPrincipalId string = ''
+
+var validatedTelemetryConfig = enableTelemetryIngestionNativeOtlp && (!enableTelemetryIngestion || !deployLinuxVm)
+  ? fail('enableTelemetryIngestionNativeOtlp requires enableTelemetryIngestion=true and deployLinuxVm=true for a manually installed Collector.')
+  : enableTelemetryIngestionAuxiliary && !enableTelemetryIngestion
+    ? fail('enableTelemetryIngestionAuxiliary requires enableTelemetryIngestion=true.')
+    : enableTelemetryIngestion
+
 @description('Cafe workload region. Keep the existing standalone workload region when adopting it.')
 param healthModelDemoCafeLocation string = 'francecentral'
 
@@ -423,6 +441,20 @@ module workspaceTransforms 'modules/dcr-workspace-transforms.bicep' = {
     location: location
     centralLawId: lawCentral.outputs.id
     centralLawName: lawCentral.outputs.name
+    tags: commonTags
+  }
+}
+
+module telemetryIngestion 'modules/telemetry-ingestion.bicep' = if (validatedTelemetryConfig) {
+  name: 'telemetry-ingestion'
+  params: {
+    namePrefix: namePrefix
+    location: location
+    centralLawId: lawCentral.outputs.id
+    centralLawName: lawCentral.outputs.name
+    enableAuxiliary: enableTelemetryIngestionAuxiliary
+    enableNativeOtlp: enableTelemetryIngestionNativeOtlp
+    senderPrincipalId: telemetryIngestionSenderPrincipalId
     tags: commonTags
   }
 }

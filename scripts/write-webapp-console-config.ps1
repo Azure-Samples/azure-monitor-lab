@@ -50,6 +50,16 @@ if ($components.Count -gt 0 -or $appName) {
   $appInsights = $components | Where-Object name -ceq $componentName
 }
 $workspaces = @($resources | Where-Object { $_.type -ieq 'Microsoft.OperationalInsights/workspaces' })
+$telemetryEndpoints = @($resources | Where-Object { $_.type -ieq 'Microsoft.Insights/dataCollectionEndpoints' -and $_.name -cmatch '^dce-([a-z0-9]{3,8})-telemetry-ingestion$' })
+$telemetryPrefix = ''
+if ($telemetryEndpoints.Count -eq 1) {
+  $candidate = $telemetryEndpoints[0].name -creplace '^dce-([a-z0-9]{3,8})-telemetry-ingestion$', '$1'
+  $rules = @($resources | Where-Object { $_.type -ieq 'Microsoft.Insights/dataCollectionRules' })
+  $expectedRules = @('', '-baseline') | ForEach-Object { "dcr-$candidate-telemetry-ingestion$_" }
+  if (@($expectedRules | Where-Object { $name = $_; @($rules | Where-Object name -ceq $name).Count -eq 1 }).Count -eq 2) {
+    $telemetryPrefix = $candidate
+  }
+}
 $workspace = if ($CentralLawName) {
   $workspaces | Where-Object { $_.name -eq $CentralLawName } | Select-Object -First 1
 } else {
@@ -158,7 +168,8 @@ if ($CustomerWebAppName -and @($apps | Where-Object name -like 'func-*-orders').
 }
 @{ LabConsole = @{
   Links = $links; ResourceGroup = $ResourceGroup; AppService = $appName
-  Operations = @{ Enabled = $false; SubscriptionId = $SubscriptionId; TenantId = $TenantId; CustomerWorkerName = $customerWorkerName; CustomerDependenciesEnabled = $false }
+  Operations = @{ Enabled = $false; SubscriptionId = $SubscriptionId; TenantId = $TenantId; CustomerWorkerName = $customerWorkerName; CustomerDependenciesEnabled = $false
+    TelemetryIngestionEnabled = $false; TelemetryIngestionTieredEnabled = $false; TelemetryIngestionNamePrefix = $telemetryPrefix }
   Health = @{
     Enabled = [bool]$EnableInfrastructureHealth; SubscriptionId = $SubscriptionId; TenantId = $TenantId
     CentralWorkspaceResourceId = $(if ($workspace) { $workspace.id } else { $null })

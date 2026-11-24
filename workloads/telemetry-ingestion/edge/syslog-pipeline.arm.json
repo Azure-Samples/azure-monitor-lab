@@ -1,0 +1,304 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Opt-in Arc Kubernetes pipeline preview, RFC5424 over a private kubectl port-forward. Optional default-off combined Syslog-compatible Stage90 custom-table flows share the listener and retain the independent Syslog route; live ingestion is unverified."
+  },
+  "parameters": {
+    "connectedClusterName": { "type": "string" },
+    "extensionName": { "type": "string" },
+    "workspaceResourceId": { "type": "string" },
+    "location": { "type": "string" },
+    "namePrefix": { "type": "string", "defaultValue": "telemetry-edge" },
+    "bypassFilter": { "type": "bool", "defaultValue": false },
+    "enableCombined": { "type": "bool", "defaultValue": false }
+  },
+  "variables": {
+    "settingsName": "[format('{0}-settings', parameters('namePrefix'))]",
+    "flowName": "[format('{0}-syslog', parameters('namePrefix'))]",
+    "settingsId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('settingsName'))]",
+    "flowId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('flowName'))]",
+    "operationalName": "[format('{0}-operational', parameters('namePrefix'))]",
+    "diagnosticName": "[format('{0}-diagnostic', parameters('namePrefix'))]",
+    "operationalId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('operationalName'))]",
+    "diagnosticId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('diagnosticName'))]",
+    "clusterId": "[resourceId('Microsoft.Kubernetes/connectedClusters', parameters('connectedClusterName'))]",
+    "extensionId": "[format('{0}/providers/Microsoft.KubernetesConfiguration/extensions/{1}', variables('clusterId'), parameters('extensionName'))]",
+    "roleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2025-05-11",
+      "name": "[variables('settingsName')]",
+      "location": "[parameters('location')]",
+      "kind": "PipelineSettings",
+      "properties": {
+        "pipelineSettings": {
+          "endpoints": [
+            {
+              "name": "syslog-tcp-6514",
+              "type": "syslog",
+              "networkingConfig": {
+                "endpoint": "0.0.0.0:6514",
+                "transportProtocol": "tcp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2025-05-11",
+      "name": "[variables('flowName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": ["[variables('settingsId')]"],
+      "properties": {
+        "description": "Filtering executes in the edge pipeline, before cloud upload; only the scenario-owned Syslog receiver is affected.",
+        "references": {
+          "pipelineSettingsEndpointRouting": [
+            {
+              "name": "syslog-tcp-6514",
+              "pipelineSettingsResourceId": "[variables('settingsId')]"
+            }
+          ]
+        },
+        "dataSources": {
+          "syslog": [
+            {
+              "name": "fixtureSyslog",
+              "mode": "pipeline",
+              "allowedFormats": ["syslogRfc5424"],
+              "allowSkipPriHeader": false,
+              "endpointRouting": ["syslog-tcp-6514"],
+              "streams": ["Microsoft-Syslog-FullyFormed"],
+              "transform": "edgeDrop"
+            }
+          ]
+        },
+        "transformations": [
+          {
+            "name": "edgeDrop",
+            "headerProcessor": { "processor": "header.SyslogFullyFormed" },
+            "processors": [
+              {
+                "processor": "transform.KQL",
+                "configuration": {
+                  "expression": "[if(parameters('bypassFilter'), 'source', 'source | extend EdgeDropFlag = extract(\"EdgeDrop=(true|false)\", 1, SyslogMessage) | where EdgeDropFlag != \"true\" | project-away EdgeDropFlag')]"
+                }
+              }
+            ]
+          }
+        ],
+        "destinations": {
+          "logAnalytics": [
+            { "name": "scenarioWorkspace", "workspaceResourceId": "[parameters('workspaceResourceId')]" }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": ["Microsoft-Syslog-FullyFormed"],
+            "destinations": ["scenarioWorkspace"]
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2025-05-11",
+      "scope": "[format('Microsoft.Kubernetes/connectedClusters/{0}', parameters('connectedClusterName'))]",
+      "name": "[format('{0}-settings-assoc', parameters('namePrefix'))]",
+      "dependsOn": ["[variables('settingsId')]"],
+      "properties": {
+        "dataCollectionRuleId": "[variables('settingsId')]",
+        "scopeToResourceId": "[variables('extensionId')]"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2025-05-11",
+      "scope": "[format('Microsoft.Kubernetes/connectedClusters/{0}', parameters('connectedClusterName'))]",
+      "name": "[format('{0}-flow-assoc', parameters('namePrefix'))]",
+      "dependsOn": ["[variables('flowId')]"],
+      "properties": {
+        "dataCollectionRuleId": "[variables('flowId')]",
+        "scopeToResourceId": "[variables('extensionId')]"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(variables('flowId'), variables('extensionId'), variables('roleId'))]",
+      "scope": "[variables('flowId')]",
+      "dependsOn": ["[variables('flowId')]"],
+      "properties": {
+        "roleDefinitionId": "[variables('roleId')]",
+        "principalId": "[reference(variables('extensionId'), '2023-05-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "condition": "[parameters('enableCombined')]",
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2025-05-11",
+      "name": "[variables('operationalName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": ["[variables('settingsId')]"],
+      "properties": {
+        "description": "Experimental RFC5424 fixture to existing Stage90 Operational Analytics table; independent of Syslog route.",
+        "references": {
+          "pipelineSettingsEndpointRouting": [
+            { "name": "syslog-tcp-6514", "pipelineSettingsResourceId": "[variables('settingsId')]" }
+          ]
+        },
+        "dataSources": {
+          "syslog": [
+            {
+              "name": "fixtureOperational",
+              "mode": "pipeline",
+              "allowedFormats": ["syslogRfc5424"],
+              "allowSkipPriHeader": false,
+              "endpointRouting": ["syslog-tcp-6514"],
+              "streams": ["Microsoft-Syslog-FullyFormed"],
+              "transform": "edgeDrop"
+            }
+          ]
+        },
+        "transformations": [
+          {
+            "name": "edgeDrop",
+            "headerProcessor": { "processor": "header.SyslogFullyFormed" },
+            "processors": [
+              {
+                "processor": "transform.KQL",
+                "configuration": {
+                  "expression": "source | extend EdgeDropFlag = extract(\"EdgeDrop=(true|false)\", 1, SyslogMessage) | where EdgeDropFlag != \"true\" | project-away EdgeDropFlag"
+                }
+              }
+            ]
+          }
+        ],
+        "destinations": {
+          "logAnalytics": [
+            { "name": "scenarioWorkspace", "workspaceResourceId": "[parameters('workspaceResourceId')]" }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": ["Microsoft-Syslog-FullyFormed"],
+            "destinations": ["scenarioWorkspace"],
+            "transformKql": "source | extend EdgeDropFlag = extract(\"EdgeDrop=(true|false)\", 1, SyslogMessage), EventId = extract(\"EventId=(event-[0-9]{3})\", 1, SyslogMessage), Severity = extract(\"Severity=(Error|Warning|Debug)\", 1, SyslogMessage) | where EdgeDropFlag == \"false\" and Severity in (\"Error\", \"Warning\") and toint(extract(\"event-([0-9]{3})\", 1, EventId)) >= 1 and toint(extract(\"event-([0-9]{3})\", 1, EventId)) <= 50 | project TimeGenerated, RunId = extract(\"RunId=([0-9a-fA-F-]{36})\", 1, SyslogMessage), EventId, SampleSetId = extract(\"SampleSetId=([^ ]+)\", 1, SyslogMessage), Severity, NormalizedSeverity = case(Severity == \"Error\", \"error\", Severity == \"Warning\", \"warning\", \"debug\"), Workload = extract(\"Workload=([^ ]+)\", 1, SyslogMessage), Message = extract(\"Message=(Synthetic (Error|Warning|Debug) event [0-9]+)$\", 1, SyslogMessage), SyntheticUser = \"[REDACTED]\"",
+            "outputStream": "Custom-TelemetryIngestionOperational_CL"
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[parameters('enableCombined')]",
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2025-05-11",
+      "name": "[variables('diagnosticName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": ["[variables('settingsId')]"],
+      "properties": {
+        "description": "Experimental RFC5424 fixture to existing Stage90 Diagnostic Analytics table; independent of Syslog route.",
+        "references": {
+          "pipelineSettingsEndpointRouting": [
+            { "name": "syslog-tcp-6514", "pipelineSettingsResourceId": "[variables('settingsId')]" }
+          ]
+        },
+        "dataSources": {
+          "syslog": [
+            {
+              "name": "fixtureDiagnostic",
+              "mode": "pipeline",
+              "allowedFormats": ["syslogRfc5424"],
+              "allowSkipPriHeader": false,
+              "endpointRouting": ["syslog-tcp-6514"],
+              "streams": ["Microsoft-Syslog-FullyFormed"],
+              "transform": "edgeDrop"
+            }
+          ]
+        },
+        "transformations": [
+          {
+            "name": "edgeDrop",
+            "headerProcessor": { "processor": "header.SyslogFullyFormed" },
+            "processors": [
+              {
+                "processor": "transform.KQL",
+                "configuration": {
+                  "expression": "source | extend EdgeDropFlag = extract(\"EdgeDrop=(true|false)\", 1, SyslogMessage) | where EdgeDropFlag == \"false\" | project-away EdgeDropFlag"
+                }
+              }
+            ]
+          }
+        ],
+        "destinations": {
+          "logAnalytics": [
+            { "name": "scenarioWorkspace", "workspaceResourceId": "[parameters('workspaceResourceId')]" }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": ["Microsoft-Syslog-FullyFormed"],
+            "destinations": ["scenarioWorkspace"],
+            "transformKql": "source | extend EdgeDropFlag = extract(\"EdgeDrop=(true|false)\", 1, SyslogMessage), EventId = extract(\"EventId=(event-[0-9]{3})\", 1, SyslogMessage), Severity = extract(\"Severity=(Error|Warning|Debug)\", 1, SyslogMessage) | where EdgeDropFlag == \"false\" and toint(extract(\"event-([0-9]{3})\", 1, EventId)) >= 1 and toint(extract(\"event-([0-9]{3})\", 1, EventId)) <= 60 | project TimeGenerated, RunId = extract(\"RunId=([0-9a-fA-F-]{36})\", 1, SyslogMessage), EventId, SampleSetId = extract(\"SampleSetId=([^ ]+)\", 1, SyslogMessage), Severity, NormalizedSeverity = case(Severity == \"Error\", \"error\", Severity == \"Warning\", \"warning\", \"debug\"), Workload = extract(\"Workload=([^ ]+)\", 1, SyslogMessage), Message = extract(\"Message=(Synthetic (Error|Warning|Debug) event [0-9]+)$\", 1, SyslogMessage), SyntheticUser = \"[REDACTED]\"",
+            "outputStream": "Custom-TelemetryIngestionDiagnostic_CL"
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[parameters('enableCombined')]",
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2025-05-11",
+      "scope": "[format('Microsoft.Kubernetes/connectedClusters/{0}', parameters('connectedClusterName'))]",
+      "name": "[format('{0}-operational-assoc', parameters('namePrefix'))]",
+      "dependsOn": ["[variables('operationalId')]"],
+      "properties": {
+        "dataCollectionRuleId": "[variables('operationalId')]",
+        "scopeToResourceId": "[variables('extensionId')]"
+      }
+    },
+    {
+      "condition": "[parameters('enableCombined')]",
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2025-05-11",
+      "scope": "[format('Microsoft.Kubernetes/connectedClusters/{0}', parameters('connectedClusterName'))]",
+      "name": "[format('{0}-diagnostic-assoc', parameters('namePrefix'))]",
+      "dependsOn": ["[variables('diagnosticId')]"],
+      "properties": {
+        "dataCollectionRuleId": "[variables('diagnosticId')]",
+        "scopeToResourceId": "[variables('extensionId')]"
+      }
+    },
+    {
+      "condition": "[parameters('enableCombined')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(variables('operationalId'), variables('extensionId'), variables('roleId'))]",
+      "scope": "[variables('operationalId')]",
+      "dependsOn": ["[variables('operationalId')]"],
+      "properties": {
+        "roleDefinitionId": "[variables('roleId')]",
+        "principalId": "[reference(variables('extensionId'), '2023-05-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "condition": "[parameters('enableCombined')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(variables('diagnosticId'), variables('extensionId'), variables('roleId'))]",
+      "scope": "[variables('diagnosticId')]",
+      "dependsOn": ["[variables('diagnosticId')]"],
+      "properties": {
+        "roleDefinitionId": "[variables('roleId')]",
+        "principalId": "[reference(variables('extensionId'), '2023-05-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    }
+  ]
+}

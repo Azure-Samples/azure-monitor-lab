@@ -114,12 +114,49 @@ if ($null -ne $stages.PSObject.Properties['enableStageHealthModelDemo'] -and $st
   throw 'stageToggles.enableStageHealthModelDemo must be a JSON Boolean.'
 }
 $enableStageHealthModelDemo = $stages.enableStageHealthModelDemo -eq $true
+if ($null -ne $stages.PSObject.Properties['enableStageTelemetryIngestion'] -and $stages.enableStageTelemetryIngestion -isnot [bool]) {
+  throw 'stageToggles.enableStageTelemetryIngestion must be a JSON Boolean.'
+}
+$enableStageTelemetryIngestion = $stages.enableStageTelemetryIngestion -eq $true
+if ($null -ne $stages.PSObject.Properties['enableStageAzureMonitorPipeline'] -and $stages.enableStageAzureMonitorPipeline -isnot [bool]) {
+  throw 'stageToggles.enableStageAzureMonitorPipeline must be a JSON Boolean.'
+}
+$enableStageAzureMonitorPipeline = $stages.enableStageAzureMonitorPipeline -eq $true
+if ($enableStageAzureMonitorPipeline -and
+    ($stages.enableStageB -isnot [bool] -or $stages.enableStageB -ne $true -or $cfg.deployLinuxVm -ne $true)) {
+  throw 'Azure Monitor pipeline requires stageToggles.enableStageB=true and deployLinuxVm=true.'
+}
+if ($null -ne $cfg.PSObject.Properties['enableAuxiliary'] -and $cfg.enableAuxiliary -isnot [bool]) {
+  throw 'telemetryIngestion.enableAuxiliary must be a JSON Boolean.'
+}
+$enableTelemetryIngestionAuxiliary = $cfg.enableAuxiliary -eq $true
+if ($null -ne $cfg.PSObject.Properties['enableNativeOtlp'] -and $cfg.enableNativeOtlp -isnot [bool]) {
+  throw 'telemetryIngestion.enableNativeOtlp must be a JSON Boolean.'
+}
+$enableNativeOtlp = $cfg.enableNativeOtlp -eq $true
+if ($enableNativeOtlp -and (-not $enableStageTelemetryIngestion -or
+    $stages.enableStageA -ne $true -or $stages.enableStageB -ne $true -or $cfg.deployLinuxVm -ne $true)) {
+  throw 'telemetryIngestion.enableNativeOtlp requires stageToggles.enableStageTelemetryIngestion, enableStageA, enableStageB and deployLinuxVm=true. The Linux VM is needed for a separately installed Collector even when enableStageAzureMonitorPipeline=false.'
+}
+$telemetrySenderPrincipalId = Coalesce $cfg.telemetryIngestionSenderPrincipalId ''
+if ($telemetrySenderPrincipalId -ne '') {
+  $senderGuid = [guid]::Empty
+  if (-not [guid]::TryParseExact($telemetrySenderPrincipalId, 'D', [ref]$senderGuid) -or $senderGuid -eq [guid]::Empty) {
+    throw 'telemetryIngestionSenderPrincipalId must be empty or a nonzero managed identity/service principal object GUID.'
+  }
+}
+if ($enableTelemetryIngestionAuxiliary -and -not $enableStageTelemetryIngestion) {
+  throw 'telemetryIngestion.enableAuxiliary requires stageToggles.enableStageTelemetryIngestion=true.'
+}
 if ($enableStageHealthModelDemo -and
     ($stages.enableStageA -isnot [bool] -or $stages.enableStageA -ne $true -or
      $stages.enableStageB -isnot [bool] -or $stages.enableStageB -ne $true -or
      $stages.enableStageC -isnot [bool] -or $stages.enableStageC -ne $true -or
      $stages.enableStageE -isnot [bool] -or $stages.enableStageE -ne $true)) {
   throw 'Health Model Demo requires stageToggles.enableStageA, enableStageB, enableStageC and enableStageE=true (including core availability tests).'
+}
+if ($enableStageTelemetryIngestion -and ($stages.enableStageA -isnot [bool] -or $stages.enableStageA -ne $true)) {
+  throw 'stageToggles.enableStageTelemetryIngestion requires stageToggles.enableStageA=true.'
 }
 if ($enableStageFabric -and [string]::IsNullOrWhiteSpace($fabricAdminEmail)) {
   Write-Error 'lab.config.json has enableStageFabric=true but fabricAdminEmail is empty. Set it to a Microsoft Entra user UPN in the deployment tenant; do not use an external alert alias.'
@@ -232,6 +269,10 @@ $bicepParams = [ordered]@{
     'enableAi'        = @{ value = $enableStageAI }
     'enableFabric'    = @{ value = $enableStageFabric }
     'enableHealthModelDemo' = @{ value = $enableStageHealthModelDemo }
+    'enableTelemetryIngestion' = @{ value = $enableStageTelemetryIngestion }
+    'enableTelemetryIngestionAuxiliary' = @{ value = $enableTelemetryIngestionAuxiliary }
+    'enableTelemetryIngestionNativeOtlp' = @{ value = $enableNativeOtlp }
+    'telemetryIngestionSenderPrincipalId' = @{ value = $telemetrySenderPrincipalId }
     'fabricAdminEmail'= @{ value = $fabricAdminEmail }
     'enableSreAgent'  = @{ value = $enableStageSreAgent }
     'enableSlotFailureScenario' = @{ value = $enableSlotFailureScenario }
@@ -300,6 +341,10 @@ $tfLines = @(
   "enable_stage_ai = $($enableStageAI.ToString().ToLower())"
   "enable_stage_fabric = $($enableStageFabric.ToString().ToLower())"
   "enable_stage_health_model_demo = $($enableStageHealthModelDemo.ToString().ToLower())"
+  "enable_stage_telemetry_ingestion = $($enableStageTelemetryIngestion.ToString().ToLower())"
+  "enable_telemetry_ingestion_auxiliary = $($enableTelemetryIngestionAuxiliary.ToString().ToLower())"
+  "enable_telemetry_ingestion_native_otlp = $($enableNativeOtlp.ToString().ToLower())"
+  "telemetry_ingestion_sender_principal_id = `"$(Esc $telemetrySenderPrincipalId)`""
   "fabric_admin_email = `"$(Esc $fabricAdminEmail)`""
   "enable_stage_sre_agent = $($enableStageSreAgent.ToString().ToLower())"
   "enable_slot_failure_scenario = $($enableSlotFailureScenario.ToString().ToLower())"

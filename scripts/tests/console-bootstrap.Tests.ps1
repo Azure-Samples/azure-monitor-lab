@@ -120,7 +120,7 @@ if ($bootstrapScript -notmatch "'scripts/slot-health\.ps1'" -or
   throw 'The runner build must package the shared slot health verifier.'
 }
 foreach ($directory in @('workloads/k8s', 'workloads/operations', 'workloads/webapp/scripts', 'infra/modules')) { $null = New-Item -ItemType Directory -Path (Join-Path $root $directory) -Force }
-foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/webapp/scripts/usage-traffic-pacing.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
+foreach ($file in @('scripts/invoke-lab-operation.ps1', 'scripts/start-the-lab.ps1', 'scripts/stop-the-lab.ps1', 'scripts/break-the-lab.ps1', 'scripts/restore-the-lab.ps1', 'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-telemetry-ingestion.ps1', 'scripts/test-telemetry-ingestion.ps1', 'scripts/telemetry-ingestion-helpers.ps1', 'scripts/send-release-annotation.ps1', 'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1', 'scripts/generate-usage-traffic.ps1', 'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json', 'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/webapp/scripts/usage-traffic-pacing.mjs', 'workloads/operations/Dockerfile', 'infra/modules/lab-console-job.bicep')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $root $file)
 }
 $runnerDockerfile = Get-Content -LiteralPath (Join-Path $root 'workloads/operations/Dockerfile') -Raw
@@ -160,7 +160,7 @@ $fixture = @{
   Subscription = [guid]::NewGuid().ToString(); Tenant = [guid]::NewGuid().ToString(); Operator = [guid]::NewGuid().ToString()
   AppIdentity = [guid]::NewGuid().ToString(); RunnerIdentity = [guid]::NewGuid().ToString(); Client = [guid]::NewGuid().ToString()
   Settings = @{ Existing = 'preserve-me'; LabConsole__SlotScenarioEnabled = 'true' }; Writes = @(); Calls = @(); Roles = @(); Definitions = @{}; AuthCalls = 0; FailAuth = $false; FailGraphAuth = $false; FailBuild = $false; BadTenant = $false; MissingLogs = $false; LogsDeployments = 0
-  WithAi = $false; FailAi = $false; AiCalls = 0
+  WithAi = $false; WithTelemetry = $false; FailAi = $false; AiCalls = 0
   ExtraAppInsights = $false; ReverseInventory = $false; MissingAppInsights = $false; DuplicateAppInsights = $false
   DeletePreview = $false; LastPreview = ''; Deployments = 0
   ExistingTags = $true; FailTagRead = $false
@@ -170,7 +170,7 @@ $fixture = @{
 }
 $scope = "/subscriptions/$($fixture.Subscription)/resourceGroups/test-rg"
 $fixture.ResourceBase = $scope
-$workspace = "$scope/providers/Microsoft.OperationalInsights/workspaces/central"
+$workspace = "$scope/providers/Microsoft.OperationalInsights/workspaces/law-amlab-central-test"
 $jobId = "$scope/providers/Microsoft.App/jobs/job-test"
 $path = Join-Path $root 'lab-console.json'
 function Reset-Configuration {
@@ -180,7 +180,7 @@ function Reset-Configuration {
   $fixture.SleepCalls = 0
   $fixture.AcrBuilds = 0
   $fixture.JobDeployments = 0
-  @{ LabConsole = @{ ResourceGroup = 'test-rg'; Health = @{ Enabled = $false; SubscriptionId = $fixture.Subscription; CentralWorkspaceResourceId = $workspace }; Foundry = @{}; Sre = @{} } } |
+  @{ LabConsole = @{ ResourceGroup = 'test-rg'; Health = @{ Enabled = $false; SubscriptionId = $fixture.Subscription; CentralWorkspaceResourceId = $workspace }; Operations = @{ TelemetryIngestionNamePrefix = $(if ($fixture.WithTelemetry) { 'amlab' } else { '' }) }; Foundry = @{}; Sre = @{} } } |
     ConvertTo-Json -Depth 8 | Set-Content $path
 }
 function Start-Sleep {
@@ -256,6 +256,13 @@ function az {
         $resources += @{ type = 'Microsoft.ContainerRegistry/registries'; name = 'acrlabtest'; id = "$scope/providers/Microsoft.ContainerRegistry/registries/acrlabtest"; tags = @{ custom = 'keep-me'; owner = 'old-owner' } }
       }
       if (-not $fixture.MissingLogs) { $resources += @{ type = 'Microsoft.Insights/dataCollectionRules'; name = 'dcr-customlogs'; id = "$scope/providers/Microsoft.Insights/dataCollectionRules/dcr-customlogs" } }
+      if ($fixture.WithTelemetry) {
+        $resources += @{ type = 'Microsoft.Insights/dataCollectionEndpoints'; name = 'dce-amlab-telemetry-ingestion'; id = "$scope/providers/Microsoft.Insights/dataCollectionEndpoints/dce-amlab-telemetry-ingestion" }
+        foreach ($suffix in @('', '-baseline')) {
+          $name = "dcr-amlab-telemetry-ingestion$suffix"
+          $resources += @{ type = 'Microsoft.Insights/dataCollectionRules'; name = $name; id = "$scope/providers/Microsoft.Insights/dataCollectionRules/$name" }
+        }
+      }
       if ($fixture.WithAi) {
         $resources += @{ type = 'Microsoft.CognitiveServices/accounts/projects'; id = "$scope/providers/Microsoft.CognitiveServices/accounts/testfoundry/projects/amlab-ai-proj" }
         $core = @{ type = 'Microsoft.Insights/components'; name = 'appi-test'; id = "$scope/providers/Microsoft.Insights/components/appi-test" }
@@ -277,7 +284,7 @@ function az {
       if ($args -notcontains '--no-logs') { throw 'Build output must not dump protected data.' }
       $build = $args[[Array]::IndexOf($args, '--no-logs') + 1]
       if (Test-Path (Join-Path $build 'lab-console.json')) { throw 'Build context includes local configuration.' }
-      if (@(Get-ChildItem $build -File -Recurse).Count -ne 24 -or
+      if (@(Get-ChildItem $build -File -Recurse).Count -ne 27 -or
           -not (Test-Path (Join-Path $build 'scripts/app-insights-target.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/simulate-high-cpu.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/stop-the-lab.ps1')) -or
@@ -287,6 +294,9 @@ function az {
           -not (Test-Path (Join-Path $build 'scripts/set-customer-dependency-fault.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/customer-dependency-helpers.ps1')) -or
           -not (Test-Path (Join-Path $build 'scripts/generate-usage-traffic.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/send-telemetry-ingestion.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/test-telemetry-ingestion.ps1')) -or
+          -not (Test-Path (Join-Path $build 'scripts/telemetry-ingestion-helpers.ps1')) -or
           -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/generate-usage-traffic.mjs')) -or
           -not (Test-Path (Join-Path $build 'workloads/webapp/scripts/usage-traffic-pacing.mjs')) -or
           -not (Test-Path (Join-Path $build 'scripts/customer-journey-outcome.mjs'))) {
@@ -403,6 +413,25 @@ try {
   }
   $fixture.ReverseInventory = $false
   $fixture.ExtraAppInsights = $false
+  Reset-Configuration
+  $fixture.WithTelemetry = $true
+  Reset-Configuration
+  $beforeRoles = $fixture.Roles.Count
+  & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
+  $telemetryRoles = @($fixture.Roles | Select-Object -Skip $beforeRoles)
+  $expectedScopes = @(
+    "$scope/providers/Microsoft.Insights/dataCollectionRules/dcr-amlab-telemetry-ingestion"
+    "$scope/providers/Microsoft.Insights/dataCollectionRules/dcr-amlab-telemetry-ingestion-baseline"
+    $workspace
+  )
+  if (@($telemetryRoles).Count -ne 3 -or @(Compare-Object $expectedScopes @($telemetryRoles.scope)).Count -ne 0 -or
+      $fixture.Settings['LabConsole__Operations__TelemetryIngestionEnabled'] -ne 'True') {
+    throw 'Enabled telemetry must grant only its two DCR publisher roles and central-workspace reader role.'
+  }
+  Reset-Configuration
+  & (Join-Path $scriptDirectory 'initialize-webapp-console.ps1') @parameters | Out-Null
+  if ($fixture.Roles.Count -ne $beforeRoles + 3) { throw 'Telemetry bootstrap duplicated scoped runner roles on rerun.' }
+  $fixture.WithTelemetry = $false
   foreach ($failure in @('MissingAppInsights', 'DuplicateAppInsights', 'FailAuth', 'FailGraphAuth', 'FailBuild', 'FailAcrRole', 'BadTenant', 'FailAi', 'DeletePreview', 'FailTagRead', 'FailCpuInventory', 'CpuScopeEscape')) {
     Reset-Configuration
     $fixture[$failure] = $true

@@ -1,7 +1,7 @@
 export function initializeLabOperations({ refreshIcons }) {
   const byId = id => document.getElementById(id);
   const dialog = byId('operation-dialog');
-  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'annotation', 'slot-failure', 'slot-restore', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover']);
+  const ids = new Set(['start', 'stop', 'break', 'restore', 'ramp', 'usage', 'cpu', 'logs', 'telemetry-ingestion', 'annotation', 'slot-failure', 'slot-restore', 'customer-sql-delay', 'customer-worker-failure', 'customer-recover']);
   const faultIds = ['slot-failure', 'customer-sql-delay', 'customer-worker-failure'];
   const recoveryId = () => actions.some(action => action.id === 'customer-recover') ? 'customer-recover' : 'slot-restore';
   const isSlotOperation = id => id === 'slot-failure' || id === 'slot-restore';
@@ -22,6 +22,7 @@ export function initializeLabOperations({ refreshIcons }) {
   let faultMenu = false;
   let customerIncident = null;
   let incidentLinks = {};
+  let telemetryProfiles = [];
 
   function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -117,7 +118,8 @@ Use the Azure SRE Agent MCP when available. Rank evidence-backed root-cause hypo
       summary.append(element('strong', actions.find(action => action.id === run.parameters.operation)?.title || 'Lab operation'), element('span', labels[run.state] || 'Unknown', `operation-state ${terminal(run) && run.state !== 'succeeded' ? 'infra-critical' : run.state === 'succeeded' ? 'infra-healthy' : 'infra-warning'}`));
       item.append(summary, element('p', run.message, 'operation-message'));
       const submitted = new Date(run.submittedAt);
-      item.append(details({ 'Request ID': run.id, Submitted: Number.isFinite(submitted.getTime()) ? submitted.toLocaleString() : 'Not reported', 'Resource group': run.target.resourceGroup, Execution: run.executionName || 'Pending', Image: run.target.image }));
+      item.append(details({ 'Request ID': run.id, Submitted: Number.isFinite(submitted.getTime()) ? submitted.toLocaleString() : 'Not reported', 'Resource group': run.target.resourceGroup, Execution: run.executionName || 'Pending', Image: run.target.image,
+        ...(run.parameters.operation === 'telemetry-ingestion' ? { Profile: run.parameters.profile, Events: 100 } : {}) }));
       const steps = element('ol', undefined, 'operation-steps');
       for (const step of Array.isArray(run.steps) ? run.steps : []) {
         const row = element('li');
@@ -177,6 +179,11 @@ Use the Azure SRE Agent MCP when available. Rank evidence-backed root-cause hypo
       const data = await request('catalog');
       available = data.available === true;
       actions = (Array.isArray(data.actions) ? data.actions : []).filter(action => ids.has(action.id));
+      telemetryProfiles = (Array.isArray(data.telemetryProfiles) ? data.telemetryProfiles : []).filter(profile =>
+        ['Transformed', 'Baseline', 'Tiered'].includes(profile));
+      for (const option of byId('operation-telemetry-profile').options) option.disabled = !telemetryProfiles.includes(option.value);
+      byId('operation-telemetry-profile').options[2].textContent = telemetryProfiles.includes('Tiered')
+        ? 'Tiered (Auxiliary)' : 'Tiered (Auxiliary resources unavailable)';
       target = data.target;
       if (available) {
         customerIncident = data.customerIncident || null;
@@ -222,6 +229,9 @@ Use the Azure SRE Agent MCP when available. Rank evidence-backed root-cause hypo
     byId('operation-concurrency').disabled = selected.id !== 'usage';
     byId('operation-repeat-users').disabled = selected.id !== 'usage';
     byId('operation-marker-fields').hidden = selected.id !== 'annotation';
+    byId('operation-telemetry-field').hidden = selected.id !== 'telemetry-ingestion';
+    byId('operation-telemetry-profile').disabled = selected.id !== 'telemetry-ingestion';
+    byId('operation-telemetry-profile').value = 'Transformed';
     byId('operation-name').required = selected.id === 'annotation';
     byId('operation-name').disabled = selected.id !== 'annotation';
     byId('operation-prepare-form').hidden = false;
@@ -267,6 +277,7 @@ Use the Azure SRE Agent MCP when available. Rank evidence-backed root-cause hypo
         body.repeatUsers = Number(byId('operation-repeat-users').value);
       }
       if (selected.id === 'annotation') { body.name = byId('operation-name').value.trim(); body.category = byId('operation-category').value; }
+      if (selected.id === 'telemetry-ingestion') body.profile = byId('operation-telemetry-profile').value;
       const data = await request('prepare', body);
       if (!data.proposal || data.proposal.parameters.operation !== operation) throw new Error('Operation approval could not be verified.');
       proposal = data.proposal;
@@ -278,6 +289,7 @@ Use the Azure SRE Agent MCP when available. Rank evidence-backed root-cause hypo
           ...(operation.startsWith('customer-') ? { 'Orders processor': incidentLinks.worker } : {}),
           ...(operation === 'customer-sql-delay' ? { 'Fixed delay': '3 seconds in application SQL paths, until recovery' } : {}) } : {}),
         ...(selected.id === 'logs' ? { Events: proposal.parameters.count } : {}),
+        ...(selected.id === 'telemetry-ingestion' ? { Profile: proposal.parameters.profile, 'Pinned lab prefix': proposal.telemetryNamePrefix, Events: 'Exactly 100 synthetic events', Verification: 'Both destination tables' } : {}),
         ...(selected.id === 'usage' ? { Users: proposal.parameters.count, Concurrency: proposal.parameters.concurrency, 'Repeat users': proposal.parameters.repeatUsers, Route: '/customer/' } : {}),
         ...(selected.id === 'annotation' ? { Marker: proposal.parameters.name, Category: proposal.parameters.category } : {}) }));
       byId('operation-expiry').textContent = `Approval expires ${new Date(proposal.expiresAt).toLocaleTimeString()}`;

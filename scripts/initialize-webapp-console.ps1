@@ -187,6 +187,7 @@ try {
     'scripts/start-ramp.ps1', 'scripts/simulate-high-cpu.ps1', 'scripts/send-custom-logs.ps1', 'scripts/send-release-annotation.ps1', 'scripts/generate-usage-traffic.ps1', 'scripts/customer-journey-outcome.mjs',
     'scripts/trigger-broken-slot.ps1', 'scripts/rollback-broken-slot.ps1',
     'scripts/set-customer-dependency-fault.ps1', 'scripts/customer-dependency-helpers.ps1',
+    'scripts/send-telemetry-ingestion.ps1', 'scripts/test-telemetry-ingestion.ps1', 'scripts/telemetry-ingestion-helpers.ps1',
     'workloads/k8s/02-loadgen.yaml', 'workloads/k8s/03-loadgen-ramp.yaml', 'workloads/webapp/package.json', 'workloads/webapp/package-lock.json',
     'workloads/webapp/scripts/generate-usage-traffic.mjs', 'workloads/webapp/scripts/usage-traffic-pacing.mjs')
   foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $build $file) }
@@ -210,6 +211,44 @@ try {
   if ($LASTEXITCODE -ne 0 -or -not $job.jobId.value) { throw 'Runner job deployment failed.' }
   $inventory = @(az resource list --subscription $SubscriptionId --resource-group $ResourceGroup --output json --only-show-errors | ConvertFrom-Json)
   if ($LASTEXITCODE -ne 0) { throw 'Console resource discovery failed.' }
+  $telemetryPrefix = [string]$config.LabConsole.Operations.TelemetryIngestionNamePrefix
+  $telemetryEnabled = $false
+  $telemetryTieredEnabled = $false
+  if ($telemetryPrefix) {
+    if ($telemetryPrefix -cnotmatch '^[a-z0-9]{3,8}$') { throw 'The optional telemetry ingestion prefix is invalid.' }
+    $dceName = "dce-$telemetryPrefix-telemetry-ingestion"
+    $dces = @($inventory | Where-Object { $_.type -ieq 'Microsoft.Insights/dataCollectionEndpoints' -and $_.name -ceq $dceName -and
+      $_.id -ieq "$resourceBase/providers/Microsoft.Insights/dataCollectionEndpoints/$dceName" })
+    $telemetryDcrs = @()
+    foreach ($suffix in @('', '-baseline')) {
+      $name = "dcr-$telemetryPrefix-telemetry-ingestion$suffix"
+      $telemetryDcrs += @($inventory | Where-Object { $_.type -ieq 'Microsoft.Insights/dataCollectionRules' -and $_.name -ceq $name -and
+        $_.id -ieq "$resourceBase/providers/Microsoft.Insights/dataCollectionRules/$name" })
+    }
+    $telemetryEnabled = $dces.Count -eq 1 -and $telemetryDcrs.Count -eq 2
+    if ($telemetryEnabled) {
+      $centralId = [string]$config.LabConsole.Health.CentralWorkspaceResourceId
+      if ($centralId -notmatch "^/subscriptions/$SubscriptionId/resourceGroups/$([regex]::Escape($ResourceGroup))/providers/Microsoft\.OperationalInsights/workspaces/law-$telemetryPrefix-central-[a-zA-Z0-9-]+$") {
+        throw 'Telemetry ingestion central workspace does not match the pinned lab prefix.'
+      }
+      $tieredName = "dcr-$telemetryPrefix-telemetry-ingestion-tiered"
+      $tieredDcrs = @($inventory | Where-Object { $_.type -ieq 'Microsoft.Insights/dataCollectionRules' -and $_.name -ceq $tieredName -and
+        $_.id -ieq "$resourceBase/providers/Microsoft.Insights/dataCollectionRules/$tieredName" })
+      if ($tieredDcrs.Count -eq 1) {
+        try {
+          $verboseTable = Invoke-ConsoleApi GET "https://management.azure.com$centralId/tables/TelemetryIngestionVerbose_CL?api-version=2022-10-01"
+          $telemetryTieredEnabled = $verboseTable.properties.plan -ceq 'Auxiliary'
+        } catch { Write-Warning 'Tiered ingestion unavailable: the Auxiliary verbose table could not be verified.' }
+      }
+      foreach ($dcr in $telemetryDcrs) {
+        Grant-ConsoleRole $identity.principalId $dcr.id 'Monitoring Metrics Publisher'
+      }
+      if ($telemetryTieredEnabled) {
+        Grant-ConsoleRole $identity.principalId $tieredDcrs[0].id 'Monitoring Metrics Publisher'
+      }
+      Grant-ConsoleRole $identity.principalId $centralId 'Log Analytics Reader'
+    }
+  }
   $customDcrs = @($inventory | Where-Object { $_.type -ieq 'Microsoft.Insights/dataCollectionRules' -and $_.name -like '*customlogs*' })
   if ($customDcrs.Count -eq 0) {
     $centralId = $config.LabConsole.Health.CentralWorkspaceResourceId
@@ -266,7 +305,9 @@ try {
   $settings = @{}
   foreach ($property in $settingsResponse.properties.PSObject.Properties) { $settings[$property.Name] = $property.Value }
   $config.LabConsole.Operations = @{ Enabled = $true; JobResourceId = $job.jobId.value; Image = $image; TenantId = $TenantId.ToString(); JournalPath = '/home/data/lab-operations/journal.json'
-    CustomerWorkerName = $customerWorkerName; CustomerDependenciesEnabled = [bool]$customerWorkerName }
+    CustomerWorkerName = $customerWorkerName; CustomerDependenciesEnabled = [bool]$customerWorkerName
+    TelemetryIngestionEnabled = $telemetryEnabled; TelemetryIngestionTieredEnabled = $telemetryTieredEnabled
+    TelemetryIngestionNamePrefix = $(if ($telemetryEnabled) { $telemetryPrefix } else { '' }) }
   $config.LabConsole.Health.Enabled = $true
   $config.LabConsole.Health.TenantId = $TenantId.ToString()
   foreach ($section in @('Operations', 'Health')) {

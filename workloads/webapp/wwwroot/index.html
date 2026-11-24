@@ -160,6 +160,7 @@
             <button class="action" data-operation="usage" aria-haspopup="dialog" disabled><i data-lucide="shopping-cart"></i><span>Generate Customer Traffic</span><i data-lucide="arrow-right"></i></button>
             <button class="action danger-accent" data-operation="cpu" aria-haspopup="dialog" disabled><i data-lucide="cpu"></i><span>Simulate High CPU</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="logs" aria-haspopup="dialog" disabled><i data-lucide="logs"></i><span>Send Custom Logs</span><i data-lucide="arrow-right"></i></button>
+            <button class="action" data-operation="telemetry-ingestion" aria-haspopup="dialog" disabled><i data-lucide="git-compare-arrows"></i><span>Compare Telemetry Ingestion</span><i data-lucide="arrow-right"></i></button>
             <button class="action" data-operation="annotation" aria-haspopup="dialog" disabled><i data-lucide="panels-top-left"></i><span>Add Release Marker</span><i data-lucide="arrow-right"></i></button>
             <button id="customer-fault-menu" class="action danger-accent" aria-haspopup="dialog" disabled hidden><i data-lucide="triangle-alert"></i><span>Break the customer app</span><i data-lucide="arrow-right"></i></button>
           </div>
@@ -326,6 +327,7 @@
       <label id="operation-fault-field" hidden>Application fault or recovery<select id="operation-fault" disabled><option value="">Choose a reversible exercise</option></select></label>
       <p id="operation-fault-description" class="history-note" hidden></p>
       <label id="operation-count-field" hidden><span id="operation-count-label">Event count</span><input id="operation-count" type="number" min="1" max="100" step="1" value="10" required></label>
+      <label id="operation-telemetry-field" hidden>Ingestion profile<select id="operation-telemetry-profile" disabled><option value="Transformed">Transformed (default)</option><option value="Baseline">Baseline</option><option value="Tiered">Tiered</option></select></label>
       <div id="operation-usage-fields" hidden><label>Browser concurrency<input id="operation-concurrency" type="number" min="1" max="10" step="1" value="4"></label><label>Repeat users<input id="operation-repeat-users" type="number" min="0" max="100" step="1" value="6"></label></div>
       <div id="operation-marker-fields" hidden><label>Marker name<input id="operation-name" type="text" maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9 ._\(\)\-]{0,79}" autocomplete="off"></label><label>Category<select id="operation-category" aria-label="Marker category"><option value="Deployment">Deployment</option><option value="Incident">Incident</option></select></label></div>
       <div class="dialog-actions"><button type="button" class="button secondary" data-operation-cancel>Cancel</button><button id="operation-review" type="submit" class="button primary"><i data-lucide="scan-line"></i>Review Operation</button></div>
