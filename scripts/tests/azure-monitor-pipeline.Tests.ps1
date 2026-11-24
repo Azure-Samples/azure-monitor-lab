@@ -119,8 +119,11 @@ function global:az {
     }
     '^vm list-skus ' { $response = @(@{ name = 'Standard_D4s_v5'; resourceType = 'virtualMachines'
       restrictions = @(); capabilities = @(@{name='vCPUs';value='4'},@{name='MemoryGB';value='16'}) }); break }
-    '^vm get-instance-view ' { $response = @{ statuses = @(@{code='PowerState/running'},@{code='ProvisioningState/succeeded'})
-      vmAgent = @{ statuses = @(@{code='ProvisioningState/succeeded'}) } }; break }
+    '^vm get-instance-view ' { $response = @{ instanceView = @{
+      statuses = @(@{code='PowerState/running'},@{code='ProvisioningState/succeeded'})
+      vmAgent = @{ statuses = $(if ($global:edgeFailure -eq 'agent') { @(@{code='ProvisioningState/unavailable'}) } else {
+        @(@{code='ProvisioningState/succeeded'})
+      }) } } }; break }
     '^resource show .*OperationalInsights/workspaces/' {
       if ($key -match '/tables/(TelemetryIngestionOperational_CL|TelemetryIngestionDiagnostic_CL)') {
         $tableName = $Matches[1]
@@ -269,6 +272,12 @@ try {
     throw 'Wrong VM entered a mutable stage.'
   }
   $global:edgeCalls.Clear()
+  $global:edgeFailure = 'agent'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'VM Agent ready'
+  if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
+    throw 'Unready VM agent entered a mutable stage.'
+  }
+  $global:edgeFailure = ''
   $global:edgeFailure = 'provider'
   Assert-Fails { & $scriptPath @parameters -Enable } 'not registered'
   if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {

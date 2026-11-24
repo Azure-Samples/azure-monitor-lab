@@ -133,7 +133,7 @@ foreach ($cap in $sku[0].capabilities) { $caps[$cap.name] = $cap.value }
 if ([int]$caps.vCPUs -lt 4 -or [double]$caps.MemoryGB -lt 16) {
   throw 'Selected VM SKU requires at least 4 vCPU and 16 GiB; no automatic resize is performed.'
 }
-$instance = Read-Az @('vm','get-instance-view','--subscription',$SubscriptionId,'-g',$ResourceGroup,'-n',$VmName,'-o','json') 'VM instance view'
+$instance = (Read-Az @('vm','get-instance-view','--subscription',$SubscriptionId,'-g',$ResourceGroup,'-n',$VmName,'-o','json') 'VM instance view').instanceView
 if (@($instance.statuses | Where-Object code -EQ 'PowerState/running').Count -ne 1 -or
     @($instance.statuses | Where-Object code -EQ 'ProvisioningState/succeeded').Count -ne 1 -or
     @($instance.vmAgent.statuses | Where-Object code -EQ 'ProvisioningState/succeeded').Count -ne 1) {

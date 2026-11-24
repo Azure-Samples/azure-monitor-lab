@@ -43,7 +43,10 @@ function global:az {
     '^vm show ' { @{id=$vmId;location='northeurope';storageProfile=@{osDisk=@{osType='Linux'};imageReference=@{
       publisher='Canonical';offer='0001-com-ubuntu-server-jammy';sku='22_04-lts-gen2'}}
       identity=@{type='SystemAssigned';principalId=$vmPrincipal}}; break }
-    '^vm get-instance-view ' { @{statuses=@(@{code='PowerState/running'});vmAgent=@{statuses=@(@{code='ProvisioningState/succeeded'})}}; break }
+    '^vm get-instance-view ' { @{instanceView=@{statuses=@(@{code='PowerState/running'});
+      vmAgent=@{statuses=$(if ($global:otlpFailure -eq 'agent') { @(@{code='ProvisioningState/unavailable'}) } else {
+        @(@{code='ProvisioningState/succeeded'})
+      })}}}; break }
     '^resource show .*dataCollectionRules/' {
       @{id=$dcrId;location='northeurope';properties=@{immutableId=$(if ($global:otlpFailure -eq 'dcr') {'other'} else {$immutable})
         provisioningState='Succeeded';dataCollectionEndpointId=$dceId
@@ -88,6 +91,11 @@ try {
   $script = Join-Path $scriptDir 'deploy-native-otlp.ps1'
   Assert-Fails { & $script @parameters } 'default-off'
   if ($global:otlpCalls.Count) { throw 'Default-off native OTLP called Azure.' }
+  $global:otlpFailure = 'agent'
+  Assert-Fails { & $script @parameters -Enable } 'VM agent is not ready'
+  if (@($global:otlpCalls | Where-Object { $_ -match '^vm run-command|^role assignment create' }).Count) {
+    throw 'Unready native OTLP VM agent entered a mutable stage.'
+  }
   $global:otlpFailure = 'dcr'
   Assert-Fails { & $script @parameters -Enable } 'not ready'
   if (@($global:otlpCalls | Where-Object { $_ -match '^vm run-command|^role assignment create' }).Count) {

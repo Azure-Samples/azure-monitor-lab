@@ -55,7 +55,7 @@ if ($vm.id -ine $vmId -or -not $vm.location -or $vm.storageProfile.osDisk.osType
     $vm.identity.type -notmatch 'SystemAssigned' -or -not $vm.identity.principalId) {
   throw 'Native OTLP requires the exact lab Ubuntu 22.04 VM with a system-assigned identity.'
 }
-$instance = Read-Az @('vm','get-instance-view','--subscription',$SubscriptionId,'-g',$ResourceGroup,'-n',$VmName,'-o','json') 'Native OTLP VM status'
+$instance = (Read-Az @('vm','get-instance-view','--subscription',$SubscriptionId,'-g',$ResourceGroup,'-n',$VmName,'-o','json') 'Native OTLP VM status').instanceView
 if (@($instance.statuses | Where-Object code -EQ 'PowerState/running').Count -ne 1 -or
     @($instance.vmAgent.statuses | Where-Object code -EQ 'ProvisioningState/succeeded').Count -ne 1) {
   throw 'Native OTLP VM or VM agent is not ready.'
