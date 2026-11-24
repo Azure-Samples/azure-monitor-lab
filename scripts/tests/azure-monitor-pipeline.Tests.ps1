@@ -267,8 +267,23 @@ function global:az {
         throw 'Remote Run Command positional arguments do not match the installer contract.'
       }
       $global:edgeRemoteModes.Add($mode)
-      $marker = if ($global:edgeFailure -eq $mode) { 'PIPELINE_DENIED' } elseif ($mode -eq 'preflight') { 'PIPELINE_PREFLIGHT_OK' } else { 'PIPELINE_INSTALL_OK' }
-      $response = @{value=@(@{code='ComponentStatus/StdOut/succeeded';message="[stdout]`n$marker`n"})}
+      $marker = if ($global:edgeFailure -eq 'preflight' -and $mode -eq 'preflight') {
+        'PIPELINE_DENIED:disk'
+      } elseif ($global:edgeFailure -eq $mode) {
+        'PIPELINE_DENIED:unspecified'
+      } elseif ($global:edgeFailure -eq 'ambiguous' -and $mode -eq 'preflight') {
+        'PIPELINE_DENIED:disk'
+      } elseif ($global:edgeFailure -eq 'unknown-reason' -and $mode -eq 'preflight') {
+        'PIPELINE_DENIED:private-data'
+      } elseif ($global:edgeFailure -eq 'missing-marker' -and $mode -eq 'preflight') {
+        ''
+      } elseif ($mode -eq 'preflight') { 'PIPELINE_PREFLIGHT_OK' } else { 'PIPELINE_INSTALL_OK' }
+      $message = "[stdout]`n$marker`n"
+      if ($global:edgeFailure -eq 'ambiguous' -and $mode -eq 'preflight') { $message += "PIPELINE_PREFLIGHT_OK`n" }
+      $code = if ($global:edgeFailure -eq 'failed-component' -and $mode -eq 'preflight') {
+        'ComponentStatus/StdOut/failed'
+      } else { 'ComponentStatus/StdOut/succeeded' }
+      $response = @{value=@(@{code=$code;message=$message})}
       if ($global:edgeFailure -eq 'native' -and $mode -eq 'install') { $global:LASTEXITCODE = 1 }
       break
     }
@@ -394,8 +409,17 @@ try {
   Assert-Fails { & $scriptPath @parameters -Enable } 'partially deployed'
   $global:edgePartialDcr = $false
   $global:edgeFailure = 'preflight'
-  Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'Remote preflight denied: disk'
   if (@($global:edgeRemoteModes | Where-Object { $_ -eq 'install' }).Count) { throw 'Install ran after failed remote preflight.' }
+  $global:edgeFailure = 'ambiguous'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'Remote preflight denied: disk'
+  $global:edgeFailure = 'missing-marker'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
+  $global:edgeFailure = 'unknown-reason'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
+  $global:edgeFailure = 'failed-component'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
+  if (@($global:edgeRemoteModes | Where-Object { $_ -eq 'install' }).Count) { throw 'Install ran after an ambiguous preflight.' }
   $global:edgeFailure = 'install'
   Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
   if (@($global:edgeCalls | Where-Object { $_ -match '^deployment group create' }).Count) { throw 'Deployment ran after failed installation.' }

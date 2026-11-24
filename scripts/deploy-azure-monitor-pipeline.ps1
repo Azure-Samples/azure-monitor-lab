@@ -112,9 +112,14 @@ function Invoke-Remote {
   $response = $result | ConvertFrom-Json -NoEnumerate
   $messages = @($response.value | ForEach-Object message)
   $marker = if ($Mode -eq 'preflight') { 'PIPELINE_PREFLIGHT_OK' } else { 'PIPELINE_INSTALL_OK' }
+  $denials = @($messages | Where-Object { $_ -match '(?m)^PIPELINE_DENIED(?::[a-z-]+)?\r?$' })
+  if ($Mode -eq 'preflight' -and $denials.Count -eq 1 -and
+      $denials[0] -match '(?m)^PIPELINE_DENIED:(arguments|inputs|host|os|cpu|memory|disk|commands|ama|ports|ownership|k3s|checksum)\r?$') {
+    throw "Remote preflight denied: $($Matches[1]). No later stage was attempted."
+  }
   if (@($response.value | Where-Object { $_.code -notmatch '/succeeded$' }).Count -ne 0 -or
       @($messages | Where-Object { $_ -match "(?m)^$marker`r?$" }).Count -ne 1 -or
-      @($messages | Where-Object { $_ -match '(?m)^PIPELINE_DENIED\r?$' }).Count -ne 0) {
+      $denials.Count -ne 0) {
     throw "Remote $Mode did not return its exact success marker; no later stage was attempted."
   }
 }

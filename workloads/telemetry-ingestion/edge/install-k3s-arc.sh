@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Invoked only by Azure VM Run Command with positional parameters.
 set -euo pipefail
-[[ $# == 8 ]] || { printf 'PIPELINE_DENIED\n'; exit 1; }
+[[ $# == 8 ]] || { printf 'PIPELINE_DENIED:arguments\n'; exit 1; }
 MODE=$1 SUBSCRIPTION_ID=$2 TENANT_ID=$3 RESOURCE_GROUP=$4
 CLUSTER_NAME=$5 LOCATION=$6 VM_ID=$7 ARC_ALREADY_OWNED=$8
 export PATH=/usr/local/bin:/usr/bin:/bin
@@ -9,41 +9,41 @@ export AZURE_CORE_ONLY_SHOW_ERRORS=true
 export AZURE_CORE_COLLECT_TELEMETRY=no
 umask 077
 
-deny() { printf 'PIPELINE_DENIED\n'; exit 1; }
-[[ ${MODE:-} == preflight || ${MODE:-} == install ]] || deny
+deny() { printf 'PIPELINE_DENIED:%s\n' "${1:-unspecified}"; exit 1; }
+[[ ${MODE:-} == preflight || ${MODE:-} == install ]] || deny inputs
 [[ ${SUBSCRIPTION_ID:-} =~ ^[0-9a-fA-F-]{36}$ &&
    ${TENANT_ID:-} =~ ^[0-9a-fA-F-]{36}$ &&
    ${RESOURCE_GROUP:-} =~ ^[a-zA-Z0-9_.()-]{1,90}$ &&
    ${CLUSTER_NAME:-} =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$ &&
    ${LOCATION:-} =~ ^[a-z0-9]+$ &&
-   ${VM_ID:-} =~ ^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[a-zA-Z0-9_.()-]+/providers/Microsoft.Compute/virtualMachines/[a-zA-Z0-9_.-]+$ ]] || deny
-[[ $(id -u) == 0 && $(uname -m) == x86_64 && $(uname -s) == Linux ]] || deny
+   ${VM_ID:-} =~ ^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[a-zA-Z0-9_.()-]+/providers/Microsoft.Compute/virtualMachines/[a-zA-Z0-9_.-]+$ ]] || deny inputs
+[[ $(id -u) == 0 && $(uname -m) == x86_64 && $(uname -s) == Linux ]] || deny host
 source /etc/os-release
-[[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 22.04 ]] || deny
-[[ $(getconf _NPROCESSORS_ONLN) -ge 4 ]] || deny
-[[ $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) -ge 8388608 ]] || deny
-[[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 20971520 ]] || deny
-for command in systemctl ss curl sha256sum apt-get gpg ip tar; do command -v "$command" >/dev/null 2>&1 || deny; done
-systemctl is-active --quiet azuremonitoragent || deny
-listeners=$(ss -lntH '( sport = :6514 or sport = :4317 or sport = :6443 or sport = :10250 or sport = :2379 or sport = :2380 )' 2>/dev/null) || deny
+[[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 22.04 ]] || deny os
+[[ $(getconf _NPROCESSORS_ONLN) -ge 4 ]] || deny cpu
+[[ $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) -ge 8388608 ]] || deny memory
+[[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 20971520 ]] || deny disk
+for command in systemctl ss curl sha256sum apt-get gpg ip tar; do command -v "$command" >/dev/null 2>&1 || deny commands; done
+systemctl is-active --quiet azuremonitoragent || deny ama
+listeners=$(ss -lntH '( sport = :6514 or sport = :4317 or sport = :6443 or sport = :10250 or sport = :2379 or sport = :2380 )' 2>/dev/null) || deny ports
 [[ -z $listeners ]] || {
   # A previously installed, owned K3s server may already use its own API listener.
   [[ -f /etc/rancher/k3s/azure-monitor-lab-owner &&
      $listeners == *:6443* &&
      $listeners != *:6514* && $listeners != *:4317* &&
-     $listeners != *:2379* && $listeners != *:2380* ]] || deny
+     $listeners != *:2379* && $listeners != *:2380* ]] || deny ports
 }
 owner=/etc/rancher/k3s/azure-monitor-lab-owner
-[[ $ARC_ALREADY_OWNED == true || $ARC_ALREADY_OWNED == false ]] || deny
-[[ $ARC_ALREADY_OWNED == false || -e "$owner" ]] || deny
+[[ $ARC_ALREADY_OWNED == true || $ARC_ALREADY_OWNED == false ]] || deny ownership
+[[ $ARC_ALREADY_OWNED == false || -e "$owner" ]] || deny ownership
 if [[ -e "$owner" ]]; then
-  [[ $(cat "$owner") == "$VM_ID|$CLUSTER_NAME" ]] || deny
-  [[ -f /usr/local/bin/k3s && -f /etc/systemd/system/k3s.service ]] || deny
-  echo 'f03cad6610cf5b2903d8a9ac3d6716690e53dab461b09c07b0c913a262166abc  /usr/local/bin/k3s' | sha256sum -c - >/dev/null 2>&1 || deny
+  [[ $(cat "$owner") == "$VM_ID|$CLUSTER_NAME" ]] || deny ownership
+  [[ -f /usr/local/bin/k3s && -f /etc/systemd/system/k3s.service ]] || deny k3s
+  echo 'f03cad6610cf5b2903d8a9ac3d6716690e53dab461b09c07b0c913a262166abc  /usr/local/bin/k3s' | sha256sum -c - >/dev/null 2>&1 || deny checksum
 else
   [[ ! -e /usr/local/bin/k3s && ! -e /etc/rancher/k3s &&
-     ! -e /etc/systemd/system/k3s.service ]] || deny
-  ! systemctl list-units --all --no-legend 'k3s*' | grep -q k3s || deny
+     ! -e /etc/systemd/system/k3s.service ]] || deny k3s
+  ! systemctl list-units --all --no-legend 'k3s*' | grep -q k3s || deny k3s
 fi
 if [[ $MODE == preflight ]]; then
   printf 'PIPELINE_PREFLIGHT_OK\n'
