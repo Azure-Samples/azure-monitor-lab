@@ -6,7 +6,7 @@ A self-contained demo centered on Azure Monitor, AI, Azure Copilot Observability
 
 - One primary resource group: Azure resources land in `rg-azure-monitor-lab`.
 - Three ways to deploy it: a [Deploy to Azure](#option-1-deploy-to-azure-portal-no-local-setup) portal wizard, a scripted one-shot deployment using PowerShell, or a five-stage core workshop with optional AI, SRE Agent, Observability Agent, and Fabric extensions.
-- **81 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, user-flow Health Models, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence.
+- **88 numbered demo scenarios**, plus a 30-second introductory pitch, covering Azure Monitor, optional telemetry ingestion, user-flow Health Models, agentic-application observability, customer application dependencies, GitHub Copilot CLI, Azure SRE Agent, and Fabric Real-Time Intelligence. The native OTLP, Arc pipeline, and combined ingestion paths still require live verification.
 
 It's built for demos, microhacks, and hackathons. Deploy it, poke around, break it, restore it, and tear it down.
 
