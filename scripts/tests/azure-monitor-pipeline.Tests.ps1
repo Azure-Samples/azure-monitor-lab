@@ -203,6 +203,11 @@ function global:az {
       'Microsoft.Compute/virtualMachines/runCommand/action'
     } else { '*' })); notActions = @() }) }; break }
     '^role assignment list ' {
+      if ($parts -contains '--all' -or
+          $parts[[array]::IndexOf($parts,'--scope')+1] -ne $rgId -or
+          $parts -notcontains '--include-inherited') {
+        throw 'VM role lookup must be scoped, inherited, and not use --all.'
+      }
       $response = if ($global:edgeFailure -eq 'role') { @() } else { @(@{roleDefinitionName='Kubernetes Cluster - Azure Arc Onboarding'}) }
       break
     }
@@ -335,7 +340,7 @@ try {
     throw 'Failed CLI extension installation entered a mutable stage.'
   }
   $global:edgeFailure = 'role'
-  Assert-Fails { & $scriptPath @parameters -Enable } 'Arc Onboarding'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'az role assignment create.*Arc Onboarding'
   if ($global:edgeRegisteredProviders.Count -ne 2 -or
       @($global:edgeCalls | Where-Object { $_ -match '^provider register ' }).Count -ne 3 -or
       @($global:edgeCalls | Where-Object { $_ -match '^extension add ' }).Count -ne 2) {

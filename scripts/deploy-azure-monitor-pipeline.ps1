@@ -214,9 +214,9 @@ foreach ($action in @('Microsoft.Compute/virtualMachines/runCommands/write',
   Assert-Permission $permissions.value $action
 }
 $roles = @(Read-Az @('role','assignment','list','--subscription',$SubscriptionId,'--assignee-object-id',
-  $vm.identity.principalId,'--scope',$rgId,'--include-inherited','--all','-o','json') 'VM identity role assignments')
+  $vm.identity.principalId,'--scope',$rgId,'--include-inherited','-o','json') 'VM identity role assignments')
 if (@($roles | Where-Object { $_.roleDefinitionName -in @('Owner','Contributor','Kubernetes Cluster - Azure Arc Onboarding') }).Count -eq 0) {
-  throw 'VM system identity needs Kubernetes Cluster - Azure Arc Onboarding or Contributor at the resource group (or inherited) scope.'
+  throw "VM system identity needs Kubernetes Cluster - Azure Arc Onboarding at the resource group (or inherited) scope. An authorized operator can grant it with: az role assignment create --subscription $SubscriptionId --assignee-object-id $($vm.identity.principalId) --assignee-principal-type ServicePrincipal --role 'Kubernetes Cluster - Azure Arc Onboarding' --scope $rgId. No VM changes were attempted."
 }
 $clusters = @(Read-Az @('resource','list','--subscription',$SubscriptionId,'-g',$ResourceGroup,
   '--resource-type','Microsoft.Kubernetes/connectedClusters','-o','json') 'Existing Arc clusters')
