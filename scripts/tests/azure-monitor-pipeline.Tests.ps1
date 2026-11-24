@@ -189,7 +189,16 @@ function global:az {
       $name = if ($train -eq 'preview') { 'microsoft.monitor.pipeline' } elseif ($train -eq 'stable') { 'microsoft.certmanagement' } else { throw "Unexpected train: $train" }
       $response = @(@{name=$name;properties=@{supportedClusterTypes=@('connectedClusters')}}); break
     }
-    '^k8s-extension extension-types show-version-by-location ' { $response = @{properties=@{version='0.1.7'}}; break }
+    '^k8s-extension extension-types list-versions-by-location ' {
+      if ($parts[[array]::IndexOf($parts,'--release-train')+1] -ne 'preview' -or
+          $parts[[array]::IndexOf($parts,'--cluster-type')+1] -ne 'connectedClusters') {
+        throw 'Pipeline version lookup must select the preview train on connectedClusters.'
+      }
+      $response = if ($global:edgeFailure -eq 'version') { @() } else {
+        @(@{name='0.1.8';properties=@{version='0.1.8'}}, @{name='0.1.7';properties=@{version='0.1.7'}})
+      }
+      break
+    }
     '^rest ' { $response = @{ value = @(@{ actions = @($(if ($global:edgeFailure -eq 'permission') {
       'Microsoft.Compute/virtualMachines/runCommand/action'
     } else { '*' })); notActions = @() }) }; break }
@@ -334,6 +343,11 @@ try {
   }
   $global:edgeFailure = 'permission'
   Assert-Fails { & $scriptPath @parameters -Enable } 'runCommands/write'
+  $global:edgeFailure = 'version'
+  Assert-Fails { & $scriptPath @parameters -Enable } '0.1.7 is not available'
+  if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
+    throw 'Missing preview version entered a mutable stage.'
+  }
   $global:edgeFailure = ''
   Assert-Fails { & $scriptPath @parameters -Enable -EnableCombined } 'requires both stageToggles'
   if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {

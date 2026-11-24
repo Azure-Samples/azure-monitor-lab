@@ -200,9 +200,12 @@ foreach ($type in $extensionTrains.Keys) {
     throw "Extension $type is not advertised for connectedClusters in $Location on the $($extensionTrains[$type]) train."
   }
 }
-$version = Read-Az @('k8s-extension','extension-types','show-version-by-location','--subscription',$SubscriptionId,
-  '--location',$Location,'--extension-type','microsoft.monitor.pipeline','--version','0.1.7','-o','json') 'Pipeline preview version'
-if ($version.properties.version -ne '0.1.7') { throw 'Pipeline extension 0.1.7 is not available in the selected region.' }
+$versions = @(Read-Az @('k8s-extension','extension-types','list-versions-by-location','--subscription',$SubscriptionId,
+  '--location',$Location,'--extension-type','microsoft.monitor.pipeline','--cluster-type','connectedClusters',
+  '--release-train','preview','-o','json') 'Pipeline preview versions')
+if (@($versions | Where-Object { $_.name -eq '0.1.7' -and $_.properties.version -eq '0.1.7' }).Count -ne 1) {
+  throw 'Pipeline extension 0.1.7 is not available for connectedClusters on the preview train in the selected region.'
+}
 $permissions = Read-Az @('rest','--method','get','--url',"https://management.azure.com$rgId/providers/Microsoft.Authorization/permissions?api-version=2022-04-01",'-o','json') 'Caller permissions'
 foreach ($action in @('Microsoft.Compute/virtualMachines/runCommands/write',
     'Microsoft.Resources/deployments/write','Microsoft.Kubernetes/connectedClusters/write',
