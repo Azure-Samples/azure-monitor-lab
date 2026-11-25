@@ -22,7 +22,8 @@ source /etc/os-release
 [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 22.04 ]] || deny os
 [[ $(getconf _NPROCESSORS_ONLN) -ge 4 ]] || deny cpu
 [[ $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) -ge 8388608 ]] || deny memory
-[[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 20971520 ]] || deny disk
+root_free_kib=$(df -Pk / | awk 'NR==2 {print $4}') || deny disk
+[[ $root_free_kib =~ ^[0-9]+$ ]] || deny disk
 for command in systemctl ss curl sha256sum apt-get gpg ip tar; do command -v "$command" >/dev/null 2>&1 || deny commands; done
 systemctl is-active --quiet azuremonitoragent || deny ama
 listeners=$(ss -lntH '( sport = :6514 or sport = :6443 or sport = :10250 or sport = :2379 or sport = :2380 )' 2>/dev/null) || deny ports
@@ -40,11 +41,14 @@ if [[ -e "$owner" ]]; then
   [[ $(cat "$owner") == "$VM_ID|$CLUSTER_NAME" ]] || deny ownership
   [[ -f /usr/local/bin/k3s && -f /etc/systemd/system/k3s.service ]] || deny k3s
   echo 'f03cad6610cf5b2903d8a9ac3d6716690e53dab461b09c07b0c913a262166abc  /usr/local/bin/k3s' | sha256sum -c - >/dev/null 2>&1 || deny checksum
+  min_free_kib=10485760
 else
   [[ ! -e /usr/local/bin/k3s && ! -e /etc/rancher/k3s &&
      ! -e /etc/systemd/system/k3s.service ]] || deny k3s
   ! systemctl list-units --all --no-legend 'k3s*' | grep -q k3s || deny k3s
+  min_free_kib=20971520
 fi
+[[ $root_free_kib -ge $min_free_kib ]] || deny disk
 if [[ $MODE == preflight ]]; then
   printf 'PIPELINE_PREFLIGHT_OK\n'
   exit 0
