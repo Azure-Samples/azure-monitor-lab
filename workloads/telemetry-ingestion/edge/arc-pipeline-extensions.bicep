@@ -13,6 +13,11 @@ resource certificates 'Microsoft.KubernetesConfiguration/extensions@2023-05-01' 
     extensionType: 'microsoft.certmanagement'
     autoUpgradeMinorVersion: true
     releaseTrain: 'stable'
+    scope: {
+      cluster: {
+        releaseNamespace: 'cert-manager'
+      }
+    }
   }
 }
 

@@ -2,6 +2,10 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $scriptPath = Join-Path $root 'scripts\deploy-azure-monitor-pipeline.ps1'
 $asset = Join-Path $root 'workloads\telemetry-ingestion\edge\install-k3s-arc.sh'
+$extensionsTemplate = Get-Content -Raw (Join-Path $root 'workloads\telemetry-ingestion\edge\arc-pipeline-extensions.bicep')
+if ($extensionsTemplate -notmatch "(?s)resource certificates .*?name: 'azure-cert-management'.*?releaseNamespace: 'cert-manager'") {
+  throw 'Certificate Manager deployment must preserve its release namespace on reruns.'
+}
 $template = Get-Content -Raw (Join-Path $root 'workloads\telemetry-ingestion\edge\syslog-pipeline.arm.json') | ConvertFrom-Json
 $global:edgeTemplate = $template
 $deployText = Get-Content -Raw (Join-Path $root 'scripts\deploy.ps1')
