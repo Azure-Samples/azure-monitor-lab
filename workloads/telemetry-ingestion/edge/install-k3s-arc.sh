@@ -39,8 +39,15 @@ owner=/etc/rancher/k3s/azure-monitor-lab-owner
 [[ $ARC_ALREADY_OWNED == false || -e "$owner" ]] || deny ownership
 if [[ -e "$owner" ]]; then
   [[ $(cat "$owner") == "$VM_ID|$CLUSTER_NAME" ]] || deny ownership
-  [[ -f /usr/local/bin/k3s && -f /etc/systemd/system/k3s.service ]] || deny k3s
+  [[ -f /usr/local/bin/k3s && -f /etc/systemd/system/k3s.service &&
+     -f /etc/rancher/k3s/config.yaml ]] || deny k3s
   echo 'f03cad6610cf5b2903d8a9ac3d6716690e53dab461b09c07b0c913a262166abc  /usr/local/bin/k3s' | sha256sum -c - >/dev/null 2>&1 || deny checksum
+  private_ip=$(awk -F '"' '/^advertise-address:/ {print $2}' /etc/rancher/k3s/config.yaml)
+  [[ $private_ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ &&
+     $private_ip == "$(ip -4 route get 168.63.129.16 | awk '{for (i=1; i<=NF; i++) if ($i=="src") {print $(i+1); exit}}')" ]] || deny k3s
+  grep -Fqx "ExecStart=/usr/local/bin/k3s server --flannel-backend host-gw --kubelet-arg=address=$private_ip --disable traefik --disable servicelb --write-kubeconfig-mode 600" /etc/systemd/system/k3s.service || deny k3s
+  systemctl is-active --quiet k3s || deny k3s
+  [[ $listeners == *"$private_ip:10250"* ]] || deny k3s
   min_free_kib=10485760
 else
   [[ ! -e /usr/local/bin/k3s && ! -e /etc/rancher/k3s &&
@@ -100,14 +107,14 @@ if [[ ! -e "$owner" ]]; then
   install -m 755 "$binary" /usr/local/bin/k3s
   printf 'bind-address: "%s"\nadvertise-address: "%s"\n' "$private_ip" "$private_ip" > /etc/rancher/k3s/config.yaml
   printf '%s|%s\n' "$VM_ID" "$CLUSTER_NAME" > "$owner"
-  cat > /etc/systemd/system/k3s.service <<'UNIT'
+  cat > /etc/systemd/system/k3s.service <<UNIT
 [Unit]
 Description=Azure Monitor lab single-node K3s
 After=network-online.target
 Wants=network-online.target
 [Service]
 Type=exec
-ExecStart=/usr/local/bin/k3s server --flannel-backend host-gw --kubelet-arg=address=127.0.0.1 --disable traefik --disable servicelb --write-kubeconfig-mode 600
+ExecStart=/usr/local/bin/k3s server --flannel-backend host-gw --kubelet-arg=address=$private_ip --disable traefik --disable servicelb --write-kubeconfig-mode 600
 Restart=on-failure
 RestartSec=5
 [Install]

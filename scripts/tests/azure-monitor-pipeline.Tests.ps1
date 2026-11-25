@@ -97,6 +97,11 @@ if ($text -notmatch 'v1\.33\.3%2Bk3s1' -or
     $text -match 'curl\s+[^`n]*\|\s*(bash|sh)') { throw 'Remote K3s version/checksum/install policy mismatch.' }
 if ($text -notmatch '--tags "([a-z][a-z0-9-]+)=\$VM_ID"') { throw 'Arc VM-ownership tag is missing.' }
 $ownerTag = $Matches[1]
+if ($text -match '--kubelet-arg=address=127\.0\.0\.1' -or
+    $text -notmatch 'ExecStart=/usr/local/bin/k3s server[^\n]*--kubelet-arg=address=\$private_ip' -or
+    $text -notmatch '\$listeners == \*"\$private_ip:10250"\*') {
+  throw 'Kubelet must bind the VM private IP, and owned reruns must verify its live listener.'
+}
 if ($ownerTag -match '^(azure|microsoft|windows)' -or
     ([regex]::Matches((Get-Content -Raw $scriptPath), [regex]::Escape("tags.'$ownerTag'"))).Count -ne 2) {
   throw 'Arc VM-ownership tag has a reserved prefix or is not verified before and after connection.'

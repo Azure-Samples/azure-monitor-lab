@@ -21,6 +21,26 @@ The Linux VM's system identity must also have `Kubernetes Cluster - Azure Arc On
 
 The installer does not require host port 4317 to be free: an existing MetricsExtension listener on loopback is independent of the pipeline's Kubernetes-pod Syslog receiver on 6514. Do not stop or reconfigure the monitoring extension to clear a `ports` denial. The installer still checks host listeners on 6514, 6443, 10250, 2379 and 2380 before installing K3s.
 
+The scenario-owned K3s service now binds the kubelet to the VM's private IPv4 address, not `127.0.0.1`: the Kubernetes API server connects to the node's `InternalIP` on 10250 for pod logs and port-forwarding. An earlier installer bound the kubelet only to loopback, causing `kubectl logs` to fail with a 502 when the API server dialed `<node-private-ip>:10250` even while the node was Ready. Existing owned services are **not** changed or restarted on rerun; preflight reports `PIPELINE_DENIED:k3s` until the unit and running listener use the private IP. This is separate from the missing managed certificates.
+
+For an existing scenario-owned VM with that exact old unit, arrange a maintenance window: restarting K3s interrupts its Arc/pipeline pods. Confirm the node `InternalIP` is still the VM's private IP and that neither the NSG nor host firewall permits **public** access to 10250; do not add an inbound rule. Check the owner marker and original unit before proceeding. On `vm-amlab-lin`, if its node IP remains `10.50.1.5` and the unit has exactly the old `ExecStart` from this repository:
+
+```bash
+sudo test -f /etc/rancher/k3s/azure-monitor-lab-owner
+sudo systemctl cat k3s
+sudo ss -lntp '( sport = :10250 )'
+sudo cp -p /etc/systemd/system/k3s.service /etc/systemd/system/k3s.service.before-private-kubelet
+sudoedit /etc/systemd/system/k3s.service
+# Change only --kubelet-arg=address=127.0.0.1 to --kubelet-arg=address=10.50.1.5
+sudo systemctl daemon-reload
+sudo systemctl restart k3s
+sudo systemctl is-active k3s azuremonitoragent
+sudo ss -lntp '( sport = :10250 )'
+sudo env KUBECONFIG=/etc/rancher/k3s/k3s.yaml /usr/local/bin/k3s kubectl get nodes -o wide
+```
+
+Verify the kubelet listens on `10.50.1.5:10250`, the node is Ready, and `kubectl -n default logs deployment/azure-monitor-pipeline-controller-manager --all-containers=true --tail=10` no longer returns a kubelet 502. If the restart fails, restore the saved unit, run `systemctl daemon-reload` and restart K3s again; investigate before attempting another deployment. Use the actual current private IP rather than `10.50.1.5` if the VM address has changed, and review the scenario-owned K3s config before modifying it. Do not restart cert-manager, Arc agents or AMA to work around the log error.
+
 If the remote `install` stage fails, it reports only a bounded stage code (for example `identity-login`, `identity-account`, or `arc-connect`), not Azure CLI output. Check the scenario-owned K3s service and Arc cluster status before retrying: install can leave K3s running even if the cluster connection has not completed. Do not remove the owner marker or restart monitoring agents to force a retry.
 The Arc cluster's VM-ownership tag is `monitor-lab-edge-vm`; Azure reserves tag-name prefixes such as `azure`, so do not rename it to a reserved prefix.
 Extension readiness checks require successful provisioning and a reported `currentVersion` (the pipeline must report pinned `0.1.7`), plus the pipeline identity. The extension ARM response may omit `installState`; missing or mismatched installed versions still stop Syslog deployment. Verify the Arc agents, cert-manager, and pipeline controller are ready in Kubernetes before claiming live operation.
