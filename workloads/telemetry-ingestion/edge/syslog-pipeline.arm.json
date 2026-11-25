@@ -108,7 +108,7 @@
       "type": "Microsoft.Insights/dataCollectionRuleAssociations",
       "apiVersion": "2025-05-11",
       "scope": "[format('Microsoft.Kubernetes/connectedClusters/{0}', parameters('connectedClusterName'))]",
-      "name": "[format('{0}-settings-assoc', parameters('namePrefix'))]",
+      "name": "[format('pipelineSettings-{0}-settings-assoc', parameters('namePrefix'))]",
       "dependsOn": ["[variables('settingsId')]"],
       "properties": {
         "dataCollectionRuleId": "[variables('settingsId')]",

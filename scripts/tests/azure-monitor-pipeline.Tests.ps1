@@ -14,7 +14,7 @@ if ($deployText -notmatch '-EnableCombined:\(\$enableAzureMonitorPipeline -and \
 }
 $associationNames = @($template.resources | Where-Object type -eq 'Microsoft.Insights/dataCollectionRuleAssociations' | ForEach-Object name)
 if ($associationNames.Count -ne 4 -or
-    $associationNames -cnotcontains "[format('{0}-settings-assoc', parameters('namePrefix'))]" -or
+    $associationNames -cnotcontains "[format('pipelineSettings-{0}-settings-assoc', parameters('namePrefix'))]" -or
     $associationNames -cnotcontains "[format('{0}-flow-assoc', parameters('namePrefix'))]" -or
     $associationNames -cnotcontains "[format('{0}-operational-assoc', parameters('namePrefix'))]" -or
     $associationNames -cnotcontains "[format('{0}-diagnostic-assoc', parameters('namePrefix'))]") {
@@ -100,6 +100,8 @@ $global:edgeFailure = ''
 $global:edgeForeignVm = $false
 $global:edgeForeignOwner = $false
 $global:edgeForeignExtension = $false
+$global:edgeMissingSettingsAssoc = $false
+$global:edgeForeignAssociation = $false
 $global:edgePartialDcr = $false
 $global:edgeMissingTable = ''
 $global:edgeWrongPlan = ''
@@ -224,9 +226,14 @@ function global:az {
       } elseif ($url -match '/Microsoft\.Insights/dataCollectionRuleAssociations\?') {
         $response = @{ value = @(@('settings','flow','operational','diagnostic') | ForEach-Object {
           $dcrSuffix = if ($_ -eq 'flow') { 'syslog' } else { $_ }
-          @{id="$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$prefix-$_-assoc";name="$prefix-$_-assoc"
-            properties=@{ dataCollectionRuleId="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-$dcrSuffix"
-              scopeToResourceId=$extId }}
+          if ($_ -ne 'settings' -or -not $global:edgeMissingSettingsAssoc) {
+            $assocName = if ($_ -eq 'settings') { "pipelineSettings-$prefix-settings-assoc" } else { "$prefix-$_-assoc" }
+            @{id="$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$assocName";name=$assocName
+              properties=@{ dataCollectionRuleId=$(if ($_ -eq 'flow' -and $global:edgeForeignAssociation) {
+                  "$rgId/providers/Microsoft.Insights/dataCollectionRules/foreign"
+                } else { "$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-$dcrSuffix" })
+                scopeToResourceId=$extId }}
+          }
         }) }
       } else { throw "Unexpected REST URL in offline test: $url" }
       break
@@ -247,7 +254,9 @@ function global:az {
     '^resource list .*Microsoft.Insights/dataCollectionRules' {
       $global:edgeListedDcrs = if ($global:edgeExisting -or $global:edgePartialDcr) { @(
         @{id="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-settings";name="$prefix-settings"
-          kind='PipelineSettings';properties=@{provisioningState='Succeeded'}},
+          kind='PipelineSettings';properties=@{provisioningState='Succeeded'
+            pipelineSettings=@{endpoints=@(@{name='syslog-tcp-6514';type='syslog'
+              networkingConfig=@{endpoint='0.0.0.0:6514';transportProtocol='tcp'}})}}},
         @{id="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-syslog";name="$prefix-syslog"
           properties=@{provisioningState='Succeeded';destinations=@{logAnalytics=@(@{workspaceResourceId=$lawId})}
             dataSources=@{syslog=@(@{allowedFormats=@('syslogRfc5424')})}
@@ -303,11 +312,12 @@ function global:az {
     }
     '^resource show .*Microsoft.Kubernetes/connectedClusters/' {
       if ($key -match 'dataCollectionRuleAssociations') {
-        $suffix = if ($key -match 'settings-assoc') { 'settings' } elseif ($key -match 'operational-assoc') {
+        $suffix = if ($key -match 'pipelineSettings-.*-settings-assoc') { 'settings' } elseif ($key -match 'operational-assoc') {
           'operational'
         } elseif ($key -match 'diagnostic-assoc') { 'diagnostic' } else { 'flow' }
         $dcrSuffix = if ($suffix -eq 'flow') { 'syslog' } else { $suffix }
-        $response = @{ id="$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$prefix-$suffix-assoc"
+        $assocName = if ($suffix -eq 'settings') { "pipelineSettings-$prefix-settings-assoc" } else { "$prefix-$suffix-assoc" }
+        $response = @{ id="$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$assocName"
           properties=@{ dataCollectionRuleId="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-$dcrSuffix"
             scopeToResourceId=$extId } }
       } elseif ($key -match 'KubernetesConfiguration/extensions') {
@@ -434,7 +444,7 @@ try {
   $global:edgeForeignOwner = $false
   $global:edgeExisting = $false
   $global:edgePartialDcr = $true
-  Assert-Fails { & $scriptPath @parameters -Enable } 'partially deployed'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'foreign or unverified'
   $global:edgePartialDcr = $false
   $global:edgeFailure = 'preflight'
   Assert-Fails { & $scriptPath @parameters -Enable } 'Remote preflight denied: disk'
@@ -487,6 +497,22 @@ try {
   }
   $global:edgeCalls.Clear()
   $global:edgeExisting = $true
+  $global:edgeForeignAssociation = $true
+  Assert-Fails { & $scriptPath @parameters -Enable } 'Existing syslog association is foreign'
+  if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
+    throw 'Foreign association entered a mutable stage.'
+  }
+  $global:edgeForeignAssociation = $false
+  $global:edgeMissingSettingsAssoc = $true
+  $global:edgeCalls.Clear()
+  $result = & $scriptPath @parameters -Enable
+  if ($result.LiveIngestion -notmatch 'NOT VERIFIED' -or
+      @($global:edgeCalls | Where-Object { $_ -match '^deployment group create .*edge-syslog' }).Count -ne 1 -or
+      @($global:edgeCalls | Where-Object { $_ -match '^resource show .*dataCollectionRuleAssociations/pipelineSettings-.*-settings-assoc' }).Count -ne 1) {
+    throw 'Owned partial deployment did not restore the missing pipelineSettings association.'
+  }
+  $global:edgeMissingSettingsAssoc = $false
+  $global:edgeCalls.Clear()
   $result = & $scriptPath @parameters -Enable
   if ($result.LiveIngestion -notmatch 'NOT VERIFIED' -or
       @($global:edgeCalls | Where-Object { $_ -match 'vm run-command invoke .*--parameters (preflight|install) .* true -o json' }).Count -ne 2) {

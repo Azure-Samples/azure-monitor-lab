@@ -35,6 +35,12 @@ $rgId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
 $vmId = "$rgId/providers/Microsoft.Compute/virtualMachines/$VmName"
 $clusterId = "$rgId/providers/Microsoft.Kubernetes/connectedClusters/$clusterName"
 $extensionId = "$clusterId/providers/Microsoft.KubernetesConfiguration/extensions/azure-monitor-pipeline"
+$associationNames = @{
+  settings = "pipelineSettings-$NamePrefix-settings-assoc"
+  syslog = "$NamePrefix-flow-assoc"
+  operational = "$NamePrefix-operational-assoc"
+  diagnostic = "$NamePrefix-diagnostic-assoc"
+}
 $lawPattern = '^/subscriptions/' + [regex]::Escape($SubscriptionId) +
   '/resourceGroups/' + [regex]::Escape($ResourceGroup) +
   '/providers/Microsoft\.OperationalInsights/workspaces/[a-zA-Z0-9-]+$'
@@ -272,11 +278,11 @@ if (@($template.parameters.PSObject.Properties.Name | Where-Object { $_ -notin @
 if ($template.parameters.enableCombined.defaultValue -ne $false) { throw 'Combined route must default off in the ARM template.' }
 foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operational','diagnostic') } else { @() })) {
   $dcrId = "$rgId/providers/Microsoft.Insights/dataCollectionRules/$NamePrefix-$suffix"
-  $associationSuffix = switch ($suffix) { syslog { 'flow' } settings { 'settings' } default { $suffix } }
-  $assocId = "$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$NamePrefix-$associationSuffix-assoc"
+  $associationName = $associationNames[$suffix]
+  $assocId = "$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$associationName"
   $dcr = @($existingDcrs | Where-Object { $_.id -ieq $dcrId -or $_.name -ieq "$NamePrefix-$suffix" })
-  $assoc = @($existingAssociations | Where-Object { $_.id -ieq $assocId -or $_.name -ieq "$NamePrefix-$associationSuffix-assoc" })
-  if ($dcr.Count -gt 1 -or $assoc.Count -gt 1 -or $dcr.Count -ne $assoc.Count) {
+  $assoc = @($existingAssociations | Where-Object { $_.id -ieq $assocId -or $_.name -ieq $associationName })
+  if ($dcr.Count -gt 1 -or $assoc.Count -gt 1 -or $assoc.Count -gt $dcr.Count) {
     throw "Existing $suffix resources are ambiguous or partially deployed; inspect manually before retrying."
   }
   if ($dcr.Count -eq 1) {
@@ -287,10 +293,14 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
     }
   }
   if ($dcr.Count -eq 1 -and (-not $arcExists -or $dcr[0].id -ine $dcrId -or
-      $assoc[0].id -ine $assocId -or $assoc[0].properties.dataCollectionRuleId -ine $dcrId -or
-      $assoc[0].properties.scopeToResourceId -ine $extensionId -or
       $dcr[0].properties.provisioningState -ne 'Succeeded' -or
-      $(if ($suffix -eq 'settings') { $dcr[0].kind -ne 'PipelineSettings' }
+      $(if ($suffix -eq 'settings') {
+          $endpoints = @($dcr[0].properties.pipelineSettings.endpoints)
+          $dcr[0].kind -ne 'PipelineSettings' -or $endpoints.Count -ne 1 -or
+          $endpoints[0].name -ne 'syslog-tcp-6514' -or $endpoints[0].type -ne 'syslog' -or
+          $endpoints[0].networkingConfig.endpoint -ne '0.0.0.0:6514' -or
+          $endpoints[0].networkingConfig.transportProtocol -ne 'tcp'
+        }
         elseif ($suffix -eq 'syslog') { $dcr[0].properties.destinations.logAnalytics[0].workspaceResourceId -ine $CentralLawId -or
           $dcr[0].properties.dataSources.syslog[0].allowedFormats -notcontains 'syslogRfc5424' -or
           $dcr[0].properties.transformations[0].processors[0].configuration.expression -notmatch 'EdgeDropFlag' }
@@ -311,6 +321,11 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
           $dcr[0].properties.transformations[0].processors[0].configuration.expression -cne $expected[0].properties.transformations[0].processors[0].configuration.expression
         }))) {
     throw "Existing $suffix DCR or association is foreign or unverified; refusing to overwrite it."
+  }
+  if ($assoc.Count -eq 1 -and ($assoc[0].id -ine $assocId -or
+      $assoc[0].properties.dataCollectionRuleId -ine $dcrId -or
+      $assoc[0].properties.scopeToResourceId -ine $extensionId)) {
+    throw "Existing $suffix association is foreign or unverified; refusing to overwrite it."
   }
 }
 
@@ -359,8 +374,7 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
       throw "$suffix DCR did not resolve to the expected Stage90 stream, workspace, and redaction."
     }
   }
-  $associationSuffix = switch ($suffix) { syslog { 'flow' } settings { 'settings' } default { $suffix } }
-  $associationId = "$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$NamePrefix-$associationSuffix-assoc"
+  $associationId = "$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$($associationNames[$suffix])"
   $association = Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$associationId,'-o','json') "$suffix association"
   if ($association.id -ine $associationId -or $association.properties.dataCollectionRuleId -ine $id -or
       $association.properties.scopeToResourceId -ine $extensionId) { throw "$suffix association ID or scope mismatch." }
