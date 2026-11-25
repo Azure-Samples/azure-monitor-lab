@@ -311,7 +311,10 @@ function global:az {
         $response = @{ id=$(if ($isPipeline) { $extId } else { "$clusterId/providers/Microsoft.KubernetesConfiguration/extensions/azure-cert-management" })
           identity=@{type='SystemAssigned';principalId='00000000-0000-4000-8000-000000000001'}
           properties=@{extensionType=$(if ($isPipeline) { 'microsoft.monitor.pipeline' } else { 'microsoft.certmanagement' })
-            version='0.1.7';provisioningState='Succeeded';installState='Installed'
+            version='0.1.7';provisioningState='Succeeded'
+            currentVersion=$(if ($global:edgeFailure -eq 'cert-version' -and -not $isPipeline) { $null }
+              elseif ($global:edgeFailure -eq 'pipeline-version' -and $isPipeline) { '0.1.8' }
+              elseif ($isPipeline) { '0.1.7' } else { '1.3.0' })
             releaseTrain=$(if ($isPipeline) { 'preview' } else { 'stable' })
             autoUpgradeMinorVersion=(-not $isPipeline)} }
       } else {
@@ -440,6 +443,13 @@ try {
   if (@($global:edgeCalls | Where-Object { $_ -match '^deployment group create' }).Count) { throw 'Deployment ran after denied installation.' }
   $global:edgeFailure = 'native'
   Assert-Fails { & $scriptPath @parameters -Enable } 'Remote install failed'
+  foreach ($failure in @('cert-version','pipeline-version')) {
+    $global:edgeFailure = $failure
+    Assert-Fails { & $scriptPath @parameters -Enable } 'no verified installed version'
+  }
+  if (@($global:edgeCalls | Where-Object { $_ -match '^deployment group create .*edge-syslog' }).Count) {
+    throw 'Syslog deployment ran without verified extension versions.'
+  }
   $global:edgeFailure = 'extensions'
   Assert-Fails { & $scriptPath @parameters -Enable } 'extension deployment failed'
   if (@($global:edgeCalls | Where-Object { $_ -match '^deployment group create .*edge-syslog' }).Count) {

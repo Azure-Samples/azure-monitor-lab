@@ -317,12 +317,14 @@ foreach ($spec in @(@('azure-cert-management','microsoft.certmanagement'),@('azu
   $id = "$clusterId/providers/Microsoft.KubernetesConfiguration/extensions/$($spec[0])"
   $ext = Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$id,'-o','json') "Extension $($spec[0])"
   Assert-Extension @($ext) $spec[0] $spec[1]
-  if ($ext.properties.installState -notin @('Installed','Succeeded')) {
-    throw "Extension $($spec[0]) is not installed; Syslog resources were not deployed."
+  if (-not $ext.properties.currentVersion -or
+      ($spec[0] -eq 'azure-monitor-pipeline' -and $ext.properties.currentVersion -ne '0.1.7')) {
+    throw "Extension $($spec[0]) has no verified installed version; Syslog resources were not deployed."
   }
 }
 $pipeline = Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$extensionId,'-o','json') 'Pipeline extension'
-if (-not $pipeline.identity.principalId -or $pipeline.properties.installState -notin @('Installed','Succeeded')) {
+if (-not $pipeline.identity.principalId -or $pipeline.properties.currentVersion -ne '0.1.7' -or
+    $pipeline.properties.provisioningState -ne 'Succeeded') {
   throw 'Pipeline identity or install readiness is not proven; Syslog resources were not deployed.'
 }
 $sysDeploy = Read-Az @('deployment','group','create','--subscription',$SubscriptionId,'--resource-group',$ResourceGroup,
