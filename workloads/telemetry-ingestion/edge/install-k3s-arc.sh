@@ -136,5 +136,5 @@ if [[ ${ARC_ALREADY_OWNED:-false} == true ]]; then
 fi
 az connectedk8s connect --name "$CLUSTER_NAME" --resource-group "$RESOURCE_GROUP" \
   --location "$LOCATION" --subscription "$SUBSCRIPTION_ID" --kube-config "$KUBECONFIG" \
-  --tags "azure-monitor-lab-edge-vm=$VM_ID" --output none >/dev/null 2>&1 || deny arc-connect
+  --tags "monitor-lab-edge-vm=$VM_ID" --output none >/dev/null 2>&1 || deny arc-connect
 printf 'PIPELINE_INSTALL_OK\n'

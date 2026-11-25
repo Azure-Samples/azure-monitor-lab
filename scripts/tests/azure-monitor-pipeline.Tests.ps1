@@ -87,6 +87,12 @@ $text = Get-Content -Raw $asset
 if ($text -notmatch 'v1\.33\.3%2Bk3s1' -or
     $text -notmatch 'f03cad6610cf5b2903d8a9ac3d6716690e53dab461b09c07b0c913a262166abc' -or
     $text -match 'curl\s+[^`n]*\|\s*(bash|sh)') { throw 'Remote K3s version/checksum/install policy mismatch.' }
+if ($text -notmatch '--tags "([a-z][a-z0-9-]+)=\$VM_ID"') { throw 'Arc VM-ownership tag is missing.' }
+$ownerTag = $Matches[1]
+if ($ownerTag -match '^(azure|microsoft|windows)' -or
+    ([regex]::Matches((Get-Content -Raw $scriptPath), [regex]::Escape("tags.'$ownerTag'"))).Count -ne 2) {
+  throw 'Arc VM-ownership tag has a reserved prefix or is not verified before and after connection.'
+}
 
 $global:edgeCalls = [Collections.Generic.List[string]]::new()
 $global:edgeExisting = $false
@@ -213,7 +219,7 @@ function global:az {
     }
     '^resource list .*Microsoft.Kubernetes/connectedClusters' {
       $response = if ($global:edgeExisting) { @(@{ id=$clusterId; name="$prefix-edge"; location=$region
-        tags=@{'azure-monitor-lab-edge-vm'=$(if ($global:edgeForeignOwner) { 'another-vm' } else { $vmId })}
+        tags=@{'monitor-lab-edge-vm'=$(if ($global:edgeForeignOwner) { 'another-vm' } else { $vmId })}
         properties=@{provisioningState='Succeeded';connectivityStatus='Connected'} }) } else { @() }
       break
     }
@@ -309,7 +315,7 @@ function global:az {
             releaseTrain=$(if ($isPipeline) { 'preview' } else { 'stable' })
             autoUpgradeMinorVersion=(-not $isPipeline)} }
       } else {
-        $response = @{id=$clusterId;tags=@{'azure-monitor-lab-edge-vm'=$vmId};properties=@{provisioningState='Succeeded';connectivityStatus='Connected'}}
+        $response = @{id=$clusterId;tags=@{'monitor-lab-edge-vm'=$vmId};properties=@{provisioningState='Succeeded';connectivityStatus='Connected'}}
       }
       break
     }

@@ -236,7 +236,7 @@ $owned = @($clusters | Where-Object { $_.name -ieq $clusterName -or $_.id -ieq $
 if ($owned.Count -gt 1) { throw 'Ambiguous Arc cluster name.' }
 $arcExists = $owned.Count -eq 1
 if ($arcExists -and ($owned[0].id -ine $clusterId -or
-    $owned[0].tags.'azure-monitor-lab-edge-vm' -ine $vmId -or
+    $owned[0].tags.'monitor-lab-edge-vm' -ine $vmId -or
     $owned[0].location -ine $Location -or $owned[0].properties.provisioningState -ne 'Succeeded' -or
     $owned[0].properties.connectivityStatus -ne 'Connected')) {
   throw 'Existing Arc cluster is foreign or unhealthy; refusing to connect or overwrite it.'
@@ -304,7 +304,7 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
 Invoke-Remote preflight $arcExists
 Invoke-Remote install $arcExists
 $arc = Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$clusterId,'-o','json') 'Connected Arc cluster'
-if ($arc.id -ine $clusterId -or $arc.tags.'azure-monitor-lab-edge-vm' -ine $vmId -or
+if ($arc.id -ine $clusterId -or $arc.tags.'monitor-lab-edge-vm' -ine $vmId -or
     $arc.properties.provisioningState -ne 'Succeeded' -or $arc.properties.connectivityStatus -ne 'Connected') {
   throw 'Arc did not report Connected with the expected VM ownership tag; extensions were not deployed.'
 }
