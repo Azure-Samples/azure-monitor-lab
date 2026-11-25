@@ -41,9 +41,13 @@
               "type": "syslog",
               "networkingConfig": {
                 "endpoint": "0.0.0.0:6514",
-                "transportProtocol": "tcp"
+                "transportProtocol": "tcp",
+                "tlsConfiguration": "unencrypted"
               }
             }
+          ],
+          "tlsConfigurations": [
+            { "name": "unencrypted", "mode": "disabled" }
           ]
         }
       }

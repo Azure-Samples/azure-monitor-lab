@@ -106,6 +106,21 @@ function Assert-Extension {
     throw "Existing extension $Name is foreign, failed, or not pinned; refusing to overwrite it (ID=$($item[0].id), type=$($item[0].properties.extensionType), state=$($item[0].properties.provisioningState))."
   }
 }
+function Test-PipelineSettings {
+  param([object] $Dcr, [switch] $AllowImplicitTls)
+  $settings = $Dcr.properties.pipelineSettings
+  $endpoints = @($settings.endpoints | Where-Object { $_ })
+  if ($Dcr.kind -ne 'PipelineSettings' -or $endpoints.Count -ne 1 -or
+      $endpoints[0].name -ne 'syslog-tcp-6514' -or $endpoints[0].type -ne 'syslog' -or
+      $endpoints[0].networkingConfig.endpoint -ne '0.0.0.0:6514' -or
+      $endpoints[0].networkingConfig.transportProtocol -ne 'tcp') { return $false }
+  $tls = @($settings.tlsConfigurations | Where-Object { $_ })
+  if ($AllowImplicitTls -and -not $endpoints[0].networkingConfig.tlsConfiguration -and $tls.Count -eq 0) {
+    return $true
+  }
+  return ($endpoints[0].networkingConfig.tlsConfiguration -eq 'unencrypted' -and
+    $tls.Count -eq 1 -and $tls[0].name -eq 'unencrypted' -and $tls[0].mode -eq 'disabled')
+}
 function Invoke-Remote {
   param([string] $Mode, [bool] $ArcAlreadyOwned)
   $scriptFile = Join-Path $PSScriptRoot '..\workloads\telemetry-ingestion\edge\install-k3s-arc.sh'
@@ -294,13 +309,7 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
   }
   if ($dcr.Count -eq 1 -and (-not $arcExists -or $dcr[0].id -ine $dcrId -or
       $dcr[0].properties.provisioningState -ne 'Succeeded' -or
-      $(if ($suffix -eq 'settings') {
-          $endpoints = @($dcr[0].properties.pipelineSettings.endpoints)
-          $dcr[0].kind -ne 'PipelineSettings' -or $endpoints.Count -ne 1 -or
-          $endpoints[0].name -ne 'syslog-tcp-6514' -or $endpoints[0].type -ne 'syslog' -or
-          $endpoints[0].networkingConfig.endpoint -ne '0.0.0.0:6514' -or
-          $endpoints[0].networkingConfig.transportProtocol -ne 'tcp'
-        }
+      $(if ($suffix -eq 'settings') { -not (Test-PipelineSettings -Dcr $dcr[0] -AllowImplicitTls) }
         elseif ($suffix -eq 'syslog') { $dcr[0].properties.destinations.logAnalytics[0].workspaceResourceId -ine $CentralLawId -or
           $dcr[0].properties.dataSources.syslog[0].allowedFormats -notcontains 'syslogRfc5424' -or
           $dcr[0].properties.transformations[0].processors[0].configuration.expression -notmatch 'EdgeDropFlag' }
@@ -366,6 +375,9 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
   $id = "$rgId/providers/Microsoft.Insights/dataCollectionRules/$NamePrefix-$suffix"
   $dcr = Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$id,'-o','json') "Pipeline $suffix DCR"
   if ($dcr.id -ine $id -or $dcr.properties.provisioningState -ne 'Succeeded') { throw "$suffix DCR not ready." }
+  if ($suffix -eq 'settings' -and -not (Test-PipelineSettings -Dcr $dcr)) {
+    throw 'Pipeline settings DCR did not apply explicit unencrypted loopback-test TLS mode.'
+  }
   if ($suffix -in @('operational','diagnostic')) {
     $stream = "Custom-TelemetryIngestion$(if ($suffix -eq 'operational') { 'Operational' } else { 'Diagnostic' })_CL"
     if ($dcr.properties.destinations.logAnalytics[0].workspaceResourceId -ine $CentralLawId -or

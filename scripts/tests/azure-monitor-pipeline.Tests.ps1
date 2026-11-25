@@ -26,6 +26,14 @@ if ($template.parameters.enableCombined.defaultValue -ne $false -or
 }
 $dcrResources = @($template.resources | Where-Object type -eq 'Microsoft.Insights/dataCollectionRules')
 if ($dcrResources.Count -ne 4) { throw 'Expected independent settings, Syslog, Operational, and Diagnostic DCRs.' }
+$settingsDcr = @($dcrResources | Where-Object name -eq "[variables('settingsName')]")
+if ($settingsDcr.Count -ne 1 -or
+    $settingsDcr[0].properties.pipelineSettings.endpoints[0].networkingConfig.tlsConfiguration -ne 'unencrypted' -or
+    @($settingsDcr[0].properties.pipelineSettings.tlsConfigurations).Count -ne 1 -or
+    $settingsDcr[0].properties.pipelineSettings.tlsConfigurations[0].name -ne 'unencrypted' -or
+    $settingsDcr[0].properties.pipelineSettings.tlsConfigurations[0].mode -ne 'disabled') {
+  throw 'Loopback Syslog receiver must explicitly disable the default TCP mTLS mode.'
+}
 $roles = @($template.resources | Where-Object type -eq 'Microsoft.Authorization/roleAssignments')
 if ($roles.Count -ne 3 -or
     @($roles | Where-Object { $_.scope -notin @("[variables('flowId')]","[variables('operationalId')]","[variables('diagnosticId')]") }).Count -ne 0 -or
@@ -102,6 +110,9 @@ $global:edgeForeignOwner = $false
 $global:edgeForeignExtension = $false
 $global:edgeMissingSettingsAssoc = $false
 $global:edgeForeignAssociation = $false
+$global:edgeTlsLegacy = $false
+$global:edgeTlsInvalid = $false
+$global:edgeSettingsApplied = $false
 $global:edgePartialDcr = $false
 $global:edgeMissingTable = ''
 $global:edgeWrongPlan = ''
@@ -252,11 +263,20 @@ function global:az {
       break
     }
     '^resource list .*Microsoft.Insights/dataCollectionRules' {
+      $global:edgeSettingsApplied = $false
+      $settingsNetwork = @{endpoint='0.0.0.0:6514';transportProtocol='tcp'}
+      $settingsProperties = @{provisioningState='Succeeded'
+        pipelineSettings=@{endpoints=@(@{name='syslog-tcp-6514';type='syslog';networkingConfig=$settingsNetwork})}}
+      if (-not $global:edgeTlsLegacy) {
+        $settingsNetwork.tlsConfiguration = $(if ($global:edgeTlsInvalid) { 'managed-mtls' } else { 'unencrypted' })
+        $settingsProperties.pipelineSettings.tlsConfigurations = @(@{
+          name=$settingsNetwork.tlsConfiguration
+          mode=$(if ($global:edgeTlsInvalid) { 'mutualTls' } else { 'disabled' })
+        })
+      }
       $global:edgeListedDcrs = if ($global:edgeExisting -or $global:edgePartialDcr) { @(
         @{id="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-settings";name="$prefix-settings"
-          kind='PipelineSettings';properties=@{provisioningState='Succeeded'
-            pipelineSettings=@{endpoints=@(@{name='syslog-tcp-6514';type='syslog'
-              networkingConfig=@{endpoint='0.0.0.0:6514';transportProtocol='tcp'}})}}},
+          kind='PipelineSettings';properties=$settingsProperties},
         @{id="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-syslog";name="$prefix-syslog"
           properties=@{provisioningState='Succeeded';destinations=@{logAnalytics=@(@{workspaceResourceId=$lawId})}
             dataSources=@{syslog=@(@{allowedFormats=@('syslogRfc5424')})}
@@ -340,6 +360,13 @@ function global:az {
     }
     '^resource show .*Microsoft.Insights/dataCollectionRules/' {
       $id = $parts[[array]::IndexOf($parts,'--ids')+1]
+      if ($id -match '-settings$' -and $global:edgeSettingsApplied) {
+        $response = @{id=$id;kind='PipelineSettings';properties=@{provisioningState='Succeeded'
+          pipelineSettings=@{endpoints=@(@{name='syslog-tcp-6514';type='syslog'
+            networkingConfig=@{endpoint='0.0.0.0:6514';transportProtocol='tcp';tlsConfiguration='unencrypted'}})
+            tlsConfigurations=@(@{name='unencrypted';mode='disabled'})}}}
+        break
+      }
       $existing = @($global:edgeListedDcrs | Where-Object id -EQ $id)
       if ($existing.Count -eq 1) { $response = $existing[0]; break }
       $suffix = if ($id -match '-operational$') { 'Operational' } elseif ($id -match '-diagnostic$') { 'Diagnostic' } else { '' }
@@ -350,6 +377,7 @@ function global:az {
     }
     '^deployment group create ' {
       if ($global:edgeFailure -eq 'extensions' -and $key -match 'edge-extensions') { $global:LASTEXITCODE = 1; return }
+      if ($key -match 'edge-syslog') { $global:edgeSettingsApplied = $true }
       $response = @{properties=@{provisioningState='Succeeded'}}; break
     }
     default { throw "Unexpected Azure command in offline test: $key" }
@@ -503,6 +531,14 @@ try {
     throw 'Foreign association entered a mutable stage.'
   }
   $global:edgeForeignAssociation = $false
+  $global:edgeTlsInvalid = $true
+  $global:edgeCalls.Clear()
+  Assert-Fails { & $scriptPath @parameters -Enable } 'Existing settings DCR or association is foreign'
+  if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
+    throw 'Foreign TLS settings entered a mutable stage.'
+  }
+  $global:edgeTlsInvalid = $false
+  $global:edgeTlsLegacy = $true
   $global:edgeMissingSettingsAssoc = $true
   $global:edgeCalls.Clear()
   $result = & $scriptPath @parameters -Enable
@@ -511,6 +547,7 @@ try {
       @($global:edgeCalls | Where-Object { $_ -match '^resource show .*dataCollectionRuleAssociations/pipelineSettings-.*-settings-assoc' }).Count -ne 1) {
     throw 'Owned partial deployment did not restore the missing pipelineSettings association.'
   }
+  $global:edgeTlsLegacy = $false
   $global:edgeMissingSettingsAssoc = $false
   $global:edgeCalls.Clear()
   $result = & $scriptPath @parameters -Enable
