@@ -19,6 +19,8 @@ The Arc extension catalog also requires the subscription's separate `Microsoft.K
 
 The Linux VM's system identity must also have `Kubernetes Cluster - Azure Arc Onboarding` at the lab resource group (or inherited) scope; an opted-in deployment does not grant it automatically. Check with `az role assignment list --assignee-object-id <vm-principal-id> --scope <resource-group-id> --include-inherited`. Azure CLI rejects combining `--scope` with `--all`. If the role is missing, an authorized operator can grant **only** that role at the lab resource group; the bootstrap prints the exact command and stops before Run Command.
 
+The installer does not require host port 4317 to be free: an existing MetricsExtension listener on loopback is independent of the pipeline's Kubernetes-pod Syslog receiver on 6514. Do not stop or reconfigure the monitoring extension to clear a `ports` denial. The installer still checks host listeners on 6514, 6443, 10250, 2379 and 2380 before installing K3s.
+
 Turning the flag back off **does not uninstall** K3s, disconnect the Arc cluster, delete DCRs/extensions, or undo a user-selected `vmSize` change. After a demo, review exact ownership before separately removing scenario DCR associations/role assignment/DCRs, the pipeline and certificate extensions, the scenario-owned Arc connected-cluster resource and its locally installed K3s service. Do not remove the shared lab VM, AMA, workspace, or another owner's Arc resources. Stop any port-forward; never expose the unencrypted Syslog receiver on a public endpoint.
 
 Assess the existing host without changes:

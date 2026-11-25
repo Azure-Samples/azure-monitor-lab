@@ -25,12 +25,12 @@ source /etc/os-release
 [[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 20971520 ]] || deny disk
 for command in systemctl ss curl sha256sum apt-get gpg ip tar; do command -v "$command" >/dev/null 2>&1 || deny commands; done
 systemctl is-active --quiet azuremonitoragent || deny ama
-listeners=$(ss -lntH '( sport = :6514 or sport = :4317 or sport = :6443 or sport = :10250 or sport = :2379 or sport = :2380 )' 2>/dev/null) || deny ports
+listeners=$(ss -lntH '( sport = :6514 or sport = :6443 or sport = :10250 or sport = :2379 or sport = :2380 )' 2>/dev/null) || deny ports
 [[ -z $listeners ]] || {
   # A previously installed, owned K3s server may already use its own API listener.
   [[ -f /etc/rancher/k3s/azure-monitor-lab-owner &&
      $listeners == *:6443* &&
-     $listeners != *:6514* && $listeners != *:4317* &&
+     $listeners != *:6514* &&
      $listeners != *:2379* && $listeners != *:2380* ]] || deny ports
 }
 owner=/etc/rancher/k3s/azure-monitor-lab-owner
