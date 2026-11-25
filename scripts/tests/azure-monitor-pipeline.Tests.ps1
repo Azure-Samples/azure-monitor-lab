@@ -99,6 +99,7 @@ $global:edgeExisting = $false
 $global:edgeFailure = ''
 $global:edgeForeignVm = $false
 $global:edgeForeignOwner = $false
+$global:edgeForeignExtension = $false
 $global:edgePartialDcr = $false
 $global:edgeMissingTable = ''
 $global:edgeWrongPlan = ''
@@ -108,6 +109,7 @@ $global:edgeForeignDcr = ''
 $global:edgeRemoteModes = [Collections.Generic.List[string]]::new()
 $global:edgeRegisteredProviders = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $global:edgeCliExtensionInstalled = $false
+$global:edgeListedDcrs = @()
 function global:az {
   $parts = @($args | ForEach-Object { [string]$_ })
   $key = ($parts -join ' ')
@@ -205,9 +207,30 @@ function global:az {
       }
       break
     }
-    '^rest ' { $response = @{ value = @(@{ actions = @($(if ($global:edgeFailure -eq 'permission') {
-      'Microsoft.Compute/virtualMachines/runCommand/action'
-    } else { '*' })); notActions = @() }) }; break }
+    '^rest ' {
+      $url = $parts[[array]::IndexOf($parts,'--url')+1]
+      if ($url -match '/Microsoft\.Authorization/permissions\?') {
+        $response = @{ value = @(@{ actions = @($(if ($global:edgeFailure -eq 'permission') {
+          'Microsoft.Compute/virtualMachines/runCommand/action'
+        } else { '*' })); notActions = @() }) }
+      } elseif ($url -match '/Microsoft\.KubernetesConfiguration/extensions\?') {
+        $response = @{ value = @(
+          @{id="$clusterId/providers/Microsoft.KubernetesConfiguration/extensions/azure-cert-management";name='azure-cert-management'
+            properties=@{extensionType='microsoft.certmanagement';provisioningState='Succeeded';releaseTrain='stable';autoUpgradeMinorVersion=$true}},
+          @{id=$extId;name='azure-monitor-pipeline';identity=@{type='SystemAssigned'}
+            properties=@{extensionType=$(if ($global:edgeForeignExtension) { 'foreign.extension' } else { 'microsoft.monitor.pipeline' })
+              provisioningState='Succeeded';version='0.1.7';releaseTrain='preview';autoUpgradeMinorVersion=$false}}
+        ) }
+      } elseif ($url -match '/Microsoft\.Insights/dataCollectionRuleAssociations\?') {
+        $response = @{ value = @(@('settings','flow','operational','diagnostic') | ForEach-Object {
+          $dcrSuffix = if ($_ -eq 'flow') { 'syslog' } else { $_ }
+          @{id="$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$prefix-$_-assoc";name="$prefix-$_-assoc"
+            properties=@{ dataCollectionRuleId="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-$dcrSuffix"
+              scopeToResourceId=$extId }}
+        }) }
+      } else { throw "Unexpected REST URL in offline test: $url" }
+      break
+    }
     '^role assignment list ' {
       if ($parts -contains '--all' -or
           $parts[[array]::IndexOf($parts,'--scope')+1] -ne $rgId -or
@@ -218,22 +241,11 @@ function global:az {
       break
     }
     '^resource list .*Microsoft.Kubernetes/connectedClusters' {
-      $response = if ($global:edgeExisting) { @(@{ id=$clusterId; name="$prefix-edge"; location=$region
-        tags=@{'monitor-lab-edge-vm'=$(if ($global:edgeForeignOwner) { 'another-vm' } else { $vmId })}
-        properties=@{provisioningState='Succeeded';connectivityStatus='Connected'} }) } else { @() }
-      break
-    }
-    '^resource list .*Microsoft.KubernetesConfiguration/extensions' {
-      $response = if ($global:edgeExisting) { @(
-        @{id="$clusterId/providers/Microsoft.KubernetesConfiguration/extensions/azure-cert-management";name='azure-cert-management'
-          properties=@{extensionType='microsoft.certmanagement';provisioningState='Succeeded';releaseTrain='stable';autoUpgradeMinorVersion=$true}},
-        @{id=$extId;name='azure-monitor-pipeline';identity=@{type='SystemAssigned'}
-          properties=@{extensionType='microsoft.monitor.pipeline';provisioningState='Succeeded';version='0.1.7';releaseTrain='preview';autoUpgradeMinorVersion=$false}}
-      ) } else { @() }
+      $response = if ($global:edgeExisting) { @(@{ id=$clusterId; name="$prefix-edge"; location=$region }) } else { @() }
       break
     }
     '^resource list .*Microsoft.Insights/dataCollectionRules' {
-      $response = if ($global:edgeExisting -or $global:edgePartialDcr) { @(
+      $global:edgeListedDcrs = if ($global:edgeExisting -or $global:edgePartialDcr) { @(
         @{id="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-settings";name="$prefix-settings"
           kind='PipelineSettings';properties=@{provisioningState='Succeeded'}},
         @{id="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-syslog";name="$prefix-syslog"
@@ -252,15 +264,7 @@ function global:az {
             transformations=@(@{processors=@(@{configuration=@{
               expression=$templateDcr.properties.transformations[0].processors[0].configuration.expression}})})}}
       }} else {@()}) } else { @() }
-      break
-    }
-    '^resource list .*Microsoft.Insights/dataCollectionRuleAssociations' {
-      $response = if ($global:edgeExisting) { @(@('settings','flow','operational','diagnostic') | ForEach-Object {
-        $dcrSuffix = if ($_ -eq 'flow') { 'syslog' } else { $_ }
-        @{id="$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations/$prefix-$_-assoc";name="$prefix-$_-assoc"
-          properties=@{ dataCollectionRuleId="$rgId/providers/Microsoft.Insights/dataCollectionRules/$prefix-$dcrSuffix"
-            scopeToResourceId=$extId }}
-      }) } else { @() }
+      $response = @($global:edgeListedDcrs | ForEach-Object { @{id=$_.id;name=$_.name} })
       break
     }
     '^vm run-command invoke ' {
@@ -318,12 +322,16 @@ function global:az {
             releaseTrain=$(if ($isPipeline) { 'preview' } else { 'stable' })
             autoUpgradeMinorVersion=(-not $isPipeline)} }
       } else {
-        $response = @{id=$clusterId;tags=@{'monitor-lab-edge-vm'=$vmId};properties=@{provisioningState='Succeeded';connectivityStatus='Connected'}}
+        $response = @{id=$clusterId;location=$region
+          tags=@{'monitor-lab-edge-vm'=$(if ($global:edgeForeignOwner) { 'another-vm' } else { $vmId })}
+          properties=@{provisioningState='Succeeded';connectivityStatus='Connected'}}
       }
       break
     }
     '^resource show .*Microsoft.Insights/dataCollectionRules/' {
       $id = $parts[[array]::IndexOf($parts,'--ids')+1]
+      $existing = @($global:edgeListedDcrs | Where-Object id -EQ $id)
+      if ($existing.Count -eq 1) { $response = $existing[0]; break }
       $suffix = if ($id -match '-operational$') { 'Operational' } elseif ($id -match '-diagnostic$') { 'Diagnostic' } else { '' }
       $response = @{id=$id;properties=@{provisioningState='Succeeded'
         destinations=@{logAnalytics=@(@{workspaceResourceId=$lawId})}
@@ -410,6 +418,13 @@ try {
   $global:edgeForeignDcr = ''
   $global:edgeExisting = $false
   $global:edgeExisting = $true
+  $global:edgeForeignExtension = $true
+  $global:edgeCalls.Clear()
+  Assert-Fails { & $scriptPath @parameters -Enable } 'Existing extension azure-monitor-pipeline is foreign'
+  if (@($global:edgeCalls | Where-Object { $_ -match '^vm run-command|^deployment group create' }).Count) {
+    throw 'Foreign extension entered a mutable stage.'
+  }
+  $global:edgeForeignExtension = $false
   $global:edgeForeignOwner = $true
   $global:edgeCalls.Clear()
   Assert-Fails { & $scriptPath @parameters -Enable } 'foreign or unhealthy'

@@ -235,25 +235,31 @@ $clusters = @(Read-Az @('resource','list','--subscription',$SubscriptionId,'-g',
 $owned = @($clusters | Where-Object { $_.name -ieq $clusterName -or $_.id -ieq $clusterId })
 if ($owned.Count -gt 1) { throw 'Ambiguous Arc cluster name.' }
 $arcExists = $owned.Count -eq 1
-if ($arcExists -and ($owned[0].id -ine $clusterId -or
-    $owned[0].tags.'monitor-lab-edge-vm' -ine $vmId -or
-    $owned[0].location -ine $Location -or $owned[0].properties.provisioningState -ne 'Succeeded' -or
-    $owned[0].properties.connectivityStatus -ne 'Connected')) {
-  throw 'Existing Arc cluster is foreign or unhealthy; refusing to connect or overwrite it.'
-}
-$extensions = @(Read-Az @('resource','list','--subscription',$SubscriptionId,'-g',$ResourceGroup,
-  '--resource-type','Microsoft.KubernetesConfiguration/extensions','-o','json') 'Existing extensions')
-if (-not $arcExists -and @($extensions | Where-Object { $_.id -like "$clusterId/*" }).Count) {
-  throw 'An extension exists without an owned Arc cluster.'
-}
 if ($arcExists) {
+  $existingArc = Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$clusterId,'-o','json') 'Existing Arc cluster'
+  if ($owned[0].id -ine $clusterId -or $existingArc.id -ine $clusterId -or
+      $existingArc.tags.'monitor-lab-edge-vm' -ine $vmId -or
+      $existingArc.location -ine $Location -or $existingArc.properties.provisioningState -ne 'Succeeded' -or
+      $existingArc.properties.connectivityStatus -ne 'Connected') {
+    throw 'Existing Arc cluster is foreign or unhealthy; refusing to connect or overwrite it.'
+  }
+}
+$extensions = @()
+if ($arcExists) {
+  $extensions = @((Read-Az @('rest','--method','get','--url',
+    "https://management.azure.com$clusterId/providers/Microsoft.KubernetesConfiguration/extensions?api-version=2023-05-01",
+    '-o','json') 'Existing Arc extensions').value)
   Assert-Extension $extensions 'azure-cert-management' 'microsoft.certmanagement'
   Assert-Extension $extensions 'azure-monitor-pipeline' 'microsoft.monitor.pipeline'
 }
 $existingDcrs = @(Read-Az @('resource','list','--subscription',$SubscriptionId,'-g',$ResourceGroup,
   '--resource-type','Microsoft.Insights/dataCollectionRules','-o','json') 'Existing pipeline DCRs')
-$existingAssociations = @(Read-Az @('resource','list','--subscription',$SubscriptionId,'-g',$ResourceGroup,
-  '--resource-type','Microsoft.Insights/dataCollectionRuleAssociations','-o','json') 'Existing pipeline associations')
+$existingAssociations = @()
+if ($arcExists) {
+  $existingAssociations = @((Read-Az @('rest','--method','get','--url',
+    "https://management.azure.com$clusterId/providers/Microsoft.Insights/dataCollectionRuleAssociations?api-version=2025-05-11",
+    '-o','json') 'Existing pipeline associations').value)
+}
 $edgeRoot = Join-Path $PSScriptRoot '..\workloads\telemetry-ingestion\edge'
 $bicep = Join-Path $edgeRoot 'arc-pipeline-extensions.bicep'
 $syslog = Join-Path $edgeRoot 'syslog-pipeline.arm.json'
@@ -272,6 +278,13 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
   $assoc = @($existingAssociations | Where-Object { $_.id -ieq $assocId -or $_.name -ieq "$NamePrefix-$associationSuffix-assoc" })
   if ($dcr.Count -gt 1 -or $assoc.Count -gt 1 -or $dcr.Count -ne $assoc.Count) {
     throw "Existing $suffix resources are ambiguous or partially deployed; inspect manually before retrying."
+  }
+  if ($dcr.Count -eq 1) {
+    $listedId = $dcr[0].id
+    $dcr = @(Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$dcrId,'-o','json') "Existing $suffix DCR")
+    if ($listedId -ine $dcrId) {
+      throw "Existing $suffix DCR is foreign or unverified; refusing to overwrite it."
+    }
   }
   if ($dcr.Count -eq 1 -and (-not $arcExists -or $dcr[0].id -ine $dcrId -or
       $assoc[0].id -ine $assocId -or $assoc[0].properties.dataCollectionRuleId -ine $dcrId -or
