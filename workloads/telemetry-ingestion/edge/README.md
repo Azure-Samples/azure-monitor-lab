@@ -21,6 +21,8 @@ The Linux VM's system identity must also have `Kubernetes Cluster - Azure Arc On
 
 The installer does not require host port 4317 to be free: an existing MetricsExtension listener on loopback is independent of the pipeline's Kubernetes-pod Syslog receiver on 6514. Do not stop or reconfigure the monitoring extension to clear a `ports` denial. The installer still checks host listeners on 6514, 6443, 10250, 2379 and 2380 before installing K3s.
 
+If the remote `install` stage fails, it reports only a bounded stage code (for example `identity-login`, `identity-account`, or `arc-connect`), not Azure CLI output. Check the scenario-owned K3s service and Arc cluster status before retrying: install can leave K3s running even if the cluster connection has not completed. Do not remove the owner marker or restart monitoring agents to force a retry.
+
 Turning the flag back off **does not uninstall** K3s, disconnect the Arc cluster, delete DCRs/extensions, or undo a user-selected `vmSize` change. After a demo, review exact ownership before separately removing scenario DCR associations/role assignment/DCRs, the pipeline and certificate extensions, the scenario-owned Arc connected-cluster resource and its locally installed K3s service. Do not remove the shared lab VM, AMA, workspace, or another owner's Arc resources. Stop any port-forward; never expose the unencrypted Syslog receiver on a public endpoint.
 
 Assess the existing host without changes:

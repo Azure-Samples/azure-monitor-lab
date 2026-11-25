@@ -51,47 +51,47 @@ if [[ $MODE == preflight ]]; then
 fi
 
 if ! command -v az >/dev/null 2>&1; then
-  apt-get update -qq >/dev/null 2>&1 || deny
-  apt-get install -y ca-certificates curl gnupg >/dev/null 2>&1 || deny
+  apt-get update -qq >/dev/null 2>&1 || deny packages
+  apt-get install -y ca-certificates curl gnupg >/dev/null 2>&1 || deny packages
   install -d -m 755 /etc/apt/keyrings
   curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
-    https://packages.microsoft.com/keys/microsoft.asc --output /etc/apt/keyrings/microsoft.asc >/dev/null 2>&1 || deny
+    https://packages.microsoft.com/keys/microsoft.asc --output /etc/apt/keyrings/microsoft.asc >/dev/null 2>&1 || deny packages
   chmod 644 /etc/apt/keyrings/microsoft.asc
   printf 'deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/repos/azure-cli/ jammy main\n' \
     > /etc/apt/sources.list.d/azure-cli.sources.list
-  apt-get update -qq >/dev/null 2>&1 || deny
-  apt-get install -y azure-cli >/dev/null 2>&1 || deny
+  apt-get update -qq >/dev/null 2>&1 || deny packages
+  apt-get install -y azure-cli >/dev/null 2>&1 || deny packages
 fi
 az extension show --name connectedk8s --only-show-errors --output none >/dev/null 2>&1 ||
-  az extension add --name connectedk8s --yes --only-show-errors --output none >/dev/null 2>&1 || deny
+  az extension add --name connectedk8s --yes --only-show-errors --output none >/dev/null 2>&1 || deny connectedk8s
 if ! command -v helm >/dev/null 2>&1; then
   archive=/root/.helm-azure-monitor-download
-  [[ ! -e "$archive" ]] || deny
+  [[ ! -e "$archive" ]] || deny helm
   trap 'rm -f "$archive"' EXIT
   curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
     --max-time 180 --output "$archive" \
-    'https://get.helm.sh/helm-v3.17.3-linux-amd64.tar.gz' >/dev/null 2>&1 || deny
+    'https://get.helm.sh/helm-v3.17.3-linux-amd64.tar.gz' >/dev/null 2>&1 || deny helm
   echo "ee88b3c851ae6466a3de507f7be73fe94d54cbf2987cbaa3d1a3832ea331f2cd  $archive" |
-    sha256sum -c - >/dev/null 2>&1 || deny
-  tar -xzf "$archive" -O linux-amd64/helm > /usr/local/bin/helm || deny
+    sha256sum -c - >/dev/null 2>&1 || deny helm
+  tar -xzf "$archive" -O linux-amd64/helm > /usr/local/bin/helm || deny helm
   chmod 755 /usr/local/bin/helm
   rm -f "$archive"
   trap - EXIT
 fi
-[[ $(helm version --short 2>/dev/null) == v3.* ]] || deny
+[[ $(helm version --short 2>/dev/null) == v3.* ]] || deny helm
 
 if [[ ! -e "$owner" ]]; then
   # The version and SHA256 are fixed independently of the download response.
   binary=/root/.k3s-azure-monitor-download
-  [[ ! -e "$binary" ]] || deny
+  [[ ! -e "$binary" ]] || deny k3s-download
   trap 'rm -f "$binary"' EXIT
   curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
     --max-time 180 --output "$binary" \
-    'https://github.com/k3s-io/k3s/releases/download/v1.33.3%2Bk3s1/k3s' >/dev/null 2>&1 || deny
+    'https://github.com/k3s-io/k3s/releases/download/v1.33.3%2Bk3s1/k3s' >/dev/null 2>&1 || deny k3s-download
   echo "f03cad6610cf5b2903d8a9ac3d6716690e53dab461b09c07b0c913a262166abc  $binary" |
-    sha256sum -c - >/dev/null 2>&1 || deny
+    sha256sum -c - >/dev/null 2>&1 || deny k3s-download
   private_ip=$(ip -4 route get 168.63.129.16 | awk '{for (i=1; i<=NF; i++) if ($i=="src") {print $(i+1); exit}}')
-  [[ $private_ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || deny
+  [[ $private_ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || deny k3s-network
   install -d -m 700 /etc/rancher/k3s
   install -m 755 "$binary" /usr/local/bin/k3s
   printf 'bind-address: "%s"\nadvertise-address: "%s"\n' "$private_ip" "$private_ip" > /etc/rancher/k3s/config.yaml
@@ -110,12 +110,12 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
   systemctl daemon-reload
-  systemctl enable --now k3s >/dev/null 2>&1 || deny
+  systemctl enable --now k3s >/dev/null 2>&1 || deny k3s-service
 fi
-systemctl is-active --quiet k3s || deny
-[[ -f /etc/rancher/k3s/k3s.yaml ]] || deny
+systemctl is-active --quiet k3s || deny k3s-service
+[[ -f /etc/rancher/k3s/k3s.yaml ]] || deny k3s-config
 private_ip=$(awk -F '"' '/^advertise-address:/ {print $2}' /etc/rancher/k3s/config.yaml)
-[[ $private_ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || deny
+[[ $private_ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || deny k3s-config
 if grep -q 'server: https://127.0.0.1:6443' /etc/rancher/k3s/k3s.yaml; then
   sed -i "s#server: https://127.0.0.1:6443#server: https://${private_ip}:6443#" /etc/rancher/k3s/k3s.yaml
 fi
@@ -124,11 +124,11 @@ for attempt in {1..30}; do
   if /usr/local/bin/k3s kubectl get --raw=/readyz >/dev/null 2>&1; then break; fi
   sleep 2
 done
-/usr/local/bin/k3s kubectl get --raw=/readyz >/dev/null 2>&1 || deny
-systemctl is-active --quiet azuremonitoragent || deny
-az login --identity --allow-no-subscriptions --output none >/dev/null 2>&1 || deny
-account=$(az account show --subscription "$SUBSCRIPTION_ID" --query tenantId -o tsv 2>/dev/null) || deny
-[[ ${account,,} == ${TENANT_ID,,} ]] || deny
+/usr/local/bin/k3s kubectl get --raw=/readyz >/dev/null 2>&1 || deny k3s-ready
+systemctl is-active --quiet azuremonitoragent || deny ama
+az login --identity --allow-no-subscriptions --output none >/dev/null 2>&1 || deny identity-login
+account=$(az account show --subscription "$SUBSCRIPTION_ID" --query tenantId -o tsv 2>/dev/null) || deny identity-account
+[[ ${account,,} == ${TENANT_ID,,} ]] || deny identity-tenant
 if [[ ${ARC_ALREADY_OWNED:-false} == true ]]; then
   # Never reconnect an existing resource; the orchestrator verifies its owner and status.
   printf 'PIPELINE_INSTALL_OK\n'
@@ -136,5 +136,5 @@ if [[ ${ARC_ALREADY_OWNED:-false} == true ]]; then
 fi
 az connectedk8s connect --name "$CLUSTER_NAME" --resource-group "$RESOURCE_GROUP" \
   --location "$LOCATION" --subscription "$SUBSCRIPTION_ID" --kube-config "$KUBECONFIG" \
-  --tags "azure-monitor-lab-edge-vm=$VM_ID" --output none >/dev/null 2>&1 || deny
+  --tags "azure-monitor-lab-edge-vm=$VM_ID" --output none >/dev/null 2>&1 || deny arc-connect
 printf 'PIPELINE_INSTALL_OK\n'

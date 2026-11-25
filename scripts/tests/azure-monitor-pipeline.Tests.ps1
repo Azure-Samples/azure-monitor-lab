@@ -269,6 +269,10 @@ function global:az {
       $global:edgeRemoteModes.Add($mode)
       $marker = if ($global:edgeFailure -eq 'preflight' -and $mode -eq 'preflight') {
         'PIPELINE_DENIED:disk'
+      } elseif ($global:edgeFailure -eq 'install-identity' -and $mode -eq 'install') {
+        'PIPELINE_DENIED:identity-account'
+      } elseif ($global:edgeFailure -eq 'install-arc' -and $mode -eq 'install') {
+        'PIPELINE_DENIED:arc-connect'
       } elseif ($global:edgeFailure -eq $mode) {
         'PIPELINE_DENIED:unspecified'
       } elseif ($global:edgeFailure -eq 'ambiguous' -and $mode -eq 'preflight') {
@@ -412,7 +416,7 @@ try {
   Assert-Fails { & $scriptPath @parameters -Enable } 'Remote preflight denied: disk'
   if (@($global:edgeRemoteModes | Where-Object { $_ -eq 'install' }).Count) { throw 'Install ran after failed remote preflight.' }
   $global:edgeFailure = 'ambiguous'
-  Assert-Fails { & $scriptPath @parameters -Enable } 'Remote preflight denied: disk'
+  Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
   $global:edgeFailure = 'missing-marker'
   Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
   $global:edgeFailure = 'unknown-reason'
@@ -423,6 +427,11 @@ try {
   $global:edgeFailure = 'install'
   Assert-Fails { & $scriptPath @parameters -Enable } 'success marker'
   if (@($global:edgeCalls | Where-Object { $_ -match '^deployment group create' }).Count) { throw 'Deployment ran after failed installation.' }
+  foreach ($failure in @(@('install-identity','identity-account'),@('install-arc','arc-connect'))) {
+    $global:edgeFailure = $failure[0]
+    Assert-Fails { & $scriptPath @parameters -Enable } "Remote install denied: $($failure[1])"
+  }
+  if (@($global:edgeCalls | Where-Object { $_ -match '^deployment group create' }).Count) { throw 'Deployment ran after denied installation.' }
   $global:edgeFailure = 'native'
   Assert-Fails { & $scriptPath @parameters -Enable } 'Remote install failed'
   $global:edgeFailure = 'extensions'

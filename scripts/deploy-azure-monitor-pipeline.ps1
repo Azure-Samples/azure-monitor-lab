@@ -113,9 +113,16 @@ function Invoke-Remote {
   $messages = @($response.value | ForEach-Object message)
   $marker = if ($Mode -eq 'preflight') { 'PIPELINE_PREFLIGHT_OK' } else { 'PIPELINE_INSTALL_OK' }
   $denials = @($messages | Where-Object { $_ -match '(?m)^PIPELINE_DENIED(?::[a-z-]+)?\r?$' })
-  if ($Mode -eq 'preflight' -and $denials.Count -eq 1 -and
-      $denials[0] -match '(?m)^PIPELINE_DENIED:(arguments|inputs|host|os|cpu|memory|disk|commands|ama|ports|ownership|k3s|checksum)\r?$') {
-    throw "Remote preflight denied: $($Matches[1]). No later stage was attempted."
+  $reasonPattern = if ($Mode -eq 'preflight') {
+    '(?m)^PIPELINE_DENIED:(arguments|inputs|host|os|cpu|memory|disk|commands|ama|ports|ownership|k3s|checksum)\r?$'
+  } else {
+    '(?m)^PIPELINE_DENIED:(packages|connectedk8s|helm|k3s-download|k3s-network|k3s-service|k3s-config|k3s-ready|ama|identity-login|identity-account|identity-tenant|arc-connect)\r?$'
+  }
+  if ($denials.Count -eq 1 -and
+      @($response.value | Where-Object { $_.code -notmatch '/succeeded$' }).Count -eq 0 -and
+      @($messages | Where-Object { $_ -match "(?m)^$marker`r?$" }).Count -eq 0 -and
+      $denials[0] -match $reasonPattern) {
+    throw "Remote $Mode denied: $($Matches[1]). No later stage was attempted."
   }
   if (@($response.value | Where-Object { $_.code -notmatch '/succeeded$' }).Count -ne 0 -or
       @($messages | Where-Object { $_ -match "(?m)^$marker`r?$" }).Count -ne 1 -or
