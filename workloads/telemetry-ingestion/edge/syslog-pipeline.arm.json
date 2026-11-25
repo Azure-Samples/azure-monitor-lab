@@ -42,12 +42,12 @@
               "networkingConfig": {
                 "endpoint": "0.0.0.0:6514",
                 "transportProtocol": "tcp",
-                "tlsConfiguration": "unencrypted"
+                "tlsConfiguration": "managed-server-tls"
               }
             }
           ],
           "tlsConfigurations": [
-            { "name": "unencrypted", "mode": "disabled" }
+            { "name": "managed-server-tls", "mode": "serverOnly" }
           ]
         }
       }

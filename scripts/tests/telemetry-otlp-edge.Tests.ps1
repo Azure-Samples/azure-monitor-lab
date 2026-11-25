@@ -5,6 +5,7 @@ $setup = Join-Path $root 'scripts\setup-telemetry-ingestion-edge.ps1'
 $templatePath = Join-Path $root 'workloads\telemetry-ingestion\edge\syslog-pipeline.arm.json'
 $binary = Join-Path $root 'workloads\telemetry-ingestion\otel\.offline-test.pb'
 $text = Join-Path $root 'workloads\telemetry-ingestion\edge\.offline-test.log'
+$caFile = Join-Path $root 'workloads\telemetry-ingestion\edge\.offline-test-ca.pem'
 $run = [guid]::NewGuid()
 
 function Read-Varint {
@@ -119,6 +120,77 @@ try {
   }
   $bypass = & $sender -Mode Syslog -Profile Bypass -RunId $run -OutFile $text
   if ($bypass.ExpectedForwarded -ne 100) { throw 'Bypass summary is incorrect.' }
+  $missingTlsRejected = $false
+  try { & $sender -Mode Syslog -Count 1 | Out-Null }
+  catch { $missingTlsRejected = $_.Exception.Message -match 'Syslog TLS requires' }
+  if (-not $missingTlsRejected) { throw 'Syslog sender attempted plaintext or ignored missing TLS trust.' }
+  $caKey = [Security.Cryptography.RSA]::Create(2048)
+  $serverKey = [Security.Cryptography.RSA]::Create(2048)
+  $now = [DateTimeOffset]::UtcNow
+  $caRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+    'CN=Pipeline offline test CA', $caKey, [Security.Cryptography.HashAlgorithmName]::SHA256,
+    [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+  $caRequest.CertificateExtensions.Add(
+    [Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true))
+  $caRequest.CertificateExtensions.Add(
+    [Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
+      [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign, $true))
+  $caCertificate = $caRequest.CreateSelfSigned($now.AddHours(-1), $now.AddDays(1))
+  $serverRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+    'CN=pipeline.offline.test', $serverKey, [Security.Cryptography.HashAlgorithmName]::SHA256,
+    [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+  $san = [Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder]::new()
+  $san.AddDnsName('pipeline.offline.test')
+  $serverRequest.CertificateExtensions.Add($san.Build())
+  $serverUsages = [Security.Cryptography.OidCollection]::new()
+  [void]$serverUsages.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.1'))
+  $serverRequest.CertificateExtensions.Add(
+    [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new(
+      $serverUsages, $false))
+  $serverPublicCertificate = $serverRequest.Create($caCertificate, $now.AddMinutes(-1), $now.AddHours(1),
+    [byte[]](1..16))
+  $serverWithEphemeralKey = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::CopyWithPrivateKey(
+    $serverPublicCertificate, $serverKey)
+  $serverCertificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+    $serverWithEphemeralKey.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx),
+    [string]::Empty, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::UserKeySet)
+  [IO.File]::WriteAllText($caFile, $caCertificate.ExportCertificatePem())
+  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+  $listener.Start()
+  try {
+    $job = Start-ThreadJob -ArgumentList $listener, $serverCertificate -ScriptBlock {
+      param($server, $certificate)
+      $client = $server.AcceptTcpClient()
+      try {
+        $tls = [Net.Security.SslStream]::new($client.GetStream(), $false)
+        $tls.AuthenticateAsServer($certificate)
+        $reader = [IO.StreamReader]::new($tls)
+        $reader.ReadLine()
+      } finally { $client.Dispose() }
+    }
+    try {
+      $summaryTls = & $sender -Mode Syslog -Count 1 -RunId $run -SyslogPort ($listener.LocalEndpoint.Port) `
+        -SyslogServerName 'pipeline.offline.test' -SyslogCaFile $caFile
+    } catch {
+      [void](Wait-Job $job -Timeout 5)
+      $serverResult = @(Receive-Job $job -ErrorAction Continue)
+      throw "TLS sender failed: $($_.Exception.Message); test server: $($job.State) $serverResult $($job.ChildJobs[0].JobStateInfo.Reason) $($job.ChildJobs[0].Error)"
+    }
+    if ($summaryTls.Protocol -ne 'RFC5424 TLS loopback' -or
+        -not (Wait-Job $job -Timeout 15) -or
+        (Receive-Job $job) -notmatch "RunId=$run EventId=event-001") {
+      throw 'TLS loopback did not validate the server CA/name and transmit one Syslog record.'
+    }
+  } finally {
+    $listener.Stop()
+    if ($job) { Remove-Job $job -Force }
+    $serverCertificate.Dispose()
+    $serverWithEphemeralKey.Dispose()
+    $serverPublicCertificate.Dispose()
+    $caCertificate.Dispose()
+    $serverKey.Dispose()
+    $caKey.Dispose()
+  }
   $unsafeEndpointRejected = $false
   try { & $sender -Mode Otlp -Count 1 -Endpoint 'http://example.invalid/v1/logs' | Out-Null }
   catch { $unsafeEndpointRejected = $_.Exception.Message -match 'loopback Collector' }
@@ -129,5 +201,5 @@ try {
   if (-not $unboundedRejected) { throw 'Unbounded fixture count was accepted.' }
   Write-Output 'PASS: offline protobuf decode (100 records, resource/scope/record attributes), Syslog 40-drop marker, edge DCR transform/associations, bypass and PowerShell syntax.'
 } finally {
-  foreach ($path in @($binary, $text)) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force } }
+  foreach ($path in @($binary, $text, $caFile)) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force } }
 }

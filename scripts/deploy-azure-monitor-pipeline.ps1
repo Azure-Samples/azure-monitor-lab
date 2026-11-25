@@ -118,8 +118,8 @@ function Test-PipelineSettings {
   if ($AllowImplicitTls -and -not $endpoints[0].networkingConfig.tlsConfiguration -and $tls.Count -eq 0) {
     return $true
   }
-  return ($endpoints[0].networkingConfig.tlsConfiguration -eq 'unencrypted' -and
-    $tls.Count -eq 1 -and $tls[0].name -eq 'unencrypted' -and $tls[0].mode -eq 'disabled')
+  return ($endpoints[0].networkingConfig.tlsConfiguration -eq 'managed-server-tls' -and
+    $tls.Count -eq 1 -and $tls[0].name -eq 'managed-server-tls' -and $tls[0].mode -eq 'serverOnly')
 }
 function Invoke-Remote {
   param([string] $Mode, [bool] $ArcAlreadyOwned)
@@ -376,7 +376,7 @@ foreach ($suffix in @('settings','syslog') + $(if ($EnableCombined) { @('operati
   $dcr = Read-Az @('resource','show','--subscription',$SubscriptionId,'--ids',$id,'-o','json') "Pipeline $suffix DCR"
   if ($dcr.id -ine $id -or $dcr.properties.provisioningState -ne 'Succeeded') { throw "$suffix DCR not ready." }
   if ($suffix -eq 'settings' -and -not (Test-PipelineSettings -Dcr $dcr)) {
-    throw 'Pipeline settings DCR did not apply explicit unencrypted loopback-test TLS mode.'
+    throw 'Pipeline settings DCR did not apply server-only TLS mode.'
   }
   if ($suffix -in @('operational','diagnostic')) {
     $stream = "Custom-TelemetryIngestion$(if ($suffix -eq 'operational') { 'Operational' } else { 'Diagnostic' })_CL"

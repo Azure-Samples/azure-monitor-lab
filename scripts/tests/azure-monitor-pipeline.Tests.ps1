@@ -28,11 +28,11 @@ $dcrResources = @($template.resources | Where-Object type -eq 'Microsoft.Insight
 if ($dcrResources.Count -ne 4) { throw 'Expected independent settings, Syslog, Operational, and Diagnostic DCRs.' }
 $settingsDcr = @($dcrResources | Where-Object name -eq "[variables('settingsName')]")
 if ($settingsDcr.Count -ne 1 -or
-    $settingsDcr[0].properties.pipelineSettings.endpoints[0].networkingConfig.tlsConfiguration -ne 'unencrypted' -or
+    $settingsDcr[0].properties.pipelineSettings.endpoints[0].networkingConfig.tlsConfiguration -ne 'managed-server-tls' -or
     @($settingsDcr[0].properties.pipelineSettings.tlsConfigurations).Count -ne 1 -or
-    $settingsDcr[0].properties.pipelineSettings.tlsConfigurations[0].name -ne 'unencrypted' -or
-    $settingsDcr[0].properties.pipelineSettings.tlsConfigurations[0].mode -ne 'disabled') {
-  throw 'Loopback Syslog receiver must explicitly disable the default TCP mTLS mode.'
+    $settingsDcr[0].properties.pipelineSettings.tlsConfigurations[0].name -ne 'managed-server-tls' -or
+    $settingsDcr[0].properties.pipelineSettings.tlsConfigurations[0].mode -ne 'serverOnly') {
+  throw 'Loopback Syslog receiver must explicitly use managed server-only TLS.'
 }
 $roles = @($template.resources | Where-Object type -eq 'Microsoft.Authorization/roleAssignments')
 if ($roles.Count -ne 3 -or
@@ -268,10 +268,10 @@ function global:az {
       $settingsProperties = @{provisioningState='Succeeded'
         pipelineSettings=@{endpoints=@(@{name='syslog-tcp-6514';type='syslog';networkingConfig=$settingsNetwork})}}
       if (-not $global:edgeTlsLegacy) {
-        $settingsNetwork.tlsConfiguration = $(if ($global:edgeTlsInvalid) { 'managed-mtls' } else { 'unencrypted' })
+        $settingsNetwork.tlsConfiguration = $(if ($global:edgeTlsInvalid) { 'foreign-tls' } else { 'managed-server-tls' })
         $settingsProperties.pipelineSettings.tlsConfigurations = @(@{
           name=$settingsNetwork.tlsConfiguration
-          mode=$(if ($global:edgeTlsInvalid) { 'mutualTls' } else { 'disabled' })
+          mode=$(if ($global:edgeTlsInvalid) { 'mutualTls' } else { 'serverOnly' })
         })
       }
       $global:edgeListedDcrs = if ($global:edgeExisting -or $global:edgePartialDcr) { @(
@@ -363,8 +363,8 @@ function global:az {
       if ($id -match '-settings$' -and $global:edgeSettingsApplied) {
         $response = @{id=$id;kind='PipelineSettings';properties=@{provisioningState='Succeeded'
           pipelineSettings=@{endpoints=@(@{name='syslog-tcp-6514';type='syslog'
-            networkingConfig=@{endpoint='0.0.0.0:6514';transportProtocol='tcp';tlsConfiguration='unencrypted'}})
-            tlsConfigurations=@(@{name='unencrypted';mode='disabled'})}}}
+            networkingConfig=@{endpoint='0.0.0.0:6514';transportProtocol='tcp';tlsConfiguration='managed-server-tls'}})
+            tlsConfigurations=@(@{name='managed-server-tls';mode='serverOnly'})}}}
         break
       }
       $existing = @($global:edgeListedDcrs | Where-Object id -EQ $id)

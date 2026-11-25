@@ -6,7 +6,9 @@ param(
   [ValidateRange(1, 100)] [int] $Count = 100,
   [string] $OutFile,
   [string] $Endpoint = 'http://127.0.0.1:4318/v1/logs',
-  [ValidateRange(1, 65535)] [int] $SyslogPort = 6514
+  [ValidateRange(1, 65535)] [int] $SyslogPort = 6514,
+  [string] $SyslogServerName,
+  [string] $SyslogCaFile
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'telemetry-ingestion-helpers.ps1')
@@ -98,15 +100,37 @@ if ($Mode -eq 'Otlp') {
   if ($OutFile) {
     [IO.File]::WriteAllLines($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutFile), [string[]]$messages, [Text.UTF8Encoding]::new($false))
   } else {
-    $client = [Net.Sockets.TcpClient]::new('127.0.0.1', $SyslogPort)
+    if ([string]::IsNullOrWhiteSpace($SyslogServerName) -or [string]::IsNullOrWhiteSpace($SyslogCaFile)) {
+      throw 'Syslog TLS requires -SyslogServerName (a certificate DNS name) and -SyslogCaFile (the managed server CA PEM).'
+    }
+    if (-not (Test-Path -LiteralPath $SyslogCaFile -PathType Leaf)) {
+      throw "Syslog server CA PEM not found: $SyslogCaFile"
+    }
+    $caPath = (Resolve-Path -LiteralPath $SyslogCaFile).ProviderPath
+    $caCertificates = [Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
+    $caCertificates.ImportFromPem([IO.File]::ReadAllText($caPath))
+    if ($caCertificates.Count -eq 0) { throw 'Syslog server CA PEM contains no certificates.' }
+    $chainPolicy = [Security.Cryptography.X509Certificates.X509ChainPolicy]::new()
+    $chainPolicy.TrustMode = [Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
+    foreach ($ca in $caCertificates) { [void]$chainPolicy.CustomTrustStore.Add($ca) }
+    $chainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+    $tlsOptions = [Net.Security.SslClientAuthenticationOptions]::new()
+    $tlsOptions.TargetHost = $SyslogServerName
+    $tlsOptions.CertificateChainPolicy = $chainPolicy
     try {
-      $stream = $client.GetStream()
+      $client = [Net.Sockets.TcpClient]::new('127.0.0.1', $SyslogPort)
+      $stream = [Net.Security.SslStream]::new($client.GetStream(), $false)
+      $stream.AuthenticateAsClient($tlsOptions)
       foreach ($message in $messages) {
         $bytes = [Text.Encoding]::UTF8.GetBytes("$message`n")
         $stream.Write($bytes, 0, $bytes.Length)
       }
       $stream.Flush()
-    } finally { $client.Dispose() }
+    } finally {
+      if ($stream) { $stream.Dispose() }
+      if ($client) { $client.Dispose() }
+      foreach ($ca in $caCertificates) { $ca.Dispose() }
+    }
   }
-  [pscustomobject]@{ RunId = $RunId.ToString('D'); Protocol = 'RFC5424 TCP loopback'; Generated = $records.Count; EdgeDropCandidates = $dropped; ExpectedForwarded = $(if ($Profile -eq 'Filtered') { $records.Count - $dropped } else { $records.Count }); ReceiverAccepted = 'not verified'; CloudObserved = 'not verified' }
+  [pscustomobject]@{ RunId = $RunId.ToString('D'); Protocol = 'RFC5424 TLS loopback'; Generated = $records.Count; EdgeDropCandidates = $dropped; ExpectedForwarded = $(if ($Profile -eq 'Filtered') { $records.Count - $dropped } else { $records.Count }); ReceiverAccepted = 'not verified'; CloudObserved = 'not verified' }
 }
