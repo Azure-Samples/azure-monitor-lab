@@ -298,7 +298,7 @@ module sreAgent 'modules/sre-agent.bicep' = if (enableSreAgent) {
 }
 
 module sreAgentSubscriptionRbac 'modules/sre-agent-subscription-rbac.bicep' = if (enableSreAgent) {
-  name: 'sre-agent-subscription-rbac'
+  name: 'sre-agent-subscription-rbac-${uniqueString(resourceGroup().id, resourceGroup().location)}'
   scope: subscription()
   params: {
     principalId: sreAgent!.outputs.systemPrincipalId
