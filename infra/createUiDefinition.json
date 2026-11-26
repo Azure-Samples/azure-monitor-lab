@@ -6,7 +6,7 @@
     "config": {
       "isWizard": false,
       "basics": {
-        "description": "**Azure Monitor Lab** — full portal deployment. Every setting is provided here in the UI; no local config file is required. Pick a **Resource group** and **Region**, then step through the tabs to tune workloads, monitoring, optional stages, and advanced options. Sensible defaults are pre-filled everywhere.",
+        "description": "**Azure Monitor Lab** — full portal deployment. Pick a **Resource group** and **Region**, then step through the tabs to tune workloads, monitoring, and optional stages. Sensible defaults are pre-filled; optional integrations not shown here use their template defaults.",
         "resourceGroup": {
           "allowExisting": true,
           "constraints": {
@@ -41,6 +41,16 @@
           "required": true,
           "regex": "^[a-z0-9]{3,8}$",
           "validationMessage": "3-8 lowercase alphanumeric characters."
+        }
+      },
+      {
+        "name": "ownerTag",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Owner tag",
+        "defaultValue": "demo-lab",
+        "toolTip": "Value for the 'owner' tag applied to every resource.",
+        "constraints": {
+          "required": true
         }
       },
       {
@@ -328,7 +338,35 @@
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable Health Model Demo (Café and lab user flows)",
             "defaultValue": false,
-            "toolTip": "Adds a billable B1 Café app, private storage/networking, monitoring and two health models. Cloud Shell completion publishes the app and connects the Control Center. Off by default."
+            "toolTip": "Adds a billable Standard S1 or S2 Café app, private storage/networking, monitoring and two health models. Check regional quota for the selected plan. Cloud Shell completion publishes the app and connects the Control Center. Off by default."
+          },
+          {
+            "name": "healthModelDemoCafeLocation",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Health Model Demo Café App Service region",
+            "defaultValue": "francecentral",
+            "visible": "[equals(steps('stages').enableHealthModelDemo, true)]",
+            "toolTip": "Independent of the core App Service region. Requires quota for the selected Café plan in this region. Keep the existing region when redeploying a Café.",
+            "constraints": {
+              "required": "[equals(steps('stages').enableHealthModelDemo, true)]",
+              "regex": "^[a-z0-9]+$",
+              "validationMessage": "Enter an Azure region code, e.g. westeurope."
+            }
+          },
+          {
+            "name": "healthModelDemoCafePlanSku",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Café App Service plan",
+            "defaultValue": "Standard S1 (default)",
+            "visible": "[equals(steps('stages').enableHealthModelDemo, true)]",
+            "toolTip": "Choose Standard S2 if S1 quota is unavailable in the Café region. S2 costs more and resizes an existing Café plan on redeployment; check regional quota before deploying.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Standard S1 (default)", "value": "S1" },
+                { "label": "Standard S2", "value": "S2" }
+              ],
+              "required": true
+            }
           },
           {
             "name": "enableFabric",
@@ -392,7 +430,7 @@
             "name": "observabilityAgentLocation",
             "type": "Microsoft.Common.DropDown",
             "label": "Observability Agent region",
-            "defaultValue": "uksouth",
+            "defaultValue": "UK South",
             "visible": "[equals(steps('stages').enableObservabilityAgent, true)]",
             "toolTip": "The agent and its Azure Monitor workspace must share a supported region.",
             "constraints": {
@@ -446,68 +484,18 @@
             "options": {
               "text": "Azure Copilot Observability Agent autonomous operations are in preview. The deployment creates a dedicated Azure Monitor workspace, grants Issue Contributor there and Monitoring Reader directly on this lab's Application Insights resource, and monitors that resource. Cloud Shell completion validates the deployed agent. Alert correlation is automatic; deep investigation remains manual unless explicitly enabled."
             }
-          }
-        ]
-      },
-      {
-        "name": "advanced",
-        "label": "Advanced",
-        "elements": [
-          {
-            "name": "grafanaAdminObjectId",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Grafana administrator object ID (optional)",
-            "defaultValue": "",
-            "toolTip": "Leave empty to grant your deployment identity Grafana Admin. For automation or a different lab operator, enter the Microsoft Entra user or group object ID, not an application client ID.",
-            "constraints": {
-              "required": false,
-              "regex": "^$|^(?!00000000-0000-0000-0000-000000000000$)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-              "validationMessage": "Enter a nonzero Microsoft Entra user or group object ID in GUID format, or leave empty."
-            }
-          },
-          {
-            "name": "ownerTag",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Owner tag",
-            "defaultValue": "demo-lab",
-            "toolTip": "Value for the 'owner' tag applied to every resource.",
-            "constraints": {
-              "required": true
-            }
-          },
-          {
-            "name": "appServiceRepoUrl",
-            "type": "Microsoft.Common.TextBox",
-            "label": "App Service sample repo URL",
-            "defaultValue": "https://github.com/Azure-Samples/dotnetcore-docs-hello-world-linux",
-            "toolTip": "Public GitHub repo deployed to the App Service.",
-            "constraints": {
-              "required": true,
-              "regex": "^https://.+",
-              "validationMessage": "Enter a valid https:// URL."
-            }
-          },
-          {
-            "name": "siemWebhookUrl",
-            "type": "Microsoft.Common.TextBox",
-            "label": "SIEM / Teams webhook URL (optional)",
-            "defaultValue": "",
-            "toolTip": "Optional secondary SIEM/Teams webhook added to the Action Group. Leave empty to skip.",
-            "constraints": {
-              "required": false
-            }
           },
           {
             "name": "enableSlotFailureScenario",
             "type": "Microsoft.Common.CheckBox",
-            "label": "Enable broken deployment-slot recovery scenario",
+            "label": "Enable customer application (slot recovery)",
             "defaultValue": false,
             "toolTip": "Automatically uses the Standard S2 plan with one worker, provisions a dedicated customer app and broken slot, and allows an approved Control Center action to swap only that customer app."
           },
           {
             "name": "slotFailureScenarioInfo",
             "type": "Microsoft.Common.TextBlock",
-            "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
+            "visible": "[equals(steps('stages').enableSlotFailureScenario, true)]",
             "options": {
               "text": "This option automatically uses Standard S2 with one worker and increases App Service cost. The broken slot is isolated to the dedicated customer app; the Control Center stays available. Recovery must be performed externally with Azure SRE Agent in Review mode or the documented GitHub Copilot CLI workflow."
             }
@@ -517,7 +505,7 @@
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable real customer SQL, orders queue and processor",
             "defaultValue": false,
-            "visible": "[equals(steps('advanced').enableSlotFailureScenario, true)]",
+            "visible": "[equals(steps('stages').enableSlotFailureScenario, true)]",
             "toolTip": "Requires the dedicated customer app/workload stage. Creates billable SQL Basic (2GB), Service Bus Standard (orders queue 1GB), Flex Consumption worker (40 maximum instances), identity storage and private SQL networking. Explicit operator SQL bootstrap and worker ZIP publication are required afterward."
           },
           {
@@ -525,10 +513,10 @@
             "type": "Microsoft.Common.TextBox",
             "label": "SQL Microsoft Entra administrator group object ID",
             "defaultValue": "",
-            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+            "visible": "[and(steps('stages').enableSlotFailureScenario, steps('stages').enableCustomerDependencies)]",
             "toolTip": "Object ID of the Microsoft Entra group selected as SQL administrator. The administrator type is automatically Group. This is not a subscription ID, tenant ID or application client ID. Required only when both customer scenario options are enabled.",
             "constraints": {
-              "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+              "required": "[and(steps('stages').enableSlotFailureScenario, steps('stages').enableCustomerDependencies)]",
               "regex": "^(?!00000000-0000-0000-0000-000000000000$)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
               "validationMessage": "Supply the administrator group's nonzero Entra object ID, not a client ID."
             }
@@ -538,14 +526,14 @@
             "type": "Microsoft.Common.TextBox",
             "label": "SQL Microsoft Entra administrator group name",
             "defaultValue": "",
-            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+            "visible": "[and(steps('stages').enableSlotFailureScenario, steps('stages').enableCustomerDependencies)]",
             "toolTip": "Name of the selected SQL administrator group. Complete post-deployment setup as a member of this group.",
-            "constraints": { "required": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]" }
+            "constraints": { "required": "[and(steps('stages').enableSlotFailureScenario, steps('stages').enableCustomerDependencies)]" }
           },
           {
             "name": "sqlEntraAdminInfo",
             "type": "Microsoft.Common.TextBlock",
-            "visible": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
+            "visible": "[and(steps('stages').enableSlotFailureScenario, steps('stages').enableCustomerDependencies)]",
             "options": {
               "text": "Customer SQL uses Microsoft Entra authentication only and automatically selects a Group administrator: provide the administrator group's object ID and name above, not a SQL password. Azure subscription ownership does not automatically grant SQL database administration. Run Cloud Shell completion as a member of this group. These details are not needed when customer SQL dependencies are disabled."
             }
@@ -573,19 +561,18 @@
       "enableMetricsExportDcr": "[steps('monitoring').enableMetricsExportDcr]",
       "enableLawReplication": "[steps('monitoring').enableLawReplication]",
       "lawReplicationLocation": "[steps('monitoring').lawReplicationLocation]",
-      "ownerTag": "[steps('advanced').ownerTag]",
-      "grafanaAdminObjectId": "[steps('advanced').grafanaAdminObjectId]",
-      "appServiceRepoUrl": "[steps('advanced').appServiceRepoUrl]",
-      "siemWebhookUrl": "[steps('advanced').siemWebhookUrl]",
+      "ownerTag": "[basics('ownerTag')]",
       "enableAi": "[steps('stages').enableAi]",
       "enableFabric": "[steps('stages').enableFabric]",
       "enableHealthModelDemo": "[steps('stages').enableHealthModelDemo]",
+      "healthModelDemoCafeLocation": "[steps('stages').healthModelDemoCafeLocation]",
+      "healthModelDemoCafePlanSku": "[steps('stages').healthModelDemoCafePlanSku]",
       "fabricAdminEmail": "[steps('stages').fabricAdminEmail]",
       "enableSreAgent": "[steps('stages').enableSreAgent]",
-      "enableSlotFailureScenario": "[steps('advanced').enableSlotFailureScenario]",
-      "enableCustomerDependencies": "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]",
-      "sqlEntraAdminObjectId": "[steps('advanced').sqlEntraAdminObjectId]",
-      "sqlEntraAdminName": "[steps('advanced').sqlEntraAdminName]",
+      "enableSlotFailureScenario": "[steps('stages').enableSlotFailureScenario]",
+      "enableCustomerDependencies": "[and(steps('stages').enableSlotFailureScenario, steps('stages').enableCustomerDependencies)]",
+      "sqlEntraAdminObjectId": "[steps('stages').sqlEntraAdminObjectId]",
+      "sqlEntraAdminName": "[steps('stages').sqlEntraAdminName]",
       "enableObservabilityAgent": "[steps('stages').enableObservabilityAgent]",
       "observabilityAgentLocation": "[steps('stages').observabilityAgentLocation]",
       "enableObservabilityAgentAutomaticInvestigation": "[steps('stages').enableObservabilityAgentAutomaticInvestigation]"

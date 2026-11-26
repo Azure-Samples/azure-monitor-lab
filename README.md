@@ -81,21 +81,9 @@ Once Network Watcher is ready, open the wizard:
 
 </div>
 
-Opens a guided Custom deployment wizard in the Azure Portal, where you enter every value in the UI and don't need any local files. Shared settings match the config example, including App Service in `francecentral` and Observability Agent in `uksouth`. Select your subscription, resource group and main region in Basics, and supply your own alert email and VM admin password; sample identities and credentials are not pre-filled.
+The button opens the `main` portal wizard. In **Basics**, select your subscription, resource group and region, then enter an alert email and VM password. Adjust **Workloads** and **Monitoring & cost** as needed; all **Optional stages** (including the customer application) start off. Optional stages can incur charges.
 
-This button deploys the stable `main` templates and portal UI. The Cloud Shell preparation and completion commands use the same branch so deployment and setup stay on the same release.
-
-| Tab | You provide |
-|---|---|
-| **Basics** | Resource group (recommended `rg-azure-monitor-lab`), Region (recommended `northeurope`), name prefix, alert email, VM admin username + password |
-| **Workloads** | Deploy Linux/Windows VMs, VM size, AKS node size + count |
-| **Monitoring & cost** | Daily ingestion cap, Sentinel, platform-logs/metrics-export DCRs, LAW replication |
-| **Optional stages** | Enable AI (Microsoft Foundry), Fabric (Real-Time Intelligence), SRE Agent, Observability Agent, or Health Model Demo; all default off |
-| **Advanced** | Owner tag, optional Grafana administrator object ID, App Service sample repo, optional SIEM/Teams webhook, and customer application scenarios |
-
-Core stages A-E deploy together. Their individual workload and monitoring features remain configurable; the **Optional stages** tab adds any combination of the five integrations.
-
-The core App Service defaults to Standard `S1` with one worker across portal, scripted, staged Bicep, and Terraform deployments. The slot scenario automatically uses Standard `S2` with one worker. SQL Entra administrator details appear and are required only when **Advanced > Enable broken deployment-slot recovery scenario** and **Enable real customer SQL, orders queue and processor** are both enabled. The administrator type is automatically `Group`: supply the Entra group's object ID and name; no SQL password is needed. Complete setup as a member of that group. Both customer options default off, as in the config example. Fabric separately requires a capacity-administrator UPN when enabled.
+If you enable the customer application's SQL dependencies, enter an Entra administrator **group** ID and name when prompted. No SQL password is needed.
 
 After the portal deployment succeeds, open **[Cloud Shell](https://learn.microsoft.com/en-us/azure/cloud-shell/get-started/ephemeral?tabs=azurecli#start-cloud-shell)** in **PowerShell** and run the complete block below. Enter the same tenant, subscription, resource group and name prefix used in the portal deployment. It clones the repository if needed, or reuses your existing clone from preparation.
 
@@ -120,19 +108,9 @@ if ([string]::IsNullOrWhiteSpace($namePrefix)) { $namePrefix = 'amlab' }
 ./scripts/post-cloud-shell-deploy.ps1 -TenantId $tenantId -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
 ```
 
-The wrapper detects deployed optional integrations, including AI and Fabric, and reports any remaining manual actions. When the AI stage is deployed, it automatically starts a finite batch of 150 AI conversations in the background after workload publication. These are billable model calls. The script prints the process ID and log/status paths; keep Cloud Shell and its sign-in available until the batch finishes. Add `-EnableStageAI:$false` to skip automatic AI traffic. If the Cloud Shell session expires, rerun this block to reopen the clone and restore your deployment variables.
+The wrapper completes enabled stages and reports remaining manual actions. If AI is enabled, it starts **billable** traffic in the background; keep Cloud Shell open until it finishes. Use `-EnableStageAI:$false` to skip that traffic. See [AI setup](docs/STAGE-AI.md) for another batch and [Fabric workspace isolation](docs/STAGE-FABRIC.md#workspace-isolation-and-configuration) for custom workspace names.
 
-Fabric completion defaults to a workspace specific to the subscription and resource group, not a shared tenant-wide display name. To override it, add `-FabricWorkspaceName '<unique-lab-workspace>'` to the wrapper and use that same override for teardown. Local configuration and safe legacy-workspace reuse are described in [Fabric workspace isolation](docs/STAGE-FABRIC.md#workspace-isolation-and-configuration).
-
-**Already partially completed?** Do not redeploy infrastructure or blindly rerun the wrapper if workload publication and private SQL initialization succeeded. Resume at the failed helper and complete the remaining stages using [partial-completion recovery](docs/POST-DEPLOYMENT.md#recovery-after-partial-completion). An accepted service-group write can temporarily return not-found or a read-authorization error; the helper now polls within a bounded deadline without assuming a permanent permission deficiency. This is separate from Cloud Shell's possible Prometheus token-audience limitation.
-
-If you already completed setup before automatic AI traffic was available, or want another batch of fresh AI telemetry, run this from the same Cloud Shell session. It is not needed after the wrapper starts traffic successfully. Skip it when AI is disabled:
-
-```powershell
-./scripts/setup-ai-cloud-shell.ps1 -SubscriptionId $subscriptionId -ResourceGroup $resourceGroup -NamePrefix $namePrefix
-```
-
-After the wrapper succeeds, deployment is complete. Continue with the [manual scenario setup](docs/POST-DEPLOYMENT.md) for only the scenarios you plan to present.
+**Already partially completed?** Do not blindly rerun setup; follow [partial-completion recovery](docs/POST-DEPLOYMENT.md#recovery-after-partial-completion). After completion, follow the [manual scenario setup](docs/POST-DEPLOYMENT.md) for the demos you need.
 
 ### Option 2: Scripted one-shot (Bicep / Terraform, full control)
 

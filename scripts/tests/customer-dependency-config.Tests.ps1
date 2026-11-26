@@ -75,7 +75,13 @@ try {
   try { Invoke-FixtureSync } catch { $failed = $true }
   if (-not $failed) { throw 'Enabled feature must require explicit Entra administrator.' }
   $ui = Get-Content (Join-Path $repo 'infra\createUiDefinition.json') -Raw | ConvertFrom-Json
-  $elements = @($ui.parameters.steps | Where-Object name -eq 'advanced').elements
+  $elements = @($ui.parameters.steps | Where-Object name -eq 'stages').elements
+  $customerApp = @($elements | Where-Object name -eq 'enableSlotFailureScenario')
+  if ($customerApp.Count -ne 1 -or $customerApp[0].label -cne 'Enable customer application (slot recovery)' -or
+      $customerApp[0].defaultValue -ne $false -or
+      $ui.parameters.outputs.enableSlotFailureScenario -cne "[steps('stages').enableSlotFailureScenario]") {
+    throw 'Portal customer application must be a default-off optional stage preserving the slot scenario parameter.'
+  }
   if (@($elements | Where-Object name -eq 'enableCustomerDependencies').defaultValue -ne $false) { throw 'Portal customer feature must default off.' }
   $template = Get-Content (Join-Path $repo 'infra\main.json') -Raw | ConvertFrom-Json
   foreach ($entry in @{ slotAppServicePlanSku = 'S2'; sqlEntraAdminType = 'Group' }.GetEnumerator()) {
@@ -88,7 +94,11 @@ try {
   foreach ($parameter in @('enableCustomerDependencies','sqlEntraAdminObjectId','sqlEntraAdminName')) {
     if (-not $ui.parameters.outputs.$parameter) { throw "Portal is missing output $parameter." }
   }
-  $sqlCondition = "[and(steps('advanced').enableSlotFailureScenario, steps('advanced').enableCustomerDependencies)]"
+  $sqlCondition = "[and(steps('stages').enableSlotFailureScenario, steps('stages').enableCustomerDependencies)]"
+  $dependency = @($elements | Where-Object name -eq 'enableCustomerDependencies')
+  if ($dependency.Count -ne 1 -or $dependency[0].visible -cne "[equals(steps('stages').enableSlotFailureScenario, true)]") {
+    throw 'Portal customer dependencies must appear only for the selected customer application.'
+  }
   foreach ($parameter in @('sqlEntraAdminObjectId','sqlEntraAdminName')) {
     $field = @($elements | Where-Object name -eq $parameter)
     if ($field.Count -ne 1 -or $field[0].visible -cne $sqlCondition -or $field[0].constraints.required -cne $sqlCondition) {

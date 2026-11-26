@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.49.2.45890",
-      "templateHash": "15933876640720577986"
+      "templateHash": "16152982561316169768"
     }
   },
   "parameters": {
@@ -44,6 +44,17 @@
       "defaultValue": "francecentral",
       "metadata": {
         "description": "Cafe workload region. Keep the existing standalone workload region when adopting it."
+      }
+    },
+    "healthModelDemoCafePlanSku": {
+      "type": "string",
+      "defaultValue": "S1",
+      "allowedValues": [
+        "S1",
+        "S2"
+      ],
+      "metadata": {
+        "description": "Standard App Service plan SKU for the Cafe workload. Select S2 only with available quota."
       }
     },
     "healthModelDemoCafeMonitoringReaderAssignmentName": {
@@ -66675,6 +66686,9 @@
           "location": {
             "value": "[parameters('healthModelDemoCafeLocation')]"
           },
+          "healthModelDemoCafePlanSku": {
+            "value": "[parameters('healthModelDemoCafePlanSku')]"
+          },
           "webAppId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.webAppId.value]"
           },
@@ -66716,7 +66730,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.49.2.45890",
-              "templateHash": "8925103604582138103"
+              "templateHash": "4643659781518827067"
             }
           },
           "parameters": {
@@ -66725,6 +66739,17 @@
               "defaultValue": "francecentral",
               "metadata": {
                 "description": "Region of the Cafe workload. Must be supported by App Service."
+              }
+            },
+            "healthModelDemoCafePlanSku": {
+              "type": "string",
+              "defaultValue": "S1",
+              "allowedValues": [
+                "S1",
+                "S2"
+              ],
+              "metadata": {
+                "description": "Standard App Service plan SKU for the Cafe workload."
               }
             },
             "healthModelLocation": {
@@ -66816,6 +66841,9 @@
                   "location": {
                     "value": "[parameters('location')]"
                   },
+                  "healthModelDemoCafePlanSku": {
+                    "value": "[parameters('healthModelDemoCafePlanSku')]"
+                  },
                   "namePrefix": {
                     "value": "cafe"
                   },
@@ -66830,7 +66858,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.49.2.45890",
-                      "templateHash": "18310756885116888337"
+                      "templateHash": "15971073421808517324"
                     }
                   },
                   "parameters": {
@@ -66839,6 +66867,17 @@
                       "defaultValue": "francecentral",
                       "metadata": {
                         "description": "Region for every resource in the tutorial."
+                      }
+                    },
+                    "healthModelDemoCafePlanSku": {
+                      "type": "string",
+                      "defaultValue": "S1",
+                      "allowedValues": [
+                        "S1",
+                        "S2"
+                      ],
+                      "metadata": {
+                        "description": "Standard App Service plan SKU for the Cafe workload."
                       }
                     },
                     "namePrefix": {
@@ -67097,7 +67136,7 @@
                       "location": "[parameters('location')]",
                       "tags": "[parameters('tags')]",
                       "sku": {
-                        "name": "S1",
+                        "name": "[parameters('healthModelDemoCafePlanSku')]",
                         "tier": "Standard",
                         "capacity": 1
                       },

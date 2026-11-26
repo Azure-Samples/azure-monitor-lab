@@ -33,10 +33,10 @@ foreach ($path in @('infra/main.json', 'infra/stages/10-workloads.json')) {
 }
 
 $ui = Get-Content -LiteralPath (Join-Path $RepoRoot 'infra/createUiDefinition.json') -Raw | ConvertFrom-Json
-$field = @($ui.parameters.steps | Where-Object name -eq 'advanced' | ForEach-Object elements | Where-Object name -eq 'grafanaAdminObjectId')
-if ($field.Count -ne 1 -or $field[0].defaultValue -cne '' -or $field[0].constraints.required -ne $false) { throw 'Portal Grafana operator field must be optional and default empty.' }
-if ($ui.parameters.outputs.grafanaAdminObjectId -cne "[steps('advanced').grafanaAdminObjectId]") { throw 'Portal form does not pass the Grafana operator ID.' }
-if ('' -notmatch $field[0].constraints.regex -or [guid]::NewGuid().ToString() -notmatch $field[0].constraints.regex -or 'invalid-id' -match $field[0].constraints.regex -or [guid]::Empty.ToString() -match $field[0].constraints.regex) { throw 'Portal Grafana object ID validation is incorrect.' }
+if (@($ui.parameters.basics + $ui.parameters.steps.elements | Where-Object name -eq 'grafanaAdminObjectId').Count -ne 0 -or
+    $ui.parameters.outputs.PSObject.Properties['grafanaAdminObjectId']) {
+  throw 'Portal must use the template default to grant Grafana Admin to the deployment identity.'
+}
 $terraform = Get-Content -LiteralPath (Join-Path $RepoRoot 'terraform/main.tf') -Raw
 if ($terraform -notmatch 'grafanaAdminObjectId\s*=\s*\{\s*value\s*=\s*var\.grafana_admin_object_id\s*\}' -or $terraform -notmatch 'infra/stages/10-workloads\.json') { throw 'Terraform Stage B must forward the operator ID to the tested shared ARM template.' }
 $readme = Get-Content -LiteralPath (Join-Path $RepoRoot 'README.md') -Raw

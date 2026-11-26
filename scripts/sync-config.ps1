@@ -173,6 +173,7 @@ $optionalParameters = @{
   enableMetricsExportDcr = $false
   routerModelVersion = '2025-08-07'
   healthModelDemoCafeLocation = 'francecentral'
+  healthModelDemoCafePlanSku = 'S1'
   healthModelDemoCafeMonitoringReaderAssignmentName = ''
 }
 foreach ($name in @($optionalParameters.Keys)) {
@@ -180,6 +181,9 @@ foreach ($name in @($optionalParameters.Keys)) {
     if ($name -like 'enable*' -and $cfg.$name -isnot [bool]) { throw "$name must be a JSON Boolean." }
     $optionalParameters[$name] = $cfg.$name
   }
+}
+if ($optionalParameters.healthModelDemoCafePlanSku -cnotin @('S1', 'S2')) {
+  throw 'healthModelDemoCafePlanSku must be S1 or S2.'
 }
 
 # ---------------------------------------------------------------------------
@@ -313,6 +317,7 @@ $tfLines = @(
   "enable_metrics_export_dcr = $($optionalParameters.enableMetricsExportDcr.ToString().ToLower())"
   "router_model_version = `"$(Esc $optionalParameters.routerModelVersion)`""
   "health_model_demo_cafe_location = `"$(Esc $optionalParameters.healthModelDemoCafeLocation)`""
+  "health_model_demo_cafe_plan_sku = `"$(Esc $optionalParameters.healthModelDemoCafePlanSku)`""
   "health_model_demo_cafe_monitoring_reader_assignment_name = `"$(Esc $optionalParameters.healthModelDemoCafeMonitoringReaderAssignmentName)`""
 )
 Set-Content -Path $tfVarsPath -Value ($tfLines -join "`r`n") -Encoding UTF8

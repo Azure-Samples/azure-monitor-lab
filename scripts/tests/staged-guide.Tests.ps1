@@ -141,12 +141,15 @@ foreach ($control in @($ui.parameters.basics) + @($ui.parameters.steps.elements)
     if ($selected.Count -ne 1) { throw "Portal default '$name' must select exactly one allowed value." }
     $actual = $selected[0].value
   }
+  if ($control.type -eq 'Microsoft.Common.DropDown') {
+    $selected = @($control.constraints.allowedValues | Where-Object label -CEQ $actual)
+    if ($selected.Count -ne 1 -or $selected[0].value -cne $expected) {
+      throw "Portal default '$name' must match one option label with the expected output value."
+    }
+    $actual = $selected[0].value
+  }
   if ($actual -cne $expected -or ($expected -is [bool] -and $actual -isnot [bool])) {
     throw "Portal default '$name' does not match lab.config.json.example."
-  }
-  if ($control.type -eq 'Microsoft.Common.DropDown' -and
-      $actual -notin $control.constraints.allowedValues.value) {
-    throw "Portal default '$name' is not an allowed selection."
   }
 }
 Write-Output 'PASS: shared portal defaults match the config example without pre-filling fictitious identities.'
@@ -154,7 +157,7 @@ $stagePage = @($ui.parameters.steps | Where-Object name -eq 'stages')
 if ($stagePage.Count -ne 1 -or $stagePage[0].label -ne 'Optional stages') {
   throw 'Portal must expose a dedicated Optional stages page.'
 }
-$stageFlags = @('enableAi', 'enableFabric', 'enableSreAgent', 'enableObservabilityAgent')
+$stageFlags = @('enableAi', 'enableFabric', 'enableSreAgent', 'enableObservabilityAgent', 'enableSlotFailureScenario')
 foreach ($name in $stageFlags) {
   $control = @($stagePage[0].elements | Where-Object name -eq $name)
   if ($control.Count -ne 1 -or $control[0].type -ne 'Microsoft.Common.CheckBox' -or
@@ -184,13 +187,30 @@ foreach ($name in $dependentStageFields.Keys) {
 foreach ($name in @('fabricAdminEmail', 'observabilityAgentLocation', 'enableObservabilityAgentAutomaticInvestigation')) {
   if ($ui.parameters.outputs.$name -cne "[steps('stages').$name]") { throw "Stage setting '$name' lost its template output." }
 }
+if (@($ui.parameters.steps | Where-Object name -eq 'advanced').Count -ne 0 -or
+    @($ui.parameters.basics | Where-Object name -eq 'ownerTag').Count -ne 1 -or
+    $ui.parameters.outputs.ownerTag -cne "[basics('ownerTag')]") {
+  throw 'Portal must place the owner tag in Basics and omit the Advanced tab.'
+}
+foreach ($entry in @{
+  grafanaAdminObjectId = ''
+  appServiceRepoUrl = 'https://github.com/Azure-Samples/dotnetcore-docs-hello-world-linux'
+  siemWebhookUrl = ''
+}.GetEnumerator()) {
+  $name = $entry.Key
+  if (@($ui.parameters.basics + $ui.parameters.steps.elements | Where-Object name -eq $name).Count -ne 0 -or
+      $ui.parameters.outputs.PSObject.Properties[$name] -or
+      $template.parameters[$name].defaultValue -cne $entry.Value) {
+    throw "Portal must use the template default instead of showing '$name'."
+  }
+}
 foreach ($reference in [regex]::Matches($uiText, "steps\('(?<page>[^']+)'\)\.(?<control>[A-Za-z0-9_]+)")) {
   $page = @($ui.parameters.steps | Where-Object name -CEQ $reference.Groups['page'].Value)
   if ($page.Count -ne 1 -or @($page[0].elements | Where-Object name -CEQ $reference.Groups['control'].Value).Count -ne 1) {
     throw "Portal expression references a missing or ambiguous control: $($reference.Value)."
   }
 }
-Write-Output 'PASS: four default-off optional portal stages, conditional settings, template outputs and all step/control references.'
+Write-Output 'PASS: default-off optional portal stages, conditional settings, template defaults and all step/control references.'
 foreach ($relativePath in @('README.md', 'docs/DEPLOY-TERRAFORM-STEP-BY-STEP.md', 'docs/POST-DEPLOYMENT.md', 'docs/STAGE-AI.md', 'docs/STAGE-FABRIC.md', 'docs/STAGE-OBSERVABILITY-AGENT.md', 'scripts/README.md')) {
   $text = Get-Content -LiteralPath (Join-Path $source $relativePath) -Raw
   foreach ($example in [regex]::Matches($text, '(?ms)^```powershell\r?\n(.*?)^```')) {
