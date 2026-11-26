@@ -74,6 +74,7 @@ enable_stage_sre_agent = false
 # Existing standalone Cafe deployments must retain their workload region.
 enable_stage_health_model_demo = false
 health_model_demo_cafe_location = "francecentral"
+health_model_demo_cafe_plan_sku = "S1"
 # Optional: reuse an existing RG Monitoring Reader assignment instead of the default resource-scoped grants.
 health_model_demo_cafe_monitoring_reader_assignment_name = ""
 

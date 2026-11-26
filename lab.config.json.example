@@ -19,6 +19,9 @@
     "naming": {
       "namePrefix": "amlab"
     },
+    "other": {
+      "healthModelDemoCafePlanSku": "S1"
+    },
     "compute": {
       "vmSize": "Standard_EC2as_v5",
       "vmssSize": "Standard_EC2as_v5",

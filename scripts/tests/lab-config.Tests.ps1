@@ -49,8 +49,10 @@ try {
   $defaultHashes = (Get-FileHash -LiteralPath $outputs).Hash
   $defaultBicep = Get-Content -LiteralPath $outputs[1] -Raw | ConvertFrom-Json
   if ($defaultBicep.parameters.enableHealthModelDemo.value -ne $false -or
+      $defaultBicep.parameters.healthModelDemoCafePlanSku.value -cne 'S1' -or
+      (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'health_model_demo_cafe_plan_sku = "S1"' -or
       (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'enable_stage_health_model_demo = false') {
-    throw 'Health Model Demo must default off in both deployment formats.'
+    throw 'Health Model Demo must default off and its Cafe plan must default to S1 in both deployment formats.'
   }
   $flat | Add-Member -NotePropertyName grafanaAdminObjectId -NotePropertyValue ''
   $flat | Add-Member -NotePropertyName forbiddenSubscriptionIds -NotePropertyValue @()
@@ -59,6 +61,14 @@ try {
   & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
   if (Compare-Object $defaultHashes (Get-FileHash -LiteralPath $outputs).Hash) {
     throw 'Omitting optional empty overrides changed generated deployment inputs.'
+  }
+  $legacyCafe = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+  $legacyCafe.PSObject.Properties.Remove('healthModelDemoCafePlanSku')
+  $legacyCafe | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath
+  if ((Get-Content -LiteralPath $outputs[1] -Raw | ConvertFrom-Json).parameters.PSObject.Properties['healthModelDemoCafePlanSku'] -or
+      (Get-Content -LiteralPath $outputs[2] -Raw) -notmatch 'health_model_demo_cafe_plan_sku = "S1"') {
+    throw 'Existing configs without a Cafe SKU must retain the S1 template default.'
   }
   $flat.grafanaAdminObjectId = [guid]::NewGuid().ToString()
   $flat.forbiddenSubscriptionIds = @([guid]::NewGuid().ToString())
@@ -104,6 +114,7 @@ try {
     throw 'Health Model Demo enablement was lost during config generation.'
   }
   $flat | Add-Member -NotePropertyName healthModelDemoCafeLocation -NotePropertyValue 'westeurope'
+  $flat.healthModelDemoCafePlanSku = 'S2'
   $flat | Add-Member -NotePropertyName healthModelDemoCafeMonitoringReaderAssignmentName -NotePropertyValue ([guid]::NewGuid().ToString())
   $flat | Add-Member -NotePropertyName enableSentinel -NotePropertyValue $false
   $flat | Add-Member -NotePropertyName enablePlatformLogsDcr -NotePropertyValue $true
@@ -116,6 +127,7 @@ try {
   $overrideTf = Get-Content -LiteralPath $outputs[2] -Raw
   foreach ($setting in @(
     @{ Bicep = 'healthModelDemoCafeLocation'; Terraform = 'health_model_demo_cafe_location'; Value = 'westeurope' },
+    @{ Bicep = 'healthModelDemoCafePlanSku'; Terraform = 'health_model_demo_cafe_plan_sku'; Value = 'S2' },
     @{ Bicep = 'healthModelDemoCafeMonitoringReaderAssignmentName'; Terraform = 'health_model_demo_cafe_monitoring_reader_assignment_name'; Value = $flat.healthModelDemoCafeMonitoringReaderAssignmentName },
     @{ Bicep = 'enableSentinel'; Terraform = 'enable_sentinel'; Value = $false },
     @{ Bicep = 'enablePlatformLogsDcr'; Terraform = 'enable_platform_logs_dcr'; Value = $true },
@@ -131,6 +143,15 @@ try {
     throw 'Terraform string projection must preserve literal interpolation markers, quotes and backslashes.'
   }
   Write-Output 'PASS: Cafe adoption settings, optional telemetry, Sentinel opt-out, router version and literal Terraform strings survive config sync.'
+  $invalidSku = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+  $invalidSku.healthModelDemoCafePlanSku = 'S3'
+  $invalidSku | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+  $rejectedSku = $false
+  try { & (Join-Path $root 'scripts\sync-config.ps1') -ConfigPath $configPath } catch {
+    if ($_.Exception.Message -notmatch 'healthModelDemoCafePlanSku must be S1 or S2') { throw }
+    $rejectedSku = $true
+  }
+  if (-not $rejectedSku) { throw 'Config sync accepted an unsupported Cafe SKU.' }
   $before = (Get-FileHash -LiteralPath $outputs).Hash
   foreach ($value in @('false', 0, $null)) {
     $invalidStage = $flat | ConvertTo-Json -Depth 100 | ConvertFrom-Json

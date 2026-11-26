@@ -10,6 +10,17 @@ variable "health_model_demo_cafe_location" {
   default     = "francecentral"
 }
 
+variable "health_model_demo_cafe_plan_sku" {
+  description = "Standard App Service plan SKU for the Cafe workload."
+  type        = string
+  default     = "S1"
+
+  validation {
+    condition     = contains(["S1", "S2"], var.health_model_demo_cafe_plan_sku)
+    error_message = "Use S1 or S2 for the Cafe plan."
+  }
+}
+
 variable "health_model_demo_cafe_monitoring_reader_assignment_name" {
   description = "Optional existing Cafe RG Monitoring Reader assignment GUID. Empty grants non-conflicting read access scoped to the Cafe site, storage and workspace."
   type        = string
@@ -48,6 +59,7 @@ resource "azapi_resource" "stage_health_model_demo" {
       parameters = {
         namePrefix                         = { value = var.name_prefix }
         location                           = { value = var.health_model_demo_cafe_location }
+        healthModelDemoCafePlanSku         = { value = var.health_model_demo_cafe_plan_sku }
         deployLinuxVm                      = { value = var.deploy_linux_vm }
         deployWindowsVm                    = { value = var.deploy_windows_vm }
         cafeMonitoringReaderAssignmentName = { value = var.health_model_demo_cafe_monitoring_reader_assignment_name }
