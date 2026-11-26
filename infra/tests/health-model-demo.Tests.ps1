@@ -35,7 +35,8 @@ $demoToggle = @($ui.parameters.steps | Where-Object name -eq 'stages')[0].elemen
 Assert-Demo ($cafeRegion.defaultValue -ceq 'francecentral' -and
   $cafeRegion.visible -eq "[equals(steps('stages').enableHealthModelDemo, true)]" -and
   $ui.parameters.outputs.healthModelDemoCafeLocation -eq "[steps('stages').healthModelDemoCafeLocation]" -and
-  $cafeSku.defaultValue -ceq 'S1' -and
+  @($cafeSku.constraints.allowedValues | Where-Object label -CEQ $cafeSku.defaultValue).Count -eq 1 -and
+  @($cafeSku.constraints.allowedValues | Where-Object label -CEQ $cafeSku.defaultValue)[0].value -ceq 'S1' -and
   @($cafeSku.constraints.allowedValues.value) -contains 'S2' -and
   $cafeSku.visible -eq "[equals(steps('stages').enableHealthModelDemo, true)]" -and
   $ui.parameters.outputs.healthModelDemoCafePlanSku -eq "[steps('stages').healthModelDemoCafePlanSku]" -and
