@@ -54,10 +54,13 @@
   creation of a sixth agent when the subscription preview limit is reached.
 
 .PARAMETER DeployHealthModelDemo
-  Check the optional Cafe workload's independent App Service region and Standard S1 quota.
+  Check the optional Cafe workload's independent App Service region and selected Standard plan.
 
 .PARAMETER HealthModelDemoCafeLocation
   Cafe workload region (default francecentral). Does not change the health model region.
+
+.PARAMETER HealthModelDemoCafePlanSku
+  Cafe App Service plan SKU (S1 by default, or S2).
 
 .PARAMETER WarnOnly
   Report problems but do not fail (exit 0 / no throw). Useful for a dry inspection.
@@ -87,6 +90,8 @@ param(
   [bool] $DeployCustomerDependencies = $false,
   [bool] $DeployHealthModelDemo = $false,
   [string] $HealthModelDemoCafeLocation = 'francecentral',
+  [ValidateSet('S1', 'S2')]
+  [string] $HealthModelDemoCafePlanSku = 'S1',
   [switch] $WarnOnly
 )
 
@@ -359,7 +364,7 @@ if ($DeployCustomerDependencies) {
   Add-Result 'Customer dependencies lifecycle' 'SQL Basic + Standard orders queue are billable even idle. Explicit Entra-admin SQL bootstrap and processor publication are required; no password/key or Azure-services SQL firewall fallback.' 'WARN'
 }
 if ($DeployHealthModelDemo) {
-  $paasTypes += @{ Label = 'Cafe App Service (S1)'; Ns = 'Microsoft.Web'; Type = 'sites'; Region = $HealthModelDemoCafeLocation }
+  $paasTypes += @{ Label = "Cafe App Service ($HealthModelDemoCafePlanSku)"; Ns = 'Microsoft.Web'; Type = 'sites'; Region = $HealthModelDemoCafeLocation }
   if ($validLocations -notcontains (Get-RegionToken $HealthModelDemoCafeLocation)) {
     Add-Result 'Cafe region' "'$HealthModelDemoCafeLocation' is not a valid region for this subscription" 'FAIL'
   }
@@ -393,7 +398,7 @@ foreach ($t in $paasTypes) {
 # ---------------------------------------------------------------------------
 $planChecks = @(@{ Label = 'App Service quota'; Tier = $AppServicePlanTier; Region = $appServiceLocation })
 if ($DeployHealthModelDemo) {
-  $planChecks += @{ Label = 'Cafe App Service quota'; Tier = 'Standard'; Region = $HealthModelDemoCafeLocation }
+  $planChecks += @{ Label = "Cafe App Service quota ($HealthModelDemoCafePlanSku)"; Tier = 'Standard'; Region = $HealthModelDemoCafeLocation }
 }
 foreach ($planCheck in $planChecks) {
   $tier = $planCheck.Tier

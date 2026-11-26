@@ -153,6 +153,9 @@ $pfDeployHealthModelDemo = $deploymentInputs.parameters.enableHealthModelDemo.va
 $pfCafeLocation = if ($deploymentInputs.parameters.healthModelDemoCafeLocation.value) {
   $deploymentInputs.parameters.healthModelDemoCafeLocation.value
 } else { 'francecentral' }
+$pfCafePlanSku = if ($deploymentInputs.parameters.healthModelDemoCafePlanSku.value) {
+  $deploymentInputs.parameters.healthModelDemoCafePlanSku.value
+} else { 'S1' }
 if ($SkipPreflight) {
   Write-Step "Skipping pre-flight availability/quota check (-SkipPreflight)"
 } else {
@@ -172,6 +175,7 @@ if ($SkipPreflight) {
                -AppServicePlanTier $pfAppServicePlanTier `
                -DeployHealthModelDemo $pfDeployHealthModelDemo `
                -HealthModelDemoCafeLocation $pfCafeLocation `
+               -HealthModelDemoCafePlanSku $pfCafePlanSku `
                -ResourceGroup $ResourceGroup
   if ($LASTEXITCODE -ne 0) {
     throw "Pre-flight check failed for region '$Location'. Fix the FAIL rows above (or re-run with -SkipPreflight to bypass) before deploying."

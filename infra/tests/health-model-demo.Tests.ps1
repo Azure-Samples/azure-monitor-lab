@@ -23,6 +23,23 @@ $flow = ($stage.resources | Where-Object name -eq 'health-model-demo-flows').pro
 Assert-Demo ($main.parameters.healthModelDemoCafeLocation.defaultValue -ceq 'francecentral' -and
   $stage.parameters.location.defaultValue -ceq 'francecentral' -and
   $stage.parameters.healthModelLocation.defaultValue -ceq 'swedencentral') 'Cafe hosting must default to France Central independently of Sweden Central health models.'
+Assert-Demo ($main.parameters.healthModelDemoCafePlanSku.defaultValue -ceq 'S1' -and
+  $stage.parameters.healthModelDemoCafePlanSku.defaultValue -ceq 'S1' -and
+  @($main.parameters.healthModelDemoCafePlanSku.allowedValues).Count -eq 2 -and
+  @($main.parameters.healthModelDemoCafePlanSku.allowedValues) -contains 'S2' -and
+  $optional[0].properties.parameters.healthModelDemoCafePlanSku.value -ceq "[parameters('healthModelDemoCafePlanSku')]") 'Cafe plan must default to S1 while allowing S2 through the one-shot and staged deployment.'
+$ui = Get-Content (Join-Path $root 'infra\createUiDefinition.json') -Raw | ConvertFrom-Json
+$cafeRegion = @($ui.parameters.steps | Where-Object name -eq 'stages')[0].elements | Where-Object name -eq 'healthModelDemoCafeLocation'
+$cafeSku = @($ui.parameters.steps | Where-Object name -eq 'stages')[0].elements | Where-Object name -eq 'healthModelDemoCafePlanSku'
+$demoToggle = @($ui.parameters.steps | Where-Object name -eq 'stages')[0].elements | Where-Object name -eq 'enableHealthModelDemo'
+Assert-Demo ($cafeRegion.defaultValue -ceq 'francecentral' -and
+  $cafeRegion.visible -eq "[equals(steps('stages').enableHealthModelDemo, true)]" -and
+  $ui.parameters.outputs.healthModelDemoCafeLocation -eq "[steps('stages').healthModelDemoCafeLocation]" -and
+  $cafeSku.defaultValue -ceq 'S1' -and
+  @($cafeSku.constraints.allowedValues.value) -contains 'S2' -and
+  $cafeSku.visible -eq "[equals(steps('stages').enableHealthModelDemo, true)]" -and
+  $ui.parameters.outputs.healthModelDemoCafePlanSku -eq "[steps('stages').healthModelDemoCafePlanSku]" -and
+  $demoToggle.toolTip -match 'Standard S1') 'Portal must expose the separate Cafe region and S1/S2 plan when the demo is selected.'
 foreach ($modelModule in 'health-model-demo-cafe', 'health-model-demo-flows') {
   Assert-Demo (($stage.resources | Where-Object name -eq $modelModule).properties.parameters.location.value -ceq "[parameters('healthModelLocation')]") 'Both health models must use their separate supported region.'
 }
@@ -74,15 +91,18 @@ foreach ($workloadTemplate in @(
   ($optional[0].properties.template.resources | Where-Object name -eq 'health-model-demo-cafe-workload').properties.template
 )) {
   $plans = @($workloadTemplate.resources | Where-Object type -eq 'Microsoft.Web/serverfarms')
-  Assert-Demo ($plans.Count -eq 1 -and $plans[0].sku.name -ceq 'S1' -and
+  Assert-Demo ($plans.Count -eq 1 -and $plans[0].sku.name -ceq "[parameters('healthModelDemoCafePlanSku')]" -and
     $plans[0].sku.tier -ceq 'Standard' -and $plans[0].sku.capacity -eq 1 -and
-    $plans[0].properties.reserved -eq $true) 'Both deployment routes must use a dedicated single-instance Linux Standard S1 Cafe plan.'
+    $plans[0].properties.reserved -eq $true) 'Both deployment routes must use the selected single-instance Linux Standard Cafe plan.'
   $sites = @($workloadTemplate.resources | Where-Object type -eq 'Microsoft.Web/sites')
   Assert-Demo ($sites.Count -eq 1 -and
     $sites[0].properties.siteConfig.ContainsKey('appCommandLine') -and
     $sites[0].properties.siteConfig.appCommandLine -ceq '') 'Both deployment routes must clear the startup override so a fresh Cafe does not crash before publication.'
 }
-Assert-Demo ($workloadModule.properties.parameters.namePrefix.value -eq 'cafe' -and $workloadModule.properties.parameters.tags.value -match "'lab-cafe'") 'Standalone Cafe naming/tag adoption contract changed.'
+Assert-Demo ($workloadModule.properties.parameters.namePrefix.value -eq 'cafe' -and
+  $workloadModule.properties.parameters.tags.value -match "'lab-cafe'" -and
+  $workloadModule.properties.parameters.healthModelDemoCafePlanSku.value -ceq "[parameters('healthModelDemoCafePlanSku')]" -and
+  $workload.parameters.healthModelDemoCafePlanSku.defaultValue -ceq 'S1') 'Standalone Cafe adoption and plan SKU forwarding contract changed.'
 Assert-Demo ($cafe.parameters.healthModelName.defaultValue -eq 'hm-lab-cafe' -and $flow.parameters.healthModelName.defaultValue -eq 'hm-amlab-flows') 'Demo model default names must adopt existing models.'
 Assert-Demo ($cafe.variables.entities.Count -eq 12 -and $cafe.variables.edges.Count -eq 12 -and $cafe.variables.definitions.Count -eq 2) 'Cafe must have 12 explicit entities, automatic root, 12 edges and 2 definitions.'
 Assert-Demo ($flow.variables.entities.Count -eq 18 -and @($flow.variables.copy | Where-Object name -eq 'vmEntities').Count -eq 1) 'Flow model must retain its 18 entities plus automatic root and optional VM entities (21 with two VMs).'

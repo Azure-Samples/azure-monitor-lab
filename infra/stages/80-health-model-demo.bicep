@@ -2,6 +2,9 @@ targetScope = 'resourceGroup'
 
 @description('Region of the Cafe workload. Must be supported by App Service.')
 param location string = 'francecentral'
+@description('Standard App Service plan SKU for the Cafe workload.')
+@allowed(['S1', 'S2'])
+param healthModelDemoCafePlanSku string = 'S1'
 @description('CloudHealth-supported model region.')
 param healthModelLocation string = 'swedencentral'
 @minLength(3)
@@ -31,6 +34,7 @@ module workload '../healthmodel-tutorial/workload.bicep' = {
   name: 'health-model-demo-cafe-workload'
   params: {
     location: location
+    healthModelDemoCafePlanSku: healthModelDemoCafePlanSku
     // Independent of the core prefix, for adoption of the standalone tutorial.
     namePrefix: 'cafe'
     tags: union(tags, { workload: 'lab-cafe', purpose: 'health-model-tutorial' })

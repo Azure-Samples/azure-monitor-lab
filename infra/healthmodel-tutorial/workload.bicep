@@ -15,6 +15,10 @@
 @description('Region for every resource in the tutorial.')
 param location string = 'francecentral'
 
+@description('Standard App Service plan SKU for the Cafe workload.')
+@allowed(['S1', 'S2'])
+param healthModelDemoCafePlanSku string = 'S1'
+
 @description('Short prefix for resource names.')
 @maxLength(8)
 param namePrefix string = 'cafe'
@@ -187,7 +191,7 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   tags: tags
   sku: {
-    name: 'S1'
+    name: healthModelDemoCafePlanSku
     tier: 'Standard'
     capacity: 1
   }

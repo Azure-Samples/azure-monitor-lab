@@ -6,22 +6,24 @@ $deployAst = [Management.Automation.Language.Parser]::ParseFile($deployPath, [re
 $assignments = $deployAst.FindAll({
   param($node)
   $node -is [Management.Automation.Language.AssignmentStatementAst] -and
-    $node.Left.Extent.Text -in @('$pfDeployHealthModelDemo', '$pfCafeLocation', '$pfAppServicePlanTier')
+    $node.Left.Extent.Text -in @('$pfDeployHealthModelDemo', '$pfCafeLocation', '$pfCafePlanSku', '$pfAppServicePlanTier')
 }, $true)
-if ($assignments.Count -ne 3) { throw 'Deployment must derive Cafe inputs and the core App Service tier for preflight.' }
-$deriveInputs = [scriptblock]::Create(($assignments.Extent.Text -join "`n") + "`n@{ Enabled = `$pfDeployHealthModelDemo; Region = `$pfCafeLocation; Tier = `$pfAppServicePlanTier }")
+if ($assignments.Count -ne 4) { throw 'Deployment must derive Cafe inputs and the core App Service tier for preflight.' }
+$deriveInputs = [scriptblock]::Create(($assignments.Extent.Text -join "`n") + "`n@{ Enabled = `$pfDeployHealthModelDemo; Region = `$pfCafeLocation; Sku = `$pfCafePlanSku; Tier = `$pfAppServicePlanTier }")
 foreach ($case in @(
   @{ Parameters = @{}; Enabled = $false; Region = 'francecentral' }
   @{ Parameters = @{ enableHealthModelDemo = @{ value = $true } }; Enabled = $true; Region = 'francecentral' }
-  @{ Parameters = @{ enableHealthModelDemo = @{ value = $true }; healthModelDemoCafeLocation = @{ value = 'swedencentral' } }; Enabled = $true; Region = 'swedencentral' }
+  @{ Parameters = @{ enableHealthModelDemo = @{ value = $true }; healthModelDemoCafeLocation = @{ value = 'swedencentral' }; healthModelDemoCafePlanSku = @{ value = 'S2' } }; Enabled = $true; Region = 'swedencentral'; Sku = 'S2' }
   @{ Parameters = @{ enableSlotFailureScenario = @{ value = $true } }; Enabled = $false; Region = 'francecentral' }
 )) {
   $deploymentInputs = [pscustomobject]@{ parameters = [pscustomobject]$case.Parameters }
   $actual = & $deriveInputs
-  if ($actual.Enabled -ne $case.Enabled -or $actual.Region -ne $case.Region -or $actual.Tier -cne 'Standard') { throw 'Deployment preflight must preserve Cafe overrides and use Standard for the core plan with or without the slot scenario.' }
+  if ($actual.Enabled -ne $case.Enabled -or $actual.Region -ne $case.Region -or
+      $actual.Sku -cne $(if ($case.Sku) { $case.Sku } else { 'S1' }) -or
+      $actual.Tier -cne 'Standard') { throw 'Deployment preflight must preserve Cafe SKU/region overrides and use Standard for the core plan with or without the slot scenario.' }
 }
 $deployText = $deployAst.Extent.Text
-foreach ($argument in @('-DeployHealthModelDemo $pfDeployHealthModelDemo', '-HealthModelDemoCafeLocation $pfCafeLocation', '-AppServicePlanTier $pfAppServicePlanTier')) {
+foreach ($argument in @('-DeployHealthModelDemo $pfDeployHealthModelDemo', '-HealthModelDemoCafeLocation $pfCafeLocation', '-HealthModelDemoCafePlanSku $pfCafePlanSku', '-AppServicePlanTier $pfAppServicePlanTier')) {
   if (-not $deployText.Contains($argument)) { throw "Deployment preflight is missing '$argument'." }
 }
 Write-Host 'PASS: deployment forwards selected Cafe enablement and independent region to preflight.'
@@ -123,6 +125,10 @@ $scenario.CafeQuota = 0
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true; AppServicePlanTier = 'Standard' }
 Assert-Contains $result 'region reports 0 Standard quota'
 Assert-Contains $result '[WARN] Cafe App Service quota'
+$result = Invoke-Preflight (New-Scenario) @{ DeployHealthModelDemo = $true; HealthModelDemoCafePlanSku = 'S2' }
+Assert-Contains $result 'Cafe App Service (S2)'
+Assert-Contains $result 'Cafe App Service quota (S2)'
+Assert-Contains $result 'Standard tier in francecentral'
 $scenario.CafeUnsupported = $true
 $result = Invoke-Preflight $scenario @{ DeployHealthModelDemo = $true }
 if (-not $result.Failed) { throw 'Unavailable Cafe region must block deployment even when core App Service is supported.' }

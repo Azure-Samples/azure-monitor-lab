@@ -25,6 +25,10 @@ param enableHealthModelDemo bool = false
 @description('Cafe workload region. Keep the existing standalone workload region when adopting it.')
 param healthModelDemoCafeLocation string = 'francecentral'
 
+@description('Standard App Service plan SKU for the Cafe workload. Select S2 only with available quota.')
+@allowed(['S1', 'S2'])
+param healthModelDemoCafePlanSku string = 'S1'
+
 @description('Optional existing Cafe RG Monitoring Reader assignment GUID. Empty uses non-conflicting resource-scoped read access.')
 param healthModelDemoCafeMonitoringReaderAssignmentName string = ''
 
@@ -1003,6 +1007,7 @@ module healthModelDemo 'stages/80-health-model-demo.bicep' = if (enableHealthMod
   name: 'health-model-demo'
   params: {
     location: healthModelDemoCafeLocation
+    healthModelDemoCafePlanSku: healthModelDemoCafePlanSku
     webAppId: appService.outputs.webAppId
     appInsightsWorkspaceId: lawAppInsights.outputs.id
     centralWorkspaceId: lawCentral.outputs.id
