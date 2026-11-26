@@ -357,7 +357,7 @@
             "name": "healthModelDemoCafePlanSku",
             "type": "Microsoft.Common.DropDown",
             "label": "Café App Service plan",
-            "defaultValue": "S1",
+            "defaultValue": "Standard S1 (default)",
             "visible": "[equals(steps('stages').enableHealthModelDemo, true)]",
             "toolTip": "Choose Standard S2 if S1 quota is unavailable in the Café region. S2 costs more and resizes an existing Café plan on redeployment; check regional quota before deploying.",
             "constraints": {
@@ -430,7 +430,7 @@
             "name": "observabilityAgentLocation",
             "type": "Microsoft.Common.DropDown",
             "label": "Observability Agent region",
-            "defaultValue": "uksouth",
+            "defaultValue": "UK South",
             "visible": "[equals(steps('stages').enableObservabilityAgent, true)]",
             "toolTip": "The agent and its Azure Monitor workspace must share a supported region.",
             "constraints": {

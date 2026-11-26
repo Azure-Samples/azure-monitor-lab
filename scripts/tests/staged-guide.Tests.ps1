@@ -141,12 +141,15 @@ foreach ($control in @($ui.parameters.basics) + @($ui.parameters.steps.elements)
     if ($selected.Count -ne 1) { throw "Portal default '$name' must select exactly one allowed value." }
     $actual = $selected[0].value
   }
+  if ($control.type -eq 'Microsoft.Common.DropDown') {
+    $selected = @($control.constraints.allowedValues | Where-Object label -CEQ $actual)
+    if ($selected.Count -ne 1 -or $selected[0].value -cne $expected) {
+      throw "Portal default '$name' must match one option label with the expected output value."
+    }
+    $actual = $selected[0].value
+  }
   if ($actual -cne $expected -or ($expected -is [bool] -and $actual -isnot [bool])) {
     throw "Portal default '$name' does not match lab.config.json.example."
-  }
-  if ($control.type -eq 'Microsoft.Common.DropDown' -and
-      $actual -notin $control.constraints.allowedValues.value) {
-    throw "Portal default '$name' is not an allowed selection."
   }
 }
 Write-Output 'PASS: shared portal defaults match the config example without pre-filling fictitious identities.'
