@@ -59,7 +59,7 @@ module sreAgent '../modules/sre-agent.bicep' = {
 }
 
 module sreAgentSubscriptionRbac '../modules/sre-agent-subscription-rbac.bicep' = {
-  name: 'sre-agent-subscription-rbac'
+  name: 'sre-agent-subscription-rbac-${uniqueString(resourceGroup().id, resourceGroup().location)}'
   scope: subscription()
   params: {
     principalId: sreAgent.outputs.systemPrincipalId

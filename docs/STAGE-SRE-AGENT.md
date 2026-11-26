@@ -69,6 +69,8 @@ az deployment group create `
 
 The staged template deploys the same agent, connectors, identities, and role assignments as the one-shot path.
 
+Both deployment paths give the subscription-scope RBAC deployment a deterministic name derived from the lab resource group and its location. This avoids reusing a fixed subscription deployment name created in another region when deploying a separate lab; a rerun in the same resource group retains its deployment name.
+
 The agent uses Review mode, Low access, the Microsoft Foundry automatic model, and a 1,000 monthly Agent Unit limit. Creating the resource can start billing. Eligible new customers receive the 30-day always-on charge waiver automatically; confirm the evaluation status in **Settings > Agent consumption** after deployment.
 
 The agent remains in `swedencentral` even when the lab and its observability resources are deployed elsewhere. This creates an intentional cross-region query and reliability dependency. Treat this lab topology as an evaluation design, not a production colocation recommendation.

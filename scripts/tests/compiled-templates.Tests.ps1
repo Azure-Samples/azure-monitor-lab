@@ -37,6 +37,17 @@ $appInsightsWorkbookFiles | ForEach-Object { $null = Get-Content -LiteralPath $_
 $mainTemplate = Get-Content -LiteralPath (Join-Path $source 'infra/main.json') -Raw | ConvertFrom-Json
 $fabricStage = Get-Content -LiteralPath (Join-Path $source 'infra/stages/60-fabric.json') -Raw | ConvertFrom-Json
 $advancedStage = Get-Content -LiteralPath (Join-Path $source 'infra/stages/40-optional-advanced.json') -Raw | ConvertFrom-Json
+$sreStage = Get-Content -LiteralPath (Join-Path $source 'infra/stages/60-sre-agent.json') -Raw | ConvertFrom-Json
+$sreRbacName = "[format('sre-agent-subscription-rbac-{0}', uniqueString(resourceGroup().id, resourceGroup().location))]"
+foreach ($template in @($mainTemplate, $sreStage)) {
+  $sreRbac = @($template.resources | Where-Object { $_.name -eq $sreRbacName })
+  if ($sreRbac.Count -ne 1 -or
+      $sreRbac[0].subscriptionId -ne '[subscription().subscriptionId]' -or
+      $sreRbac[0].location -ne '[resourceGroup().location]') {
+    throw 'One-shot and staged SRE subscription RBAC deployments must use the same resource-group- and location-specific name.'
+  }
+}
+Write-Output 'PASS: SRE subscription RBAC deployment names are unique per lab group and location.'
 if ($mainTemplate.variables.suffix -cne '[uniqueString(resourceGroup().id)]' -or
     $fabricStage.variables.suffix -cne $mainTemplate.variables.suffix -or
     $advancedStage.variables.suffix -cne $mainTemplate.variables.suffix -or
