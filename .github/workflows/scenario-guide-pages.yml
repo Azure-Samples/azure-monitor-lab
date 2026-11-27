@@ -1,0 +1,65 @@
+name: Scenario Guide Pages
+
+on:
+  pull_request:
+    paths:
+      - 'site/**'
+      - 'docs/DEMO-SCENARIOS.md'
+      - 'docs/architecture-overview-sre.svg'
+      - 'docs/azure-monitor-lab-logo.svg'
+      - '.github/workflows/scenario-guide-pages.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/DEMO-SCENARIOS.md'
+      - 'docs/architecture-overview-sre.svg'
+      - 'docs/azure-monitor-lab-logo.svg'
+      - '.github/workflows/scenario-guide-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Build and verify guide
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test --prefix site
+
+  publish:
+    name: Publish GitHub Pages
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run build --prefix site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

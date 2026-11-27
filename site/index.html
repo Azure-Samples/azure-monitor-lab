@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111d31">
+  <meta name="description" content="Explore the Azure Monitor Lab architecture and follow guided demo scenarios.">
+  <title>Explore the lab · Azure Monitor Lab</title>
+  <link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#explorer">Skip to scenarios</a>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="./" aria-label="Azure Monitor Lab manual home">
+        <span class="brand-mark" aria-hidden="true">M<span class="brand-dot"></span></span>
+        <span><strong>Azure Monitor Lab</strong><small>Interactive field guide</small></span>
+      </a>
+      <nav class="top-nav" aria-label="Main navigation">
+        <a href="#architecture">Architecture</a>
+        <a href="#explorer">Scenarios</a>
+        <a href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/README.md#deploy" target="_blank" rel="noopener noreferrer">Deploy lab <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div>
+        <p class="eyebrow"><span class="live-dot"></span> EXPLORE · UNDERSTAND · DEMONSTRATE</p>
+        <h1 id="hero-title">A clearer path through <em>every signal.</em></h1>
+        <p class="hero-copy">Choose a service in the architecture, find a demo that matters to you, and follow the steps from setup to a verified result.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#architecture">Explore the architecture <span aria-hidden="true">↘</span></a>
+          <a class="button button-outline" href="#explorer">Browse all scenarios</a>
+        </div>
+        <p class="hero-note">A read-only guide. No Azure credentials or live deployment connection required.</p>
+      </div>
+      <div class="hero-graphic" aria-hidden="true">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <span class="hero-node node-a">Workloads</span>
+        <span class="hero-node node-b">Collect</span>
+        <span class="hero-node node-c">Observe</span>
+        <span class="hero-node node-d">Respond</span>
+        <div class="graphic-core"><span class="core-pulse"></span><strong>Azure<br>Monitor</strong></div>
+        <div class="graphic-label">YOUR LAB, CONNECTED</div>
+      </div>
+    </section>
+
+    <section class="architecture-section" id="architecture" aria-labelledby="architecture-title">
+      <div class="wrap">
+        <div class="section-heading">
+          <div><p class="eyebrow">01 / THE SYSTEM</p><h2 id="architecture-title">Start with the architecture.</h2><p>Select a component to discover its demos. The four lanes follow the <a href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/architecture-overview-sre.svg" target="_blank" rel="noopener noreferrer">lab architecture diagram <span class="sr-only">(opens in a new tab)</span></a>.</p></div>
+          <a class="text-link" href="./assets/architecture.svg" target="_blank" rel="noopener noreferrer">View full diagram ↗ <span class="sr-only">(opens in a new tab)</span></a>
+        </div>
+        <div class="architecture-grid" aria-label="Azure Monitor Lab architecture">
+          <div class="lane lane-workloads">
+            <div class="lane-head"><span class="lane-number">01</span><h3>Workloads</h3><span class="lane-symbol" aria-hidden="true">◈</span></div>
+            <p>Where the customer experience begins.</p>
+            <div class="component-list">
+              <button type="button" class="component" data-component="AKS" data-component-lane="workloads"><span class="component-icon">K</span><span>AKS <small>Containers &amp; telemetry</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="VM" data-component-lane="workloads"><span class="component-icon">V</span><span>Virtual machines <small>Linux &amp; Windows</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="App Service" data-component-lane="workloads"><span class="component-icon">A</span><span>App Service <small>Requests &amp; journeys</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="customer" data-component-lane="workloads"><span class="component-icon">C</span><span>Customer app <small>SQL · queue · Functions</small></span><span class="component-arrow">↗</span></button>
+            </div>
+          </div>
+          <div class="lane lane-collection">
+            <div class="lane-head"><span class="lane-number">02</span><h3>Collection &amp; lab operations</h3><span class="lane-symbol" aria-hidden="true">⌁</span></div>
+            <p>Move signals, operate the lab safely.</p>
+            <div class="component-list">
+              <button type="button" class="component" data-component="Control Center" data-component-lane="all"><span class="component-icon">O</span><span>Control Center <small>Traffic &amp; operations</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="DCR" data-component-lane="all"><span class="component-icon">D</span><span>Data collection <small>AMA · DCR · Policy</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="Policy" data-component-lane="all"><span class="component-icon">P</span><span>Azure Policy <small>Diagnostic onboarding</small></span><span class="component-arrow">↗</span></button>
+            </div>
+          </div>
+          <div class="lane lane-backplane">
+            <div class="lane-head"><span class="lane-number">03</span><h3>Telemetry backplane</h3><span class="lane-symbol" aria-hidden="true">◎</span></div>
+            <p>Store, correlate and query the evidence.</p>
+            <div class="component-list">
+              <button type="button" class="component" data-component="Log Analytics" data-component-lane="all"><span class="component-icon">L</span><span>Log Analytics <small>Logs &amp; KQL</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="Application Insights" data-component-lane="all"><span class="component-icon">I</span><span>Application Insights <small>Requests &amp; traces</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="Prometheus" data-component-lane="all"><span class="component-icon">M</span><span>Managed Prometheus <small>Metrics &amp; Grafana</small></span><span class="component-arrow">↗</span></button>
+            </div>
+          </div>
+          <div class="lane lane-response">
+            <div class="lane-head"><span class="lane-number">04</span><h3>Consumption &amp; response</h3><span class="lane-symbol" aria-hidden="true">↗</span></div>
+            <p>Turn telemetry into decisions.</p>
+            <div class="component-list">
+              <button type="button" class="component" data-component="Workbook" data-component-lane="all"><span class="component-icon">W</span><span>Workbooks <small>Health at a glance</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="Health Model" data-component-lane="all"><span class="component-icon">H</span><span>Health Models <small>User-flow impact</small></span><span class="component-arrow">↗</span></button>
+              <button type="button" class="component" data-component="SRE Agent" data-component-lane="all"><span class="component-icon">S</span><span>SRE &amp; AI agents <small>Evidence-led response</small></span><span class="component-arrow">↗</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="fabric-band">
+          <div class="fabric-identity"><span class="fabric-icon">F</span><div><strong>Microsoft Fabric</strong><small>Optional · tenant-scoped workspace outside the Azure resource group</small></div></div>
+          <span class="fabric-flow">Eventstream <span>→</span> Eventhouse <span>→</span> Real-Time Dashboard</span>
+          <button type="button" class="fabric-button" data-lane="fabric">Explore Fabric demos ↗</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="explorer-section wrap" id="explorer" aria-labelledby="explorer-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">02 / THE FIELD GUIDE</p><h2 id="explorer-title">Find your next demo.</h2><p>Browse all numbered scenarios, or open a step-by-step guide for a featured journey.</p></div>
+        <span class="catalog-total">82 scenarios · one connected lab</span>
+      </div>
+      <div class="explorer">
+        <aside class="filters" aria-label="Scenario filters">
+          <div class="filter-heading">EXPLORE BY LANE</div>
+          <div class="lane-filters" role="group" aria-label="Architecture lane">
+            <button type="button" class="filter-button active" data-lane="all" aria-pressed="true"><span class="filter-mark mark-all"></span>All scenarios</button>
+            <button type="button" class="filter-button" data-lane="workloads" aria-pressed="false"><span class="filter-mark mark-workloads"></span>Workloads</button>
+            <button type="button" class="filter-button" data-lane="collection" aria-pressed="false"><span class="filter-mark mark-collection"></span>Collection &amp; operations</button>
+            <button type="button" class="filter-button" data-lane="backplane" aria-pressed="false"><span class="filter-mark mark-backplane"></span>Telemetry backplane</button>
+            <button type="button" class="filter-button" data-lane="response" aria-pressed="false"><span class="filter-mark mark-response"></span>Consumption &amp; response</button>
+            <button type="button" class="filter-button" data-lane="fabric" aria-pressed="false"><span class="filter-mark mark-fabric"></span>Microsoft Fabric <span class="optional-mini">OPT</span></button>
+          </div>
+          <div class="filter-divider"></div>
+          <label class="filter-heading" for="stage-filter">AVAILABILITY</label>
+          <select id="stage-filter">
+            <option value="all">All scenarios</option>
+            <option value="core">Core lab</option>
+            <option value="optional">Optional stages</option>
+          </select>
+          <div class="filter-tip"><strong>Before you begin</strong><p>Optional demos require their own stage, permissions and sometimes billable services. Check each walkthrough before enabling them.</p></div>
+        </aside>
+        <div class="catalog-panel">
+          <label class="search-box" for="scenario-search"><span aria-hidden="true">⌕</span><input id="scenario-search" type="search" placeholder="Search scenarios or services…" autocomplete="off"><span class="sr-only">Search scenarios</span></label>
+          <div class="catalog-meta"><strong id="result-count">Loading scenarios…</strong><span>SELECT A SCENARIO ↓</span></div>
+          <div id="scenario-list" class="scenario-list" role="list" aria-label="Scenarios"></div>
+        </div>
+        <article class="detail-panel" id="scenario-detail" aria-live="polite" aria-label="Selected scenario">
+          <p class="loading">Loading the guide…</p>
+        </article>
+      </div>
+    </section>
+  </main>
+  <footer class="footer"><div class="wrap footer-inner"><span>Azure Monitor Lab <span class="footer-sep">/</span> Learn by exploring.</span><div><a href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/README.md" target="_blank" rel="noopener noreferrer">Repository ↗</a><a href="https://github.com/Azure-Samples/azure-monitor-lab/blob/main/docs/COST-GUIDE.md" target="_blank" rel="noopener noreferrer">Cost &amp; cleanup ↗</a></div></div></footer>
+</body>
+</html>

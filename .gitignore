@@ -4,6 +4,7 @@
 *.bicepparam.local.*
 .DS_Store
 out/
+_site/
 bin/
 obj/
 node_modules/
